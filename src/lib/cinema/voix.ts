@@ -180,7 +180,9 @@ export async function synthetiserFilm(
     try {
       return await synthetiser(texte, voixId);
     } catch (e) {
-      if (options.repli === false) throw e;
+      // `say` n'existe que sur macOS : sur le serveur Linux, il n'y a PAS de repli,
+      // et l'echec d'Edge est rendu tel quel (il remonte en « voix indisponible »).
+      if (options.repli === false || process.platform !== 'darwin') throw e;
       // Le moteur bascule UNE fois pour tout le film : reessayer Edge a
       // chaque replique ajouterait une attente par plan pour le meme echec.
       moteur = 'systeme';

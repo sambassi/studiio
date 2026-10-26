@@ -39,6 +39,7 @@ beforeEach(() => {
     const method = init?.method ?? 'GET';
     appels.push({ url, method });
     const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: { 'content-type': 'application/json' } });
+    if (method === 'DELETE') return json(reponses.delete ? reponses.delete() : { ok: true, objetsSupprimes: 3 }, reponses.deleteStatus ? (reponses.deleteStatus() as number) : 200);
     for (const [motif, f] of Object.entries(reponses)) if (url.includes(motif)) return json(f());
     if (url === '/api/cinema/films' && method === 'GET') return json({ ok: true, films: [{ id: film.id, titre: 'Mon film', majLe: film.majLe }] });
     if (url === `/api/cinema/films/${film.id}`) return json(reponseFilm());
@@ -158,5 +159,32 @@ describe('page Cinema IA — production asynchrone', () => {
     reponses['/produire'] = () => ({ ok: false, erreur: 'plafond depasse : 2.00 $' });
     fireEvent.click(screen.getByRole('button', { name: /exporter le film/i }));
     await waitFor(() => expect(screen.getByText(/plafond depasse/)).toBeTruthy());
+  });
+});
+
+describe('suppression d\'un film — deux gestes, erreur visible', () => {
+  it('l\'icone arme, la coche confirme ; annuler ne supprime rien', async () => {
+    await ouvrir();
+    fireEvent.click(screen.getByRole('button', { name: /supprimer ce film/i }));
+    expect(screen.getByText(/Supprimer le film et ses fichiers/)).toBeTruthy();
+    expect(appels.some((a) => a.method === 'DELETE')).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: /annuler la suppression/i }));
+    expect(screen.queryByText(/Supprimer le film et ses fichiers/)).toBeNull();
+    expect(appels.some((a) => a.method === 'DELETE')).toBe(false);
+
+    fireEvent.click(screen.getByRole('button', { name: /supprimer ce film/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmer la suppression/i }));
+    await waitFor(() => expect(appels.filter((a) => a.method === 'DELETE')).toEqual([{ url: `/api/cinema/films/${film.id}`, method: 'DELETE' }]));
+    await waitFor(() => expect(screen.queryByRole('heading', { name: /Export MP4/ })).toBeNull());
+  });
+
+  it('un refus du serveur (rendu en cours) est AFFICHE et le film reste ouvert', async () => {
+    reponses.delete = () => ({ ok: false, erreur: 'un rendu est en cours : arretez-le avant de supprimer le film' });
+    reponses.deleteStatus = () => 409;
+    await ouvrir();
+    fireEvent.click(screen.getByRole('button', { name: /supprimer ce film/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmer la suppression/i }));
+    expect((await screen.findByRole('alert')).textContent).toMatch(/un rendu est en cours/);
+    expect(screen.getByRole('heading', { name: /Export MP4/ })).toBeTruthy();
   });
 });

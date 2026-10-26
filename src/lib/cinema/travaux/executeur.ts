@@ -34,6 +34,8 @@ import { dureeScene } from '@/lib/cinema/types';
 import { empreinteScene, hash, scelleScene } from '@/lib/cinema/empreinte';
 import { inscrireCout } from '@/lib/cinema/couts';
 import { evaluerProduction } from '@/lib/cinema/travaux/plafond';
+import { attendreRessources, concurrenceRendu, ServeurOccupe, type DependancesAttente } from '@/lib/cinema/travaux/ressources';
+import { entrerRenduRemotion } from '@/lib/render/occupation-remotion';
 import { monterFilm, montageDeScene } from '@/lib/cinema/montage';
 import { ajusterDureesSurVoix, synthetiserFilm } from '@/lib/cinema/voix';
 import { concatener, controlerMp4, dureesDesVoix, preparerRendu, type ControleMp4, type TacheRendu } from '@/lib/cinema/rendu-local';
@@ -77,12 +79,23 @@ export interface DependancesExecuteur {
   plafondUsd: number;
   bailS?: number;
   maintenant?: () => Date;
+  /** Attente des ressources avant un rendu lourd (substituable en test). */
+  ressources?: DependancesAttente;
+  /** Concurrence Chromium (defaut : `concurrenceRendu()`). */
+  concurrence?: number;
 }
 
 /** Le bail a ete repris : cet executeur n'a plus le droit d'ecrire. */
 export class BailPerdu extends Error { constructor() { super('bail perdu'); this.name = 'BailPerdu'; } }
 /** L'utilisateur a demande l'arret. */
 export class ArretDemande extends Error { constructor() { super('arret demande'); this.name = 'ArretDemande'; } }
+/** Des repliques n'ont pas pu etre synthetisees : le film partirait muet, on s'arrete avant de rendre. */
+export class VoixIndisponible extends Error {
+  constructor(public readonly planIds: string[]) {
+    super(`synthese vocale indisponible pour ${planIds.length} replique(s) (${planIds.join(', ')}). Rien n'a ete rendu ni facture ; reessayez plus tard.`);
+    this.name = 'VoixIndisponible';
+  }
+}
 /** Le devis depasse le plafond, ou son tarif est inconnu. */
 export class PlafondDepasse extends Error { constructor(m: string) { super(m); this.name = 'PlafondDepasse'; } }
 
@@ -114,6 +127,7 @@ export async function executerTravail(travailId: string, proprietaire: string, d
   let progression: ProgressionTravail = { ...pris.progression, scenes: { ...pris.progression.scenes } };
   let perdu = false;
   let arret = false;
+  let sortirDuRendu: (() => void) | null = null;
 
   /** Publie la progression ; leve si le bail est perdu ou l'arret demande. */
   const publier = async (patch: Partial<Pick<ProgressionTravail, 'etape' | 'message'>> = {}, sceneEtats: Record<string, EtatSceneTravail> = {}) => {
@@ -193,6 +207,12 @@ export async function executerTravail(travailId: string, proprietaire: string, d
         racinePublique, dossierRelatif: path.posix.join('cinema', filmInitial.id), scenes: [...aProduire],
       });
       voix = synth.voix;
+      // Un film dont des repliques n'ont pas de voix partirait MUET sans que
+      // personne ne l'ait demande : on s'arrete AVANT le rendu (le plus cher).
+      if (synth.echecs.length) {
+        console.error('[cinema/travail] voix indisponible :', synth.echecs.map((e) => `${e.planId}: ${e.motif}`).join(' | '));
+        throw new VoixIndisponible(synth.echecs.map((e) => e.planId));
+      }
       for (const e of synth.echecs) avertissements.push(`voix absente pour le plan ${e.planId} : ${e.motif}`);
       if (synth.motifRepli) avertissements.push(`voix produites par le moteur « ${synth.moteur} » : ${synth.motifRepli}`);
       // Les durees suivent la parole mesuree — jamais l'inverse.
@@ -220,7 +240,16 @@ export async function executerTravail(travailId: string, proprietaire: string, d
       if (!sous) { avertissements.push(`scene ${scene.id} sans plan, ignoree`); continue; }
       await publier({ etape: 'rendu', message: `Rendu de la scene « ${scene.titre} »` }, { [scene.id]: 'en_cours' });
 
-      rendre ??= await dep.moteurs.preparerRendu({ racine: dep.racine, publicDir: racinePublique });
+      if (!rendre) {
+        // Un seul rendu lourd a la fois sur le serveur : on attend son tour, bail renouvele.
+        await attendreRessources({
+          ...dep.ressources,
+          surAttente: async (motif) => { await publier({ etape: 'rendu', message: `En attente : ${motif}` }); },
+        });
+        sortirDuRendu = entrerRenduRemotion();
+        rendre = await dep.moteurs.preparerRendu({ racine: dep.racine, publicDir: racinePublique, concurrence: dep.concurrence ?? concurrenceRendu() });
+        await publier({ etape: 'rendu', message: `Rendu de la scene « ${scene.titre} »` });
+      }
       await rendre({ montage: sous, sortie: local });
       // Deposee AVANT d'etre annoncee faite : une scene annoncee est une scene durable.
       await dep.objets.deposerFichier(cleDeScene(scene), local, 'video/mp4');
@@ -297,13 +326,14 @@ export async function executerTravail(travailId: string, proprietaire: string, d
     console.error(`[cinema/travail] ${reference} —`, e instanceof Error ? (e.stack ?? e.message) : e);
     let message: string;
     if (e instanceof ErreurMediasManquants) message = `media introuvable pour ${e.manquants.length} plan(s) : ${e.manquants.map((m) => m.planId).join(', ')}`;
-    else if (e instanceof PlafondDepasse) message = e.message;
+    else if (e instanceof PlafondDepasse || e instanceof ServeurOccupe || e instanceof VoixIndisponible) message = e.message;
     else message = `echec de production (reference ${reference})`;
     // Ecriture refusee (jeton perime) = un autre executeur a repris : ce n'est pas un echec du travail.
     const ecrit = await dep.travaux.echouer(pris.id, jeton, message, reference).catch(() => false);
     return ecrit ? 'echec' : 'bail_perdu';
   } finally {
     clearInterval(battement);
+    sortirDuRendu?.();
     await effacerDossier(dep.dossierTravail, dossier);
   }
 }

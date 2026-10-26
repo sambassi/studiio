@@ -220,6 +220,55 @@ describeSiBinaire('Cinema IA — PostgreSQL + PostgREST reels', () => {
       await db.query('delete from public.users where id = $1', [C]);
       expect((await db.query("select count(*)::int as n from public.cinema_films where id = 'film-pg-cascade'")).rows[0].n).toBe(0);
     });
+
+    it('⚠️ supprimer : seulement le film du compte ; un autre compte ou un id hors forme ne supprime rien', async () => {
+      await films.creer(unFilm('film-pg-suppr'), A);
+      expect(await films.supprimer('film-pg-suppr', B)).toBe(false);
+      expect(await films.supprimer('../film-pg-suppr', A)).toBe(false);
+      expect(await films.supprimer('film-pg-inexistant', A)).toBe(false);
+      expect(await films.lire('film-pg-suppr', A)).not.toBeNull();
+      expect(await films.supprimer('film-pg-suppr', A)).toBe(true);
+      expect(await films.lire('film-pg-suppr', A)).toBeNull();
+      expect(await films.supprimer('film-pg-suppr', A)).toBe(false);
+    });
+
+    it('supprimer emporte les travaux du film (cascade), oublierDuFilm garde les travaux actifs', async () => {
+      await db.query("update public.cinema_travaux set statut = 'annule', bail_jusqua = null where proprietaire = $1 and statut in ('en_attente', 'en_cours')", [A]);
+      await films.creer(unFilm('film-pg-suppr2'), A);
+      const dem = { film: unFilm('film-pg-suppr2'), proprietaire: A, cle: 'cle', scenesDemandees: [] as string[], maxActifs: 2 };
+      const t1 = (await travaux.creerOuRetrouver(dem)).travail!;
+      await travaux.oublierDuFilm('film-pg-suppr2', A);                       // actif : conserve
+      expect(await travaux.lire(t1.id, A)).not.toBeNull();
+      const p = (await travaux.reclamer(t1.id, BAIL_S))!;
+      await travaux.annuler(t1.id, p.tentatives);
+      await travaux.oublierDuFilm('film-pg-suppr2', B);                       // autre compte : rien
+      expect(await travaux.lire(t1.id, A)).not.toBeNull();
+      await travaux.oublierDuFilm('film-pg-suppr2', A);                       // termine : oublie
+      expect(await travaux.lire(t1.id, A)).toBeNull();
+
+      const t2 = (await travaux.creerOuRetrouver(dem)).travail!;
+      expect(await films.supprimer('film-pg-suppr2', A)).toBe(true);
+      expect((await db.query('select count(*)::int as n from public.cinema_travaux where id = $1', [t2.id])).rows[0].n).toBe(0);
+    });
+
+    it('supprimerFilm de bout en bout : base reelle + objets fictifs, un travail actif refuse', async () => {
+      const { supprimerFilm } = await import('../src/lib/cinema/stockage/suppression');
+      const { cleScene } = await import('../src/lib/cinema/stockage/cles');
+      const objets = objetsMemoire();
+      await db.query("update public.cinema_travaux set statut = 'annule', bail_jusqua = null where proprietaire = $1 and statut in ('en_attente', 'en_cours')", [A]);
+      await films.creer(unFilm('film-pg-suppr3'), A);
+      const mienne = cleScene(A, 'film-pg-suppr3', 's1', 'aaaaaaaa')!;
+      const autre = cleScene(B, 'film-pg-suppr3', 's1', 'aaaaaaaa')!;
+      for (const k of [mienne, autre]) await objets.deposerOctets(k, new Uint8Array([1]), 'video/mp4');
+      const t = (await travaux.creerOuRetrouver({ film: unFilm('film-pg-suppr3'), proprietaire: A, cle: 'cle', scenesDemandees: [], maxActifs: 2 })).travail!;
+      expect(await supprimerFilm({ films, travaux, objets }, A, 'film-pg-suppr3')).toEqual({ ok: false, motif: 'travail_en_cours' });
+      expect(await supprimerFilm({ films, travaux, objets }, B, 'film-pg-suppr3')).toEqual({ ok: false, motif: 'inconnu' });
+      await travaux.demanderAnnulation(t.id, A);
+      expect(await supprimerFilm({ films, travaux, objets }, A, 'film-pg-suppr3')).toEqual({ ok: true, objetsSupprimes: 1, objetsIgnores: 0 });
+      expect(objets.contenu(mienne)).toBeUndefined();
+      expect(objets.contenu(autre)).toBeDefined();
+      expect(await films.lire('film-pg-suppr3', A)).toBeNull();
+    });
   });
 
   describe('travaux', () => {
@@ -353,7 +402,7 @@ describeSiBinaire('Cinema IA — PostgreSQL + PostgREST reels', () => {
           concatener: async (fichiers, sortie) => { const { readFile } = await import('node:fs/promises'); await writeFile(sortie, (await Promise.all(fichiers.map((f) => readFile(f, 'utf-8')))).join('+')); return controle(sortie); },
           controler: controle,
         };
-        const dep = { films, travaux, objets, moteurs, racine, dossierTravail: join(racine, 'travail'), plafondUsd: 2 };
+        const dep = { films, travaux, objets, moteurs, racine, dossierTravail: join(racine, 'travail'), plafondUsd: 2, ressources: { seuils: { ramMinMo: 0 } } };
         const lancer = async (demandees: string[] = []) => {
           const lu = (await films.lire('film-pg-e2e', A))!;
           return (await travaux.creerOuRetrouver({ film: lu.film, proprietaire: A, cle: cleTravail(lu.film, demandees), scenesDemandees: demandees, maxActifs: 2 })).travail!;

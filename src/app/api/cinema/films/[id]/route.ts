@@ -14,6 +14,7 @@ import { devisFilm } from '@/lib/cinema/couts';
 import { contexteCinema, dependancesExecuteur } from '@/lib/cinema/contexte';
 import { filmInconnu, sessionCinema } from '@/lib/cinema/routes-aide';
 import { modifierFilm } from '@/lib/cinema/stockage/depot-films';
+import { supprimerFilm } from '@/lib/cinema/stockage/suppression';
 import { presenterMontage } from '@/lib/cinema/stockage/presentation';
 import { appliquerPatch, erreurPatch } from '@/lib/cinema/patch';
 import { reprendreOrphelins } from '@/lib/cinema/travaux/lanceur';
@@ -63,4 +64,21 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
   if (!suivant) return filmInconnu();
   return reponse(suivant);
+}
+
+/**
+ * Supprime le film ET ses objets prives (voir `stockage/suppression.ts`).
+ * 404 si le film n'est pas a ce compte, 409 tant qu'un rendu est actif,
+ * 502 si le stockage a refuse (le film reste, on peut rejouer).
+ */
+export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+  const s = await sessionCinema();
+  if ('refus' in s) return s.refus;
+  const r = await supprimerFilm(contexteCinema(), s.userId, params.id);
+  if (r.ok) return NextResponse.json({ ok: true, objetsSupprimes: r.objetsSupprimes });
+  if (r.motif === 'inconnu') return filmInconnu();
+  if (r.motif === 'travail_en_cours') {
+    return NextResponse.json({ ok: false, erreur: 'un rendu est en cours : arretez-le avant de supprimer le film' }, { status: 409 });
+  }
+  return NextResponse.json({ ok: false, erreur: 'le stockage n\'a pas pu supprimer tous les fichiers ; le film est conserve, reessayez' }, { status: 502 });
 }

@@ -279,3 +279,89 @@ puis `migrations/rollback/2026-10-27-cinema-ia.rollback.sql` si besoin.
 | PostgreSQL reel + PostgREST reel | `tests-pg/cinema-ia.pg.test.ts` | migration, droits, concurrence (8 creations → 1 travail ; 8 prises → 1 gagnant), depots TypeScript sur la vraie base |
 | banc (Remotion reel) | `tests-cinema/durable.cinema.test.ts` | MP4 reel depuis medias prives, couleur mesuree, relance sans rien refaire, une scene, reprise apres « mort » |
 
+
+## 11. Lot 5 — securite d'acces, compatibilite serveur, suppression
+
+### 11.1 Le verrou d'acces (`lib/cinema/garde.ts`)
+
+Ferme par defaut. Cinema IA n'est ouvert qu'a UN compte :
+
+| Condition | Resultat |
+|---|---|
+| `CINEMA_COMPTE_AUTORISE` absente, vide ou mal formee | personne n'entre (404) |
+| session absente | 401 (API) / 404 (page) |
+| un autre administrateur | 404 |
+| un utilisateur standard | 404 |
+| l'identifiant exact **et** administrateur | acces |
+
+- La variable est une variable SERVEUR (jamais `NEXT_PUBLIC_*`), comparee a temps
+  constant ; l'identifiant n'est jamais renvoye au navigateur.
+- La page est protegee par `app/dashboard/cinema/layout.tsx` (composant serveur,
+  decision avant l'envoi de la page) ; **toutes** les routes `/api/cinema/*` passent
+  par `sessionCinema()`. Un test balaie chaque `route.ts` et chaque handler.
+- Reglage dans Coolify : `CINEMA_COMPTE_AUTORISE=<uuid du compte admin de test>`.
+
+### 11.2 MinIO
+
+- `adapterClientMinio` assemble `clientMinio()` + `lecteurMinio()` (clients
+  existants, memes variables `MINIO_*`). Le banc `tests-cinema/minio.cinema.test.ts`
+  l'execute avec le **vrai SDK `minio@8.0.7`** contre un **vrai serveur MinIO jetable**
+  (127.0.0.1, dossier temporaire, identifiants fictifs) : depot en flux, plage,
+  telechargement atomique (`.part`), liste, suppression, objets prives (403 anonyme,
+  aucune politique de compartiment), panne reseau = erreur (jamais « absent »).
+- **Le MinIO de production n'a pas ete interroge** (aucun identifiant ici).
+  Verification en lecture seule a faire sur le serveur, sans rien ecrire :
+
+  ```bash
+  # dans le conteneur studiio-app (variables MINIO_* deja presentes)
+  node -e "const {clientMinio}=require('./src/lib/storage/minio-client');
+    const c=clientMinio(); (async()=>{
+    console.log('bucket media existe :', await c.bucketExists('media'));
+    try{console.log('politique :', await c.getBucketPolicy('media'));}catch(e){console.log('politique :', e.code)}
+    let n=0; for await (const o of c.listObjectsV2('media','',false)){ if(++n>5)break; console.log(o.name||o.prefix);} })()"
+  ```
+  Attendu : `existe true`, politique absente ou connue, aucune ecriture.
+  Un test d'ecriture reel (objet fictif sous `__cinema-verif__/`, puis suppression)
+  n'est a faire que sur GO explicite.
+
+### 11.3 Serveur Linux (image Docker existante)
+
+- Verifie sur le `Dockerfile` : ffmpeg **et ffprobe** (paquet Debian), bibliotheques de
+  Chromium, `fonts-liberation`, `remotion/`, `src/`, `tsconfig.json` et tout le scope
+  `@remotion` sont dans l'image ; la composition `cinema-film` vit dans `remotion/`.
+  L'image n'a pas pu etre construite ici (pas de Docker).
+- **Defaut corrige** : le conteneur tourne en `nextjs` et `/app` appartient a root, donc
+  `var/cinema/travail` n'etait pas creable. En mode durable, le dossier de travail est
+  `<tmp>/studiio-cinema` (ou `CINEMA_DOSSIER_TRAVAIL`, chemin absolu).
+- Rendu : memes `chromiumOptions: { gl: 'angle' }` que `lib/render/worker.ts`.
+- Concurrence : Cinema **attend** qu'aucun rendu `renderVideo` ne soit actif
+  (`rendusRemotionActifs`) et que la memoire libre soit >= 1536 Mo, jusqu'a 10 min
+  (puis echec « serveur occupe », rien de facture). Il s'annonce pendant son rendu
+  (`entrerRenduRemotion`). Concurrence Chromium : 2 (1 sur <= 2 coeurs ;
+  `CINEMA_CONCURRENCE_RENDU`, borne 4). L'Autopilote n'est pas modifie ; son rendu
+  hybride (ffmpeg + son propre Chromium) n'est pas compte par ce compteur.
+- Voix : Edge TTS (gratuit). Le repli `say` n'existe que sous macOS : sur Linux il est
+  desactive. Si des repliques n'ont pas de voix, le travail s'arrete **avant** le rendu
+  avec « synthese vocale indisponible pour N replique(s) … rien n'a ete rendu ni
+  facture ». Joignabilite d'Edge depuis le serveur : non verifiee ici (`/api/tts/edge`
+  l'utilise deja en production).
+
+### 11.4 Suppression d'un film (`stockage/suppression.ts`, `DELETE /api/cinema/films/<id>`)
+
+Film inconnu ou d'autrui → 404 · rendu actif → 409 · stockage en echec → 502 (le film
+est conserve, l'operation se rejoue). Le dossier `<compte>/cinema/<film>/` est liste
+(prefixe fabrique par le serveur, refuse par le port s'il n'est pas « un dossier de
+film »), chaque cle est revérifiee (`cleDuCompteStrict`), les objets sont supprimes,
+la ligne du film en dernier. Les medias ne sont jamais partages entre films (l'import
+copie) ; aucune cle hors du dossier du film n'est jamais supprimee. Interface : icone
+corbeille, puis coche de confirmation.
+
+### 11.5 Tests du lot 5
+
+| Suite | Fichier |
+|---|---|
+| acces (regle, page, balayage des routes) | `cinema-verrou.test.ts` |
+| suppression (memoire, routes, page) | `cinema-suppression.test.ts`, `cinema-routes.test.ts`, `cinema-page.test.tsx` |
+| ressources, voix, dossier de travail | `cinema-travaux.test.ts` |
+| objets : `lister` sur les 3 implementations | `cinema-stockage.test.ts` |
+| MinIO reel jetable | `tests-cinema/minio.cinema.test.ts` |

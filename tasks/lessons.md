@@ -1243,3 +1243,9 @@ Avec l'avatar, « Produire maintenant » répond 200 `{ jumeau: 'en_preparation'
 [2026-10-26] | Le plafond de depense de la route de generation venait du CORPS de la requete (jusqu'a 1000 $), et `Number(null)` valait 0 | Un plafond est une valeur du SERVEUR ; le client peut au plus le rabaisser, et seulement s'il envoie un NOMBRE (`typeof`), jamais `Number(x)` sur une valeur inconnue.
 
 [2026-10-26] | Tests pg locaux en rouge sur d'autres fichiers (34, puis 1) : serveur local en francais (« viole la contrainte de cle etrangere ») puis PostgREST 16.2 local contre 12.2.3 en CI | Lancer les tests pg locaux avec `-c lc_messages=C` ; un echec dans un fichier que le lot n'a pas touche se verifie en l'isolant avant de conclure.
+
+[2026-10-26] | Cinema IA lot 5 : le dossier de travail `var/cinema/travail` etait sous `process.cwd()` ; l'image Docker execute l'app en utilisateur non-root dans `/app` (root) — tout rendu serveur aurait echoue en EACCES, invisible en local | Toute ecriture d'un module serveur doit etre justifiee contre le `Dockerfile` (USER, proprietaire du WORKDIR) : fichiers jetables sous `os.tmpdir()`.
+
+[2026-10-26] | `os.freemem()` sur macOS ne reflete pas la memoire disponible : un seuil de RAM bloquait les tests du poste de dev | Une sentinelle de ressources doit etre INJECTABLE (`ressources`) ; les tests et les bancs de poste la fixent, la production garde la lecture reelle.
+
+[2026-10-26] | `require('@/…')` dans un module serveur marche sous webpack mais pas sous vitest : le chemin par defaut de `objetsMinio` n'etait donc teste par personne | Extraire le cablage (`adapterClientMinio`) en fonction exportee et la tester avec les vrais clients ; ne laisser dans le `require` que la resolution.

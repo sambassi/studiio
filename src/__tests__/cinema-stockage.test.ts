@@ -111,6 +111,7 @@ describe('objets — memoire, dossier, MinIO derriere la meme interface', () => 
       async getObject(_b, k) { const o = magasin.get(k); if (!o) throw absent(); return Readable.from([o]); },
       async getPartialObject(_b, k, d, l) { const o = magasin.get(k); if (!o) throw absent(); return Readable.from([o.subarray(d, l === undefined ? undefined : d + l)]); },
       async removeObject(_b, k) { magasin.delete(k); return {}; },
+      async *listObjectsV2(_b, prefixe) { for (const k of [...magasin.keys()].sort()) if (k.startsWith(prefixe)) yield { name: k }; },
     };
     return client;
   };
@@ -120,6 +121,18 @@ describe('objets — memoire, dossier, MinIO derriere la meme interface', () => 
     ['dossier', () => objetsDossier(dossier)],
     ['minio (client fictif)', () => objetsMinio(clientMinioFictif())],
   ] as const) {
+    it(`${nom} : liste le dossier d'UN film, et refuse tout autre prefixe`, async () => {
+      const objets = fabrique();
+      const miens = [cleScene(A, 'film-l-1', 's1', 'aaaaaaaa')!, cleVoix(A, 'film-l-1', 's1-p-1', 'bbbbbbbb')!];
+      const voisins = [cleScene(A, 'film-l-10', 's1', 'aaaaaaaa')!, cleScene(A, 'film-l-2', 's1', 'aaaaaaaa')!, cleScene('autre-compte', 'film-l-1', 's1', 'aaaaaaaa')!];
+      for (const k of [...miens, ...voisins]) await objets.deposerOctets(k, new Uint8Array([1]), 'video/mp4');
+      expect(await objets.lister(`${A}/cinema/film-l-1/`)).toEqual([...miens].sort());
+      expect(await objets.lister(`${A}/cinema/film-vide/`)).toEqual([]);
+      for (const mauvais of [`${A}/`, `${A}/cinema/`, `${A}/cinema/film-l-1`, '', '/', '../x/cinema/film-a/', `${A}/cinema/../film-a/`, `${A}/rendus/`, 'a/b/cinema/film-a/']) {
+        await expect(objets.lister(mauvais), mauvais).rejects.toThrow(/prefixe de film refuse/);
+      }
+    });
+
     it(`${nom} : depose, retrouve, lit une plage, supprime`, async () => {
       const objets = fabrique();
       const cle = cleScene(A, 'film-stock-1', 's1', 'deadbeef')!;

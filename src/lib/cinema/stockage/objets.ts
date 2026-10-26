@@ -12,7 +12,7 @@
  */
 import { createReadStream, createWriteStream } from 'fs';
 import { Readable } from 'stream';
-import { mkdir, readFile, rm, stat, writeFile, copyFile } from 'fs/promises';
+import { mkdir, readFile, readdir, rm, stat, writeFile, copyFile } from 'fs/promises';
 import path from 'path';
 import { pipeline } from 'stream/promises';
 import { cleObjetValide } from '@/lib/storage/acces-objet';
@@ -31,6 +31,17 @@ export interface StockageObjets {
    * authentifiee (`/api/cinema/films/<id>/medias/<plan>`, `…/export`).
    */
   ouvrir(cle: string, plage?: PlageOctets): Promise<ObjetOuvert | null>;
+  /**
+   * Les cles sous le dossier d'UN film (`<compte>/cinema/<film>/`) — et
+   * seulement lui : tout autre prefixe est refuse, pour qu'un appel ne puisse
+   * jamais lister (donc supprimer) un compte entier ou le dossier d'un autre film.
+   */
+  lister(prefixeFilm: string): Promise<string[]>;
+}
+
+const MOTIF_PREFIXE_FILM = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}\/cinema\/film-[a-z0-9][a-z0-9-]{0,62}\/$/;
+function exigerPrefixe(p: string): void {
+  if (!MOTIF_PREFIXE_FILM.test(p)) throw new Error('prefixe de film refuse');
 }
 
 /** Bornes INCLUSES, comme `Range: bytes=debut-fin`. */
@@ -86,6 +97,7 @@ export function objetsMemoire(): ObjetsMemoire {
       const morceau = p ? o.octets.subarray(p.debut, p.fin + 1) : o.octets;
       return { flux: Readable.from([Buffer.from(morceau)]), taille: o.octets.length, plage: p };
     },
+    async lister(prefixe) { exigerPrefixe(prefixe); return [...magasin.keys()].filter((k) => k.startsWith(prefixe)).sort(); },
     contenu: (cle) => magasin.get(cle)?.octets,
     cles: () => [...magasin.keys()],
     echouerProchainDepot: (message = 'stockage indisponible') => { echec = message; },
@@ -116,6 +128,24 @@ export function objetsDossier(racine: string): StockageObjets {
       return true;
     },
     async existe(cle) { const c = chemin(cle); try { return (await stat(c)).isFile(); } catch { return false; } },
+    async lister(prefixe) {
+      exigerPrefixe(prefixe);
+      const dossier = path.resolve(base, prefixe);
+      if (!dossier.startsWith(base + path.sep)) throw new Error('prefixe de film refuse');
+      const cles: string[] = [];
+      const marche = async (d: string): Promise<void> => {
+        let entrees;
+        try { entrees = await readdir(d, { withFileTypes: true }); } catch { return; }
+        for (const e of entrees) {
+          const c = path.join(d, e.name);
+          // Un lien symbolique n'est ni suivi ni liste : on ne sort jamais du dossier du film.
+          if (e.isDirectory()) await marche(c);
+          else if (e.isFile()) cles.push(path.relative(base, c).split(path.sep).join('/'));
+        }
+      };
+      await marche(dossier);
+      return cles.sort();
+    },
     async supprimer(cle) { await rm(chemin(cle), { force: true }); },
     async ouvrir(cle, plage) {
       const c = chemin(cle);
@@ -138,11 +168,31 @@ export interface ClientMinioCinema {
   getObject(bucket: string, cle: string): Promise<NodeJS.ReadableStream>;
   getPartialObject(bucket: string, cle: string, decalage: number, longueur?: number): Promise<NodeJS.ReadableStream>;
   removeObject(bucket: string, cle: string): Promise<unknown>;
+  listObjectsV2(bucket: string, prefixe: string, recursif: boolean): AsyncIterable<{ name?: string }>;
 }
 
 function estAbsent(e: unknown): boolean {
   const err = e as { code?: string; statusCode?: number } | null;
   return err?.code === 'NotFound' || err?.code === 'NoSuchKey' || err?.statusCode === 404;
+}
+
+/**
+ * Assemble le client d'ecriture (`clientMinio()`) et le client de lecture
+ * (`lecteurMinio()`) du projet en un seul `ClientMinioCinema`. Exporte pour que
+ * le banc contre un vrai serveur MinIO teste exactement ce cablage.
+ */
+export function adapterClientMinio(
+  ecriture: unknown, lecture: { getObject(b: string, k: string): Promise<NodeJS.ReadableStream>; getPartialObject(b: string, k: string, d: number, l?: number): Promise<NodeJS.ReadableStream> },
+): ClientMinioCinema {
+  const e = ecriture as ClientMinioCinema;
+  return {
+    putObject: (b, k, f, t, h) => e.putObject(b, k, f, t, h),
+    statObject: (b, k) => e.statObject(b, k),
+    getObject: (b, k) => lecture.getObject(b, k),
+    getPartialObject: (b, k, d, l) => lecture.getPartialObject(b, k, d, l),
+    removeObject: (b, k) => e.removeObject(b, k),
+    listObjectsV2: (b, p, r) => e.listObjectsV2(b, p, r),
+  };
 }
 
 /**
@@ -157,15 +207,7 @@ export function objetsMinio(client?: ClientMinioCinema): StockageObjets {
     if (!c) {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { clientMinio, lecteurMinio } = require('@/lib/storage/minio-client') as typeof import('@/lib/storage/minio-client');
-      const ecriture = clientMinio() as unknown as ClientMinioCinema;
-      const lecture = lecteurMinio();
-      c = {
-        putObject: (b, k, f, t, e) => ecriture.putObject(b, k, f, t, e),
-        statObject: (b, k) => ecriture.statObject(b, k),
-        getObject: (b, k) => lecture.getObject(b, k),
-        getPartialObject: (b, k, d, l) => lecture.getPartialObject(b, k, d, l),
-        removeObject: (b, k) => ecriture.removeObject(b, k),
-      };
+      c = adapterClientMinio(clientMinio(), lecteurMinio());
     }
     return c;
   };
@@ -204,6 +246,14 @@ export function objetsMinio(client?: ClientMinioCinema): StockageObjets {
       exiger(cle);
       try { await obtenir().statObject(BUCKET_CINEMA, cle); return true; }
       catch (e) { if (estAbsent(e)) return false; throw e; }
+    },
+    async lister(prefixe) {
+      exigerPrefixe(prefixe);
+      const cles: string[] = [];
+      for await (const o of obtenir().listObjectsV2(BUCKET_CINEMA, prefixe, true)) {
+        if (o.name && o.name.startsWith(prefixe)) cles.push(o.name);
+      }
+      return cles.sort();
     },
     async supprimer(cle) {
       exiger(cle);

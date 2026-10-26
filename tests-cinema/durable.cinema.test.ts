@@ -56,6 +56,10 @@ describe('production durable avec medias reels', () => {
       const dep: DependancesExecuteur = {
         films, travaux, objets, moteurs: MOTEURS_REELS, racine: PROJET,
         dossierTravail: path.join(base, 'travail'), plafondUsd: 2, maintenant: () => horloge.t,
+        // Poste de dev : `os.freemem()` de macOS n'est pas la memoire disponible d'un serveur.
+        // Et l'executeur « tue » du scenario d'interruption reste fige DANS CE PROCESSUS, donc son
+        // annonce de rendu y resterait : un vrai processus mort emporte son compteur avec lui.
+        ressources: { lire: () => ({ rendusEnCours: 0, ramLibreMo: 64_000, cpus: 8 }) },
       };
 
       const depart = preparerFilm({ titre: 'Avant le jour', histoire: HISTOIRE, personnages: [{ nom: 'Nina', description: 'veste rouge' }, { nom: 'Marco', description: 'ceinture noire' }], idFilm: 'film-banc-durable', format: '16:9', nbScenes: 3 });

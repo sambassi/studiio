@@ -10,6 +10,7 @@ import { randomBytes } from 'crypto';
 import { mkdir, rm } from 'fs/promises';
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
+import { accesCinemaAutorise } from '@/lib/cinema/garde';
 import type { Film } from '@/lib/cinema/types';
 import { proprietaireValide, cleMedia, cleReference } from '@/lib/cinema/stockage/cles';
 import { fichierDuMedia } from '@/lib/cinema/medias';
@@ -20,12 +21,16 @@ export const FILMS_MAX_PAR_COMPTE = 50;
 
 export type SessionCinema = { userId: string } | { refus: NextResponse };
 
-/** 401 sans session, et 401 aussi si l'identifiant du compte n'est pas un segment de chemin sain. */
+/** 401 sans session, 404 si le verrou Cinema IA est ferme pour ce compte, et 401 aussi si l'identifiant du compte n'est pas un segment de chemin sain. */
 export async function sessionCinema(): Promise<SessionCinema> {
   const session = await auth();
   const userId = session?.user?.id;
   if (!userId || !proprietaireValide(userId)) {
     return { refus: NextResponse.json({ ok: false, erreur: 'non autorise' }, { status: 401 }) };
+  }
+  // Le verrou : un compte connu mais non autorise recoit 404, comme si le module n'existait pas.
+  if (!accesCinemaAutorise(session?.user)) {
+    return { refus: NextResponse.json({ ok: false, erreur: 'introuvable' }, { status: 404 }) };
   }
   return { userId };
 }

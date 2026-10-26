@@ -229,6 +229,9 @@ export async function preparerRendu(options: OptionsPreparationRendu): Promise<(
       outputLocation: tache.sortie,
       inputProps,
       concurrency: options.concurrence ?? 2,
+      // Meme reglage que le rendu serveur existant (`lib/render/worker.ts`) : sur un
+      // serveur sans GPU, c'est la voie deja eprouvee en production.
+      chromiumOptions: { gl: 'angle' },
       // La piste audio est GARDEE : les voix des repliques sont dans la
       // composition (`<Audio>`), un rendu muet les perdrait en silence.
       muted: false,

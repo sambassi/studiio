@@ -760,7 +760,18 @@ Variables Coolify : `ZERNIO_API_KEY` (sk_…) et `ZERNIO_WEBHOOK_SECRET`.
 - [x] Tests : 191 unitaires cinema, 21 pg reels (PostgreSQL + PostgREST), 4 benches Remotion reels
 - [ ] **Appliquer la migration en production** (puis `docker kill -s SIGUSR1 studiio-postgrest`) — SEULEMENT sur GO explicite
 - [ ] Poser `CINEMA_STOCKAGE=durable` dans Coolify APRES la migration
-- [ ] Garde d'acces au module (admin / drapeau) avant toute exposition aux utilisateurs
-- [ ] Suppression d'un film + purge des objets MinIO (aucune route aujourd'hui) — rejoint `tasks/dette-rgpd-purge-stockage.md`
-- [ ] Ne pas lancer deux Chromium : brancher `rendusRemotionActifs()` dans le lanceur
+- [x] Garde d'acces (lot 5) : `CINEMA_COMPTE_AUTORISE`, ferme par defaut
+- [x] Suppression d'un film + purge de ses objets (lot 5). Reste : purge a la suppression d'un COMPTE (`tasks/dette-rgpd-purge-stockage.md`) et ancien scenes orphelines apres modification
+- [x] Un seul rendu lourd a la fois (lot 5) : attente bornee + annonce dans le compteur Remotion
 
+
+## 2026-10-26 — Cinema IA lot 5 : securite et compatibilite (non deploye)
+
+- [x] Verrou d'acces ferme par defaut, page + 13 routes, un seul compte, test de balayage
+- [x] MinIO : SDK reel + serveur reel JETABLE (banc) ; **MinIO de production NON interroge**
+- [x] Linux : dossier de travail sous tmp, `gl: angle`, attente des ressources, voix Linux sans `say` + erreur claire
+- [x] Suppression securisee d'un film (route, UI, objets fictifs)
+- [ ] Verification MinIO production en lecture seule (procedure en `docs/CINEMA-IA.md` 11.2) — sur GO
+- [ ] Construire l'image Docker et lancer un rendu Cinema dedans (Docker absent du poste)
+- [ ] Verifier la joignabilite d'Edge TTS depuis le serveur
+- [ ] Poser `CINEMA_COMPTE_AUTORISE` et `CINEMA_STOCKAGE=durable` dans Coolify APRES migration

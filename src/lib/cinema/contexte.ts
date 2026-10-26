@@ -10,6 +10,7 @@
  *
  * Dans les deux modes, AUCUN media n'est ecrit dans `public/`.
  */
+import os from 'os';
 import path from 'path';
 import { depotFilmsDossier, depotFilmsPostgres, type ClientBase, type DepotFilms } from '@/lib/cinema/stockage/depot-films';
 import { objetsDossier, objetsMinio, type StockageObjets } from '@/lib/cinema/stockage/objets';
@@ -46,14 +47,20 @@ export interface ContexteCinema {
   plafondUsd: number;
   /** Substituable en test (Chromium, ffmpeg et voix sont lents et externes). */
   moteurs?: MoteursProduction;
+  /** Substituable en test (la memoire libre d'un poste de dev n'est pas celle d'un serveur). */
+  ressources?: DependancesExecuteur['ressources'];
 }
 
 const g = globalThis as unknown as { __cinemaContexte?: ContexteCinema; __cinemaTravauxLocal?: DepotTravaux };
 
 export function construireContexte(env: NodeJS.ProcessEnv = process.env, racine = process.cwd()): ContexteCinema {
   const mode = modeStockage(env);
-  const dossierTravail = path.join(racine, 'var', 'cinema', 'travail');
+  let dossierTravail = path.join(racine, 'var', 'cinema', 'travail');
   if (mode === 'durable') {
+    // Le conteneur de production tourne en utilisateur non-root et `/app` appartient
+    // a root : `var/` n'y est pas creable. Les fichiers de travail (jetables, effaces
+    // a la fin de chaque travail) vivent donc sous le dossier temporaire du systeme.
+    dossierTravail = dossierTravailDurable(env);
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { supabaseAdmin } = require('@/lib/db/supabase') as typeof import('@/lib/db/supabase');
     const base = () => supabaseAdmin as unknown as ClientBase;
@@ -72,6 +79,12 @@ export function construireContexte(env: NodeJS.ProcessEnv = process.env, racine 
   };
 }
 
+/** `CINEMA_DOSSIER_TRAVAIL` (chemin absolu) ou `<tmp>/studiio-cinema`. */
+export function dossierTravailDurable(env: NodeJS.ProcessEnv = process.env): string {
+  const voulu = env.CINEMA_DOSSIER_TRAVAIL?.trim();
+  return voulu && path.isAbsolute(voulu) && path.resolve(voulu) !== path.parse(voulu).root ? path.resolve(voulu) : path.join(os.tmpdir(), 'studiio-cinema');
+}
+
 export function contexteCinema(): ContexteCinema {
   return (g.__cinemaContexte ??= construireContexte());
 }
@@ -79,6 +92,6 @@ export function contexteCinema(): ContexteCinema {
 export function dependancesExecuteur(ctx: ContexteCinema = contexteCinema()): DependancesExecuteur {
   return {
     films: ctx.films, travaux: ctx.travaux, objets: ctx.objets, moteurs: ctx.moteurs ?? MOTEURS_REELS,
-    racine: ctx.racine, dossierTravail: ctx.dossierTravail, plafondUsd: ctx.plafondUsd,
+    racine: ctx.racine, dossierTravail: ctx.dossierTravail, plafondUsd: ctx.plafondUsd, ressources: ctx.ressources,
   };
 }

@@ -14,7 +14,7 @@
  * ⚠️ PROPRIETAIRE : `lire` et `lister` prennent le proprietaire. Un film
  * d'autrui est INTROUVABLE — pas « interdit » — comme dans les routes.
  */
-import { mkdir, readFile, readdir, rename, writeFile } from 'fs/promises';
+import { mkdir, readFile, readdir, rename, rm, writeFile } from 'fs/promises';
 import path from 'path';
 import type { Film } from '@/lib/cinema/types';
 import { idFilmValide } from '@/lib/cinema/acces';
@@ -34,6 +34,8 @@ export interface DepotFilms {
   /** Remplace, a condition que la version soit celle qu'on a lue. */
   remplacer(film: Film, proprietaire: string, versionAttendue: number): Promise<ResultatEcriture>;
   lister(proprietaire: string): Promise<ResumeFilm[]>;
+  /** Efface le film de CE compte. `false` s'il n'existe pas ou n'est pas a lui. Ne touche pas aux objets. */
+  supprimer(filmId: string, proprietaire: string): Promise<boolean>;
 }
 
 /** Le film porte son proprietaire : celui de la session, jamais celui du client. */
@@ -90,6 +92,11 @@ export function depotFilmsMemoire(): DepotFilms {
       l.version += 1;
       return { ok: true, version: l.version };
     },
+    async supprimer(id, proprietaire) {
+      const l = lignes.get(id);
+      if (!l || l.proprietaire !== proprietaire) return false;
+      return lignes.delete(id);
+    },
     async lister(proprietaire) {
       return [...lignes.values()].filter((l) => l.proprietaire === proprietaire)
         .map((l) => ({ id: l.film.id, titre: l.film.titre, majLe: l.film.majLe }))
@@ -141,6 +148,12 @@ export function depotFilmsDossier(racine: string): DepotFilms {
       if (l.version !== versionAttendue) return { ok: false, raison: 'conflit' };
       await ecrire(marque(film, proprietaire), l.version + 1);
       return { ok: true, version: l.version + 1 };
+    },
+    async supprimer(id, proprietaire) {
+      const l = await lireBrut(id);
+      if (!l || l.film.proprietaire !== proprietaire) return false;
+      await rm(fichier(id), { force: true });
+      return true;
     },
     async lister(proprietaire) {
       try {
@@ -210,6 +223,13 @@ export function depotFilmsPostgres(base: () => ClientBase): DepotFilms {
       if (Array.isArray(data) && data.length === 1) return { ok: true, version: data[0].version as number };
       const existe = await base().from(T).select('version').eq('id', film.id).eq('proprietaire', proprietaire).maybeSingle();
       return { ok: false, raison: existe.data ? 'conflit' : 'absent' };
+    },
+    async supprimer(id, proprietaire) {
+      if (!idFilmValide(id)) return false;
+      // Les travaux du film partent avec lui (`on delete cascade`).
+      const { data, error } = await base().from(T).delete().eq('id', id).eq('proprietaire', proprietaire).select('id');
+      if (error) throw new Error(messageBase(error));
+      return Array.isArray(data) && data.length === 1;
     },
     async lister(proprietaire) {
       const { data, error } = await base().from(T).select('id, titre, maj_le').eq('proprietaire', proprietaire).order('maj_le', { ascending: false }).limit(200);

@@ -17,13 +17,16 @@ vi.mock('@/lib/auth/config', () => ({
   auth: async () => (session.userId ? { user: { id: session.userId, email: 'x@example.org' } } : null),
 }));
 
+// Le verrou d'acces a ses propres tests (cinema-acces.test.ts) ; ici on teste l'isolation ENTRE comptes.
+vi.mock('@/lib/cinema/garde', () => ({ accesCinemaAutorise: () => true }));
+
 import { depotFilmsMemoire } from '@/lib/cinema/stockage/depot-films';
 import { objetsMemoire } from '@/lib/cinema/stockage/objets';
 import { depotTravauxMemoire } from '@/lib/cinema/travaux/depot-travaux';
 import { attendreFile, reinitialiserLanceurPourTests } from '@/lib/cinema/travaux/lanceur';
 import { plafondServeurUsd, type ContexteCinema } from '@/lib/cinema/contexte';
 import type { MoteursProduction } from '@/lib/cinema/travaux/executeur';
-import { cleMedia } from '@/lib/cinema/stockage/cles';
+import { cleMedia, cleScene, cleVoix, cleFilmMp4 } from '@/lib/cinema/stockage/cles';
 import * as filmsRoute from '@/app/api/cinema/films/route';
 import * as filmRoute from '@/app/api/cinema/films/[id]/route';
 import * as produireRoute from '@/app/api/cinema/films/[id]/produire/route';
@@ -103,6 +106,7 @@ beforeEach(async () => {
   ctx = {
     mode: 'local', films: depotFilmsMemoire(), travaux: memTravaux, objets: memObjets,
     racine, dossierTravail: path.join(racine, 'var', 'cinema', 'travail'), plafondUsd: 2, moteurs,
+    ressources: { lire: () => ({ rendusEnCours: 0, ramLibreMo: 64_000, cpus: 8 }), pause: async () => {} },
   };
   (globalThis as unknown as { __cinemaContexte?: ContexteCinema }).__cinemaContexte = ctx;
   session.userId = A;
@@ -516,5 +520,50 @@ describe('plafond serveur — configuration', () => {
     expect(plafondServeurUsd({ CINEMA_PLAFOND_USD: 'abc' } as unknown as NodeJS.ProcessEnv)).toBe(2);
     expect(plafondServeurUsd({ CINEMA_PLAFOND_USD: '-4' } as unknown as NodeJS.ProcessEnv)).toBe(2);
     expect(plafondServeurUsd({ CINEMA_PLAFOND_USD: '' } as unknown as NodeJS.ProcessEnv)).toBe(2);
+  });
+});
+
+describe('DELETE /films/[id] — suppression du film et de ses objets prives', () => {
+  it('supprime le film et tous ses objets ; un autre compte recoit 404 et ne touche a rien', async () => {
+    const id = await creerFilm(A);
+    const miens = [cleScene(A, id, 's1', 'aaaaaaaa')!, cleVoix(A, id, 's1-p-1', 'bbbbbbbb')!, cleFilmMp4(A, id, 'cccccccc')!];
+    const voisin = cleScene(B, 'film-voisin', 's1', 'aaaaaaaa')!;
+    for (const k of [...miens, voisin]) await memObjets.deposerOctets(k, new Uint8Array([1]), 'video/mp4');
+
+    session.userId = B;
+    expect((await filmRoute.DELETE(req('/x', { method: 'DELETE' }), P(id))).status).toBe(404);
+    for (const k of miens) expect(memObjets.contenu(k)).toBeDefined();
+
+    session.userId = A;
+    const r = await filmRoute.DELETE(req('/x', { method: 'DELETE' }), P(id));
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, objetsSupprimes: 3 });
+    for (const k of miens) expect(memObjets.contenu(k)).toBeUndefined();
+    expect(memObjets.contenu(voisin)).toBeDefined();
+    expect((await filmRoute.GET(req('/x'), P(id))).status).toBe(404);
+    expect((await filmRoute.DELETE(req('/x', { method: 'DELETE' }), P(id))).status).toBe(404);
+  });
+
+  it('409 tant qu\'un rendu est actif, 502 si le stockage refuse (le film est conserve)', async () => {
+    const id = await creerFilm(A);
+    const lu = (await ctx.films.lire(id, A))!.film;
+    const c = await ctx.travaux.creerOuRetrouver({ film: lu, proprietaire: A, cle: 'k', scenesDemandees: [], maxActifs: 2 });
+    session.userId = A;
+    const r409 = await filmRoute.DELETE(req('/x', { method: 'DELETE' }), P(id));
+    expect(r409.status).toBe(409);
+    expect((await r409.json()).erreur).toMatch(/arretez-le/);
+    expect(await ctx.films.lire(id, A)).not.toBeNull();
+
+    const pris = await ctx.travaux.reclamer(c.travail!.id, 90);
+    await ctx.travaux.annuler(c.travail!.id, pris!.tentatives);
+    await memObjets.deposerOctets(cleScene(A, id, 's1', 'aaaaaaaa')!, new Uint8Array([1]), 'video/mp4');
+    const vrai = memObjets.supprimer.bind(memObjets);
+    memObjets.supprimer = async () => { throw new Error('minio indisponible'); };
+    const r502 = await filmRoute.DELETE(req('/x', { method: 'DELETE' }), P(id));
+    expect(r502.status).toBe(502);
+    expect(JSON.stringify(await r502.json())).not.toMatch(/minio indisponible/);
+    expect(await ctx.films.lire(id, A)).not.toBeNull();
+    memObjets.supprimer = vrai;
+    expect((await filmRoute.DELETE(req('/x', { method: 'DELETE' }), P(id))).status).toBe(200);
   });
 });

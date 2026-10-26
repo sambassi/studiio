@@ -25,6 +25,8 @@ import {
 import { demarrerTravail, attendreFile, reinitialiserLanceurPourTests, reprendreOrphelins } from '@/lib/cinema/travaux/lanceur';
 import type { Film } from '@/lib/cinema/types';
 
+// La memoire libre du poste de dev n'est pas celle d'un serveur : les ressources sont injectees.
+const RESSOURCES_LIBRES = { lire: () => ({ rendusEnCours: 0, ramLibreMo: 64_000, cpus: 8 }), pause: async () => {} };
 const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
 const HISTOIRE = 'Nina entre dans la salle avant le lever du jour. Le tatami est encore froid. Marco la regarde sans bouger. Nina murmure « je ne reculerai pas ». Marco hoche la tete. Le jour se leve sur la salle vide.';
@@ -83,6 +85,7 @@ async function monde(options: { plafondUsd?: number } = {}): Promise<Monde> {
   await films.creer(film, A);
   const dep: DependancesExecuteur = {
     films, travaux, objets, moteurs, racine, dossierTravail, plafondUsd: options.plafondUsd ?? 2, maintenant: () => horloge.t,
+    ressources: RESSOURCES_LIBRES,
   };
   return { film: { ...film, proprietaire: A }, films, travaux, objets, dep, horloge, rendus, publicDirs, racine, dossierTravail, surRendu };
 }
@@ -506,5 +509,102 @@ describe('aucun debit, aucun fournisseur payant', () => {
       const imports = src.split('\n').filter((l) => /^\s*(import|export)\b.*from\s|require\(/.test(l)).join('\n');
       expect(imports, f).not.toMatch(/lib\/credits|lib\/stripe|\/stripe|pawapay|lib\/rendus|debiter|composerEtFacturer/i);
     }
+  });
+});
+
+describe('executeur — serveur Linux : voix, ressources, concurrence', () => {
+  it('voix indisponible : le travail s\'arrete AVANT tout rendu, avec une phrase claire', async () => {
+    const m = await monde();
+    m.dep.moteurs.synthetiser = async () => ({
+      voix: {}, details: [], moteur: 'edge', motifRepli: null,
+      echecs: [{ planId: 's1-p-1', motif: 'Connect Error: getaddrinfo ENOTFOUND speech.platform.bing.com' }, { planId: 's1-p-2', motif: 'Connect Error' }],
+    });
+    const t = await lancer(m);
+    expect(await executerTravail(t.id, A, m.dep)).toBe('echec');
+    const fin = (await m.travaux.lire(t.id, A))!;
+    expect(fin.statut).toBe('echec');
+    expect(fin.erreur).toMatch(/synthese vocale indisponible pour 2 replique\(s\)/);
+    expect(fin.erreur).toMatch(/Rien n'a ete rendu ni facture/);
+    expect(fin.erreur).not.toMatch(/bing|ENOTFOUND/);       // le detail reseau reste dans le journal
+    expect(m.rendus).toEqual([]);
+    expect(m.objets.cles().filter((k) => k.includes('/scenes/'))).toEqual([]);
+  });
+
+  it('serveur occupe : attend son tour, annonce l\'attente, puis rend', async () => {
+    const m = await monde();
+    const etats = [{ rendusEnCours: 1, ramLibreMo: 8000, cpus: 4 }, { rendusEnCours: 1, ramLibreMo: 8000, cpus: 4 }, { rendusEnCours: 0, ramLibreMo: 8000, cpus: 4 }];
+    let i = 0;
+    const messages: Array<string | null> = [];
+    m.dep.ressources = { lire: () => etats[Math.min(i++, etats.length - 1)], pause: async () => { messages.push((await m.travaux.dernierDuFilm(m.film.id, A))?.progression.message ?? null); } };
+    const t = await lancer(m);
+    expect(await executerTravail(t.id, A, m.dep)).toBe('termine');
+    expect(messages.some((x) => /En attente : un autre rendu est en cours/.test(x ?? ''))).toBe(true);
+    expect(m.rendus.length).toBeGreaterThan(0);
+  });
+
+  it('memoire insuffisante au-dela de la patience : echec « serveur occupe », rien de rendu', async () => {
+    const m = await monde();
+    m.dep.ressources = { lire: () => ({ rendusEnCours: 0, ramLibreMo: 300, cpus: 4 }), pause: async () => {}, seuils: { delaiMaxMs: 20_000, pasMs: 5_000, ramMinMo: 1536 } };
+    const t = await lancer(m);
+    expect(await executerTravail(t.id, A, m.dep)).toBe('echec');
+    const fin = (await m.travaux.lire(t.id, A))!;
+    expect(fin.erreur).toMatch(/^serveur occupe : memoire du serveur insuffisante \(300 Mo libres, 1536 Mo requis\)/);
+    expect(m.rendus).toEqual([]);
+  });
+
+  it('pendant son rendu, Cinema s\'annonce aux autres (compteur Remotion) et se retire a la fin', async () => {
+    const { rendusRemotionActifs } = await import('@/lib/render/occupation-remotion');
+    const m = await monde();
+    const vus: number[] = [];
+    m.surRendu.fn = async () => { vus.push(rendusRemotionActifs()); };
+    const avant = rendusRemotionActifs();
+    expect(await executerTravail((await lancer(m)).id, A, m.dep)).toBe('termine');
+    expect(vus.length).toBeGreaterThan(0);
+    for (const v of vus) expect(v).toBe(avant + 1);
+    expect(rendusRemotionActifs()).toBe(avant);
+    // Un echec de rendu libere aussi sa place.
+    const m2 = await monde();
+    m2.dep.moteurs.preparerRendu = async () => { throw new Error('boom'); };
+    await executerTravail((await lancer(m2)).id, A, m2.dep);
+    expect(rendusRemotionActifs()).toBe(avant);
+  });
+
+  it('un arret demande pendant l\'attente est honore', async () => {
+    const m = await monde();
+    const t = await lancer(m);
+    m.dep.ressources = {
+      lire: () => ({ rendusEnCours: 1, ramLibreMo: 8000, cpus: 4 }),
+      pause: async () => { await m.travaux.demanderAnnulation(t.id, A); },
+    };
+    expect(await executerTravail(t.id, A, m.dep)).toBe('annule');
+    expect(m.rendus).toEqual([]);
+  });
+});
+
+describe('ressources — regles pures', () => {
+  it('concurrence : 2 par defaut, 1 sur 2 coeurs ou moins, bornee a 4, valeurs invalides ignorees', async () => {
+    const { concurrenceRendu } = await import('@/lib/cinema/travaux/ressources');
+    const e = (v?: string) => ({ CINEMA_CONCURRENCE_RENDU: v }) as unknown as NodeJS.ProcessEnv;
+    expect(concurrenceRendu(e(), 8)).toBe(2);
+    expect(concurrenceRendu(e('3'), 8)).toBe(3);
+    expect(concurrenceRendu(e('99'), 8)).toBe(4);
+    expect(concurrenceRendu(e('0'), 8)).toBe(2);
+    expect(concurrenceRendu(e('abc'), 8)).toBe(2);
+    expect(concurrenceRendu(e('4'), 2)).toBe(1);
+    expect(concurrenceRendu(e(), 1)).toBe(1);
+  });
+
+  it('dossier de travail durable : sous le dossier temporaire (le conteneur n\'ecrit pas dans /app)', async () => {
+    const { dossierTravailDurable } = await import('@/lib/cinema/contexte');
+    const os = await import('os');
+    const e = (v?: string) => ({ CINEMA_DOSSIER_TRAVAIL: v }) as unknown as NodeJS.ProcessEnv;
+    expect(dossierTravailDurable(e())).toBe(path.join(os.tmpdir(), 'studiio-cinema'));
+    expect(dossierTravailDurable(e('/data/cinema'))).toBe('/data/cinema');
+    for (const mauvais of ['relatif/x', '/', '', '   ']) expect(dossierTravailDurable(e(mauvais))).toBe(path.join(os.tmpdir(), 'studiio-cinema'));
+  });
+
+  it('sur Linux (ni macOS), Edge qui echoue ne declenche PAS « say » : l\'echec est rendu tel quel', async () => {
+    const src = (await import('fs')).readFileSync(path.resolve(__dirname, '../lib/cinema/voix.ts'), 'utf-8');
+    expect(src).toMatch(/process\.platform !== 'darwin'\) throw e/);
   });
 });

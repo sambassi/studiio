@@ -92,6 +92,8 @@ export default function CinemaPage() {
   const [erreur, setErreur] = useState<string | null>(null);
   const [travail, setTravail] = useState<TravailApi | null>(null);
   const [mesFilms, setMesFilms] = useState<Array<{ id: string; titre: string; majLe: string }>>([]);
+  /** Suppression en deux gestes : l'icone arme, la coche confirme. */
+  const [suppressionArmee, setSuppressionArmee] = useState(false);
 
   const appliquer = useCallback((data: any) => {
     if (data?.film) setFilm(data.film);
@@ -226,6 +228,25 @@ export default function CinemaPage() {
     }
   };
 
+  /** Supprime le film ouvert ET ses fichiers prives (scenes, medias, voix, MP4). */
+  const supprimerFilmOuvert = async () => {
+    if (!film) return;
+    setEnCours('suppression');
+    setErreur(null);
+    try {
+      const r = await fetch(`/api/cinema/films/${film.id}`, { method: 'DELETE' });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok || data?.ok === false) throw new Error(data?.erreur ?? `suppression impossible (${r.status})`);
+      setFilm(null); setMontage(null); setDevis(null); setAProduire([]); setTravail(null);
+      await chargerListe();
+    } catch (e) {
+      setErreur(e instanceof Error ? e.message : 'suppression impossible');
+    } finally {
+      setSuppressionArmee(false);
+      setEnCours(null);
+    }
+  };
+
   /**
    * Lance la production EN ARRIERE-PLAN : la requete rend un identifiant en
    * quelques millisecondes, la page ne bloque pas et peut etre fermee. Un
@@ -313,6 +334,15 @@ export default function CinemaPage() {
               <option value="">—</option>
               {mesFilms.map((f) => <option key={f.id} value={f.id}>{f.titre || f.id}</option>)}
             </select>
+            {film && mesFilms.some((f) => f.id === film.id) && (suppressionArmee ? (
+              <span className="inline-flex items-center gap-1 text-rose-300" role="group" aria-label="Confirmer la suppression du film">
+                Supprimer le film et ses fichiers ?
+                <button type="button" onClick={supprimerFilmOuvert} disabled={enCours !== null} aria-label="Confirmer la suppression du film" className="p-1 rounded hover:bg-rose-500/20 disabled:opacity-50"><Check className="w-4 h-4" /></button>
+                <button type="button" onClick={() => setSuppressionArmee(false)} aria-label="Annuler la suppression" className="p-1 rounded hover:bg-slate-700"><X className="w-4 h-4" /></button>
+              </span>
+            ) : (
+              <button type="button" onClick={() => setSuppressionArmee(true)} disabled={enCours !== null} aria-label="Supprimer ce film" title="Supprimer ce film" className="p-1 rounded text-slate-500 hover:text-rose-300 hover:bg-slate-800 disabled:opacity-50"><Trash2 className="w-4 h-4" /></button>
+            ))}
           </label>
         )}
       </header>
@@ -332,7 +362,7 @@ export default function CinemaPage() {
       </ol>
 
       {erreur && (
-        <div className="mb-6 flex items-start gap-3 rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200">
+        <div className="mb-6 flex items-start gap-3 rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200" role="alert">
           <AlertTriangle className="w-5 h-5 shrink-0" />
           <span>{erreur}</span>
         </div>

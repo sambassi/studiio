@@ -50,6 +50,8 @@ export interface DepotTravaux {
   echouer(id: string, jeton: number, erreur: string, reference: string | null): Promise<boolean>;
   annuler(id: string, jeton: number): Promise<boolean>;
   demanderAnnulation(id: string, proprietaire: string): Promise<Travail | null>;
+  /** Oublie l'HISTORIQUE des travaux d'un film (suppression du film). Les travaux actifs sont conserves : l'appelant a deja refuse. */
+  oublierDuFilm(filmId: string, proprietaire: string): Promise<void>;
   /** Les travaux a (re)prendre : en attente, ou en cours au bail expire. */
   aReprendre(maintenant?: Date, limite?: number): Promise<Array<{ id: string; proprietaire: string }>>;
 }
@@ -157,6 +159,12 @@ export function depotTravauxMemoire(horloge: () => Date = () => new Date()): Dep
         t.annulationDemandee = true; t.majLe = iso(horloge());
       }
       return cloner(t);
+    },
+
+    async oublierDuFilm(filmId, proprietaire) {
+      for (const [id, t] of lignes) {
+        if (t.filmId === filmId && t.proprietaire === proprietaire && t.statut !== 'en_attente' && t.statut !== 'en_cours') lignes.delete(id);
+      }
     },
 
     async aReprendre(maintenant = horloge(), limite = 10) {
@@ -275,6 +283,11 @@ export function depotTravauxPostgres(base: () => ClientBase): DepotTravaux {
       if (drapeau.error) throw new Error(messageBase(drapeau.error));
       if (Array.isArray(drapeau.data) && drapeau.data.length === 1) return travailDepuisLigne(drapeau.data[0] as LigneTravail);
       return this.lire(id, proprietaire);
+    },
+
+    async oublierDuFilm(filmId, proprietaire) {
+      const { error } = await base().from(T).delete().eq('film_id', filmId).eq('proprietaire', proprietaire).in('statut', ['termine', 'echec', 'annule']);
+      if (error) throw new Error(messageBase(error));
     },
 
     async aReprendre(instant = new Date(), limite = 10) {
