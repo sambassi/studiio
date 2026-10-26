@@ -7,10 +7,11 @@
  * Ce que cela NE prouve PAS : l'absence de contrainte d'unicité en base sur `scheduled_posts`
  * (voir le rapport) ; la base ici est simulée en mémoire.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { readFileSync } from 'fs';
 import {
   avecLimiteRendus, verifierCreneauLibre, RenduOccupeError, RenduDoublonError, rendusLocauxActifs,
+  RenduIndeterminError, RenduBailPerduError, BAIL_TTL_S, BAIL_BATTEMENT_MS,
 } from '@/lib/autopilot/limite-rendus';
 
 // Mêmes règles que `rendu_bail_*` (cf. autopilote-limite-rendus.test.ts) : un bail par job, plafond global.
@@ -128,6 +129,90 @@ describe('cron : aucune attente', () => {
     liberer!();
     await tenu;
     expect(await manuel).toBe('ok');
+  });
+});
+
+afterEach(() => { vi.useRealTimers(); });
+
+describe('base en panne : reprise sans contournement', () => {
+  it('panne passagère pendant l’attente : on réessaie la BASE (pas la mémoire), puis le travail passe sous bail', async () => {
+    const bd = rpcSimule();
+    let pannes = 2;
+    const rpc = async (fn: string, p: Record<string, unknown>) => {
+      if (pannes > 0 && fn === 'rendu_bail_prendre') { pannes -= 1; throw new Error('ECONNRESET'); }
+      return bd.rpc(fn, p);
+    };
+    const avertir = vi.fn();
+    let sousBail = false;
+    const r = await avecLimiteRendus('u1', JOB, async () => { sousBail = bd.baux.has(JOB); return 'ok'; }, { rpc, env: env(1), dormir: vite, avertir });
+    expect(r).toBe('ok');
+    expect(sousBail).toBe(true); // le bail était bien pris en BASE, jamais en mémoire
+    expect(avertir).toHaveBeenCalledTimes(1);
+    expect(rendusLocauxActifs()).toBe(0);
+  });
+
+  it('panne jusqu’à l’échéance : RenduIndeterminError, travail jamais appelé', async () => {
+    const h = { t: 0 };
+    const travail = vi.fn(async () => 'x');
+    const rpc = async () => { throw new Error('ECONNREFUSED'); };
+    await expect(avecLimiteRendus('u1', JOB, travail, {
+      rpc, env: { STUDIIO_RENDUS_MAX_SIMULTANES: '1', STUDIIO_RENDUS_ATTENTE_MAX_S: '30' },
+      dormir: async (ms) => { h.t += ms; }, maintenant: () => h.t, avertir: () => {},
+    })).rejects.toBeInstanceOf(RenduIndeterminError);
+    expect(travail).not.toHaveBeenCalled();
+  });
+});
+
+describe('preuve de bail avant le dépôt', () => {
+  it('bail valide : la preuve passe et renouvelle le bail en base', async () => {
+    const bd = rpcSimule();
+    const battre = vi.fn(async () => ({ data: [{ ok: true }], error: null }));
+    const rpc = async (fn: string, p: Record<string, unknown>) => (fn === 'rendu_bail_battre' ? battre() : bd.rpc(fn, p));
+    await avecLimiteRendus('u1', JOB, async (ctx) => { await ctx.verifierBail(); }, { rpc, env: env(1), dormir: vite });
+    expect(battre).toHaveBeenCalledTimes(1);
+  });
+
+  it('bail refusé au renouvellement (expiré ou repris) : RenduBailPerduError, et ça RESTE perdu', async () => {
+    const bd = rpcSimule();
+    const rpc = async (fn: string, p: Record<string, unknown>) => (fn === 'rendu_bail_battre' ? { data: [{ ok: false }], error: null } : bd.rpc(fn, p));
+    await avecLimiteRendus('u1', JOB, async (ctx) => {
+      await expect(ctx.verifierBail()).rejects.toBeInstanceOf(RenduBailPerduError);
+      await expect(ctx.verifierBail()).rejects.toBeInstanceOf(RenduBailPerduError);
+    }, { rpc, env: env(1), dormir: vite, avertir: () => {} });
+    expect(bd.baux.size).toBe(0); // libéré malgré tout
+  });
+
+  it('base muette : incertain tant que le bail est dans sa durée de vie, perdu une fois la durée écoulée', async () => {
+    const bd = rpcSimule();
+    const h = { t: 0 };
+    const rpc = async (fn: string, p: Record<string, unknown>) => { if (fn === 'rendu_bail_battre') throw new Error('timeout'); return bd.rpc(fn, p); };
+    await avecLimiteRendus('u1', JOB, async (ctx) => {
+      h.t += 10_000;
+      await expect(ctx.verifierBail()).rejects.toBeInstanceOf(RenduIndeterminError);
+      h.t += BAIL_TTL_S * 1000;
+      await expect(ctx.verifierBail()).rejects.toBeInstanceOf(RenduBailPerduError);
+    }, { rpc, env: env(1), dormir: vite, maintenant: () => h.t, avertir: () => {} });
+  });
+
+  it('le battement détecte la perte : alerte journalisée, et le dépôt est ensuite refusé SANS nouvel appel réussi', async () => {
+    vi.useFakeTimers();
+    const bd = rpcSimule();
+    let refus = false;
+    const rpc = async (fn: string, p: Record<string, unknown>) => (fn === 'rendu_bail_battre' && refus ? { data: [{ ok: false }], error: null } : bd.rpc(fn, p));
+    const avertir = vi.fn();
+    const p = avecLimiteRendus('u1', JOB, async (ctx) => {
+      refus = true;
+      await vi.advanceTimersByTimeAsync(BAIL_BATTEMENT_MS + 10);
+      await expect(ctx.verifierBail()).rejects.toBeInstanceOf(RenduBailPerduError);
+    }, { rpc, env: env(1), dormir: vite, avertir });
+    await p;
+    expect(avertir.mock.calls.some((c) => String(c[0]).includes('bail perdu'))).toBe(true);
+  });
+
+  it('mode mémoire (fonctions absentes) : aucune preuve en base à fournir, le travail passe', async () => {
+    const rpc = async () => ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function' } });
+    const r = await avecLimiteRendus('u1', JOB, async (ctx) => { await ctx.verifierBail(); return 'ok'; }, { rpc, env: env(1), dormir: vite, avertir: () => {} });
+    expect(r).toBe('ok');
   });
 });
 

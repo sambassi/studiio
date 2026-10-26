@@ -30,13 +30,17 @@
  * passage suivant, la production manuelle l'annonce.
  *
  * ─────────────────────────────────────────────────────────────────────────
- * SI LA BASE N'A PAS (ENCORE) LES FONCTIONS
+ * SI LA BASE N'A PAS LES FONCTIONS / SI ELLE EST EN PANNE
  * ─────────────────────────────────────────────────────────────────────────
- * Migration non appliquée, PostgREST non rechargé ou base injoignable : repli sur
- * un sémaphore EN MÉMOIRE de l'instance, même plafond — journalisé. Ce n'est PAS
- * la protection globale (une seule instance la voit), mais jamais moins sûr que
- * l'existant, et le comportement visible ne change pas. Ni crédits, ni paiement,
- * ni fournisseur ne sont touchés ici.
+ * - Fonctions ABSENTES (migration non appliquée, PostgREST non rechargé : PGRST202, 42883, 404) :
+ *   état de déploiement, pas une panne. Repli sur un sémaphore EN MÉMOIRE de l'instance, même
+ *   plafond, journalisé. Ce n'est PAS la protection globale (une seule instance la voit).
+ * - PANNE (exception réseau, erreur 5xx, réponse vide ou illisible) : AUCUN repli, aucun rendu
+ *   « par défaut ». On réessaie jusqu'à l'échéance, puis `RenduIndeterminError` (cron : tout de
+ *   suite) — rien n'a été rendu, publié ni débité, le créneau est repris au passage suivant.
+ * - Juste avant le dépôt du post, `ctx.verifierBail()` renouvelle le bail en base : expiré, repris
+ *   ou base muette → `RenduBailPerduError` / `RenduIndeterminError`, donc ni post ni débit.
+ * Ni crédits, ni paiement, ni fournisseur ne sont touchés ici.
  */
 import { supabaseAdmin } from '@/lib/db/supabase';
 
@@ -108,9 +112,31 @@ export async function verifierCreneauLibre(
   if ((await lire()).has(jeton)) throw new RenduDoublonError(jobId, 'deja_produit');
 }
 
+/**
+ * La base ne répond pas (ou a répondu de travers) : on ne SAIT PAS si le créneau est déjà produit
+ * ni si une place est libre. On ne lance donc rien « par défaut » : rien n'a été rendu, publié ni débité.
+ */
+export class RenduIndeterminError extends Error {
+  readonly code = 'rendu-indetermine';
+  constructor(readonly detail: string = '') {
+    super('Vérification impossible (base de données indisponible) : rien n’a été lancé, publié ni débité — réessayez dans quelques minutes.');
+    this.name = 'RenduIndeterminError';
+  }
+}
+
+/** Le bail a expiré ou été repris avant le dépôt : sans lui, le montage ne se publie pas. */
+export class RenduBailPerduError extends Error {
+  readonly code = 'rendu-bail-perdu';
+  constructor(readonly jobId: string = '') {
+    super('Le droit de rendu a expiré avant le dépôt : rien n’a été publié ni débité — le montage sera relancé.');
+    this.name = 'RenduBailPerduError';
+  }
+}
+
 /** Les erreurs de file : jamais imputables au rush ni au montage, jamais un échec à compter. */
-export function estErreurDeFile(err: unknown): err is RenduOccupeError | RenduDoublonError {
-  return err instanceof RenduOccupeError || err instanceof RenduDoublonError;
+export function estErreurDeFile(err: unknown): err is RenduOccupeError | RenduDoublonError | RenduIndeterminError | RenduBailPerduError {
+  return err instanceof RenduOccupeError || err instanceof RenduDoublonError
+    || err instanceof RenduIndeterminError || err instanceof RenduBailPerduError;
 }
 
 // ── Accès base ─────────────────────────────────────────────────────────────
@@ -118,7 +144,12 @@ export function estErreurDeFile(err: unknown): err is RenduOccupeError | RenduDo
 interface ReponseRpc { data: unknown; error: { code?: string; message?: string } | null }
 export type AppelRpc = (fn: string, params: Record<string, unknown>) => PromiseLike<ReponseRpc>;
 
-const rpcParDefaut: AppelRpc = (fn, params) => (supabaseAdmin as unknown as { rpc: AppelRpc }).rpc(fn, params);
+const rpcParDefaut: AppelRpc = (fn, params) => {
+  const client = supabaseAdmin as unknown as { rpc?: AppelRpc };
+  // Un client sans `rpc` (doubles de test, environnement sans PostgREST) n'a pas les fonctions : même cas que la migration absente.
+  if (typeof client.rpc !== 'function') return Promise.resolve({ data: null, error: { code: 'PGRST202', message: 'rpc indisponible : client sans rpc' } });
+  return client.rpc(fn, params);
+};
 
 const premiereLigne = (data: unknown): Record<string, unknown> | null => {
   const l = Array.isArray(data) ? data[0] : data;
@@ -129,7 +160,16 @@ type Prise =
   | { etat: 'pris' }
   | { etat: 'occupe' }
   | { etat: 'doublon' }
-  | { etat: 'indisponible'; raison: string };
+  /** Fonctions absentes (migration non appliquée, schéma PostgREST non rechargé) : repli mémoire, journalisé. */
+  | { etat: 'absent'; raison: string }
+  /** Panne ou réponse illisible : on ne contourne PAS, on réessaie puis on reporte. */
+  | { etat: 'panne'; raison: string };
+
+/** Les fonctions `rendu_bail_*` n'existent pas (encore) : c'est un état de déploiement, pas une panne. */
+function fonctionAbsente(e: { code?: string; message?: string; status?: number }): boolean {
+  return e.code === 'PGRST202' || e.code === '42883' || e.status === 404
+    || /could not find the function|schema cache|function .* does not exist/i.test(e.message ?? '');
+}
 
 async function prendre(
   rpc: AppelRpc, userId: string, jobId: string, instance: string, max: number,
@@ -138,16 +178,19 @@ async function prendre(
   try {
     r = await rpc('rendu_bail_prendre', { p_user: userId, p_job: jobId, p_instance: instance, p_max: max, p_ttl_s: BAIL_TTL_S });
   } catch (e) {
-    return { etat: 'indisponible', raison: e instanceof Error ? e.message : String(e) };
+    return { etat: 'panne', raison: e instanceof Error ? e.message : String(e) };
   }
-  if (!r) return { etat: 'indisponible', raison: 'aucune réponse' };
-  if (r.error) return { etat: 'indisponible', raison: `${r.error.code ?? ''} ${r.error.message ?? ''}`.trim() };
+  if (!r) return { etat: 'panne', raison: 'aucune réponse' };
+  if (r.error) {
+    const raison = `${r.error.code ?? ''} ${r.error.message ?? ''}`.trim();
+    return fonctionAbsente(r.error) ? { etat: 'absent', raison } : { etat: 'panne', raison };
+  }
   const l = premiereLigne(r.data);
-  if (!l) return { etat: 'indisponible', raison: 'réponse vide' };
+  if (!l) return { etat: 'panne', raison: 'réponse vide' };
   if (l.pris === true) return { etat: 'pris' };
   if (l.motif === 'doublon') return { etat: 'doublon' };
   if (l.motif === 'occupe') return { etat: 'occupe' };
-  return { etat: 'indisponible', raison: `réponse inattendue : ${JSON.stringify(l).slice(0, 120)}` };
+  return { etat: 'panne', raison: `réponse inattendue : ${JSON.stringify(l).slice(0, 120)}` };
 }
 
 // ── Repli : sémaphore en mémoire de l'instance ─────────────────────────────
@@ -191,14 +234,28 @@ export interface OptionsLimite {
 
 const dormirReel = (ms: number) => new Promise<void>((r) => { setTimeout(r, ms); });
 
+/** Ce que `travail` reçoit : de quoi PROUVER, au moment critique, que le bail est toujours le sien. */
+export interface ContexteRendu {
+  /**
+   * À appeler JUSTE AVANT de déposer le post. Renouvelle le bail en base : s'il a expiré, été repris
+   * ou si la base ne répond pas, lève (`RenduBailPerduError` / `RenduIndeterminError`) — rien n'est
+   * alors publié ni débité. Sans effet en mode mémoire (aucun bail en base à prouver).
+   */
+  verifierBail: () => Promise<void>;
+}
+
 /**
  * Exécute `travail` quand une place de rendu est libre pour `jobId`, la libère ensuite.
- * Lève `RenduOccupeError` / `RenduDoublonError` AVANT d'avoir appelé `travail`.
+ * Lève `RenduOccupeError` / `RenduDoublonError` / `RenduIndeterminError` AVANT d'avoir appelé `travail`.
+ *
+ * Base en PANNE (ni fonction absente, ni réponse valide) : on NE bascule PAS sur la mémoire. On
+ * réessaie jusqu'à l'échéance, puis `RenduIndeterminError` — rien n'est lancé « par défaut ».
+ * Seule l'ABSENCE des fonctions (migration non appliquée) retombe sur la limite mémoire, journalisée.
  */
 export async function avecLimiteRendus<T>(
   userId: string,
   jobId: string,
-  travail: () => Promise<T>,
+  travail: (ctx: ContexteRendu) => Promise<T>,
   o: OptionsLimite = {},
 ): Promise<T> {
   const rpc = o.rpc ?? rpcParDefaut;
@@ -214,6 +271,8 @@ export async function avecLimiteRendus<T>(
   const echeance = maintenant() + attenteMax;
   let modeLocal = false;
   let avertiLocal = false;
+  let avertiPanne = false;
+  let derniereRaisonPanne = '';
 
   for (;;) {
     let issue: Prise;
@@ -222,11 +281,11 @@ export async function avecLimiteRendus<T>(
       issue = l.actifs.has(jobId) ? { etat: 'doublon' } : l.actifs.size >= max ? { etat: 'occupe' } : (l.actifs.add(jobId), { etat: 'pris' });
     } else {
       issue = await prendre(rpc, userId, jobId, instance, max);
-      if (issue.etat === 'indisponible') {
-        // Repli : limite par instance. Une seule alerte, pas une par tour.
+      if (issue.etat === 'absent') {
+        // Migration non appliquée : état de déploiement, pas une panne. Une seule alerte, pas une par tour.
         if (!avertiLocal) {
           avertiLocal = true;
-          avertir(`[Autopilote/File] baux globaux indisponibles (${issue.raison}) — limite EN MÉMOIRE de l'instance (${max}) : ce n'est pas une protection globale.`);
+          avertir(`[Autopilote/File] baux globaux absents (${issue.raison}) — limite EN MÉMOIRE de l'instance (${max}) : ce n'est pas une protection globale.`);
         }
         modeLocal = true;
         continue;
@@ -236,21 +295,41 @@ export async function avecLimiteRendus<T>(
     if (issue.etat === 'doublon') throw new RenduDoublonError(jobId);
 
     if (issue.etat === 'pris') {
+      // Preuve de bail : dernier renouvellement RÉUSSI, et verdict définitif « perdu ».
+      let dernierOk = maintenant();
+      let perdu = false;
+      const renouveler = async (): Promise<'ok' | 'perdu' | 'incertain'> => {
+        try {
+          const r = await rpc('rendu_bail_battre', { p_user: userId, p_job: jobId, p_ttl_s: BAIL_TTL_S });
+          const l = r && !r.error ? premiereLigne(r.data) : null;
+          if (l && l.ok === true) { dernierOk = maintenant(); return 'ok'; }
+          if (l && l.ok === false) return 'perdu';
+        } catch { /* incertain */ }
+        // Pas de réponse exploitable : perdu seulement si le bail a, de toute façon, dû expirer.
+        return maintenant() - dernierOk >= BAIL_TTL_S * 1000 ? 'perdu' : 'incertain';
+      };
       let battement: ReturnType<typeof setInterval> | null = null;
       if (!modeLocal) {
         battement = setInterval(() => {
-          void Promise.resolve(rpc('rendu_bail_battre', { p_user: userId, p_job: jobId, p_ttl_s: BAIL_TTL_S })).then((r) => {
-            const l = premiereLigne(r.data);
-            if (!r.error && l && l.ok === false) {
-              avertir(`[Autopilote/File] bail perdu pour ${jobId} (expiré ou repris) — le rendu continue sans protection globale.`);
+          void renouveler().then((v) => {
+            if (v === 'perdu' && !perdu) {
+              perdu = true;
+              avertir(`[Autopilote/File] bail perdu pour ${jobId} (expiré ou repris) — le dépôt du montage sera refusé.`);
             }
-          }, () => { /* panne passagère : le bail tient jusqu'à son expiration */ });
+          });
         }, BAIL_BATTEMENT_MS);
         (battement as { unref?: () => void }).unref?.();
       }
+      const verifierBail = async (): Promise<void> => {
+        if (modeLocal) return;
+        if (perdu) throw new RenduBailPerduError(jobId);
+        const v = await renouveler();
+        if (v === 'perdu') { perdu = true; throw new RenduBailPerduError(jobId); }
+        if (v === 'incertain') throw new RenduIndeterminError('bail non confirmé');
+      };
       try {
         await o.apresBail?.();
-        return await travail();
+        return await travail({ verifierBail });
       } finally {
         if (battement) clearInterval(battement);
         if (modeLocal) local().actifs.delete(jobId);
@@ -261,8 +340,18 @@ export async function avecLimiteRendus<T>(
       }
     }
 
-    // occupé : attendre, dans la limite fixée.
-    if (maintenant() >= echeance) throw new RenduOccupeError();
+    if (issue.etat === 'panne') {
+      derniereRaisonPanne = issue.raison;
+      if (!avertiPanne) {
+        avertiPanne = true;
+        avertir(`[Autopilote/File] base de données en panne pour les baux (${issue.raison}) — aucun rendu lancé par défaut, nouvel essai.`);
+      }
+    }
+
+    // occupé ou base en panne : attendre, dans la limite fixée.
+    if (maintenant() >= echeance) {
+      throw issue.etat === 'panne' ? new RenduIndeterminError(derniereRaisonPanne) : new RenduOccupeError();
+    }
     o.onAttente?.();
     const pas = SONDAGE_MIN_MS + Math.floor(hasard() * (SONDAGE_MAX_MS - SONDAGE_MIN_MS));
     await dormir(Math.min(pas, Math.max(0, echeance - maintenant())));

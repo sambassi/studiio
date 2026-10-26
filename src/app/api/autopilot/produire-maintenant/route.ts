@@ -273,7 +273,15 @@ export async function POST(req?: Request) {
     const jeton = jetonManuel(userId, date, time);
 
     // ── Verrou 2 : le créneau n'a pas déjà été produit ──────────────────
-    const dejaFaits = await creneauxExistants(userId);
+    let dejaFaits: Set<string>;
+    try {
+      dejaFaits = await creneauxExistants(userId);
+    } catch (e) {
+      // Lecture impossible : on ne lance rien « par défaut » (un second brouillon, un second débit).
+      if (!estErreurDeFile(e)) throw e;
+      console.error('[Autopilote/Manuel] créneaux illisibles :', e.message);
+      return NextResponse.json({ success: false, error: e.message, code: 'verification-impossible' }, { status: 503 });
+    }
     if (dejaFaits.has(jeton)) {
       return NextResponse.json(
         { success: false, error: 'Un brouillon vient déjà d’être produit pour ce créneau.', code: 'deja-produit' },

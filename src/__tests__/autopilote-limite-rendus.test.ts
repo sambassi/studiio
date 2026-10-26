@@ -208,7 +208,7 @@ describe('battement du bail', () => {
   });
 });
 
-describe('base sans les fonctions (migration non appliquée) ou en panne : repli par instance, journalisé', () => {
+describe('base sans les fonctions (migration non appliquée) : repli par instance, journalisé', () => {
   it('PGRST202 : une alerte, la limite tient quand même dans l’instance, les rendus passent', async () => {
     const avertir = vi.fn();
     const rpc = async () => ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function public.rendu_bail_prendre' } });
@@ -217,13 +217,13 @@ describe('base sans les fonctions (migration non appliquée) ou en panne : repli
     const res = await Promise.all([0, 1, 2, 3].map(lancer));
     expect(res).toEqual([0, 1, 2, 3]);
     expect(pic).toBe(1);
-    expect(avertir.mock.calls.filter((c) => String(c[0]).includes('baux globaux indisponibles')).length).toBeGreaterThanOrEqual(1);
+    expect(avertir.mock.calls.filter((c) => String(c[0]).includes('baux globaux absents')).length).toBeGreaterThanOrEqual(1);
     expect(avertir.mock.calls.length).toBeLessThanOrEqual(4); // une alerte par appel, jamais une par tour d'attente
     expect(rendusLocauxActifs()).toBe(0);
   });
 
-  it('exception réseau : même repli ; le repli refuse aussi un doublon local', async () => {
-    const rpc = async () => { throw new Error('ECONNREFUSED'); };
+  it('le repli refuse aussi un doublon local (fonctions absentes)', async () => {
+    const rpc = async () => ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function public.rendu_bail_prendre' } });
     let liberer!: () => void;
     const p1 = avecLimiteRendus('a', 'jx', () => new Promise<void>((r) => { liberer = r; }), { rpc, env: env(2), dormir: dormirVite, avertir: () => {} });
     await vi.waitFor(() => expect(rendusLocauxActifs()).toBe(1));
@@ -252,7 +252,7 @@ describe('câblage', () => {
     expect(p).toContain('async function produireUnMontageInterne(input: {');
     expect(p).not.toContain('export async function produireUnMontage(');
     expect(p).toContain('export function produireUnMontage(');
-    expect(p).toContain('avecLimiteRendus(input.userId, input.jobId, () => produireUnMontageInterne(input)');
+    expect(p).toContain('avecLimiteRendus(input.userId, input.jobId, (ctx) => produireUnMontageInterne({ ...input, verifierBail: ctx.verifierBail })');
     expect(p).toContain("input.onProgression?.('attente', 0)");
   });
   it('cron : serveur occupé ou doublon ne comptent ni comme échec, ni pour la rotation des rushs', () => {

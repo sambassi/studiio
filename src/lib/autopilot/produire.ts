@@ -45,7 +45,7 @@ import { cibleVideoDuBrief } from '@/lib/autopilot/duree-cible';
 import { sonderMediaStock } from '@/lib/autopilot/sonde-stock';
 import { gabaritSuggere } from '@/lib/autopilot/medias-prevus';
 import type { EtapeProduction } from '@/lib/autopilot/progression';
-import { avecLimiteRendus, verifierCreneauLibre } from '@/lib/autopilot/limite-rendus';
+import { avecLimiteRendus, verifierCreneauLibre, RenduIndeterminError, RenduDoublonError } from '@/lib/autopilot/limite-rendus';
 import { jumeauPleinCadre } from '@/lib/avatar/jumeau-plein-cadre';
 import { buildSequences, totalDurationSeconds } from '@/lib/creer/designSpec';
 
@@ -268,13 +268,18 @@ export async function sujetsRecents(userId: string): Promise<string[]> {
  * créneaux existants avant d'insérer. Les jetons manuels (`manuel:…`) y
  * figurent aussi : une seconde production dans le même créneau est refusée
  * de la même façon.
+ *
+ * ÉCHEC DE LECTURE : lève `RenduIndeterminError` — jamais un ensemble vide.
  */
 export async function creneauxExistants(userId: string): Promise<Set<string>> {
-  const { data } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from('scheduled_posts')
     .select('scheduled_date, scheduled_time, metadata')
     .eq('user_id', userId)
     .eq('agent_generated', true);
+  // Lecture impossible = on IGNORE ce qui est déjà produit : lancer un montage « par défaut »
+  // ferait un second post. On lève ; l'appelant reporte (rien n'est lancé, publié ni débité).
+  if (error) throw new RenduIndeterminError(`lecture des créneaux : ${error.message}`);
   const out = new Set<string>();
   for (const ligne of (data ?? []) as Array<Record<string, unknown>>) {
     const meta = (ligne.metadata ?? {}) as Record<string, unknown>;
@@ -372,7 +377,7 @@ export function produireUnMontage(
   options: { sansAttente?: boolean } = {},
 ): ReturnType<typeof produireUnMontageInterne> {
   const jeton = input.slotKey ?? slotKey(input.userId, input.post.scheduledDate, input.post.scheduledTime);
-  return avecLimiteRendus(input.userId, input.jobId, () => produireUnMontageInterne(input), {
+  return avecLimiteRendus(input.userId, input.jobId, (ctx) => produireUnMontageInterne({ ...input, verifierBail: ctx.verifierBail }), {
     onAttente: () => input.onProgression?.('attente', 0),
     ...(options.sansAttente ? { attenteMaxMs: 0 } : null),
     // Après une attente, le créneau a pu être produit par le passage qui tenait le bail.
@@ -381,6 +386,8 @@ export function produireUnMontage(
 }
 
 async function produireUnMontageInterne(input: {
+  /** Preuve de bail (posée par `produireUnMontage`) : appelée juste avant le dépôt du post. */
+  verifierBail?: () => Promise<void>;
   userId: string;
   config: AutopilotConfig;
   post: PreparedPost;
@@ -1304,12 +1311,18 @@ async function produireUnMontageInterne(input: {
     ...posterMeta,
     ...(input.metadataSupplement ?? null),
   };
+  // Le bail est-il TOUJOURS le nôtre ? Sinon un autre exécutant peut tenir ce créneau : on ne dépose pas.
+  // Lève avant l'insertion, donc avant tout débit.
+  await input.verifierBail?.();
   const { data: insere, error: insertError } = await supabaseAdmin
     .from('scheduled_posts')
     .insert(toPostRow({
       userId, post: postUtilise, config, videoUrl, metadata, slotKey: input.slotKey,
     }))
     .select('id');
+  // 23505 = index unique du créneau (migration 2026-10-29) : un autre passage l'a déposé entre-temps.
+  // Le post existe, ce n'est pas un échec : rien n'est débité ici, le dépôt gagnant porte le débit.
+  if (insertError?.code === '23505') throw new RenduDoublonError(input.jobId, 'deja_produit');
   if (insertError) throw new Error(`insertion du post : ${insertError.message}`);
   const premiere = Array.isArray(insere) ? (insere[0] as { id?: unknown } | undefined) : undefined;
   const postId = typeof premiere?.id === 'string' ? premiere.id : null;

@@ -341,7 +341,15 @@ export async function GET(req: NextRequest) {
       console.log(`[Autopilote/Cron] ${userId} — sujets : ${topics.join(', ')}`);
 
       const posts = preparePosts({ config, topic: topics, count: decision.count, now });
-      const dejaFaits = await creneauxExistants(userId);
+      // Lecture impossible : on ne SAIT PAS ce qui est déjà produit — rien n'est lancé pour ce compte
+      // à ce passage (jamais un cycle « par défaut », qui doublerait les posts).
+      let dejaFaits: Set<string>;
+      try {
+        dejaFaits = await creneauxExistants(userId);
+      } catch (e) {
+        console.error(`[Autopilote/Cron] ${userId} — créneaux illisibles, cycle reporté :`, e instanceof Error ? e.message : e);
+        continue;
+      }
       // Les créneaux déjà EN FILE pour leur jumeau comptent comme faits : sans
       // ça, chaque passe du cron relancerait une génération d'avatar (facturée)
       // tant que la précédente n'a pas fini de rendre.
