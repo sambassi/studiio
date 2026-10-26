@@ -40,6 +40,50 @@ export const EXTENSIONS_VIDEO = ['.mp4', '.mov', '.webm', '.m4v'] as const;
 /** Taille maximale d'un media importe (octets). */
 export const TAILLE_MAX_MEDIA = 200 * 1024 * 1024;
 
+/**
+ * SIGNATURES des formats acceptes — lues sur les premiers octets, AVANT
+ * d'ecrire quoi que ce soit.
+ *
+ * Un `.mp4` dont le contenu est en realite une liste de lecture (HLS,
+ * `concat`) est un fichier texte : il n'a aucune de ces signatures, et il
+ * n'atteint donc jamais ffprobe. C'est la premiere des deux defenses contre
+ * un media qui ferait sortir une requete du serveur ; la seconde est le
+ * verrou de protocole pose sur ffprobe lui-meme.
+ */
+export function signatureConnue(donnees: Uint8Array): GenreMedia | null {
+  const a = (i: number) => donnees[i];
+  const texte = (debut: number, mot: string) =>
+    mot.split('').every((c, k) => a(debut + k) === c.charCodeAt(0));
+  if (donnees.length < 12) return null;
+  // PNG
+  if (a(0) === 0x89 && texte(1, 'PNG')) return 'image';
+  // JPEG
+  if (a(0) === 0xff && a(1) === 0xd8 && a(2) === 0xff) return 'image';
+  // RIFF .... WEBP
+  if (texte(0, 'RIFF') && texte(8, 'WEBP')) return 'image';
+  // ISO-BMFF (mp4, mov, m4v) : la taille, puis `ftyp`
+  if (texte(4, 'ftyp')) return 'video';
+  // Matroska / WebM
+  if (a(0) === 0x1a && a(1) === 0x45 && a(2) === 0xdf && a(3) === 0xa3) return 'video';
+  return null;
+}
+
+/**
+ * Conteneurs que ffprobe a le droit de reconnaitre. Un format hors de cette
+ * liste est refuse meme s'il est parfaitement lisible : `hls`, `concat` et
+ * consorts savent aller chercher autre chose, ailleurs.
+ */
+export const CONTENEURS_AUTORISES = new Set([
+  'mov', 'mp4', 'm4a', '3gp', '3g2', 'mj2', 'matroska', 'webm',
+  'image2', 'png_pipe', 'jpeg_pipe', 'mjpeg', 'webp_pipe', 'webp',
+]);
+
+export function conteneurAutorise(formatName: string | null | undefined): boolean {
+  if (!formatName) return false;
+  const jetons = String(formatName).split(',').map((j) => j.trim()).filter(Boolean);
+  return jetons.length > 0 && jetons.every((j) => CONTENEURS_AUTORISES.has(j));
+}
+
 export function extensionAcceptee(nom: string): { ok: true; genre: GenreMedia; ext: string } | { ok: false } {
   const ext = path.extname(nom).toLowerCase();
   if ((EXTENSIONS_IMAGE as readonly string[]).includes(ext)) return { ok: true, genre: 'image', ext };
@@ -56,6 +100,11 @@ export async function sonderMedia(fichier: string): Promise<{ genre: GenreMedia;
   const { cheminFfprobe } = await import('@/lib/ffmpeg/binaires');
   const { stdout, code } = await executer(cheminFfprobe(), [
     '-v', 'error',
+    // ⚠️ VERROU DE PROTOCOLE. Par defaut ffprobe sait parler http, tcp,
+    // concat… et une « video » qui est en fait une liste de lecture lui fait
+    // aller chercher une URL CHOISIE PAR L'APPELANT, depuis le serveur. Ici
+    // il n'a le droit de lire qu'un fichier local, point.
+    '-protocol_whitelist', 'file',
     '-show_entries', 'format=duration,format_name',
     '-show_entries', 'stream=codec_type,codec_name,width,height,nb_frames,duration',
     '-of', 'json', fichier,
@@ -70,6 +119,8 @@ export async function sonderMedia(fichier: string): Promise<{ genre: GenreMedia;
     // Une image fixe passe aussi par ffprobe : elle se reconnait a son
     // conteneur (`image2`, `png_pipe`, `jpeg_pipe`) ou a sa frame unique.
     const conteneur = String(json?.format?.format_name ?? '');
+    // Un conteneur hors liste est refuse meme s'il est lisible.
+    if (!conteneurAutorise(conteneur)) return null;
     const uneSeuleFrame = String(flux.nb_frames ?? '') === '1';
     const estImage = /image2|_pipe/.test(conteneur) || uneSeuleFrame;
 
@@ -156,6 +207,14 @@ export async function importerMedia(args: {
   if (!ext.ok) return { ok: false, erreur: 'extension refusee (jpg, png, webp, mp4, mov, webm, m4v)' };
   if (args.donnees.byteLength === 0) return { ok: false, erreur: 'fichier vide' };
   if (args.donnees.byteLength > TAILLE_MAX_MEDIA) return { ok: false, erreur: 'fichier trop volumineux (200 Mo maximum)' };
+
+  // Les octets d'abord : rien n'est ECRIT sur le disque avant que le fichier
+  // ne ressemble a ce qu'il pretend etre.
+  const signature = signatureConnue(args.donnees);
+  if (!signature) return { ok: false, erreur: 'contenu non reconnu : ni image ni video' };
+  if (signature !== ext.genre) {
+    return { ok: false, erreur: `le contenu est ${signature}, l'extension annonce ${ext.genre}` };
+  }
 
   const relatif = path.posix.join('cinema', args.film.id, 'medias', `${args.planId}-${randomBytes(4).toString('hex')}${ext.ext}`);
   if (!mediaCinemaValide(relatif)) return { ok: false, erreur: 'chemin de media refuse' };

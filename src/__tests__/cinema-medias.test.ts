@@ -7,7 +7,10 @@
  * media sur l'empreinte de sa scene.
  */
 import { describe, it, expect } from 'vitest';
-import { cadrage, dureePlanAvecMedia, extensionAcceptee, remplacerMedia, reglerSonMedia, TAILLE_MAX_MEDIA } from '@/lib/cinema/medias';
+import {
+  cadrage, conteneurAutorise, dureePlanAvecMedia, extensionAcceptee, remplacerMedia,
+  reglerSonMedia, signatureConnue, TAILLE_MAX_MEDIA,
+} from '@/lib/cinema/medias';
 import { scelleScene, scenesAReproduire } from '@/lib/cinema/empreinte';
 import { monterFilm } from '@/lib/cinema/montage';
 import { preparerFilm } from '@/lib/cinema/atelier';
@@ -129,5 +132,36 @@ describe('empreinte et medias', () => {
 
     const sans = remplacerMedia(produit, planId, null);
     expect(scenesAReproduire(sans).map((s) => s.id)).toEqual([base.scenes[0].id]);
+  });
+});
+
+describe('contenu d un media — ce qui n atteint jamais ffprobe', () => {
+  const octets = (...v: number[]) => new Uint8Array([...v, ...new Array(16).fill(0)]);
+  const texte = (t: string) => new TextEncoder().encode(t.padEnd(32, ' '));
+
+  it('reconnait les signatures des formats acceptes', () => {
+    expect(signatureConnue(octets(0x89, 0x50, 0x4e, 0x47))).toBe('image');
+    expect(signatureConnue(octets(0xff, 0xd8, 0xff, 0xe0))).toBe('image');
+    expect(signatureConnue(octets(0x1a, 0x45, 0xdf, 0xa3))).toBe('video');
+    const ftyp = new Uint8Array([0, 0, 0, 24, ...new TextEncoder().encode('ftypisom'), ...new Array(12).fill(0)]);
+    expect(signatureConnue(ftyp)).toBe('video');
+  });
+
+  it('refuse une « video » qui est en fait une liste de lecture', () => {
+    // C'est le fichier qui ferait sortir une requete du serveur si ffprobe
+    // le lisait : il n'a aucune signature connue, donc il n'est jamais ecrit.
+    expect(signatureConnue(texte('#EXTM3U\n#EXT-X-STREAM-INF:\nhttp://169.254.169.254/'))).toBeNull();
+    expect(signatureConnue(texte("file 'http://ailleurs/x.mp4'"))).toBeNull();
+    expect(signatureConnue(texte('<?xml version="1.0"?><MPD>'))).toBeNull();
+    expect(signatureConnue(new Uint8Array([1, 2]))).toBeNull();
+  });
+
+  it('n autorise que les conteneurs attendus', () => {
+    expect(conteneurAutorise('mov,mp4,m4a,3gp,3g2,mj2')).toBe(true);
+    expect(conteneurAutorise('png_pipe')).toBe(true);
+    expect(conteneurAutorise('matroska,webm')).toBe(true);
+    for (const refuse of ['hls', 'concat', 'applehttp', 'mov,mp4,hls', '', null, undefined]) {
+      expect(conteneurAutorise(refuse as string)).toBe(false);
+    }
   });
 });

@@ -37,6 +37,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ ok: false, erreur: 'film inconnu' }, { status: 404 });
   }
 
+  // ⚠️ LA TAILLE EST REFUSEE AVANT D'ETRE LUE. `req.formData()` charge tout
+  // le corps en memoire : verifier la taille APRES, c'est avoir deja accepte
+  // les octets. Un corps sans `Content-Length` est refuse pour la meme
+  // raison — on ne sait pas ce qu'on s'apprete a avaler.
+  const annonce = req.headers.get('content-length');
+  const octetsAnnonces = annonce === null ? null : Number(annonce);
+  if (octetsAnnonces === null || !Number.isFinite(octetsAnnonces)) {
+    return NextResponse.json({ ok: false, erreur: 'taille du corps non annoncee' }, { status: 411 });
+  }
+  // Marge pour l'enveloppe multipart (frontieres, en-tetes de parties).
+  if (octetsAnnonces > TAILLE_MAX_MEDIA + 64 * 1024) {
+    return NextResponse.json({ ok: false, erreur: 'fichier trop volumineux (200 Mo maximum)' }, { status: 413 });
+  }
+
   let formulaire: FormData;
   try {
     formulaire = await req.formData();

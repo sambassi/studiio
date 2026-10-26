@@ -112,6 +112,8 @@ testees dans `src/__tests__/cinema-acces.test.ts` :
 | Un film a un **proprietaire**, compare a la session sur GET, PATCH et `produire` ; la liste est filtree | IDOR : l'identifiant suffisait a lire, modifier et faire rendre le film d'autrui | 404 sur les trois routes, liste vide |
 | Un identifiant suit `^film-[a-z0-9][a-z0-9-]{0,62}$`, a la lecture **comme a l'ecriture** | traversee de chemin (`../`) dans le magasin | 404, et `enregistrerFilm` leve |
 | Un media de plan est un chemin **local** sous `cinema/` | SSRF : l'URL d'un plan est chargee par Chromium au rendu | 400 sur `http://169.254.169.254/...` |
+| Les **octets** sont reconnus avant toute ecriture (`signatureConnue`), ffprobe tourne avec `-protocol_whitelist file`, et le conteneur doit etre dans la liste | une « video » qui est une liste de lecture (HLS, `concat`) fait sortir une requete du serveur depuis ffprobe | 400 sur un `.mp4` contenant `#EXTM3U` + une URL |
+| La taille est refusee **sur `Content-Length`**, avant `formData()` | saturation memoire : `formData()` avale tout le corps avant qu'on puisse le mesurer | 413 au-dela de 200 Mo, 411 sans `Content-Length` |
 
 Un film d'avant cette regle (sans proprietaire) n'appartient a personne : il
 devient inaccessible plutot que public — l'un se repare, l'autre fuite.
