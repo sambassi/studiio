@@ -12,6 +12,7 @@ import { join } from 'path';
 import {
   avecLimiteRendus, prendrePlaceInteractive, reserverBail, lierBailALaPlace,
   rendusMaxSimultanes, rendusMaxInteractifs, RenduOccupeError, RenduDoublonError,
+  cleBail, CLE_BAIL_MAX,
 } from '@/lib/autopilot/limite-rendus';
 
 function rpcSimule() {
@@ -146,6 +147,63 @@ describe('refus propres, libération, reprise', () => {
   it('les erreurs de file restent des RenduOccupe/Doublon (statuts 429/409 côté routes)', () => {
     expect(new RenduOccupeError()).toBeInstanceOf(Error);
     expect(new RenduDoublonError('x')).toBeInstanceOf(Error);
+  });
+});
+
+describe('clé de bail bornée : un chemin de fichier très long ne fait pas échouer la conversion', () => {
+  /** Le refus de la base, tel qu'il est écrit dans la migration réelle. */
+  const LIMITE_SQL = Number(/length\(p_job\) > (\d+)/.exec(readFileSync('migrations/2026-10-28-rendus-baux-globaux.sql', 'utf8'))![1]);
+  const cheminLong = `${'0'.repeat(36)}/rendus/${'dossier-tres-long-de-l-utilisateur/'.repeat(40)}montage-final.webm`;
+  const jobLong = `convertir:${cheminLong}`;
+
+  it('la marge du code est SOUS la limite écrite dans la migration', () => {
+    expect(LIMITE_SQL).toBe(200);
+    expect(CLE_BAIL_MAX).toBeLessThan(LIMITE_SQL);
+  });
+
+  it('un identifiant très long est raccourci sous la limite, reste stable et lisible', () => {
+    expect(jobLong.length).toBeGreaterThan(LIMITE_SQL);
+    const c = cleBail(jobLong);
+    expect(c.length).toBeLessThanOrEqual(CLE_BAIL_MAX);
+    expect(c).toBe(cleBail(jobLong)); // stable : deux appels, même clé
+    expect(c.startsWith('convertir:')).toBe(true); // lisible dans les journaux
+  });
+
+  it('un identifiant court n’est pas touché (les clés existantes ne changent pas)', () => {
+    expect(cleBail('autopilote-u1-2026-10-27-0900')).toBe('autopilote-u1-2026-10-27-0900');
+    expect(cleBail('convertir:u1/rendus/abc.webm')).toBe('convertir:u1/rendus/abc.webm');
+  });
+
+  it('deux chemins longs qui ne diffèrent QUE par la fin donnent deux clés différentes (pas de collision)', () => {
+    const a = cleBail(`${jobLong}#a`);
+    const b = cleBail(`${jobLong}#b`);
+    expect(a).not.toBe(b);
+    expect(new Set([a, b, cleBail(jobLong)]).size).toBe(3);
+  });
+
+  it('la base ne reçoit JAMAIS plus que la limite, et la conversion aboutit', async () => {
+    const bd = rpcSimule();
+    const recues: string[] = [];
+    const rpc = async (fn: string, p: Record<string, unknown>) => {
+      recues.push(String(p.p_job));
+      if (String(p.p_job).length > LIMITE_SQL) return { data: null, error: { code: '22023', message: 'bail invalide' } };
+      return bd.rpc(fn, p);
+    };
+    const place = await prendrePlaceInteractive('u', jobLong, { rpc, env: env(1) });
+    expect(place.ok).toBe(true);
+    if (place.ok) { await place.bail.verifierBail(); await place.bail.liberer(); }
+    expect(recues.length).toBeGreaterThanOrEqual(3); // prendre + battre + liberer
+    expect(recues.every((j) => j.length <= LIMITE_SQL)).toBe(true);
+    expect(bd.baux.size).toBe(0);
+  });
+
+  it('le même chemin long lancé deux fois est bien vu comme un doublon (une seule conversion)', async () => {
+    const bd = rpcSimule();
+    const a = await prendrePlaceInteractive('u', jobLong, { rpc: bd.rpc, env: env(1) });
+    const b = await prendrePlaceInteractive('u', jobLong, { rpc: bd.rpc, env: env(1) });
+    expect(a.ok).toBe(true);
+    expect(b).toMatchObject({ ok: false, motif: 'doublon' });
+    if (a.ok) await a.bail.liberer();
   });
 });
 

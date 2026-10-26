@@ -42,6 +42,7 @@
  *   ou base muette → `RenduBailPerduError` / `RenduIndeterminError`, donc ni post ni débit.
  * Ni crédits, ni paiement, ni fournisseur ne sont touchés ici.
  */
+import { createHash } from 'crypto';
 import { supabaseAdmin } from '@/lib/db/supabase';
 
 /** Plafond par défaut : 1 rendu à la fois. À relever (variable) quand la machine le permet. */
@@ -56,6 +57,29 @@ export const BAIL_BATTEMENT_MS = 30_000;
 /** Sondage pendant l'attente (ms) : assez rare pour ne pas charger la base. */
 export const SONDAGE_MIN_MS = 3_000;
 export const SONDAGE_MAX_MS = 8_000;
+
+/**
+ * Longueur maximale d'une clé de bail. `rendu_bail_prendre` REFUSE au-delà de 200 caractères
+ * (`migrations/2026-10-28-rendus-baux-globaux.sql`) : une clé construite sur un chemin de fichier
+ * (`convertir:<clé de stockage>`, non bornée côté stockage) dépassait cette limite et faisait
+ * échouer la conversion. On garde une marge sous les 200.
+ */
+export const CLE_BAIL_MAX = 180;
+
+/**
+ * Clé de bail courte, STABLE et sans collision pratique.
+ *
+ * Courte : jamais plus de `CLE_BAIL_MAX`, donc toujours acceptée par la base.
+ * Stable : la même entrée donne toujours la même clé — sans quoi un second lancement du même
+ * travail ne serait plus reconnu comme un doublon.
+ * Sans collision : l'empreinte SHA-256 porte l'identifiant ENTIER, pas seulement sa fin.
+ * Lisible : le début est conservé tel quel, pour retrouver le travail dans les journaux.
+ */
+export function cleBail(jobId: string): string {
+  if (jobId.length <= CLE_BAIL_MAX) return jobId;
+  const empreinte = createHash('sha256').update(jobId).digest('hex');
+  return `${jobId.slice(0, CLE_BAIL_MAX - empreinte.length - 1)}~${empreinte}`;
+}
 
 export const VARIABLE_MAX = 'STUDIIO_RENDUS_MAX_SIMULTANES';
 /** Places SUPPLÉMENTAIRES réservées aux actions interactives de Créer (export, MP4) : jamais bloquées par Autopilote seul. */
@@ -284,6 +308,9 @@ export async function avecLimiteRendus<T>(
   const hasard = o.hasard ?? Math.random;
   const avertir = o.avertir ?? ((m: string) => console.warn(m));
 
+  // Toutes les opérations de bail portent la clé BORNÉE (la base refuse au-delà de 200 caractères) ;
+  // les messages et les erreurs gardent l'identifiant d'origine, plus parlant.
+  const cle = cleBail(jobId);
   const echeance = maintenant() + attenteMax;
   let modeLocal = false;
   let avertiLocal = false;
@@ -294,9 +321,9 @@ export async function avecLimiteRendus<T>(
     let issue: Prise;
     if (modeLocal) {
       const l = local();
-      issue = l.actifs.has(jobId) ? { etat: 'doublon' } : l.actifs.size >= max ? { etat: 'occupe' } : (l.actifs.add(jobId), { etat: 'pris' });
+      issue = l.actifs.has(cle) ? { etat: 'doublon' } : l.actifs.size >= max ? { etat: 'occupe' } : (l.actifs.add(cle), { etat: 'pris' });
     } else {
-      issue = await prendre(rpc, userId, jobId, instance, max);
+      issue = await prendre(rpc, userId, cle, instance, max);
       if (issue.etat === 'absent') {
         // Migration non appliquée : état de déploiement, pas une panne. Une seule alerte, pas une par tour.
         if (!avertiLocal) {
@@ -316,7 +343,7 @@ export async function avecLimiteRendus<T>(
       let perdu = false;
       const renouveler = async (): Promise<'ok' | 'perdu' | 'incertain'> => {
         try {
-          const r = await rpc('rendu_bail_battre', { p_user: userId, p_job: jobId, p_ttl_s: BAIL_TTL_S });
+          const r = await rpc('rendu_bail_battre', { p_user: userId, p_job: cle, p_ttl_s: BAIL_TTL_S });
           const l = r && !r.error ? premiereLigne(r.data) : null;
           if (l && l.ok === true) { dernierOk = maintenant(); return 'ok'; }
           if (l && l.ok === false) return 'perdu';
@@ -348,9 +375,9 @@ export async function avecLimiteRendus<T>(
         return await travail({ verifierBail });
       } finally {
         if (battement) clearInterval(battement);
-        if (modeLocal) local().actifs.delete(jobId);
+        if (modeLocal) local().actifs.delete(cle);
         else {
-          try { await rpc('rendu_bail_liberer', { p_user: userId, p_job: jobId }); }
+          try { await rpc('rendu_bail_liberer', { p_user: userId, p_job: cle }); }
           catch { /* le bail expirera seul */ }
         }
       }
