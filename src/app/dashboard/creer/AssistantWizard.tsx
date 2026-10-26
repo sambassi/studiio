@@ -262,7 +262,7 @@ import { toWizardDraft } from '@/lib/creer/postMetadata/to-wizard';
 import {
   planRushs, dureeMultiRush, planAvecAvatar, type RushItem, type RushSegment,
 } from '@/lib/creer/multi-rush';
-import { ajusterPlan, dureeCibleMontage, dureePlan, cleMontage, profilMontageDuContexte, mesuresSegments, cleSource, plansPropres, type AnalyseRush } from '@/lib/creer/smart-montage';
+import { ajusterPlan, dureeCibleMontage, dureePlan, cleMontage, rushsNettementFlous, profilMontageDuContexte, mesuresSegments, cleSource, plansPropres, type AnalyseRush } from '@/lib/creer/smart-montage';
 import { contexteMontageDepuis, rapportPlan } from '@/lib/creer/smart-montage-regles';
 import { conseillerVideo } from '@/lib/creer/conseiller';
 import { profilEnSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
@@ -7159,6 +7159,26 @@ export default function AssistantWizard() {
       .then((j) => setApercuPlanDisponible(j?.apercuPlan === true))
       .catch(() => setApercuPlanDisponible(false));
   }, [editPostId, rushSuivants.length]);
+  // ── MONTAGE AMÉLIORÉ (rushs flous, parole, durée) — compte administrateur seulement ──
+  // Décidé par le SERVEUR (`/api/creer/montage-ameliore` : interrupteur + compte admin relu en base).
+  // `null` tant que la réponse n'est pas arrivée ; toute erreur ⇒ faux (le montage de la production).
+  // Jamais persisté, jamais lu dans le navigateur (localStorage, URL…). Le montage manuel n'est pas concerné.
+  const [montageAmeliore, setMontageAmeliore] = useState<boolean | null>(null);
+  const montageAmelioreRef = useRef<Promise<boolean> | null>(null);
+  const resoudreMontageAmeliore = useCallback((): Promise<boolean> => {
+    if (!montageAmelioreRef.current) {
+      montageAmelioreRef.current = fetch('/api/creer/montage-ameliore', { cache: 'no-store' })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => j?.ameliore === true)
+        .catch(() => false)
+        .then((v) => { setMontageAmeliore(v); return v; });
+    }
+    return montageAmelioreRef.current;
+  }, []);
+  useEffect(() => {
+    if (editPostId || !rushSuivants.length) return;
+    void resoudreMontageAmeliore();
+  }, [editPostId, rushSuivants.length, resoudreMontageAmeliore]);
   /** Le plan calculé par l'aperçu (dernier COMPLET pour sa clé) — relu par l'export si la clé est identique. */
   const planApercuRef = useRef<PreparationPlan | null>(null);
   const [planApercu, setPlanApercu] = useState<PreparationPlan | null>(null);
@@ -8058,7 +8078,8 @@ export default function AssistantWizard() {
   entreeApercuPlanRef.current = entreeApercuPlan;
   useEffect(() => {
     if (!cleApercuPlan) { setPlanApercuEnCalcul(false); return; }
-    if (planApercuRef.current?.cle === cleApercuPlan) { setPlanApercuEnCalcul(false); return; }
+    if (montageAmeliore === null) return; // décision serveur pas encore connue : même plan que l'export
+    if (planApercuRef.current?.cle === cleApercuPlan && (planApercuRef.current.ameliore ?? false) === montageAmeliore) { setPlanApercuEnCalcul(false); return; }
     setPlanApercuEnCalcul(true);
     const cle = cleApercuPlan;
     const entree = entreeApercuPlanRef.current!;
@@ -8068,7 +8089,7 @@ export default function AssistantWizard() {
         for (const r of entree.rushs) analysesBrutes.push(await analyserRushMemo(r.url));
         const rythme = entree.musique ? await analyserMusiqueNavigateur(entree.musique) : null;
         if (cleApercuPlanRef.current !== cle) return; // réglage changé pendant les analyses : rien à calculer
-        const prep = preparerPlanMontage(entree, { analysesBrutes, rythme });
+        const prep = preparerPlanMontage(entree, { analysesBrutes, rythme, ameliore: montageAmeliore === true });
         // Calcul terminé, mais la clé a pu changer pendant ce temps : résultat IGNORÉ.
         if (cleApercuPlanRef.current !== cle) return;
         planApercuRef.current = prep;
@@ -8077,7 +8098,8 @@ export default function AssistantWizard() {
       })().catch(() => { if (cleApercuPlanRef.current === cle) setPlanApercuEnCalcul(false); });
     }, DELAI_PLAN_APERCU_MS);
     return () => clearTimeout(minuterie);
-  }, [cleApercuPlan]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cleApercuPlan, montageAmeliore]);
   /** Le plan de l'aperçu, s'il correspond à l'écran COURANT. */
   const prepApercu = planApercu && cleApercuPlan && planApercu.cle === cleApercuPlan ? planApercu : null;
   const problemeApercuCourant = problemeApercu && problemeApercu.cle === cleApercuPlan ? problemeApercu.probleme : null;
@@ -9684,7 +9706,7 @@ export default function AssistantWizard() {
       const rushLut = duree('video') > 0 && plateau.rushUrl ? await chargerLutPourRendu(lut) : null;
       // Multi-rush : les rushes DURABLES de la liste (jamais une `blob:`), ce
       // que la metadata du post peut porter. Vide avec un seul rush.
-      const rushsDurables = (plateau.rushs ?? []).filter((r) => !!persistableUrl(r.url));
+      let rushsDurables = (plateau.rushs ?? []).filter((r) => !!persistableUrl(r.url));
       // #613 : fonds Titre / CTA sur leurs plages PROPRES — les mesures déjà lues par l'aperçu
       // (analyse mémoïsée), complétées plus bas par celles du smart montage ; jamais d'attente ici
       // (un rush illisible ne bloque pas l'envoi : la règle d'avant s'applique).
@@ -9743,6 +9765,7 @@ export default function AssistantWizard() {
         // REJOUÉ si sa clé (toutes les entrées), sa complétude et ses mesures
         // (mêmes objets d'analyse et de rythme) sont identiques ; sinon —
         // périmé, incomplet, en calcul, interrupteur éteint — recalcul ici.
+        const ameliorePlan = await resoudreMontageAmeliore();
         const prepPlan = preparerPlanMontage(entreePlanMontage({
           rushs: rushsDurables,
           ordre,
@@ -9758,7 +9781,7 @@ export default function AssistantWizard() {
           format,
           rushApres: fondsExport?.cta?.url ?? null,
           profil: profilDuStyle(styleVideo),
-        }), { analysesBrutes, rythme }, apercuPlanDisponible ? planApercuRef.current : null);
+        }), { analysesBrutes, rythme, ameliore: ameliorePlan }, apercuPlanDisponible ? planApercuRef.current : null);
         const rythmeVideo = prepPlan.rythmeVideo;
         planMontageRushs = prepPlan.plan;
         if (prepPlan.reutilise) console.log('[SmartMontage] plan de l’aperçu rejoué (clé identique) — pas de recalcul.');
@@ -9768,8 +9791,30 @@ export default function AssistantWizard() {
           console.log(`[SmartMontage] MONTAGE_PROFILE=${profil}`, montageInfos.rapport);
         }
         if (!planMontageRushs) {
-          // Jamais de repli SILENCIEUX sur « rush 1 puis rush 2 ».
-          setMontageNotice('Analyse intelligente indisponible — montage simple utilisé (rushes enchaînés).');
+          // Jamais de repli SILENCIEUX sur « rush 1 puis rush 2 ». Un rush écarté pour flou ne revient pas
+          // par ce repli (ex. un seul rush net, trop court pour deux extraits) : il est retiré de l'enchaînement.
+          const flous = ameliorePlan ? rushsNettementFlous(analyses) : new Set<string>();
+          const nets = rushsDurables.filter((r) => !flous.has(r.url));
+          if (flous.size && nets.length) {
+            const demandeVideo = duree('video');
+            const secondesNets = analyses.filter((a) => !flous.has(a.url)).reduce((t, a) => t + a.duree, 0);
+            rushsDurables = nets;
+            plateau = {
+              ...plateau,
+              rushs: nets.length >= 2 ? nets : null,
+              rushUrl: flous.has(plateau.rushUrl ?? '') ? nets[0].url : plateau.rushUrl,
+              videoDuration: Math.min(plateau.videoDuration, Math.max(1, Math.floor(secondesNets))),
+            };
+            const raccourciRepli = raccourciNecessaire(demandeVideo, secondesNets, nets.length, flous.size);
+            if (raccourciRepli) {
+              setRenderStage('En attente de votre choix…');
+              const continuer = await new Promise<boolean>((resoudre) => setDemandeRaccourci({ ...raccourciRepli, resoudre }));
+              setDemandeRaccourci(null);
+              if (!continuer) throw new ArretPourAjouterDesRushs();
+            }
+            duree = dureeDeSequence(ordre, { intro: introDuration, cards: cardsDuration, video: plateau.videoDuration, cta: ctaDuration });
+            setMontageNotice(raccourciRepli?.message ?? `Analyse intelligente indisponible — montage simple, ${flous.size} rush${flous.size > 1 ? 's' : ''} trop flou${flous.size > 1 ? 's' : ''} écarté${flous.size > 1 ? 's' : ''}.`);
+          } else setMontageNotice('Analyse intelligente indisponible — montage simple utilisé (rushes enchaînés).');
         } else if (dureePlan(planMontageRushs) < duree('video') - 0.05) {
           const dispo = Math.round(dureePlan(planMontageRushs) * 10) / 10;
           // #504 : vidéo nettement plus courte faute de matière unique — on

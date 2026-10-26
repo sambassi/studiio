@@ -43,6 +43,12 @@ export interface RenderedMontage {
   /** Son réellement mesuré dans le MP4 final ; `null` si la mesure a échoué. */
   audio?: import('@/lib/render/audio-fichier').MesureAudioFichier | null;
   /**
+   * Contrôle qualité du MP4 final (`controle-qualite-mp4.ts`), mesuré sur le fichier avant
+   * téléversement ; `null` si ffmpeg n'a pas pu le juger. Un fichier INUTILISABLE n'arrive
+   * jamais ici : le rendu échoue avant le dépôt.
+   */
+  controleMp4?: import('@/lib/render/controle-qualite-mp4').ResultatControleMp4 | null;
+  /**
    * Moteur réellement utilisé : `HYBRID` (ffmpeg + images fixes),
    * `REMOTION_FALLBACK` (hybride tenté, échoué, Remotion complet) ou
    * `REMOTION` (hybride non applicable à ce montage).
@@ -126,6 +132,12 @@ export async function renderAndUpload(input: {
   onComposition?: (fraction: number) => void;
   /** Début du dépôt de la vidéo. Facultatif. */
   onEnvoi?: () => void;
+  /**
+   * Contrôle qualité du MP4 final (`controle-qualite-mp4.ts`) — « montage amélioré », compte
+   * administrateur seulement (`montage-ameliore-config.ts`, décidé par `produireUnMontage`).
+   * Absent ou faux : AUCUN contrôle, rendu et dépôt exactement comme en production.
+   */
+  controleMp4Actif?: boolean;
 }): Promise<RenderedMontage> {
   const { renderCreerSimple } = await import('@/lib/render/creerSimple');
   const { uploadToStorage } = await import('@/lib/storage/upload');
@@ -177,6 +189,28 @@ export async function renderAndUpload(input: {
   const { outputPath, durationFrames } = rendu;
   input.onEnvoi?.();
 
+  // Contrôle qualité du fichier final, AVANT la vignette (un fichier rejeté ne laisse rien en ligne) :
+  // observe, ne modifie rien. Seul un fichier illisible, sans vidéo ou vide échoue ICI (gestion d'erreur
+  // du rendu), jamais livré. Les défauts
+  // mineurs partent en avertissements ; une panne du contrôle lui-même ne bloque jamais.
+  let controleMp4: import('@/lib/render/controle-qualite-mp4').ResultatControleMp4 | null = null;
+  try {
+    if (input.controleMp4Actif === true) {
+      const { controlerMp4 } = await import('@/lib/render/controle-qualite-mp4');
+      controleMp4 = await controlerMp4(outputPath, { son: 'inconnu' }, { ffmpeg: ffmpegPath() });
+    }
+  } catch (err) {
+    console.warn(`[Autopilote/Rendu] ${input.jobId} — contrôle qualité du MP4 indisponible :`, err instanceof Error ? err.message : err);
+  }
+  if (controleMp4?.niveau === 'inutilisable') {
+    const { unlink } = await import('fs/promises');
+    await unlink(outputPath).catch(() => {});
+    throw new Error(`Montage final inutilisable : ${controleMp4.problemes.map((p) => p.message).join(' ')}`);
+  }
+  if (controleMp4?.problemes.length) {
+    console.warn(`[Autopilote/Rendu] ${input.jobId} — CONTROLE_MP4 ${JSON.stringify(controleMp4.problemes.map((p) => p.code))}`);
+  }
+
   // La vignette AVANT le téléversement de la vidéo : `uploadToStorage`
   // supprime le fichier temporaire une fois en ligne, et il n'y aurait plus
   // rien à photographier ensuite.
@@ -196,5 +230,5 @@ export async function renderAndUpload(input: {
     storagePath: `${input.userId}/autopilote-${input.jobId}.mp4`,
   });
 
-  return { videoUrl, thumbnailUrl, durationFrames, audio, moteur, hybrideRaison, mesuresHybride, mesuresTextes };
+  return { videoUrl, thumbnailUrl, durationFrames, audio, controleMp4, moteur, hybrideRaison, mesuresHybride, mesuresTextes };
 }

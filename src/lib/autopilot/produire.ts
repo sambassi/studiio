@@ -16,11 +16,14 @@ import {
   pickPosterUrl, pickCustomPoster, probeRushSeconds,
 } from '@/lib/autopilot/poster';
 import { sondeRushPour } from '@/lib/autopilot/sonde-rush-compte';
+import { messagesControle } from '@/lib/render/controle-qualite-mp4';
+import { montageAmelioreActifPourCompte } from '@/lib/creer/montage-ameliore-config';
+import { analysesAvecScenes, type FicheScenes } from '@/lib/creer/fiche-scenes';
 import { mesurerDureeJumeau, JumeauIllisibleError } from '@/lib/autopilot/duree-jumeau';
 import { etatRushServeur, type EtatRush } from '@/lib/autopilot/validite-rush';
 import { buildAutopilotVoices, type VoixParSequence } from '@/lib/autopilot/voice';
 import { genererAfficheReference } from '@/lib/ai/affiche-reference';
-import { planMontage, dureeCibleMontage, dureePlan, plagesDuPlan, profilMontageDuContexte, mesuresSegments, cleSource, type AnalyseRush, type ContexteMontage, type PlagesUtilisees } from '@/lib/creer/smart-montage';
+import { planMontage, PROTECTION_PAROLE_PAR_DEFAUT, dureeCibleMontage, dureePlan, plagesDuPlan, profilMontageDuContexte, mesuresSegments, cleSource, rushsNettementFlous, type AnalyseRush, type ContexteMontage, type PlagesUtilisees } from '@/lib/creer/smart-montage';
 import { rushsDuPlan, estUrlImage, type RushSegment } from '@/lib/creer/multi-rush';
 import { analyserRushServeurCache, analyserMusiqueServeur, analyseNeutre, mediaLisiblePar } from '@/lib/creer/analyse-rush-serveur';
 import { evaluerQualiteRushs, qualiteRushsPourMetadata } from '@/lib/creer/qualite-rushs';
@@ -307,6 +310,16 @@ export interface MontageProduit {
   avertissements: string[];
 }
 
+/**
+ * Le son ORIGINAL des rushes sera-t-il entendu dans le montage ? Seulement si le
+ * compte le garde (`keepRushAudio`) à un niveau non nul. Un avatar ne le prouve
+ * pas : sa vidéo garde SA voix (`rushMuted` faux), pas forcément le son des rushes.
+ * Pure, testable.
+ */
+export function sonDesRushsAudible(config: { keepRushAudio?: boolean; rushVolume?: number }): boolean {
+  return config.keepRushAudio === true && typeof config.rushVolume === 'number' && config.rushVolume > 0;
+}
+
 /** Avertissements lisibles d'un montage. Pure, testable. */
 export function avertissementsMontage(m: {
   musiqueIntrouvable: boolean; audioSilencieux: boolean; voixRepliEdge: boolean; montageSimple: boolean;
@@ -319,6 +332,8 @@ export function avertissementsMontage(m: {
   rushIndisponible?: 'remplace' | 'sans' | null;
   /** Médias stock RETENUS lâchés (introuvables, ou hôte refusé) — `stockIgnores`. */
   stockIgnores?: number;
+  /** Défauts mineurs du MP4 final (`messagesControle`) — absent : rien à dire. */
+  controleMp4?: string[];
 }): string[] {
   const out: string[] = [];
   // Un média CHOISI par l'utilisateur n'est jamais écarté en silence : la clé
@@ -338,6 +353,8 @@ export function avertissementsMontage(m: {
   }
   if (m.montageSimple) out.push('Analyse intelligente indisponible — montage simple utilisé.');
   if (m.audioSilencieux) out.push('Le fichier final ne contient aucun son audible (ni musique, ni voix, ni son des rushes).');
+  // Le son muet est déjà dit ci-dessus : le contrôle du MP4 n'ajoute que le reste (noirs, flou, pistes, encodage).
+  if (m.controleMp4) out.push(...m.controleMp4);
   return out;
 }
 
@@ -370,6 +387,11 @@ export async function produireUnMontage(input: {
   slotKey?: string;
   /** Métadonnées supplémentaires, fusionnées APRÈS celles du montage. */
   metadataSupplement?: Record<string, unknown>;
+  /**
+   * Lot 4 — fiches de scènes horodatées par URL de rush (`fiche-scenes.ts`), lues par le moteur via
+   * `AnalyseRush.descriptions`. Absentes, ou `FICHE_SCENES_ACTIVE` éteint : montage d'avant.
+   */
+  fichesScenes?: Readonly<Record<string, FicheScenes>> | null;
   /** Préfixe des journaux — `[Autopilote/Cron]`, `[Autopilote/Manuel]`. */
   journal?: string;
   /**
@@ -524,6 +546,9 @@ export async function produireUnMontage(input: {
   // sort SANS elle, et on l'ÉCRIT dans les métadonnées — jamais en silence.
   // Réseau muet ou 405 : la sonde répond « présent », comme pour le rush.
   let configUtilisee = config;
+  // MONTAGE AMÉLIORÉ (rushs flous, parole, durée, contrôle MP4) : compte administrateur relu EN BASE
+  // + interrupteur serveur (`montage-ameliore-config.ts`). Faux pour tous les autres : production.
+  const ameliore = await montageAmelioreActifPourCompte(userId);
   let musiqueIntrouvable = false;
   if (config.musicUrl && !lisible(config.musicUrl)) {
     // Même garde que les rushes : jamais sondée, jamais lue, jamais écrite.
@@ -535,6 +560,10 @@ export async function produireUnMontage(input: {
     configUtilisee = { ...config, musicUrl: null };
     musiqueIntrouvable = true;
   }
+
+  // Protection de la parole : seulement si le son ORIGINAL des rushes sera entendu.
+  // Son coupé (cas par défaut), elle abîmait le choix des images pour un son muet.
+  const protectionParoleRushs = ameliore && PROTECTION_PAROLE_PAR_DEFAUT && sonDesRushsAudible(configUtilisee);
 
   // ── SMART MONTAGE V2 : plusieurs rushes de la banque, montés par le MÊME
   // moteur que Créer (`planMontage`). Le rush du créneau ouvre la liste ;
@@ -711,6 +740,8 @@ export async function produireUnMontage(input: {
   // #504 : vidéo raccourcie faute de matière unique — personne à qui demander
   // ici : c'est DIT (journal + metadata), jamais caché.
   let montageRaccourci: Raccourci | null = null;
+  // Durée visée du montage, gardée pour le repli sans plan (mêmes informations de raccourci que Créer).
+  let cibleMontage: number | null = null;
   let rythmeVideo: { beats: number[]; forts: number[]; drop: number | null } | null = null;
   let contexteConseil: { theme: string | null; objectif: string | null } = { theme: null, objectif: null };
   /** M2-c — le contexte du plan, gardé pour le diagnostic de pertinence (jamais relu par le plan). */
@@ -793,10 +824,10 @@ export async function produireUnMontage(input: {
       const m = planMontageAvatar({
         avatar: { url: jumeauVideoUrl as string, secondes: T },
         dureeVisee: postUtilise.brief?.duree ?? null,
-        rushes, analyses: analysesRushs, stockVideos, photos: photosOk,
+        rushes, analyses: analysesAvecScenes(analysesRushs, input.fichesScenes), stockVideos, photos: photosOk,
         gabarit, pertinences, profil: profilVideo,
         titre: post.title, cartes: designBase.cards ?? [],
-        options: { contexte: contexteMontage, plagesExclues: input.plagesCycle ?? null },
+        options: { contexte: contexteMontage, plagesExclues: input.plagesCycle ?? null, ...(ameliore ? { netteteCommune: true, protectionParole: protectionParoleRushs } : {}) },
       });
       res = m.res;
       enSurimpression = true;
@@ -821,9 +852,9 @@ export async function produireUnMontage(input: {
       const debutVideo = enSurimpression ? 0 : (designBase.introDuration ?? 0) + (designBase.cardsDuration ?? 0);
       rythmeVideo = rythme ? rythmeSurFenetre(rythme, debutVideo, cible) : null;
       res = planMultiSources({
-        rushes, analyses: analysesRushs, stockVideos, photos: photosOk,
+        rushes, analyses: analysesAvecScenes(analysesRushs, input.fichesScenes), stockVideos, photos: photosOk,
         gabarit, cible, pertinences,
-        options: { rythme: rythmeVideo, contexte: contexteMontage, plagesExclues: input.plagesCycle ?? null },
+        options: { rythme: rythmeVideo, contexte: contexteMontage, plagesExclues: input.plagesCycle ?? null, ...(ameliore ? { netteteCommune: true, protectionParole: protectionParoleRushs } : {}) },
       });
       if (res.plan.length && enSurimpression) {
         overlays = planOverlays({
@@ -872,15 +903,18 @@ export async function produireUnMontage(input: {
       ? ['titre', 'cartes', 'video', 'cta'].reduce((t, k) => t + (secondesVoix(k) ? secondesVoix(k) + 0.2 : 0), 0)
       : secondesVoix('video');
     const cible = Math.min(disponible, Math.max(cibleVideoDuBrief(postUtilise.brief, designBase, enSurimpression) ?? dureeCibleMontage(disponible), Math.ceil(voixAPorter)));
+    cibleMontage = cible;
     // V3 : coupes calées sur le rythme de la musique, lue à partir du début
     // de la séquence « Vidéo » (0 en surimpression, après titre et cartes sinon).
     const rythme = configUtilisee.musicUrl ? await analyserMusiqueServeur(configUtilisee.musicUrl, userId) : null;
     const debutVideo = enSurimpression ? 0 : (designBase.introDuration ?? 0) + (designBase.cardsDuration ?? 0);
     rythmeVideo = rythme ? rythmeSurFenetre(rythme, debutVideo, cible) : null;
-    planMontageRushs = planMontage(analysesRushs, cible, {
+    // Lot 4 : descriptions horodatées des fiches de scènes (éteint par défaut ⇒ mêmes analyses).
+    planMontageRushs = planMontage(analysesAvecScenes(analysesRushs, input.fichesScenes), cible, {
       rythme: rythmeVideo,
       contexte: contexteMontage,
       plagesExclues: input.plagesCycle ?? null,
+      ...(ameliore ? { netteteCommune: true, protectionParole: protectionParoleRushs } : {}),
     });
     if (planMontageRushs) {
       montageRaccourci = raccourciNecessaire(cible, dureePlan(planMontageRushs), new Set(planMontageRushs.map((x) => x.url)).size);
@@ -913,6 +947,26 @@ export async function produireUnMontage(input: {
 
   // Le plan couvre déjà la voix (cible) : la séquence dure EXACTEMENT le plan,
   // rien n'est étiré (un extrait étiré rejouerait la matière d'un autre).
+  // Repli sans plan (ex. un seul rush net, trop court pour deux extraits) : le rush principal ne peut
+  // pas être un rush écarté pour flou — le meilleur rush net le remplace, durée recalculée.
+  let designRepli = designBase;
+  if (ameliore && !planMontageRushs && !multiSources && !jumeauActif && rushUrl) {
+    const flous = rushsNettementFlous(analysesRushs.filter((a) => !rushsSansMesure.has(a.url)));
+    const net = flous.has(rushUrl) ? analysesRushs.filter((a) => !flous.has(a.url)).sort((a, b) => b.duree - a.duree)[0] : null;
+    if (net) {
+      console.warn(`${journal} ${userId} — rush principal flou écarté du montage simple, remplacé par ${net.url}`);
+      rushUrl = net.url;
+      designRepli = buildAutopilotDesign({ ...postUtilise, rushUrl: net.url }, {
+        posterUrl, rushSeconds: net.duree, voices, config: configUtilisee, jumeau: null,
+      });
+    }
+    // Montage simple plus court que la durée visée : même avertissement que Créer, jamais de rallonge.
+    const duree = (net ?? analysesRushs.find((a) => a.url === rushUrl))?.duree;
+    if (cibleMontage && duree) {
+      montageRaccourci = raccourciNecessaire(cibleMontage, duree, 1, flous.size);
+      if (montageRaccourci) console.warn(`${journal} ${userId} — RACCOURCI (montage simple) ${JSON.stringify({ REQUESTED_DURATION: cibleMontage, FINAL_SAFE_DURATION: montageRaccourci.possible })}`);
+    }
+  }
   let design = planMontageRushs
     ? {
       ...designBase,
@@ -935,7 +989,7 @@ export async function produireUnMontage(input: {
         ...(debutClotureRendue !== null && debutClotureRendue > 0 ? { finVoixJumeauS: debutClotureRendue } : {}),
       } : {}),
     }
-    : designBase;
+    : designRepli;
   // Surimpressions : position, taille et fond des textes — la MÊME mise en
   // page que Créer (`surimpressions-mise-en-page.ts`).
   // #502 : CTA dans la bande mesurée la plus calme des plans de sortie (même règle que Créer).
@@ -995,8 +1049,8 @@ export async function produireUnMontage(input: {
   input.onProgression?.('composition', 0);
   const t3 = Date.now();
   let t4 = 0;
-  const { videoUrl, thumbnailUrl, durationFrames, audio, moteur, hybrideRaison, mesuresHybride, mesuresTextes } = await renderAndUpload({
-    userId, jobId, design: designRendu,
+  const { videoUrl, thumbnailUrl, durationFrames, audio, controleMp4, moteur, hybrideRaison, mesuresHybride, mesuresTextes } = await renderAndUpload({
+    userId, jobId, design: designRendu, controleMp4Actif: ameliore,
     onComposition: (f) => input.onProgression?.('composition', f),
     onEnvoi: () => { t4 = Date.now(); input.onProgression?.('envoi', 0); },
   });
@@ -1212,6 +1266,7 @@ export async function produireUnMontage(input: {
         montageSimple: !!montageSimpleMotif, voixPersonnelle: !!(config.voiceId ?? '').trim(),
         rushIndisponible: rushMort || rushCreneauIndisponible ? (rushUrl ? 'remplace' : 'sans') : null,
         stockIgnores: multiSources ? mediasIgnores.length : 0,
+        controleMp4: messagesControle(controleMp4),
       });
       return a.length ? { avertissements: a } : null;
     })(),
@@ -1221,6 +1276,8 @@ export async function produireUnMontage(input: {
     ...(conseils ? { conseils } : null),
     // Le fichier FINAL a-t-il du son ? Mesuré sur le MP4 (ffmpeg), pas supposé.
     ...(audio ? { audioFinal: audio } : null),
+    // Contrôle qualité du MP4 final (noirs, netteté, pistes, encodage) : mesuré, jamais supposé.
+    ...(controleMp4 ? { controleQualiteMp4: controleMp4 } : null),
     // Sa DURÉE est-elle celle du plan ? Mesurée sur le MP4 en ligne.
     dureeVerifiee: verifDuree.dureeVerifiee,
     dureeRendu: { planS: verifDuree.dureePlanS, mesureeS: verifDuree.dureeMesureeS, ecartS: verifDuree.ecartS },
@@ -1303,6 +1360,7 @@ export async function produireUnMontage(input: {
       voixPersonnelle: !!(config.voiceId ?? '').trim(),
       rushIndisponible: rushMort || rushCreneauIndisponible ? (rushUrl ? 'remplace' : 'sans') : null,
       stockIgnores: multiSources ? mediasIgnores.length : 0,
+      controleMp4: messagesControle(controleMp4),
     }),
   };
 }

@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "note": "Cinq scénarios de référence. Chaque rush est un fichier à déposer dans medias/ sous le NOM EXACT indiqué. Un scénario sans tous ses fichiers est simplement ignoré.",
+  "scenarios": [
+    {
+      "id": "danse-collective",
+      "titre": "Danse collective",
+      "theme": "danse afro cardio",
+      "objectif": "donner envie de rejoindre le cours de danse",
+      "cibleSecondes": 20,
+      "rushs": ["danse-1.mp4", "danse-2.mp4", "danse-3.mp4"],
+      "demande": "2 à 3 rushs d'un groupe qui danse, filmés d'une traite (10 à 40 s chacun), avec la musique de la salle."
+    },
+    {
+      "id": "coach-parle-puis-danse",
+      "titre": "Coach qui parle puis danse",
+      "theme": "conseil coach danse",
+      "objectif": "expliquer un mouvement puis le montrer",
+      "cibleSecondes": 25,
+      "rushs": ["coach-1.mp4", "coach-2.mp4"],
+      "demande": "2 rushs où la même personne explique à voix haute (15 à 30 s) puis exécute le mouvement. Son d'origine conservé."
+    },
+    {
+      "id": "temoignage",
+      "titre": "Témoignage",
+      "theme": "témoignage client sport conseil",
+      "objectif": "partager une expérience personnelle",
+      "cibleSecondes": 25,
+      "rushs": ["temoignage-1.mp4", "temoignage-2.mp4"],
+      "demande": "2 rushs face caméra d'une personne qui raconte son expérience (20 à 40 s chacun), avec de vraies pauses entre les phrases."
+    },
+    {
+      "id": "nets-et-flous",
+      "titre": "Plusieurs rushs nets et flous",
+      "theme": "fitness entraînement",
+      "objectif": "montrer une séance d'entraînement",
+      "cibleSecondes": 20,
+      "rushs": ["fitness-net-1.mp4", "fitness-net-2.mp4", "fitness-flou-1.mp4"],
+      "demande": "2 rushs nets et 1 rush réellement flou (mise au point ratée, pas un filtre) du même type de séance."
+    },
+    {
+      "id": "scene-hors-sujet",
+      "titre": "Vidéo contenant une scène hors sujet",
+      "theme": "danse afro cardio",
+      "objectif": "présenter le cours de danse",
+      "cibleSecondes": 20,
+      "rushs": ["horssujet-1.mp4", "horssujet-2.mp4"],
+      "demande": "2 rushs de danse dont l'un contient 5 à 10 s clairement sans rapport (parking, repas, plan de rue)."
+    }
+  ]
+}

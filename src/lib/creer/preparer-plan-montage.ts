@@ -24,10 +24,11 @@
  * AVANT la question, l'export la repose toujours (bloquant), l'aperçu ne fait
  * que l'annoncer. Elle n'est donc jamais mise en cache.
  */
-import { planMontage, dureePlan, profilMontageDuContexte, mesuresSegments, optionsModePassages, type AnalyseRush, type ProfilMontage } from '@/lib/creer/smart-montage';
+import { planMontage, rushsNettementFlous, PROTECTION_PAROLE_PAR_DEFAUT, dureePlan, profilMontageDuContexte, mesuresSegments, optionsModePassages, type AnalyseRush, type ProfilMontage } from '@/lib/creer/smart-montage';
 import { contexteMontageDepuis, rapportPlan } from '@/lib/creer/smart-montage-regles';
 import { rythmeSurFenetre, type RythmeMusique } from '@/lib/creer/rythme-musique';
 import { raccourciNecessaire, type Raccourci } from '@/lib/creer/raccourci';
+import { analysesAvecScenes, FICHE_SCENES_ACTIVE, type FicheScenes } from '@/lib/creer/fiche-scenes';
 import { planOverlays, profilEnSurimpression, type OverlaysMontage } from '@/lib/creer/overlays';
 import { renderSignature } from '@/lib/creer/renderSignature';
 import type { RushSegment } from '@/lib/creer/multi-rush';
@@ -153,6 +154,10 @@ export interface PreparationPlan {
   dureeVideo: number;
   /** Le plan vient de l'aperçu (clé et mesures identiques) : pas recalculé. */
   reutilise: boolean;
+  /** Lot 4 — scènes horodatées reçues (même référence), `null` sans elles. */
+  scenes?: Readonly<Record<string, FicheScenes>> | null;
+  /** Ce plan a été calculé avec le montage amélioré (compte administrateur). */
+  ameliore?: boolean;
 }
 
 /** Le plan déjà calculé est-il valable pour CETTE entrée et CES mesures ? */
@@ -174,11 +179,29 @@ export function planReutilisable(
  */
 export function preparerPlanMontage(
   entree: EntreePlanMontage,
-  acquis: { analysesBrutes: ReadonlyArray<AnalyseRush | null>; rythme: RythmeMusique | null },
+  acquis: {
+    analysesBrutes: ReadonlyArray<AnalyseRush | null>; rythme: RythmeMusique | null;
+    /**
+     * Lot 4 — scènes horodatées par URL de rush (`fiche-scenes.ts`). Absentes, ou
+     * interrupteur `FICHE_SCENES_ACTIVE` éteint : analyses inchangées, plan d'avant.
+     */
+    scenes?: Readonly<Record<string, FicheScenes>> | null;
+    /** Tests seulement : force l'interrupteur des scènes horodatées. */
+    scenesActives?: boolean;
+    /**
+     * « Montage amélioré » (`montage-ameliore-config.ts`) : décision du SERVEUR pour ce compte
+     * (route `/api/creer/montage-ameliore`) — exclusion des rushs flous, protection de la parole,
+     * un seul extrait net suffit, avertissement de durée quand le plan est vide. Absent ou faux :
+     * les options et le plan de la production, à l'identique.
+     */
+    ameliore?: boolean;
+  },
   memo: PreparationPlan | null = null,
 ): PreparationPlan {
   const cle = clePlanMontage(entree);
-  const analyses = acquis.analysesBrutes.filter((a): a is AnalyseRush => !!a);
+  const analyses = analysesAvecScenes(
+    acquis.analysesBrutes.filter((a): a is AnalyseRush => !!a), acquis.scenes, acquis.scenesActives ?? FICHE_SCENES_ACTIVE,
+  );
   const complet = acquis.analysesBrutes.length === entree.rushs.length && analyses.length === acquis.analysesBrutes.length;
   const cibleEcran = entree.cibleEcran;
   const contexteMontage = contexteMontageDepuis({
@@ -189,13 +212,17 @@ export function preparerPlanMontage(
     cartes: entree.contexte.cartes,
   });
   const rythmeVideo = acquis.rythme ? rythmeSurFenetre(acquis.rythme, entree.debutVideo, cibleEcran) : null;
-  const reutilise = planReutilisable(memo, cle, acquis.analysesBrutes, acquis.rythme);
+  // Lot 4 : un plan calculé avec d'AUTRES scènes horodatées n'est pas rejoué.
+  const ameliore = acquis.ameliore === true;
+  const reutilise = planReutilisable(memo, cle, acquis.analysesBrutes, acquis.rythme) && (memo!.scenes ?? null) === (acquis.scenes ?? null)
+    // Un plan calculé SANS le montage amélioré n'est pas rejoué avec lui (et inversement).
+    && (memo!.ameliore ?? false) === ameliore;
   let plan: RushSegment[] | null;
   if (reutilise) plan = memo!.plan!.map((s) => ({ ...s }));
   // M3-a PR2 : méthode B (essai admin) = SEULE différence, l'option de sélection.
   else if (entree.methode === 'B') plan = planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage, ...optionsModePassages(analyses), ...(entree.profilImpose ? { profil: entree.profilImpose } : {}) });
   // #613 : Créer monte dans les PLANS PROPRES (ni coupe de la source ni image figée), unicité au timecode.
-  else plan = planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage, uniciteParTimecode: true, rushApres: entree.rushApres, ...(entree.profilImpose ? { profil: entree.profilImpose } : {}) });
+  else plan = planMontage(analyses, cibleEcran, { rythme: rythmeVideo, contexte: contexteMontage, uniciteParTimecode: true, ...(ameliore ? { netteteCommune: true, protectionParole: PROTECTION_PAROLE_PAR_DEFAUT } : {}), rushApres: entree.rushApres, ...(entree.profilImpose ? { profil: entree.profilImpose } : {}) });
   const profil = entree.profilImpose ?? profilMontageDuContexte(contexteMontage).profil;
   let rapport: ReturnType<typeof rapportPlan> | null = null;
   if (plan) {
@@ -207,9 +234,17 @@ export function preparerPlanMontage(
   if (plan && dureePlan(plan) < cibleEcran - 0.05) {
     raccourci = raccourciNecessaire(cibleEcran, dureePlan(plan), new Set(plan.map((x) => x.url)).size);
     dureeVideo = dureePlan(plan);
+  } else if (ameliore && !plan && complet && entree.methode !== 'B') {
+    // Plan vide (ex. un seul rush net trop court pour deux extraits) : l'export montera en secours avec les
+    // seuls rushs nets — l'avertissement de durée est donné dès l'aperçu, avec le même calcul que l'export.
+    const flous = rushsNettementFlous(analyses);
+    const nets = analyses.filter((a) => !flous.has(a.url));
+    if (flous.size && nets.length) {
+      raccourci = raccourciNecessaire(cibleEcran, nets.reduce((t, a) => t + a.duree, 0), nets.length, flous.size);
+    }
   }
   return {
-    cle, entree, analysesBrutes: [...acquis.analysesBrutes], analyses, rythme: acquis.rythme, rythmeVideo,
+    cle, entree, analysesBrutes: [...acquis.analysesBrutes], analyses, rythme: acquis.rythme, rythmeVideo, scenes: acquis.scenes ?? null, ameliore,
     plan, profil, rapport, complet, raccourci, dureeVideo, reutilise,
   };
 }

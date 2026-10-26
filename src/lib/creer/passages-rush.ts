@@ -333,6 +333,53 @@ function changeDePlan(avant: EchantillonRush | undefined, apres: EchantillonRush
  * Découpe un rush en passages. Déterministe, pur, linéaire en échantillons.
  * Début / fin utiles : mêmes marges que le moteur (`min(0,5 s, 5 %)`, fin − 0,05 s).
  */
+/** Part du temps où le rush est sonore (même mesure que `decouperPassages`). Pur. */
+export function partSonoreDuRush(a: AnalyseRush): number {
+  const S = SEUILS_PASSAGES;
+  const E = a.echantillons;
+  const audioMax = Math.max(1e-6, ...E.map((x) => x.audio));
+  return E.length ? E.filter((x) => x.audio > audioMax * S.sonoreRelatif && x.audio > S.audioMuet).length / E.length : 0;
+}
+
+/**
+ * La parole de ce rush est-elle LOCALISABLE ? Silences 50 ms mesurés, piste
+ * présente, son pas quasi continu, ni musique ni son continu mesurés. Même
+ * critère que le mode passages (`decouperPassages`) — un seul endroit. Pur.
+ */
+export function paroleLocalisableDuRush(a: AnalyseRush, entrees: EntreesPassages = entreesDuRush(a)): boolean {
+  return !!entrees.silences && entrees.pisteAudio !== false
+    && partSonoreDuRush(a) <= SEUILS_PASSAGES.partSonoreMax && entrees.sonContinu !== true;
+}
+
+/**
+ * Parole PROTÉGEABLE (moteur par défaut, `protectionParole`) : silences 50 ms
+ * mesurés, piste présente, et la mesure FINE dit explicitement que le son n'est
+ * pas continu (`sonContinu === false`, calculé sur les mêmes trames de 50 ms avec
+ * la même part sonore maximale de 80 %, `silences-audio.ts`).
+ *
+ * Pourquoi pas `paroleLocalisableDuRush` : il ajoute la part sonore GROSSIÈRE
+ * (RMS par 0,5 s), qui compte une pause d'une seconde comme sonore dès qu'elle
+ * chevauche un mot. Banc du 26/10 (témoignage synthétique, pauses de 1 s mesurées
+ * en 50 ms) : part grossière 86 % ⇒ « non localisable », alors que les silences
+ * fins étaient nets. Le mode passages garde son critère, inchangé.
+ */
+export function paroleProtegeableDuRush(a: AnalyseRush, entrees: EntreesPassages = entreesDuRush(a)): boolean {
+  return !!entrees.silences?.length && entrees.pisteAudio !== false && entrees.sonContinu === false;
+}
+
+/**
+ * Protection de la parole (moteur par défaut, `protectionParole`) : une borne
+ * d'extrait à l'instant `t` COUPE-T-ELLE un son parlé ? Vrai seulement si la
+ * parole est protégeable et que `t` n'est au cœur d'aucun silence mesuré — les
+ * bords du fichier ne comptent pas (le rush commence et finit où il commence).
+ * Ce que cela prouve : qu'on ne coupe pas dans un son, jamais une fin de phrase.
+ */
+export function borneCoupeLaParole(a: AnalyseRush, t: number, entrees: EntreesPassages = entreesDuRush(a)): boolean {
+  if (t <= 0.05 || t >= a.duree - 0.05) return false;
+  if (!paroleProtegeableDuRush(a, entrees)) return false;
+  return !dansUnSilence(entrees.silences, t, a.duree);
+}
+
 export function decouperPassages(a: AnalyseRush, entrees: EntreesPassages = {}): DecoupageRush {
   const S = SEUILS_PASSAGES;
   const E = a.echantillons;
@@ -340,10 +387,9 @@ export function decouperPassages(a: AnalyseRush, entrees: EntreesPassages = {}):
   const debutUtile = Math.min(0.5, a.duree * 0.05);
   const finUtile = a.duree - 0.05;
   const incertitudes: string[] = [];
-  const audioMax = Math.max(1e-6, ...E.map((x) => x.audio));
-  const partSonore = E.length ? E.filter((x) => x.audio > audioMax * S.sonoreRelatif && x.audio > S.audioMuet).length / E.length : 0;
+  const partSonore = partSonoreDuRush(a);
   const silencesFournis = !!entrees.silences;
-  const paroleLocalisable = silencesFournis && entrees.pisteAudio !== false && partSonore <= S.partSonoreMax && entrees.sonContinu !== true;
+  const paroleLocalisable = paroleLocalisableDuRush(a, entrees);
   if (entrees.pisteAudio !== false && E.some((x) => x.audio > S.audioMuet)) {
     if (!silencesFournis) incertitudes.push('parole non vérifiée : aucun silence mesuré finement (trames de 50 ms) — le RMS de 0,5 s ne prouve ni un silence ni une fin de phrase');
     else if (partSonore > S.partSonoreMax) incertitudes.push(`son quasi continu (${Math.round(partSonore * 100)} % du temps) : parole et musique indiscernables, aucune pause garantie`);

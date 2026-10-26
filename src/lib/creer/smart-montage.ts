@@ -40,6 +40,7 @@ import {
   decouperPassages, bornesAutorisees, departsCandidats, paroleExtrait, borneDansLeSon, notePassagePhase, SEUILS_PASSAGES,
   fenetreFixe, plafondPassage, plansEntiersCourts,
   entreesDuRush, fenetresSilences, momentsDistincts, pertinenceFiable, empreinteProche,
+  paroleProtegeableDuRush, borneCoupeLaParole, paroleEntreSilences,
   type DecoupageRush, type EntreesPassages,
 } from '@/lib/creer/passages-rush';
 
@@ -147,12 +148,51 @@ export interface OptionsMontage {
    */
   uniciteParTimecode?: boolean;
   /**
+   * Netteté comparée entre rushes sur une référence commune : un rush
+   * nettement plus flou que les autres (médiane < 45 % de la référence) est
+   * écarté au lieu de passer pour « net » à l'échelle de son propre rush.
+   * Absent : sélection d'avant, octet pour octet.
+   */
+  netteteCommune?: boolean;
+  /**
    * #613 (Créer) — rush montré JUSTE APRÈS la séquence Vidéo (fond en
    * mouvement du CTA) : le dernier plan de la Vidéo ne vient pas de lui s'il
    * existe une alternative (pas de répétition consécutive). Absent : rien.
    */
   rushApres?: string | null;
+  /**
+   * PROTECTION DE LA PAROLE (moteur par défaut, hors mode passages) : sur un
+   * rush dont la parole est PROTÉGEABLE (silences 50 ms mesurés, son mesuré
+   * NON continu — `paroleProtegeableDuRush`), les extraits peuvent
+   * aussi commencer au début d'une prise de parole ou finir à sa fin, et une
+   * borne qui tombe en plein son est PÉNALISÉE (`PENALITE_COUPE_PAROLE`), jamais
+   * interdite : faute d'alternative, l'extrait reste possible (la vidéo n'est
+   * ni raccourcie ni rallongée pour autant). Les créneaux — donc les cuts sur
+   * la musique — ne bougent pas : seul l'endroit où l'on puise dans le rush change.
+   * Silences non mesurés, son continu ou musique dans le rush : AUCUN effet.
+   * Profil d'activité autre que « parole » (danse, sport, calme…) : AUCUN effet —
+   * un son intermittent (souffle, impacts) n'y est pas pris pour une phrase.
+   * Absent : sélection d'avant, octet pour octet.
+   */
+  protectionParole?: boolean;
 }
+
+
+/**
+ * Pénalité d'une borne d'extrait posée en plein son parlé (`protectionParole`).
+ * Plus que le bonus de variété visuelle (0,2) : à qualité voisine, on ne coupe
+ * pas une phrase pour un plan un peu plus différent ; moins qu'un flash (1) :
+ * une répétition visible reste pire qu'une coupe de son.
+ */
+export const PENALITE_COUPE_PAROLE = 0.4;
+
+/**
+ * Interrupteur UNIQUE de la protection de la parole pour Créer (montage
+ * automatique, méthode A) et l'Autopilote. `false` : les deux parcours
+ * retrouvent la sélection d'avant, octet pour octet. Sans silences mesurés ou
+ * avec un son continu, l'option n'a de toute façon aucun effet.
+ */
+export const PROTECTION_PAROLE_PAR_DEFAUT = true;
 
 /**
  * #613 — marge entre deux extraits d'un même rush en unicité par timecode (s).
@@ -206,6 +246,12 @@ export const SEUILS = {
   crame: 0.95,
   /** Flou : netteté sous cette fraction de la netteté médiane du rush. */
   flouRelatif: 0.35,
+  /**
+   * Flou ENTRE rushes (`netteteCommune`) : médiane de netteté sous cette
+   * fraction de la référence commune. Banc réel : rushs nets entre eux ≥ 0,69 ;
+   * même rush flouté σ=6 → 0,40, σ=4 → 0,50 (à 30 %, seul σ≥10 était écarté).
+   */
+  flouEntreRushs: 0.45,
   /** Statique : mouvement sous cette fraction du mouvement « haut » du rush. */
   statiqueRelatif: 0.08,
   /** Changement de plan : pic de mouvement au-delà de ce multiple de la moyenne. */
@@ -509,7 +555,7 @@ export function grilleDeCoupes(
   return out;
 }
 
-interface StatsRush { mouvHaut: number; mouvMoyen: number; mouvMediane: number; netMediane: number; audioMax: number; coupes: number[] }
+interface StatsRush { mouvHaut: number; mouvMoyen: number; mouvMediane: number; netMediane: number; audioMax: number; coupes: number[]; floue?: boolean }
 
 /**
  * #613 — PLANS PROPRES d'un rush : les intervalles [début, fin] (s) sans
@@ -640,7 +686,7 @@ function mesuresFenetre(a: AnalyseRush, st: StatsRush, s: number, e: number) {
   const lum = moyenne(dedans.map((x) => x.luminosite));
   const net = moyenne(dedans.map((x) => x.nettete));
   const ratees = dedans.filter((x) =>
-    x.luminosite < SEUILS.noir || x.luminosite > SEUILS.crame || x.nettete < st.netMediane * SEUILS.flouRelatif,
+    st.floue || x.luminosite < SEUILS.noir || x.luminosite > SEUILS.crame || x.nettete < st.netMediane * SEUILS.flouRelatif,
   ).length / dedans.length;
   const mouvBrut = moyenne(dedans.map((x) => x.mouvement));
   const pic = Math.max(...dedans.map((x) => x.mouvement));
@@ -690,6 +736,28 @@ export function mesuresSegments(plan: ReadonlyArray<RushSegment>, analyses: Read
   return out;
 }
 
+/** Référence commune de netteté : médiane haute des médianes de chaque rush. */
+function referenceNettete(medianes: ReadonlyArray<number>): number {
+  return [...medianes].sort((x, y) => x - y)[Math.floor(medianes.length / 2)];
+}
+
+/**
+ * URLs des rushes NETTEMENT plus flous que les autres (médiane < 45 % de la
+ * référence commune, `SEUILS.flouEntreRushs`). Même règle que `planMontage` avec
+ * `netteteCommune`, exposée pour les REPLIS (montage simple) : quand le plan est
+ * `null` — par exemple un seul rush net, trop court pour 2 extraits —, un rush
+ * flou écarté du plan ne doit pas revenir par l'enchaînement de secours.
+ */
+export function rushsNettementFlous(analyses: ReadonlyArray<AnalyseRush>): Set<string> {
+  const vus = new Set<string>();
+  const mesures = analyses
+    .filter((a) => { const k = cleSource(a.url); if (vus.has(k) || !(a.duree > 0) || !a.echantillons.length) return false; vus.add(k); return true; })
+    .map((a) => ({ url: a.url, net: statsRush(a).netMediane }));
+  if (mesures.length < 2) return new Set();
+  const ref = referenceNettete(mesures.map((m) => m.net));
+  return new Set(mesures.filter((m) => m.net < ref * SEUILS.flouEntreRushs).map((m) => m.url));
+}
+
 /**
  * Plan de montage V3 : ~`cible` secondes MONTÉES selon le profil (phases,
  * durée de plan, coupes sur le rythme, variété visuelle, ralenti ponctuel),
@@ -721,6 +789,17 @@ export function planMontage(
     .filter((a) => { const k = cleSource(a.url); if (vus.has(k) || !(a.duree > 0) || !a.echantillons.length) return false; vus.add(k); return true; })
     .map((a) => ({ a, cle: cleSource(a.url), st: statsRush(a) }));
   if (rushs.length < 2) return null;
+  // Netteté jugée sur une référence COMMUNE : normalisée sur la médiane de son
+  // propre rush, un rush entièrement flou passait pour « net » et pouvait
+  // l'emporter sur de meilleures images. Référence = médiane haute des médianes,
+  // appliquée SEULEMENT aux rushes nettement plus flous (< 45 % de la
+  // référence, voir `SEUILS.flouEntreRushs`) et SEULEMENT avec `netteteCommune` : sans cette
+  // option, sélection d'avant, octet pour octet.
+  const flous = options.netteteCommune ? rushsNettementFlous(analyses) : null;
+  if (flous?.size) {
+    const reference = referenceNettete(rushs.map(({ st }) => st.netMediane));
+    for (const r of rushs) if (flous.has(r.a.url)) r.st = { ...r.st, netMediane: reference, floue: true };
+  }
   // M3-a — mode passages (ÉTEINT par défaut) : SEULE branche du moteur, lue
   // dans la recherche d'un extrait ci-dessous. Absent : `null`, code d'avant.
   const modePassages = options.selection === 'passages';
@@ -734,6 +813,13 @@ export function planMontage(
   const parTimecode = !!options.uniciteParTimecode && !modePassages;
   const propres = new Map<string, Array<[number, number]>>(parTimecode ? rushs.map(({ a, cle }) => [cle, plansPropres(a)]) : []);
   const cleApres = options.rushApres ? cleSource(options.rushApres) : null;
+  // Protection de la parole (hors mode passages) : SEULEMENT quand le sujet de la vidéo est la parole
+  // (profil « parole » : témoignage, interview, conseil…). Les mesures audio locales ne distinguent pas
+  // une voix d'un souffle d'effort ou d'impacts (banc du 26/10 : modulation syllabique, part 300–3 400 Hz
+  // et planéité se recouvrent) — on ne prétend donc pas reconnaître la parole : on suit l'intention dite.
+  const protegeParole = !!options.protectionParole && !modePassages && activite?.nom === 'parole';
+  const entreesParole = new Map<string, EntreesPassages>(protegeParole ? rushs.map(({ a, cle }) => [cle, entreesDuRush(a)]) : []);
+  const paroleLoc = new Set<string>(protegeParole ? rushs.filter(({ a, cle }) => paroleProtegeableDuRush(a, entreesParole.get(cle)!)).map(({ cle }) => cle) : []);
   /** #613 — nombre d'extraits montés par rush (rotation). */
   const usages = new Map<string, number>();
   /** #613 v3 — l'instant `t` du rush tombe-t-il dans un GESTE FORT (même critère que `mesuresFenetre`) ? */
@@ -865,12 +951,28 @@ export function planMontage(
         : null;
       const dp = passages ? decoupages.get(cle)! : null;
       const eR = passages ? entreesR.get(cle)! : null;
+      // Protection de la parole : départs au début d'une prise de parole, et fins à sa fin.
+      const departsParole: Array<[number, number]> = paroleLoc.has(cle)
+        ? paroleEntreSilences(entreesParole.get(cle)!.silences ?? [], a.duree)
+          .flatMap(([x, y]) => [x, y - d]).map(arrondi)
+          .filter((x) => x >= debutMin - 1e-6 && x + d <= a.duree - 0.05 + 1e-6)
+          .map((x) => [x, d] as [number, number])
+        : [];
+      // Moteur par défaut (sans plans propres) : la grille de 0,5 s, plus ces départs.
+      const departsGrille: Array<[number, number]> | null = departsParole.length && !departsPropres && !dp
+        ? Array.from(new Set([
+          ...Array.from({ length: Math.max(0, Math.floor((a.duree - 0.05 - d - debutMin) / 0.5 + 1e-9) + 1) }, (_, i) => arrondi(debutMin + i * 0.5)),
+          ...departsParole.map(([x]) => x),
+        ])).sort((u, v) => u - v).map((x) => [x, d] as [number, number])
+        : null;
       // Mode passages : fenêtres DANS les passages (débuts, sorties de geste, puis 0,5 s),
       // plus les plans ENTIERS un peu plus courts qu'un créneau long,
       // plus (PR2) les fenêtres posées sur les silences mesurés et les phrases entières.
       const fen: Array<[number, number]> | null = dp
         ? [...departsCandidats(dp, d).map((x) => [x, d] as [number, number]), ...plansEntiersCourts(dp, d), ...fenetresSilences(dp, eR!.silences, d)]
-        : departsPropres;
+        : departsPropres
+          ? (departsParole.length ? [...departsPropres, ...departsParole.filter(([x]) => !departsPropres.some(([y]) => Math.abs(x - y) < 1e-6))].sort((u, v) => u[0] - v[0]) : departsPropres)
+          : departsGrille;
       for (let k = 0, s = fen ? (fen[0]?.[0] ?? 0) : debutMin; fen ? k < fen.length : s + d <= a.duree - 0.05 + 1e-6; k++, s = fen ? (fen[k]?.[0] ?? 0) : s + 0.5) {
         const dd = fen ? fen[k][1] : d;
         const court = dd < d - 1e-6;
@@ -1038,6 +1140,9 @@ export function planMontage(
           && ((parole.debut === 'incertaine' && borneDansLeSon(a, s)) || (parole.fin === 'incertaine' && borneDansLeSon(a, e)));
         if (dansLeSon) score -= 0.15;
         if (court) score -= 0.1;
+        // Protection de la parole : chaque borne posée en plein son parlé est pénalisée.
+        const coupesParole = paroleLoc.has(cle) ? [s, e].filter((t) => borneCoupeLaParole(a, t, entreesParole.get(cle)!)).length : 0;
+        if (coupesParole) score -= PENALITE_COUPE_PAROLE * coupesParole;
         // #613 v3 : un extrait qui laisse dans sa matière libre une MIETTE (plus courte qu'un plan court)
         // la jette pour toute la vidéo — pénalisé à proportion.
         if (libres) {
@@ -1089,6 +1194,7 @@ export function planMontage(
               : parole.debut === 'absente' ? (eR!.pisteAudio === true ? 'piste muette' : 'sans piste son')
               : dansLeSon ? 'borne probablement dans un son (pénalisé)' : 'parole non vérifiée aux bornes') : null,
             modePassages && repli ? 'faute d\'alternative : coupe au milieu d\'un plan' : null,
+            paroleLoc.has(cle) ? (coupesParole ? `${coupesParole === 2 ? 'deux bornes' : 'une borne'} en plein son parlé (pénalisé)` : 'bornes dans des silences mesurés (parole non coupée, sans preuve de fin de phrase)') : null,
           ].filter(Boolean);
           meilleur = {
             score, cle, empreinte: m.empreinte, luminosite: m.luminosite, saturation: m.saturation, source: e - s,
@@ -1176,7 +1282,9 @@ export function planMontage(
   // Un plan d'UN seul rush (les autres écartés pour incohérence, #496) reste
   // un vrai montage : le refuser renvoyait à l'enchaînement brut de TOUS les
   // rushes — noir et blanc compris, le pire résultat.
-  if (plan.length < 2) return null;
+  // `netteteCommune` : un seul extrait net (rush net court, les flous écartés) est un montage exploitable ;
+  // le refuser rendrait le repli brut, qui réintroduirait les rushs flous. Sans l'option : comportement d'avant.
+  if (plan.length < (options.netteteCommune ? 1 : 2)) return null;
   // PR2 (passages) — aucun extrait propre pour le CTA lui-même : le dernier plan monté
   // en tient lieu (rôle CTA, écrit), plutôt qu'une vidéo sans CTA.
   if (modePassages && grille.some((c) => c.phase === 'CTA') && plan[plan.length - 1].phase !== 'CTA') {

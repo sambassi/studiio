@@ -21,7 +21,7 @@ export interface Raccourci {
 /** Seuil sous lequel l'écart ne vaut pas une question (s). */
 const ECART_MIN_S = 1;
 
-export function raccourciNecessaire(demande: number, possible: number, rushs: number): Raccourci | null {
+export function raccourciNecessaire(demande: number, possible: number, rushs: number, flousEcartes = 0): Raccourci | null {
   if (!(demande > 0) || !(possible > 0) || possible >= demande - ECART_MIN_S) return null;
   const parRush = possible / Math.max(1, rushs);
   const supplementaires = Math.max(1, Math.ceil((demande - possible) / Math.max(1, parRush)));
@@ -29,6 +29,7 @@ export function raccourciNecessaire(demande: number, possible: number, rushs: nu
   return {
     demande, possible, rushs, supplementaires,
     message: `Vos rushs actuels permettent une vidéo d’environ ${s(possible)} secondes sans répétition. `
+      + (flousEcartes > 0 ? `${flousEcartes} rush${flousEcartes > 1 ? 's' : ''} trop flou${flousEcartes > 1 ? 's' : ''} écarté${flousEcartes > 1 ? 's' : ''} du montage. ` : '')
       + `Pour obtenir une vidéo de ${s(demande)} secondes, ajoutez davantage de rushs.`,
   };
 }
