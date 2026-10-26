@@ -133,8 +133,8 @@ export async function renderAndUpload(input: {
   /** Début du dépôt de la vidéo. Facultatif. */
   onEnvoi?: () => void;
   /**
-   * Contrôle qualité du MP4 final (`controle-qualite-mp4.ts`) — « montage amélioré », compte
-   * administrateur seulement (`montage-ameliore-config.ts`, décidé par `produireUnMontage`).
+   * Contrôle qualité du MP4 final (`controle-qualite-mp4.ts`) — « montage amélioré », décidé par
+   * `produireUnMontage` (`montage-ameliore-config.ts`, interrupteur serveur).
    * Absent ou faux : AUCUN contrôle, rendu et dépôt exactement comme en production.
    */
   controleMp4Actif?: boolean;

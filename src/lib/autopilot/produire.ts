@@ -546,8 +546,8 @@ export async function produireUnMontage(input: {
   // sort SANS elle, et on l'ÉCRIT dans les métadonnées — jamais en silence.
   // Réseau muet ou 405 : la sonde répond « présent », comme pour le rush.
   let configUtilisee = config;
-  // MONTAGE AMÉLIORÉ (rushs flous, parole, durée, contrôle MP4) : compte administrateur relu EN BASE
-  // + interrupteur serveur (`montage-ameliore-config.ts`). Faux pour tous les autres : production.
+  // MONTAGE AMÉLIORÉ (rushs flous, parole, durée, contrôle MP4) : interrupteur serveur
+  // + utilisateur connu (`montage-ameliore-config.ts`). Interrupteur éteint : production.
   const ameliore = await montageAmelioreActifPourCompte(userId);
   let musiqueIntrouvable = false;
   if (config.musicUrl && !lisible(config.musicUrl)) {

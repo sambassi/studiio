@@ -156,7 +156,7 @@ export interface PreparationPlan {
   reutilise: boolean;
   /** Lot 4 — scènes horodatées reçues (même référence), `null` sans elles. */
   scenes?: Readonly<Record<string, FicheScenes>> | null;
-  /** Ce plan a été calculé avec le montage amélioré (compte administrateur). */
+  /** Ce plan a été calculé avec le montage amélioré (interrupteur serveur, utilisateur connecté). */
   ameliore?: boolean;
 }
 
