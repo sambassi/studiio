@@ -781,3 +781,12 @@ Variables Coolify : `ZERNIO_API_KEY` (sk_…) et `ZERNIO_WEBHOOK_SECRET`.
 - [x] Restriction a un compte supprimee ; interrupteur `CINEMA_ACTIVE` eteint par defaut ; 13 routes verifiees
 - [ ] **BLOQUE** : image Docker non construite (Docker/podman absents du poste) — aucun rendu Linux prouve
 - [ ] MinIO de production : non verifie (aucun acces) — procedure `docs/CINEMA-IA.md` 11.2
+
+## 2026-10-26 — Cinema IA : economie de ressources (local, non deploye)
+
+- [x] Bundle Remotion dans le dossier du travail (plus de fuite ni de copie des medias prives dans tmp)
+- [x] Concurrence Chromium 1, encodage non parallele, caches de decodage bornes
+- [x] RAM + processus Chromium/ffmpeg verifies avant chaque scene (aucune garantie face a l'Autopilote)
+- [x] Balayage prudent des dossiers de travail abandonnes
+- [ ] Mesurer la RAM reelle d'un rendu sur le serveur (estimations seulement)
+- [ ] Docker : cache de build / images hors retour arriere, zram — actions SERVEUR, sur autorisation

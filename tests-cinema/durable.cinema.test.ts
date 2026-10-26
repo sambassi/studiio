@@ -17,7 +17,7 @@
  *   npm run test:cinema
  */
 import { describe, it, expect } from 'vitest';
-import { mkdtemp, readFile, rm, stat } from 'fs/promises';
+import { mkdtemp, readFile, readdir, rm, stat } from 'fs/promises';
 import { tmpdir } from 'os';
 import path from 'path';
 import { preparerFilm } from '@/lib/cinema/atelier';
@@ -44,8 +44,12 @@ const HISTOIRE = [
   'Le jour se leve sur la salle vide.',
 ].join(' ');
 
+/** Bundles Remotion laisses dans le temporaire du systeme (la fuite corrigee au lot « economie »). */
+const compterBundlesTmp = async () => (await readdir(tmpdir())).filter((n) => n.startsWith('remotion-webpack-bundle-')).length;
+
 describe('production durable avec medias reels', () => {
   it('produit, montre les medias prives, ne refait rien, ne refait qu\'une scene, reprend apres une mort', async () => {
+    const bundlesAvant = await compterBundlesTmp();
     const base = await mkdtemp(path.join(tmpdir(), 'cinema-durable-'));
     const horloge = { t: new Date('2026-10-26T10:00:00Z') };
     try {
@@ -172,6 +176,10 @@ describe('production durable avec medias reels', () => {
       expect(c4.codecAudio).toBeTruthy();
       expect(c4.dureeS).toBeGreaterThan(5);
 
+      // Plusieurs rendus reels (dont un « tue » et repris) : AUCUN bundle ne doit etre reste dans le temporaire.
+      const bundlesApres = await compterBundlesTmp();
+      console.log('[cinema/durable]', 'bundles Remotion laisses dans tmp :', bundlesApres - bundlesAvant);
+      expect(bundlesApres).toBe(bundlesAvant);
       console.log('[cinema/durable]', 'MP4 initial', c1.octets, 'octets', c1.dureeS, 's |', 'apres reprise', c4.octets, 'octets', c4.dureeS, 's');
     } finally {
       await rm(base, { recursive: true, force: true });

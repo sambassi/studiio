@@ -582,14 +582,14 @@ describe('executeur — serveur Linux : voix, ressources, concurrence', () => {
 });
 
 describe('ressources — regles pures', () => {
-  it('concurrence : 2 par defaut, 1 sur 2 coeurs ou moins, bornee a 4, valeurs invalides ignorees', async () => {
+  it('concurrence : 1 par defaut, reglable jusqu\'a 4, 1 sur 2 coeurs ou moins, valeurs invalides ignorees', async () => {
     const { concurrenceRendu } = await import('@/lib/cinema/travaux/ressources');
     const e = (v?: string) => ({ CINEMA_CONCURRENCE_RENDU: v }) as unknown as NodeJS.ProcessEnv;
-    expect(concurrenceRendu(e(), 8)).toBe(2);
+    expect(concurrenceRendu(e(), 8)).toBe(1);
     expect(concurrenceRendu(e('3'), 8)).toBe(3);
     expect(concurrenceRendu(e('99'), 8)).toBe(4);
-    expect(concurrenceRendu(e('0'), 8)).toBe(2);
-    expect(concurrenceRendu(e('abc'), 8)).toBe(2);
+    expect(concurrenceRendu(e('0'), 8)).toBe(1);
+    expect(concurrenceRendu(e('abc'), 8)).toBe(1);
     expect(concurrenceRendu(e('4'), 2)).toBe(1);
     expect(concurrenceRendu(e(), 1)).toBe(1);
   });
@@ -608,3 +608,151 @@ describe('ressources — regles pures', () => {
     expect(src).toMatch(/process\.platform !== 'darwin'\) throw e/);
   });
 });
+
+describe('economie de ressources — bundle, scenes, processus, dossiers abandonnes', () => {
+  it('le bundle Remotion vit DANS le dossier du travail (jamais le temporaire du systeme) et disparait avec lui', async () => {
+    const { tmpdir } = await import('os');
+    const m = await monde();
+    const vus: Array<{ dossierBundle?: string; concurrence?: number }> = [];
+    const avantMoteur = m.dep.moteurs.preparerRendu;
+    m.dep.moteurs.preparerRendu = async (o) => {
+      vus.push({ dossierBundle: o.dossierBundle, concurrence: o.concurrence });
+      // Comme Remotion : le bundle contient une COPIE des medias prives.
+      await mkdir(path.join(o.dossierBundle!, 'public'), { recursive: true });
+      await writeFile(path.join(o.dossierBundle!, 'public', 'media-prive.mp4'), 'prive');
+      return avantMoteur(o);
+    };
+    const t = await lancer(m);
+    expect(await executerTravail(t.id, A, m.dep)).toBe('termine');
+    expect(vus).toHaveLength(1);                                   // un seul bundle pour tout le film
+    const b = path.resolve(vus[0].dossierBundle!);
+    expect(b.startsWith(path.resolve(m.dossierTravail) + path.sep)).toBe(true);
+    expect(b.startsWith(path.resolve(tmpdir()) + path.sep) && !b.startsWith(path.resolve(m.dossierTravail))).toBe(false);
+    expect(vus[0].concurrence).toBe(1);
+    const { access } = await import('fs/promises');
+    await expect(access(b)).rejects.toThrow();                     // bundle et medias prives effaces
+    expect(await readdir(m.dossierTravail)).toEqual([]);
+  });
+
+  it('meme apres un echec de rendu, le bundle et ses medias sont effaces', async () => {
+    const m = await monde();
+    let b = '';
+    m.dep.moteurs.preparerRendu = async (o) => {
+      b = o.dossierBundle!;
+      await mkdir(path.join(b, 'public'), { recursive: true });
+      await writeFile(path.join(b, 'public', 'media-prive.mp4'), 'prive');
+      throw new Error('Chromium a plante');
+    };
+    expect(await executerTravail((await lancer(m)).id, A, m.dep)).toBe('echec');
+    const { access } = await import('fs/promises');
+    await expect(access(b)).rejects.toThrow();
+    expect(await readdir(m.dossierTravail)).toEqual([]);
+  });
+
+  it('ni les films ni les medias enregistres ne sont touches par le nettoyage', async () => {
+    const m = await monde();
+    const cleMediaEnregistre = `${A}/cinema/${m.film.id}/medias/s1-p-1-0a1b2c3d.mp4`;
+    await m.objets.deposerOctets(cleMediaEnregistre, new Uint8Array([1, 2, 3]), 'video/mp4');
+    expect(await executerTravail((await lancer(m)).id, A, m.dep)).toBe('termine');
+    expect(m.objets.contenu(cleMediaEnregistre)).toEqual(new Uint8Array([1, 2, 3]));
+    expect(await m.films.lire(m.film.id, A)).not.toBeNull();
+    expect(m.objets.cles().filter((k) => k.includes('/scenes/')).length).toBeGreaterThan(0);
+  });
+
+  it('la RAM et l\'activite du serveur sont verifiees avant CHAQUE scene, sans que Cinema s\'attende lui-meme', async () => {
+    const { rendusRemotionActifs } = await import('@/lib/render/occupation-remotion');
+    const m = await monde();
+    let lectures = 0;
+    // Compteur REEL (qui inclut Cinema pendant son rendu) : si Cinema s'attendait lui-meme, ce test bloquerait.
+    m.dep.ressources = { lire: () => { lectures += 1; return { rendusEnCours: rendusRemotionActifs(), ramLibreMo: 64_000, cpus: 8, processusLourds: 0 }; }, pause: async () => {} };
+    expect(await executerTravail((await lancer(m)).id, A, m.dep)).toBe('termine');
+    expect(lectures).toBeGreaterThanOrEqual(m.film.scenes.length);
+  });
+
+  it('la RAM qui s\'effondre ENTRE deux scenes met le travail en attente, puis il reprend', async () => {
+    const m = await monde();
+    const pauses: string[] = [];
+    let basse = false;
+    m.surRendu.fn = async () => { basse = true; };                // apres la 1re scene, la memoire chute
+    m.dep.ressources = {
+      lire: () => ({ rendusEnCours: 0, ramLibreMo: basse ? 200 : 64_000, cpus: 8 }),
+      pause: async () => { pauses.push('attente'); basse = false; }, // le serveur se libere pendant l'attente
+    };
+    expect(await executerTravail((await lancer(m)).id, A, m.dep)).toBe('termine');
+    expect(pauses.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('un autre Chromium/ffmpeg detecte (Autopilote) met en attente ; detection impossible = jamais pretendu « libre »', async () => {
+    const { motifAttente, SEUILS_DEFAUT } = await import('@/lib/cinema/travaux/ressources');
+    const base = { rendusEnCours: 0, ramLibreMo: 8000, cpus: 4 };
+    expect(motifAttente({ ...base, processusLourds: 1 }, SEUILS_DEFAUT)).toMatch(/Chromium ou ffmpeg/);
+    expect(motifAttente({ ...base, processusLourds: 0 }, SEUILS_DEFAUT)).toBeNull();
+    // `null` = on ne sait pas : pas d'attente inventee, et la documentation ne promet aucune garantie.
+    expect(motifAttente({ ...base, processusLourds: null }, SEUILS_DEFAUT)).toBeNull();
+    const { compterProcessusLourds, estProcessusLourd } = await import('@/lib/cinema/travaux/processus');
+    expect(['chrome-headless', 'chrome', 'chromium', 'ffmpeg'].every(estProcessusLourd)).toBe(true);
+    expect(['node', 'remotion', 'sh', 'ffprobe', 'postgres'].some(estProcessusLourd)).toBe(false);
+    const procs: Record<string, { comm: string; etat: string }> = {
+      '1': { comm: 'node', etat: 'S' }, '2': { comm: 'chrome-headless', etat: 'S' }, '3': { comm: 'ffmpeg', etat: 'Z' }, '4': { comm: 'ffmpeg', etat: 'R' },
+    };
+    expect(await compterProcessusLourds({ pids: async () => Object.keys(procs), lire: async (p) => procs[p] ?? null })).toBe(2);
+    expect(await compterProcessusLourds({ pids: async () => { throw new Error('pas de /proc'); }, lire: async () => null })).toBeNull();
+    expect(await compterProcessusLourds({ pids: async () => [], lire: async () => null })).toBeNull();
+  });
+});
+
+describe('dossiers de travail abandonnes — balayage prudent', () => {
+  const UUID = '33333333-3333-4333-8333-333333333333';
+  const ANCIEN = Date.now() - 10 * 3_600_000;
+
+  async function base() {
+    const racine = await mkdtemp(path.join(tmpdir(), 'cinema-balai-'));
+    racines.push(racine);
+    return racine;
+  }
+  const vieillir = async (chemin: string, ms = ANCIEN) => { const { utimes } = await import('fs/promises'); await utimes(chemin, ms / 1000, ms / 1000); };
+
+  it('efface un dossier Cinema abandonne et ancien, et rien d\'autre', async () => {
+    const { balayerDossiersAbandonnes } = await import('@/lib/cinema/travaux/executeur');
+    const b = await base();
+    const garde = [`${UUID}-1x`, 'autre-application', 'remotion-webpack-bundle-AbCdEf', 'tmp-zz', `${UUID}-9`, UUID, '..cache'];
+    for (const n of [`${UUID}-2`, 'tmp-0123456789ab', ...garde]) { await mkdir(path.join(b, n), { recursive: true }); await writeFile(path.join(b, n, 'f'), 'x'); await vieillir(path.join(b, n)); }
+    // Trop recent : conserve, meme avec le bon nom.
+    await mkdir(path.join(b, `${UUID}-3`)); await writeFile(path.join(b, `${UUID}-3`, 'f'), 'x');
+    // Un FICHIER au nom d'un dossier de travail : conserve.
+    await writeFile(path.join(b, `${UUID}-4`), 'x'); await vieillir(path.join(b, `${UUID}-4`));
+
+    expect(await balayerDossiersAbandonnes(b)).toBe(2);
+    const restant = (await readdir(b)).sort();
+    expect(restant).toEqual([...garde, `${UUID}-3`, `${UUID}-4`].sort());
+  });
+
+  it('un lien symbolique au nom d\'un dossier de travail n\'est ni suivi ni efface, et sa cible reste intacte', async () => {
+    const { balayerDossiersAbandonnes } = await import('@/lib/cinema/travaux/executeur');
+    const { symlink, lstat, utimes, lutimes } = await import('fs/promises');
+    const b = await base();
+    const dehors = await base();
+    await writeFile(path.join(dehors, 'precieux.txt'), 'ne pas toucher');
+    await symlink(dehors, path.join(b, `${UUID}-1`));
+    await utimes(dehors, ANCIEN / 1000, ANCIEN / 1000);
+    await lutimes(path.join(b, `${UUID}-1`), ANCIEN / 1000, ANCIEN / 1000);   // le lien lui-meme est ANCIEN
+    expect(await balayerDossiersAbandonnes(b)).toBe(0);
+    expect((await lstat(path.join(b, `${UUID}-1`))).isSymbolicLink()).toBe(true);
+    expect(await readdir(dehors)).toEqual(['precieux.txt']);
+  });
+
+  it('un travail ACTIF dans ce processus n\'est jamais balaye, meme tres ancien ; base absente = 0', async () => {
+    const { balayerDossiersAbandonnes } = await import('@/lib/cinema/travaux/executeur');
+    const m = await monde();
+    let pendant = -1;
+    m.dep.moteurs.preparerRendu = async () => {
+      // Balayage « age minimum 0 » PENDANT le travail : son dossier est actif, il doit survivre.
+      pendant = await balayerDossiersAbandonnes(m.dossierTravail, { ageMinMs: 0 });
+      return async (tache) => { await mkdir(path.dirname(tache.sortie), { recursive: true }); await writeFile(tache.sortie, 'mp4:x'); return { fichier: tache.sortie, octets: 5, dureeS: 9, largeur: 1920, hauteur: 1080, codecVideo: 'h264', codecAudio: 'aac' }; };
+    };
+    expect(await executerTravail((await lancer(m)).id, A, m.dep)).toBe('termine');
+    expect(pendant).toBe(0);
+    expect(await balayerDossiersAbandonnes(path.join(m.racine, 'inexistant'))).toBe(0);
+  });
+});
+

@@ -1249,3 +1249,7 @@ Avec l'avatar, « Produire maintenant » répond 200 `{ jumeau: 'en_preparation'
 [2026-10-26] | `os.freemem()` sur macOS ne reflete pas la memoire disponible : un seuil de RAM bloquait les tests du poste de dev | Une sentinelle de ressources doit etre INJECTABLE (`ressources`) ; les tests et les bancs de poste la fixent, la production garde la lecture reelle.
 
 [2026-10-26] | `require('@/…')` dans un module serveur marche sous webpack mais pas sous vitest : le chemin par defaut de `objetsMinio` n'etait donc teste par personne | Extraire le cablage (`adapterClientMinio`) en fonction exportee et la tester avec les vrais clients ; ne laisser dans le `require` que la resolution.
+
+[2026-10-26] | Cinema IA : `bundle()` de Remotion ecrit dans le temporaire du systeme et ne l'efface jamais — ~50 Mo par rendu ET une copie des medias prives ; 66 dossiers constates apres les bancs. Le nettoyage du dossier de travail ne le couvrait pas, le bundle etant ailleurs | Faire ecrire tout artefact d'un outil externe DANS le dossier du travail (`outDir`) plutot que de le chercher apres ; mesurer le temporaire avant/apres dans le banc reel.
+
+[2026-10-26] | Une verification de ressources faite une seule fois avant un travail long est obsolete des la 2e scene ; et un compteur qui inclut l'appelant le fait s'attendre lui-meme | Verifier avant chaque unite de travail, en retirant sa propre contribution du compteur.

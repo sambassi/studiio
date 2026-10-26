@@ -21,19 +21,28 @@
  */
 import os from 'os';
 import { rendusRemotionActifs } from '@/lib/render/occupation-remotion';
+import { compterProcessusLourds } from '@/lib/cinema/travaux/processus';
 
-export interface EtatRessources { rendusEnCours: number; ramLibreMo: number; cpus: number }
+export interface EtatRessources {
+  rendusEnCours: number; ramLibreMo: number; cpus: number;
+  /** Processus Chromium/ffmpeg vivants dans le conteneur ; `null` = detection impossible (jamais « zero »). */
+  processusLourds?: number | null;
+}
 export interface SeuilsRessources { ramMinMo: number; delaiMaxMs: number; pasMs: number }
 
 export const SEUILS_DEFAUT: SeuilsRessources = { ramMinMo: 1536, delaiMaxMs: 10 * 60_000, pasMs: 5_000 };
 
-export function lireRessources(): EtatRessources {
-  return { rendusEnCours: rendusRemotionActifs(), ramLibreMo: Math.floor(os.freemem() / 1_048_576), cpus: os.cpus().length };
+export async function lireRessources(): Promise<EtatRessources> {
+  return {
+    rendusEnCours: rendusRemotionActifs(), ramLibreMo: Math.floor(os.freemem() / 1_048_576), cpus: os.cpus().length,
+    processusLourds: await compterProcessusLourds(),
+  };
 }
 
 /** Le motif de l'attente, ou `null` si le rendu peut partir. */
 export function motifAttente(e: EtatRessources, s: SeuilsRessources): string | null {
   if (e.rendusEnCours > 0) return 'un autre rendu est en cours sur le serveur';
+  if (e.processusLourds && e.processusLourds > 0) return 'un autre rendu video (Chromium ou ffmpeg) est actif sur le serveur';
   if (e.ramLibreMo < s.ramMinMo) return `memoire du serveur insuffisante (${e.ramLibreMo} Mo libres, ${s.ramMinMo} Mo requis)`;
   return null;
 }
@@ -44,7 +53,7 @@ export class ServeurOccupe extends Error {
 }
 
 export interface DependancesAttente {
-  lire?: () => EtatRessources;
+  lire?: () => EtatRessources | Promise<EtatRessources>;
   seuils?: Partial<SeuilsRessources>;
   pause?: (ms: number) => Promise<void>;
   /** Appelee a chaque tour d'attente (renouvelle le bail, repere un arret demande). Peut lever. */
@@ -57,7 +66,7 @@ export async function attendreRessources(dep: DependancesAttente = {}): Promise<
   const pause = dep.pause ?? ((ms) => new Promise<void>((r) => setTimeout(r, ms)));
   let attendu = 0;
   for (;;) {
-    const motif = motifAttente(lire(), s);
+    const motif = motifAttente(await lire(), s);
     if (!motif) return;
     if (attendu >= s.delaiMaxMs) throw new ServeurOccupe(motif);
     await dep.surAttente?.(motif);
@@ -66,9 +75,13 @@ export async function attendreRessources(dep: DependancesAttente = {}): Promise<
   }
 }
 
-/** Concurrence Chromium : 2 par defaut, 1 sur une machine a 2 coeurs ou moins, jamais plus de 4. */
+/**
+ * Concurrence Chromium (onglets de rendu d'UN film) : 1 par defaut — chaque onglet
+ * coute plusieurs centaines de Mo. `CINEMA_CONCURRENCE_RENDU` peut l'augmenter
+ * (jamais plus de 4) sur un serveur qui a de la marge ; 1 sur 2 coeurs ou moins.
+ */
 export function concurrenceRendu(env: NodeJS.ProcessEnv = process.env, cpus = os.cpus().length): number {
   const demandee = Number(env.CINEMA_CONCURRENCE_RENDU);
-  const base = Number.isInteger(demandee) && demandee >= 1 ? demandee : 2;
+  const base = Number.isInteger(demandee) && demandee >= 1 ? demandee : 1;
   return Math.max(1, Math.min(4, cpus <= 2 ? 1 : base));
 }

@@ -360,3 +360,23 @@ corbeille, puis coche de confirmation.
 | ressources, voix, dossier de travail | `cinema-travaux.test.ts` |
 | objets : `lister` sur les 3 implementations | `cinema-stockage.test.ts` |
 | MinIO reel jetable | `tests-cinema/minio.cinema.test.ts` |
+
+## 12. Economie de ressources (serveur Hetzner partage)
+
+- **Fuite corrigee** : `bundle()` de Remotion ecrit dans `<tmp>/remotion-webpack-bundle-*` et ne l'efface jamais
+  (~50 Mo par rendu + une COPIE des medias prives). Le bundle est desormais ecrit dans
+  `<dossier du travail>/bundle` (`dossierBundle`) : il disparait avec le dossier, succes ou echec, et n'est
+  jamais partage entre travaux. Le banc reel verifie qu'aucun bundle ne reste dans le temporaire. Le bundle
+  du rendu serveur existant (`lib/render/worker.ts`, en cache) n'est pas touche.
+- **Memoire du rendu** (sans effet sur l'image ni le son, un peu plus lent) : 1 onglet Chromium
+  (`CINEMA_CONCURRENCE_RENDU`, 1 par defaut, 4 au plus), `disallowParallelEncoding`, caches de decodage bornes
+  (`CINEMA_CACHE_VIDEO_MO` 256, `CINEMA_CACHE_MEDIA_MO` 128), 1 fil de decodage de rush. La resolution n'est
+  jamais reduite automatiquement. Cout mesure sur le banc : 82 s -> 129 s pour le meme film.
+- **Verification AVANT CHAQUE scene** (et non plus une fois) : memoire libre >= 1536 Mo, aucun rendu `renderVideo`
+  actif, aucun Chromium/ffmpeg etranger dans le conteneur (lecture de `/proc`). Attente bornee a 10 min.
+- **Autopilote : pas de garantie.** Cinema le detecte par ses processus, mais un rendu qui demarre apres la
+  verification n'est pas vu, `/proc` ne montre que le meme conteneur, et hors Linux la detection est
+  impossible (`null`, jamais « libre »). Autopilote n'est pas modifie et ne se coordonne pas avec Cinema.
+- **Dossiers abandonnes** : `balayerDossiersAbandonnes` (au plus toutes les 10 min) n'efface que les enfants
+  directs de `<tmp>/studiio-cinema` nommes `<uuid>-<prise>` ou `tmp-<hex>`, vrais dossiers (pas de lien),
+  hors de ce processus, de plus de 3 h. Au moindre doute : conserve. Le temporaire du systeme n'est jamais balaye.

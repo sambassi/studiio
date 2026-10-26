@@ -28,13 +28,13 @@
  * Stripe — un test le verifie sur le code source.
  */
 import path from 'path';
-import { mkdir, rm } from 'fs/promises';
+import { lstat, mkdir, readdir, rm } from 'fs/promises';
 import type { SceneCinema } from '@/lib/cinema/types';
 import { dureeScene } from '@/lib/cinema/types';
 import { empreinteScene, hash, scelleScene } from '@/lib/cinema/empreinte';
 import { inscrireCout } from '@/lib/cinema/couts';
 import { evaluerProduction } from '@/lib/cinema/travaux/plafond';
-import { attendreRessources, concurrenceRendu, ServeurOccupe, type DependancesAttente } from '@/lib/cinema/travaux/ressources';
+import { attendreRessources, concurrenceRendu, lireRessources, ServeurOccupe, type DependancesAttente } from '@/lib/cinema/travaux/ressources';
 import { entrerRenduRemotion } from '@/lib/render/occupation-remotion';
 import { monterFilm, montageDeScene } from '@/lib/cinema/montage';
 import { ajusterDureesSurVoix, synthetiserFilm } from '@/lib/cinema/voix';
@@ -105,6 +105,54 @@ function referenceCourte(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Dossiers de travail abandonnes (processus tue en plein rendu)
+// ─────────────────────────────────────────────────────────────────────────
+
+/** Dossiers de travail en cours d'utilisation DANS CE PROCESSUS : jamais balayes. */
+const dossiersActifs = new Set<string>();
+/** Un travail legitime ne dure pas des heures ; en dessous de cet age, on ne touche a rien. */
+export const AGE_MIN_BALAYAGE_MS = 3 * 3_600_000;
+const MOTIF_DOSSIER_TRAVAIL = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-[1-5]$/;
+const MOTIF_DOSSIER_TEMPORAIRE = /^tmp-[0-9a-f]{12}$/;
+
+/**
+ * Efface les dossiers de travail Cinema ABANDONNES sous `base` et dit combien.
+ * Un dossier n'est efface que si TOUT est vrai :
+ *   - c'est un enfant direct de `base`, de la forme exacte `<travail>-<prise>` ou `tmp-<hex>` ;
+ *   - c'est un vrai dossier (pas un lien symbolique) ;
+ *   - il n'est pas utilise par ce processus ;
+ *   - sa derniere modification date de plus de `ageMinMs`.
+ * Au moindre doute (autre nom, lien, erreur de lecture, date inconnue) : conserve.
+ * Les autres applications ne sont jamais concernees : `base` est le dossier de Cinema,
+ * pas le dossier temporaire du systeme.
+ */
+export async function balayerDossiersAbandonnes(
+  base: string, options: { ageMinMs?: number; maintenant?: number } = {},
+): Promise<number> {
+  const racine = path.resolve(base);
+  const ageMin = options.ageMinMs ?? AGE_MIN_BALAYAGE_MS;
+  const maintenant = options.maintenant ?? Date.now();
+  let noms: string[];
+  try { noms = await readdir(racine); } catch { return 0; }
+  let n = 0;
+  for (const nom of noms) {
+    if (!MOTIF_DOSSIER_TRAVAIL.test(nom) && !MOTIF_DOSSIER_TEMPORAIRE.test(nom)) continue;
+    const chemin = path.join(racine, nom);
+    if (path.dirname(chemin) !== racine || dossiersActifs.has(chemin)) continue;
+    try {
+      const info = await lstat(chemin);
+      if (!info.isDirectory() || info.isSymbolicLink()) continue;
+      if (!Number.isFinite(info.mtimeMs) || maintenant - info.mtimeMs < ageMin) continue;
+      await rm(chemin, { recursive: true, force: true });
+      n += 1;
+    } catch { /* incertain : on conserve */ }
+  }
+  return n;
+}
+
+let dernierBalayage = 0;
+
 /** Efface UN dossier de travail, jamais autre chose : le chemin est verifie sous la base. */
 async function effacerDossier(base: string, dossier: string): Promise<void> {
   const b = path.resolve(base) + path.sep;
@@ -124,6 +172,11 @@ export async function executerTravail(travailId: string, proprietaire: string, d
   // Un dossier PAR PRISE : un executeur dont le bail a ete repris ne partage
   // ni fichiers ni nettoyage avec celui qui l'a remplace.
   const dossier = path.join(dep.dossierTravail, `${pris.id}-${jeton}`);
+  dossiersActifs.add(path.resolve(dossier));
+  if (Date.now() - dernierBalayage > 10 * 60_000) {
+    dernierBalayage = Date.now();
+    balayerDossiersAbandonnes(dep.dossierTravail).catch(() => { /* le balayage est un confort */ });
+  }
   let progression: ProgressionTravail = { ...pris.progression, scenes: { ...pris.progression.scenes } };
   let perdu = false;
   let arret = false;
@@ -238,18 +291,26 @@ export async function executerTravail(travailId: string, proprietaire: string, d
       verifier();
       const sous = montageDeScene(montage, scene.id);
       if (!sous) { avertissements.push(`scene ${scene.id} sans plan, ignoree`); continue; }
-      await publier({ etape: 'rendu', message: `Rendu de la scene « ${scene.titre} »` }, { [scene.id]: 'en_cours' });
 
+      // Avant CHAQUE scene : la memoire et l'activite du serveur ont pu changer.
+      await attendreRessources({
+        ...dep.ressources,
+        lire: async () => {
+          const e = await (dep.ressources?.lire ?? lireRessources)();
+          // Pendant son propre rendu, Cinema figure dans le compteur : on ne s'attend pas lui-meme.
+          return sortirDuRendu ? { ...e, rendusEnCours: Math.max(0, e.rendusEnCours - 1) } : e;
+        },
+        surAttente: async (motif) => { await publier({ etape: 'rendu', message: `En attente : ${motif}` }); },
+      });
       if (!rendre) {
-        // Un seul rendu lourd a la fois sur le serveur : on attend son tour, bail renouvele.
-        await attendreRessources({
-          ...dep.ressources,
-          surAttente: async (motif) => { await publier({ etape: 'rendu', message: `En attente : ${motif}` }); },
-        });
         sortirDuRendu = entrerRenduRemotion();
-        rendre = await dep.moteurs.preparerRendu({ racine: dep.racine, publicDir: racinePublique, concurrence: dep.concurrence ?? concurrenceRendu() });
-        await publier({ etape: 'rendu', message: `Rendu de la scene « ${scene.titre} »` });
+        rendre = await dep.moteurs.preparerRendu({
+          racine: dep.racine, publicDir: racinePublique, concurrence: dep.concurrence ?? concurrenceRendu(),
+          // Le bundle (et la copie des medias qu'il contient) vit DANS le dossier du travail : efface avec lui.
+          dossierBundle: path.join(dossier, 'bundle'),
+        });
       }
+      await publier({ etape: 'rendu', message: `Rendu de la scene « ${scene.titre} »` }, { [scene.id]: 'en_cours' });
       await rendre({ montage: sous, sortie: local });
       // Deposee AVANT d'etre annoncee faite : une scene annoncee est une scene durable.
       await dep.objets.deposerFichier(cleDeScene(scene), local, 'video/mp4');
@@ -334,6 +395,7 @@ export async function executerTravail(travailId: string, proprietaire: string, d
   } finally {
     clearInterval(battement);
     sortirDuRendu?.();
+    dossiersActifs.delete(path.resolve(dossier));
     await effacerDossier(dep.dossierTravail, dossier);
   }
 }

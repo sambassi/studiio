@@ -13,7 +13,8 @@
  * (pour ne jamais annoncer un fichier qu'on n'a pas inspecte).
  */
 import { spawn } from 'child_process';
-import { mkdir, writeFile, stat } from 'fs/promises';
+import { mkdir, mkdtemp, rm, writeFile, stat } from 'fs/promises';
+import os from 'os';
 import path from 'path';
 import { cheminFfprobe } from '@/lib/ffmpeg/binaires';
 import type { MontageFilm } from '@/lib/cinema/montage';
@@ -199,6 +200,19 @@ export interface OptionsPreparationRendu {
    * serveur, jamais dans le dossier que Next sert au monde entier.
    */
   publicDir?: string;
+  /**
+   * Ou ecrire le bundle webpack. Sans cela Remotion l'ecrit dans le dossier
+   * temporaire du systeme (`remotion-webpack-bundle-*`) et NE L'EFFACE JAMAIS :
+   * ~50 Mo par rendu, plus une COPIE des medias prives (`publicDir`). L'appelant
+   * donne un dossier qu'il possede et efface.
+   */
+  dossierBundle?: string;
+}
+
+/** Taille (Mo) d'un cache memoire de Remotion, reglable par variable, bornee 32..2048. */
+function cacheMo(env: NodeJS.ProcessEnv, nom: string, defaut: number): number {
+  const v = Number(env[nom]);
+  return (Number.isFinite(v) && v >= 32 ? Math.min(2048, Math.floor(v)) : defaut) * 1_048_576;
 }
 
 /**
@@ -216,6 +230,7 @@ export async function preparerRendu(options: OptionsPreparationRendu): Promise<(
     entryPoint: path.resolve(options.racine, 'remotion/index.tsx'),
     webpackOverride: remotionWebpackOverride,
     ...(options.publicDir ? { publicDir: options.publicDir } : {}),
+    ...(options.dossierBundle ? { outDir: options.dossierBundle } : {}),
   });
 
   return async (tache) => {
@@ -232,6 +247,13 @@ export async function preparerRendu(options: OptionsPreparationRendu): Promise<(
       // Meme reglage que le rendu serveur existant (`lib/render/worker.ts`) : sur un
       // serveur sans GPU, c'est la voie deja eprouvee en production.
       chromiumOptions: { gl: 'angle' },
+      // ── Memoire : AUCUN effet sur la qualite de l'image ni du son ─────────
+      // Pas d'encodage en parallele du rendu (moins de memoire, un peu plus lent).
+      disallowParallelEncoding: true,
+      // Caches de decodage des rushes bornes (par defaut ils grossissent avec la RAM libre).
+      offthreadVideoCacheSizeInBytes: cacheMo(process.env, 'CINEMA_CACHE_VIDEO_MO', 256),
+      mediaCacheSizeInBytes: cacheMo(process.env, 'CINEMA_CACHE_MEDIA_MO', 128),
+      offthreadVideoThreads: 1,
       // La piste audio est GARDEE : les voix des repliques sont dans la
       // composition (`<Audio>`), un rendu muet les perdrait en silence.
       muted: false,
@@ -252,8 +274,14 @@ export async function rendreMontages(
   options: { racine: string; concurrence?: number; publicDir?: string },
 ): Promise<ControleMp4[]> {
   if (!taches.length) return [];
-  const rendre = await preparerRendu(options);
-  const controles: ControleMp4[] = [];
-  for (const tache of taches) controles.push(await rendre(tache));
-  return controles;
+  // Le bundle va dans un dossier que NOUS creons et effacons, pas dans le temporaire du systeme.
+  const dossierBundle = await mkdtemp(path.join(os.tmpdir(), 'cinema-bundle-'));
+  try {
+    const rendre = await preparerRendu({ ...options, dossierBundle });
+    const controles: ControleMp4[] = [];
+    for (const tache of taches) controles.push(await rendre(tache));
+    return controles;
+  } finally {
+    await rm(dossierBundle, { recursive: true, force: true }).catch(() => {});
+  }
 }
