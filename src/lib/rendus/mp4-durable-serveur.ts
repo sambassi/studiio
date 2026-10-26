@@ -180,8 +180,8 @@ export async function produireMp4DuPost(userId: string, postId: string): Promise
     // Contrôle qualité du MP4 produit (ffmpeg local, aucun crédit) : observe, ne change pas l'encodage.
     // Illisible / sans vidéo / presque noir : même gestion d'erreur qu'une sortie invalide (le WebM reste).
     // Défauts mineurs : avertissements discrets sur le post, lus par le Calendrier. Panne du contrôle : ignorée.
-    // « Montage amélioré » : compte administrateur seulement (`montage-ameliore-config.ts`, relu en base
-    // par le serveur) — faux pour les autres : aucun contrôle, le MP4 est déposé comme en production.
+    // « Montage amélioré » : interrupteur serveur + utilisateur connecté (`montage-ameliore-config.ts`)
+    // — éteint : aucun contrôle, le MP4 est déposé comme en production.
     let controle: { resultat: ResultatControleMp4; avertissements: string[] } | null = null;
     try {
       if (await montageAmelioreActifPourCompte(userId)) {

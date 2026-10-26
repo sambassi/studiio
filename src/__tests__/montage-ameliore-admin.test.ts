@@ -1,6 +1,6 @@
 /**
- * MONTAGE AMÉLIORÉ — activation réservée à l'administrateur (compte relu en base + interrupteur
- * serveur). Compte standard / interrupteur absent : le comportement de la production, à l'identique.
+ * MONTAGE AMÉLIORÉ — activation par l'interrupteur serveur pour tout utilisateur connecté.
+ * Interrupteur absent ou pas de session : le comportement de la production, à l'identique.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'fs';
@@ -28,52 +28,41 @@ const ADMIN_ON = { STUDIIO_MONTAGE_AMELIORE_ENABLED: 'true' };
 beforeEach(() => { base.ligne = null; base.erreur = false; session.id = undefined; session.boom = false; spy.plans.length = 0; });
 
 describe('décision serveur', () => {
-  it('interrupteur absent ou autre que « true » : éteint pour TOUS, administrateur compris', async () => {
+  it('interrupteur absent ou autre que « true » : éteint pour TOUS, y compris un administrateur', async () => {
     base.ligne = { role: 'admin', email: 'x@y.z' };
     for (const env of [{}, { STUDIIO_MONTAGE_AMELIORE_ENABLED: 'TRUE' }, { STUDIIO_MONTAGE_AMELIORE_ENABLED: '1' }, { STUDIIO_MONTAGE_AMELIORE_ENABLED: 'true ' }, { STUDIIO_MONTAGE_AMELIORE_ENABLED: 'false' }]) {
       expect(montageAmelioreServeurActif(env)).toBe(false);
       expect(await montageAmelioreActifPourCompte('u1', { env })).toBe(false);
     }
   });
-  it('interrupteur + administrateur (rôle admin OU e-mail administrateur, relus en base) : actif', async () => {
+  it('interrupteur + utilisateur connecté : actif, sans rôle ni identifiant particulier', async () => {
+    base.ligne = { role: 'user', email: 'client@example.com' };
+    expect(await montageAmelioreActifPourCompte('u2', { env: ADMIN_ON })).toBe(true);
     base.ligne = { role: 'admin', email: 'autre@x.fr' };
     expect(await montageAmelioreActifPourCompte('u1', { env: ADMIN_ON })).toBe(true);
-    base.ligne = { role: 'user', email: 'contact.artboost@gmail.com' };
-    expect(await montageAmelioreActifPourCompte('u1', { env: ADMIN_ON })).toBe(true);
   });
-  it('interrupteur + compte standard : éteint', async () => {
-    base.ligne = { role: 'user', email: 'client@example.com' };
-    expect(await montageAmelioreActifPourCompte('u2', { env: ADMIN_ON })).toBe(false);
-    base.ligne = { role: 'Administrateur', email: 'client@example.com' }; // rôle non prévu : pas de porte
-    expect(await montageAmelioreActifPourCompte('u2', { env: ADMIN_ON })).toBe(false);
-  });
-  it('compte inconnu, base en panne, identifiant absent, erreur : éteint (production)', async () => {
-    base.ligne = null;
-    expect(await montageAmelioreActifPourCompte('u3', { env: ADMIN_ON })).toBe(false);
-    base.ligne = { role: 'admin' }; base.erreur = true;
-    expect(await montageAmelioreActifPourCompte('u3', { env: ADMIN_ON })).toBe(false);
+  it('aucun utilisateur connu (identifiant absent ou vide) : éteint, même interrupteur allumé', async () => {
     expect(await montageAmelioreActifPourCompte(undefined, { env: ADMIN_ON })).toBe(false);
-    expect(await montageAmelioreActifPourCompte('u3', { env: ADMIN_ON, estAdmin: async () => { throw new Error('x'); } })).toBe(false);
+    expect(await montageAmelioreActifPourCompte(null, { env: ADMIN_ON })).toBe(false);
+    expect(await montageAmelioreActifPourCompte('', { env: ADMIN_ON })).toBe(false);
   });
 });
 
 describe('route /api/creer/montage-ameliore', () => {
   const lire = async () => { const r = await GET(); return { corps: await r.json(), cache: r.headers.get('Cache-Control') }; };
-  it('sans session, standard, interrupteur éteint, panne : { ameliore: false }, jamais en cache', async () => {
+  it('sans session, panne d\'auth, interrupteur éteint : { ameliore: false } ; connecté + interrupteur : true, jamais en cache', async () => {
     const env = process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED;
     try {
       process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED = 'true';
       expect((await lire()).corps).toEqual({ ameliore: false }); // pas de session
-      session.id = 'u2'; base.ligne = { role: 'user', email: 'client@example.com' };
-      expect((await lire()).corps).toEqual({ ameliore: false }); // standard
-      session.boom = true;
+      session.id = 'u2'; session.boom = true;
       expect((await lire()).corps).toEqual({ ameliore: false }); // erreur d'auth
-      session.boom = false; session.id = 'u1'; base.ligne = { role: 'admin' };
+      session.boom = false;
       delete process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED;
       expect((await lire()).corps).toEqual({ ameliore: false }); // interrupteur éteint
       process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED = 'true';
       const r = await lire();
-      expect(r.corps).toEqual({ ameliore: true }); // administrateur + interrupteur
+      expect(r.corps).toEqual({ ameliore: true }); // utilisateur connecté + interrupteur
       expect(r.cache).toBe('private, no-store');
     } finally { if (env === undefined) delete process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED; else process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED = env; }
   });
@@ -89,7 +78,7 @@ const entree = (urls: string[]) => ({
   rushs: urls.map((url) => ({ url })), cibleEcran: 30, debutVideo: 0, methode: 'A', contexte: { theme: null, titre: null, sousTitre: null, objectif: null, cartes: [] },
 }) as unknown as Parameters<typeof preparerPlanMontage>[0];
 
-describe('Créer — plan automatique (compte standard = production)', () => {
+describe('Créer — plan automatique (interrupteur éteint = production)', () => {
   const NET = rush('https://x/n.mp4', 3, 0.7);
   const FLOU = rush('https://x/f.mp4', 40, 0.1);
   const NET2 = rush('https://x/n2.mp4', 40, 0.7);
