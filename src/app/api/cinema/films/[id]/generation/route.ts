@@ -25,6 +25,8 @@ import { typeContenuDepuisCle } from '@/lib/storage/acces-objet';
 import { idPlanValide } from '@/lib/cinema/acces';
 import { fournisseurServeur } from '@/lib/cinema/garde';
 import { reserverCredits, rembourserCredits, type Reservation } from '@/lib/cinema/generation/credits';
+import { devisGeneration } from '@/lib/cinema/generation/couts';
+import { reserverDepenseReplicate, confirmerDepenseReplicate, type StatutDepense } from '@/lib/cinema/generation/plafond-compte';
 
 // Imports pour leur SEULE presence : ils enregistrent les fournisseurs dans le registre.
 // Enregistres ne veut pas dire actifs : chacun lit son interrupteur a chaque usage.
@@ -76,10 +78,37 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   // transaction. Deux generations lancees en meme temps ne peuvent pas depasser le solde.
   // Budget inconnu (prix illisible, migration absente) : refus, jamais un appel a l'aveugle.
   // La generation SIMULEE ne coute rien et ne debite rien.
+  //
+  // ── LE PLAFOND DE DEPENSE REELLE, PAR COMPTE ET GLOBAL ──────────────────
+  //
+  // `genererMediaPlan` verifie deja un plafond PAR FILM (`verification`), mais ce compteur
+  // vit dans le document du film : le supprimer puis en recreer un le remet a zero. Avant
+  // de debiter des credits, on reserve donc AUSSI, de maniere DURABLE (independante de tout
+  // film), le cout estime de cette tentative — compte ET global. Si l'un des deux plafonds
+  // serait depasse, rien n'est debite ni appele. Si les credits refusent ensuite, la
+  // reservation de depense est LIBEREE (rien ne sera, de toute facon, envoye au fournisseur).
   let reservation: Reservation | null = null;
+  type DepenseReservee = { reference: string; montantUsd: number };
+  let depenseReservee: DepenseReservee | null = null;
   const payer = choix.mode !== 'reelle' ? undefined : async () => {
+    // Le MEME devis que celui qu'atelier.ts recalculera : fonction pure, aucun appel,
+    // toujours le meme resultat pour les memes entrees.
+    const devisTentative = devisGeneration(fournisseurId, [{ planId: planId as string, operations: [operation as 'image' | 'video'] }]);
+    if (devisTentative.totalUsd !== null && devisTentative.totalUsd > 0) {
+      const depense = await reserverDepenseReplicate(s.userId, devisTentative.totalUsd, operation as 'image' | 'video');
+      if (!depense.ok) return { ok: false as const, motif: depense.motif, message: depense.message };
+      depenseReservee = { reference: depense.reference, montantUsd: depense.montantUsd };
+    }
+
     const prise = await reserverCredits(s.userId, operation as 'image' | 'video');
-    if (!prise.ok) return { ok: false as const, motif: prise.motif, message: prise.message };
+    if (!prise.ok) {
+      // Les credits refusent : rien ne partira au fournisseur. La reservation de depense
+      // n'a donc plus lieu d'etre — on la libere avant de repondre.
+      if (depenseReservee) {
+        await confirmerDepenseReplicate(s.userId, depenseReservee.reference, 'liberee').catch(() => null);
+      }
+      return { ok: false as const, motif: prise.motif, message: prise.message };
+    }
     reservation = prise.reservation;
     return { ok: true as const };
   };
@@ -130,6 +159,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         coutGenerationUsd: Math.round(((f.coutGenerationUsd ?? 0) + engageUsd) * 10_000) / 10_000,
       })).catch(() => null);
     }
+    // ⚠️ FINALISE LE PLAFOND DE DEPENSE PAR COMPTE — independant du compteur par film
+    // ci-dessus. `jamaisEnvoye` : la preuve existe qu'aucune requete n'est partie (liberee).
+    // `incertain` : le delai a expire, le fournisseur a pu quand meme demarrer (reste compte,
+    // en attente de reconciliation). Ni l'un ni l'autre : l'appel a eu une reponse, qu'elle
+    // ait reussi ou non (confirmee, comptee).
+    if (depenseReservee) {
+      const statutDepense: StatutDepense = resultat.jamaisEnvoye ? 'liberee' : resultat.incertain ? 'incertaine' : 'confirmee';
+      await confirmerDepenseReplicate(s.userId, (depenseReservee as DepenseReservee).reference, statutDepense).catch(() => null);
+    }
     // ⚠️ CREDITS PAYES, GENERATION RATEE : on les rend. Le paiement a eu lieu « au dernier
     // moment », juste avant cet appel qui vient d'echouer — le compte n'a rien recu pour ce
     // qu'il a paye. Idempotent (reference derivee du debit) : jamais un second remboursement
@@ -153,6 +191,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       // Dire la verite sur l'argent : l'appel est parti, il a ete paye, puis rendu (ou non).
       ...(reservation && (reservation as Reservation).cout > 0 ? { creditsPris: (reservation as Reservation).cout, creditsRembourses } : null),
     }, { status });
+  }
+
+  // Succes : l'appel a eu lieu et a produit un media. La reservation de depense est
+  // confirmee — le montant estime reste compte, qu'il y ait eu ou non une reconstruction
+  // ulterieure du film (la suppression d'un film ne doit PAS liberer ce qui a ete depense).
+  if (depenseReservee) {
+    await confirmerDepenseReplicate(s.userId, (depenseReservee as DepenseReservee).reference, 'confirmee').catch(() => null);
   }
 
   // La depense et la trace de reference s'appliquent au film LE PLUS RECENT.

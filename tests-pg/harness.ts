@@ -28,6 +28,8 @@ export const MIGRATIONS_SOCLE = [
   join(RACINE, 'migrations/2026-08-31-shoot-sessions-rushes.sql'),
   // Symétrique du débit ci-dessus — NON encore appliquée en production (PR en cours).
   join(RACINE, 'migrations/2026-10-30-remboursement-credits-operation.sql'),
+  // Plafond de dépense Replicate par compte et global — NON encore appliquée (PR en cours).
+  join(RACINE, 'migrations/2026-10-31-cinema-plafond-compte.sql'),
 ];
 
 /**
@@ -344,4 +346,68 @@ export async function rembourserOperation(
     [userId, montant, reference, description],
   );
   return rows[0];
+}
+
+export interface ReservationDepense {
+  ok: boolean;
+  motif: string | null;
+  deja_engagee: boolean;
+  total_compte: string; // numeric(10,4) revient en chaîne via le driver pg
+  total_global: string;
+}
+
+/** Appelle `reserver_depense_cinema` — la fonction de production, telle quelle. */
+export async function reserverDepense(
+  client: Client,
+  userId: string,
+  montantUsd: number,
+  reference: string,
+  operation: 'image' | 'video' = 'video',
+  plafondCompte = 5,
+  plafondGlobal = 100,
+): Promise<ReservationDepense> {
+  const { rows } = await client.query<ReservationDepense>(
+    'select * from public.reserver_depense_cinema($1, $2, $3, $4, $5, $6)',
+    [userId, montantUsd, reference, operation, plafondCompte, plafondGlobal],
+  );
+  return rows[0];
+}
+
+export interface ConfirmationDepense {
+  ok: boolean;
+  motif: string | null;
+  total_compte: string;
+  total_global: string;
+}
+
+/** Appelle `confirmer_depense_cinema` — la fonction de production, telle quelle. */
+export async function confirmerDepense(
+  client: Client,
+  userId: string,
+  reference: string,
+  statut: 'confirmee' | 'incertaine' | 'liberee',
+  montantFinal: number | null = null,
+): Promise<ConfirmationDepense> {
+  const { rows } = await client.query<ConfirmationDepense>(
+    'select * from public.confirmer_depense_cinema($1, $2, $3, $4)',
+    [userId, reference, statut, montantFinal],
+  );
+  return rows[0];
+}
+
+/** Lit le compteur global de dépense engagée — ligne unique `'global'`. */
+export async function soldeDepenseGlobale(client: Client): Promise<number> {
+  const { rows } = await client.query<{ total_engage_usd: string }>(
+    "select total_engage_usd from public.cinema_depenses_globales where id = 'global'",
+  );
+  return Number(rows[0]?.total_engage_usd ?? -1);
+}
+
+/** Lit le compteur d'un compte — 0 si la ligne n'existe pas encore (jamais réservé). */
+export async function soldeDepenseCompte(client: Client, userId: string): Promise<number> {
+  const { rows } = await client.query<{ total_engage_usd: string }>(
+    'select total_engage_usd from public.cinema_depenses_comptes where user_id = $1',
+    [userId],
+  );
+  return rows[0] ? Number(rows[0].total_engage_usd) : 0;
 }

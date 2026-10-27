@@ -72,7 +72,23 @@ export interface DemandeVideoGeneration {
 
 export type ResultatGenerationIA =
   | { ok: true; fichier: string; nomSuggere: string }
-  | { ok: false; erreur: string };
+  | {
+    ok: false; erreur: string;
+    /**
+     * `true` SEULEMENT quand la preuve existe qu'aucun appel reseau n'est
+     * jamais parti (ex. validation locale refusee avant toute requete) —
+     * jamais devine : par defaut (absent), on suppose que l'appel a pu
+     * atteindre le fournisseur et etre facture.
+     */
+    jamaisEnvoye?: boolean;
+    /**
+     * `true` quand le delai D'ATTENTE a expire pendant l'appel : le
+     * fournisseur a pu demarrer — et facturer — une prediction qui continue
+     * sans nous, ou a pu ne jamais la recevoir. Ni confirme ni ecarte :
+     * reste compte comme depense jusqu'a reconciliation.
+     */
+    incertain?: boolean;
+  };
 
 /**
  * Le contrat. `actif: false` = DECLARE mais jamais appele : c'est la garde
