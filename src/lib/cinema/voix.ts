@@ -51,6 +51,15 @@ export const VOIX_SYSTEME_DEFAUT = 'Thomas';
 /** Pause respirée ajoutée apres chaque replique, en secondes. */
 export const RESPIRATION_S = 0.35;
 const DELAI_FLUX_MS = 30_000;
+/**
+ * Delai qui enveloppe `setMetadata` : c'est LUI qui ouvre le WebSocket, et c'est la que
+ * Microsoft peut ne jamais repondre depuis une adresse de centre de donnees (meme cause
+ * que `TTS_TIMEOUT_MS` dans `lib/autopilot/voice.ts`, qui documente le mecanisme en detail).
+ * Un delai pose seulement sur les evenements du flux (`DELAI_FLUX_MS`) ne protege pas de
+ * ca : l'appel pendrait AVANT que ces delais ne soient jamais armes, bloquant la requete —
+ * et donc l'interface — indefiniment.
+ */
+const DELAI_CONNEXION_MS = 15_000;
 
 /** Une replique synthetisee : son fichier et sa duree REELLE. */
 export interface VoixPlan {
@@ -65,7 +74,13 @@ export interface VoixPlan {
 export async function synthetiser(texte: string, voix: string): Promise<Buffer> {
   const tts = new MsEdgeTTS();
   try {
-    await tts.setMetadata(voix, OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3);
+    await Promise.race([
+      tts.setMetadata(voix, OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3),
+      new Promise<never>((_r, reject) => setTimeout(
+        () => reject(new Error('Edge TTS : connexion jamais etablie (delai depasse)')),
+        DELAI_CONNEXION_MS,
+      )),
+    ]);
     const { audioStream } = tts.toStream(texte);
     const morceaux: Buffer[] = [];
     await new Promise<void>((resolve, reject) => {
