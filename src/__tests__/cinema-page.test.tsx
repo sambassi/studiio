@@ -45,7 +45,7 @@ beforeEach(() => {
     const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: { 'content-type': 'application/json' } });
     if (method === 'DELETE') return json(reponses.delete ? reponses.delete() : { ok: true, objetsSupprimes: 3 }, reponses.deleteStatus ? (reponses.deleteStatus() as number) : 200);
     for (const [motif, f] of Object.entries(reponses)) if (url.includes(motif)) return json(f());
-    if (url === '/api/cinema/films' && method === 'GET') return json({ ok: true, generationIa: generationIa(), films: [{ id: film.id, titre: 'Mon film', majLe: film.majLe }] });
+    if (url === '/api/cinema/films' && method === 'GET') return json({ ok: true, generationIa: generationIa(), generationMode: generationIa() ? 'simulee' : null, films: [{ id: film.id, titre: 'Mon film', majLe: film.majLe }] });
     if (url === `/api/cinema/films/${film.id}`) return json(reponseFilm());
     if (url.endsWith('/travaux')) return json({ ok: true, travail: etatTravail });
     if (url.includes('/annuler')) return json({ ok: true, travail: { ...etatTravail, annulationDemandee: true } });

@@ -10,7 +10,7 @@ import { devisFilm } from '@/lib/cinema/couts';
 import { monterFilm } from '@/lib/cinema/montage';
 import { contexteCinema } from '@/lib/cinema/contexte';
 import { FILMS_MAX_PAR_COMPTE, sessionCinema } from '@/lib/cinema/routes-aide';
-import { generationIaSimuleeActive } from '@/lib/cinema/garde';
+import { modeGenerationAffiche } from '@/lib/cinema/garde';
 import { presenterMontage } from '@/lib/cinema/stockage/presentation';
 import type { FormatFilm, NiveauQualite } from '@/lib/cinema/types';
 
@@ -22,12 +22,15 @@ export async function GET() {
   if ('refus' in s) return s.refus;
   // Les films d'AUTRES comptes ne sont pas listes : l'identifiant d'un film
   // suffirait ensuite a le lire.
-  // `generationIa` : l'ecran n'affiche les boutons « Generer » que si le serveur declare
-  // la generation disponible. Elle est eteinte par defaut (fournisseur simule, `garde.ts`).
+  // `generationIa` / `generationMode` : l'ecran n'affiche les boutons « Generer » que si le
+  // SERVEUR declare la generation disponible, et il dit laquelle — reelle ou simulee. Par
+  // defaut : aucune (`garde.ts`).
+  const mode = modeGenerationAffiche();
   return NextResponse.json({
     ok: true,
     films: await contexteCinema().films.lister(s.userId),
-    generationIa: generationIaSimuleeActive(),
+    generationIa: mode !== null,
+    generationMode: mode,
   });
 }
 

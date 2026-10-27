@@ -61,15 +61,20 @@ export const CATALOGUE_GENERATION: readonly TarifGenerationIA[] = [
   },
   {
     fournisseurId: 'replicate-flux-schnell', operation: 'image',
-    libelle: 'Image (Replicate, flux-schnell) — non branche',
-    usdParUnite: null, actif: false,
-    source: 'tarif NON verifie (voir en-tete du fichier) — a lire sur replicate.com/black-forest-labs/flux-schnell avant tout branchement',
+    libelle: 'Image (Replicate, flux-schnell)',
+    // « $3.00 / thousand output images » → 0,003 $ l'image.
+    usdParUnite: 0.003, actif: true,
+    source: 'https://replicate.com/pricing, lu le 2026-10-27 : « $3.00 / thousand output images »',
   },
   {
     fournisseurId: 'replicate-wan-i2v', operation: 'video',
-    libelle: 'Video image-vers-video (Replicate, wan-2.2-i2v-fast) — non branche',
-    usdParUnite: null, actif: false,
-    source: 'tarif NON verifie (voir en-tete du fichier) — a lire sur replicate.com/wan-video/wan-2.2-i2v-fast avant tout branchement',
+    libelle: 'Video image-vers-video (Replicate, wan-2.1-i2v-480p)',
+    // « $0.09 / second of output video » ; un plan est borne a 5 s (`replicate.ts`),
+    // donc 0,45 $ au pire. On tarife l'UNITE au pire cas : un devis ne doit jamais
+    // sous-estimer. `wan-2.2-i2v-fast` n'est PAS tarife sur la page officielle : il
+    // n'est donc pas branche.
+    usdParUnite: 0.45, actif: true,
+    source: 'https://replicate.com/pricing, lu le 2026-10-27 : « $0.09 / second of output video » (wavespeedai/wan-2.1-i2v-480p), x 5 s au pire',
   },
 ];
 

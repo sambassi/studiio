@@ -13,6 +13,8 @@
  */
 import { proprietaireValide } from '@/lib/cinema/stockage/cles';
 import { modeStockage } from '@/lib/cinema/contexte';
+import { generationReelleActive, ID_REPLICATE_IMAGE, ID_REPLICATE_VIDEO } from '@/lib/cinema/generation/replicate';
+import { ID_FOURNISSEUR_SIMULE } from '@/lib/cinema/generation/simule';
 
 export type SujetSession = { id?: string | null } | null | undefined;
 
@@ -70,4 +72,33 @@ export function accesCinemaAutorise(user: SujetSession, env: NodeJS.ProcessEnv =
     return false;
   }
   return !!user && proprietaireValide(user.id);
+}
+
+export type ModeGeneration = 'reelle' | 'simulee';
+export type OperationGeneration = 'image' | 'video';
+
+/**
+ * QUEL FOURNISSEUR, DECIDE PAR LE SERVEUR — et par lui seul.
+ *
+ * Le navigateur envoyait l'identifiant du fournisseur. Il ne le choisit plus : une
+ * generation REELLE depense l'argent du compte Replicate, et aucun corps de requete ne
+ * doit pouvoir la declencher. L'ordre est fixe :
+ *
+ *   1. generation REELLE si elle est autorisee (`CINEMA_GENERATION_REELLE` + jeton) ;
+ *   2. sinon generation SIMULEE si elle est autorisee (developpement, tests) ;
+ *   3. sinon `null` : aucune generation n'est proposee ni possible (la production).
+ */
+export function fournisseurServeur(
+  operation: OperationGeneration, env: NodeJS.ProcessEnv = process.env,
+): { id: string; mode: ModeGeneration } | null {
+  if (generationReelleActive(env)) {
+    return { id: operation === 'video' ? ID_REPLICATE_VIDEO : ID_REPLICATE_IMAGE, mode: 'reelle' };
+  }
+  if (generationIaSimuleeActive(env)) return { id: ID_FOURNISSEUR_SIMULE, mode: 'simulee' };
+  return null;
+}
+
+/** Le mode annonce a l'ecran : `null` = aucun bouton de generation. */
+export function modeGenerationAffiche(env: NodeJS.ProcessEnv = process.env): ModeGeneration | null {
+  return fournisseurServeur('image', env)?.mode ?? null;
 }

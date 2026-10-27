@@ -68,16 +68,21 @@ describe('registre des fournisseurs — ferme, aucun payant actif', () => {
 });
 
 describe('catalogue de tarifs — un inconnu n’est jamais zero', () => {
-  it('seules les entrees du fournisseur simule sont actives', () => {
+  it('une entree ACTIVE a toujours un tarif verifie — jamais `null`, jamais devine', () => {
     const actives = CATALOGUE_GENERATION.filter((t) => t.actif);
-    expect(actives.every((t) => t.fournisseurId === 'simule')).toBe(true);
-    expect(actives.every((t) => t.usdParUnite === 0)).toBe(true);
+    expect(actives.length).toBeGreaterThan(0);
+    for (const t of actives) {
+      expect(t.usdParUnite, `${t.fournisseurId}/${t.operation}`).not.toBeNull();
+      expect(t.usdParUnite!).toBeGreaterThanOrEqual(0);
+      // Un tarif non nul doit citer sa source officielle ET sa date de lecture.
+      if (t.usdParUnite! > 0) expect(t.source).toMatch(/https?:\/\/.+\d{4}-\d{2}-\d{2}/);
+    }
   });
 
-  it('les fournisseurs declares mais eteints ont un tarif NULL, jamais 0', () => {
-    const eteints = CATALOGUE_GENERATION.filter((t) => !t.actif);
-    expect(eteints.length).toBeGreaterThan(0);
-    for (const t of eteints) expect(t.usdParUnite).toBeNull();
+  it('une entree sans tarif verifie reste ETEINTE (tarif `null`, jamais 0)', () => {
+    for (const t of CATALOGUE_GENERATION.filter((x) => x.usdParUnite === null)) {
+      expect(t.actif, `${t.fournisseurId}/${t.operation}`).toBe(false);
+    }
   });
 
   it('coutUniteGeneration rend null pour un fournisseur/operation non catalogue', () => {
@@ -85,12 +90,16 @@ describe('catalogue de tarifs — un inconnu n’est jamais zero', () => {
     expect(coutUniteGeneration('simule', 'image')).toBe(0);
   });
 
-  it('devisGeneration rend un total null des qu une ligne est inconnue', () => {
+  it('devisGeneration chiffre ce qui est tarife, et rend null des qu une ligne est inconnue', () => {
     const d1 = devisGeneration('simule', [{ planId: 'p1', operations: ['image', 'video'] }]);
     expect(d1.totalUsd).toBe(0);
+    // Tarif officiel lu : 0,003 $ l'image.
     const d2 = devisGeneration('replicate-flux-schnell', [{ planId: 'p1', operations: ['image'] }]);
-    expect(d2.totalUsd).toBeNull();
-    expect(d2.lignes[0].usd).toBeNull();
+    expect(d2.totalUsd).toBe(0.003);
+    // Un fournisseur hors catalogue ne vaut jamais 0 : le total devient inconnu.
+    const d3 = devisGeneration('fournisseur-jamais-vu', [{ planId: 'p1', operations: ['image'] }]);
+    expect(d3.totalUsd).toBeNull();
+    expect(d3.lignes[0].usd).toBeNull();
   });
 
   it('libelleUsdGeneration distingue gratuit, chiffre et inconnu', () => {

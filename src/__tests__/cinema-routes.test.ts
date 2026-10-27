@@ -486,14 +486,36 @@ describe('generation IA simulee — plafond serveur, stockage prive', () => {
     expect(await readdir(ctx.dossierTravail)).toEqual([]);
   }, 60_000);
 
-  it('un fournisseur payant ou inconnu est refuse', async () => {
+  it('un fournisseur nomme par le NAVIGATEUR est ignore : c’est le serveur qui choisit', async () => {
+    // Garantie desormais STRUCTURELLE : la route ne lit plus `fournisseurId` du corps, donc
+    // aucun client ne peut declencher une generation payante en la nommant. Ici le serveur
+    // n'autorise que le fournisseur simule : c'est lui qui travaille, quoi qu'on demande.
     const id = await creerFilm();
     const planId = (await ctx.films.lire(id, A))!.film.scenes[0].plans[0].id;
-    for (const fournisseurId of ['openai', 'runway', 'nimporte-quoi']) {
+    for (const fournisseurId of ['openai', 'runway', 'replicate-flux-schnell', 'nimporte-quoi']) {
       const r = await generationRoute.POST(req('/x', { method: 'POST', json: { planId, operation: 'image', fournisseurId } }), P(id));
-      expect(r.status).toBe(400);
+      expect(r.status, `fournisseur demande : ${fournisseurId}`).toBe(200);
+      const corps = await r.json();
+      // Un media a bien ete produit — par le fournisseur du SERVEUR (simule ici), et non par
+      // celui que le client a nomme : aucun appel sortant n'a lieu dans ce test.
+      expect(corps.film?.scenes?.[0]?.plans?.[0]?.media?.url).toBeTruthy();
     }
-    expect(memObjets.cles()).toEqual([]);
+  });
+
+  it('aucune generation autorisee par le serveur : refus net (409), rien de produit', async () => {
+    const avant = process.env.CINEMA_GENERATION_SIMULEE;
+    const id = await creerFilm();
+    const planId = (await ctx.films.lire(id, A))!.film.scenes[0].plans[0].id;
+    const clesAvant = memObjets.cles().length;
+    try {
+      delete process.env.CINEMA_GENERATION_SIMULEE; // l'etat de la production
+      const r = await generationRoute.POST(req('/x', { method: 'POST', json: { planId, operation: 'image' } }), P(id));
+      expect(r.status).toBe(409);
+      expect((await r.json()).erreur).toContain('n’est pas disponible');
+    } finally {
+      if (avant === undefined) delete process.env.CINEMA_GENERATION_SIMULEE; else process.env.CINEMA_GENERATION_SIMULEE = avant;
+    }
+    expect(memObjets.cles().length).toBe(clesAvant);
   });
 
   it('le plafond du serveur l\'emporte sur celui du client', async () => {

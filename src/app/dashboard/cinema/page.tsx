@@ -168,7 +168,9 @@ export default function CinemaPage() {
    */
   const genererMedia = (planId: string, operation: 'image' | 'video') => film && appel(
     `/api/cinema/films/${film.id}/generation`,
-    { method: 'POST', body: JSON.stringify({ planId, operation, fournisseurId: 'simule' }) },
+    // Aucun `fournisseurId` : c'est le SERVEUR qui choisit (une generation reelle depense
+    // de l'argent — un navigateur ne doit pas pouvoir la nommer).
+    { method: 'POST', body: JSON.stringify({ planId, operation }) },
     `generation:${planId}:${operation}`,
   );
 
@@ -182,8 +184,10 @@ export default function CinemaPage() {
   }, 'voix');
 
   /** Les films du compte : ils survivent a un redemarrage du serveur. */
-  /** Generation « IA » proposee par le serveur ? Faux par defaut (voir `CINEMA_GENERATION_SIMULEE`). */
+  /** Generation « IA » proposee par le serveur ? Faux par defaut (voir `garde.ts`). */
   const [generationIa, setGenerationIa] = useState(false);
+  /** `simulee` ou `reelle` — le libelle du bouton ne doit jamais mentir sur ce qui se passe. */
+  const [generationMode, setGenerationMode] = useState<'simulee' | 'reelle' | null>(null);
 
   const chargerListe = useCallback(async () => {
     try {
@@ -195,6 +199,7 @@ export default function CinemaPage() {
         // l'est pas : le seul fournisseur ecrit dessine des images avec ffmpeg, il ne
         // genere pas par IA. On ne propose donc pas un bouton qui promettrait cela.
         setGenerationIa(data.generationIa === true);
+        setGenerationMode(data.generationMode === 'reelle' || data.generationMode === 'simulee' ? data.generationMode : null);
       }
     } catch { /* la liste est un confort : son absence ne bloque rien */ }
   }, []);
@@ -578,7 +583,7 @@ export default function CinemaPage() {
                                   className="inline-flex items-center gap-1 rounded border border-violet-700/60 px-2 py-1 hover:border-violet-400 disabled:opacity-50"
                                 >
                                   {enCours === `generation:${plan.id}:image` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                                  Generer (IA, simule)
+                                  {generationMode === 'simulee' ? 'Generer (IA, simule)' : 'Generer l’image (IA)'}
                                 </button>
                               )}
                             </>
@@ -591,7 +596,7 @@ export default function CinemaPage() {
                               className="inline-flex items-center gap-1 rounded border border-violet-700/60 px-2 py-1 hover:border-violet-400 disabled:opacity-50"
                             >
                               {enCours === `generation:${plan.id}:video` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                              Animer en video (IA, simule)
+                              {generationMode === 'simulee' ? 'Animer en video (IA, simule)' : 'Animer en video (IA)'}
                             </button>
                           )}
 

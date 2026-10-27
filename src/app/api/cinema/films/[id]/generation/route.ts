@@ -1,10 +1,10 @@
 /**
- * CINEMA IA — generer le media d'un plan par IA (fournisseur SIMULE).
+ * CINEMA IA — generer le media d'un plan par IA.
  *
- * ⚠️ AUCUNE GENERATION PAYANTE N'EST POSSIBLE PAR CETTE ROUTE. Le seul
- * fournisseur ACTIF est `simule` (local, gratuit, ffmpeg). Un fournisseur
- * declare mais eteint est refuse par `genererMediaPlan` avant toute
- * construction de prompt — c'est le registre qui decide, pas cette route.
+ * ⚠️ LE FOURNISSEUR EST CHOISI PAR LE SERVEUR (`fournisseurServeur`), jamais par le corps
+ * de la requete : une generation REELLE depense de l'argent. Par defaut, rien n'est
+ * disponible et la route repond 409. Un fournisseur declare mais eteint est de toute facon
+ * refuse par `genererMediaPlan` avant toute construction de prompt.
  *
  * ⚠️ LE PLAFOND EST CELUI DU SERVEUR. Le corps de la requete peut tout au plus
  * le RABAISSER (`plafondUsd`) : jamais le relever. Un navigateur qui pourrait
@@ -23,9 +23,12 @@ import { modifierFilm } from '@/lib/cinema/stockage/depot-films';
 import { presenterMontage } from '@/lib/cinema/stockage/presentation';
 import { typeContenuDepuisCle } from '@/lib/storage/acces-objet';
 import { idPlanValide } from '@/lib/cinema/acces';
+import { fournisseurServeur } from '@/lib/cinema/garde';
 
-// Import pour sa SEULE presence : il enregistre le fournisseur simule dans le registre.
+// Imports pour leur SEULE presence : ils enregistrent les fournisseurs dans le registre.
+// Enregistres ne veut pas dire actifs : chacun lit son interrupteur a chaque usage.
 import '@/lib/cinema/generation/simule';
+import '@/lib/cinema/generation/replicate';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -44,12 +47,23 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const corps = await req.json().catch(() => null);
   const planId = typeof corps?.planId === 'string' ? corps.planId : null;
   const operation = typeof corps?.operation === 'string' ? corps.operation : null;
-  const fournisseurId = typeof corps?.fournisseurId === 'string' ? corps.fournisseurId : 'simule';
+  // ⚠️ LE FOURNISSEUR EST CELUI DU SERVEUR. Le corps de la requete ne le choisit PAS :
+  // une generation reelle depense de l'argent, et aucun navigateur ne doit pouvoir la
+  // declencher en nommant un fournisseur. Un `fournisseurId` recu est simplement ignore.
 
   if (!planId || !idPlanValide(planId)) return NextResponse.json({ ok: false, erreur: 'planId requis' }, { status: 400 });
   if (!operation || !OPERATIONS_VALIDES.has(operation)) {
     return NextResponse.json({ ok: false, erreur: 'operation invalide (image ou video attendu)' }, { status: 400 });
   }
+
+  const choix = fournisseurServeur(operation as 'image' | 'video');
+  if (!choix) {
+    return NextResponse.json(
+      { ok: false, erreur: 'la generation de medias par IA n’est pas disponible sur ce serveur' },
+      { status: 409 },
+    );
+  }
+  const fournisseurId = choix.id;
 
   // Le client peut rabaisser le plafond, jamais le relever.
   let plafondUsd = ctx.plafondUsd;
