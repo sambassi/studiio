@@ -68,3 +68,21 @@ describe('entrée Cinema IA — visible seulement si le serveur confirme', () =>
     expect(screen.queryAllByRole('link', { name: 'cinema' })).toHaveLength(0);
   });
 });
+
+describe('le solde affiché se rafraîchit après une opération payante ailleurs (ex. Cinema IA)', () => {
+  it('un évènement `studiio:credits-changed` relit le solde — plus besoin de recharger la page', async () => {
+    let solde = 100;
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: { 'content-type': 'application/json' } });
+      if (url === '/api/cinema/films') return json({ ok: false }, 404);
+      if (url === '/api/credits/balance') return json({ ok: true, balance: solde });
+      return json({ ok: false }, 404);
+    }));
+    render(<Sidebar />);
+    await waitFor(() => expect(screen.getAllByText('100').length).toBeGreaterThan(0));
+    solde = 95; // une génération réelle vient de débiter le compte, ailleurs sur le site
+    window.dispatchEvent(new Event('studiio:credits-changed'));
+    await waitFor(() => expect(screen.getAllByText('95').length).toBeGreaterThan(0));
+  });
+});

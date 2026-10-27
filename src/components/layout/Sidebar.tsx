@@ -68,6 +68,11 @@ export function Sidebar() {
       }
     }
     fetchCredits();
+    // Le solde affiche ici ne bougeait plus jamais apres le premier chargement : une
+    // operation payante ailleurs (ex. Cinema IA) annonce ce changement par cet evenement
+    // plutot que par une dependance directe entre pages sans rapport.
+    window.addEventListener('studiio:credits-changed', fetchCredits);
+    return () => window.removeEventListener('studiio:credits-changed', fetchCredits);
   }, []);
 
   // Close sidebar when route changes

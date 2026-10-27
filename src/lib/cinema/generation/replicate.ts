@@ -171,11 +171,25 @@ async function genererImage(demande: DemandeImageGeneration): Promise<ResultatGe
 
 async function genererVideo(demande: DemandeVideoGeneration): Promise<ResultatGenerationIA> {
   // L'image source est un fichier LOCAL : le modele veut une donnee, on lui passe un data URI.
+  //
+  // ⚠️ LE TYPE DECLARE DOIT ETRE CELUI DES OCTETS, PAS UNE SUPPOSITION. `genererImage`
+  // produit du WEBP (`output_format: 'webp'`, plus haut), mais cette image etait ici
+  // annoncee `image/png` sans jamais etre regardee — une incoherence reelle entre le
+  // contenu et son en-tete. Meme principe que `lib/storage/image-signature.ts`, deja
+  // applique a `lib/ai/affiche-reference.ts` : detecter le format reel, jamais le deviner.
   let image: string;
   try {
     const { readFile } = await import('fs/promises');
+    const { detecterSignatureImage } = await import('@/lib/storage/image-signature');
     const octets = await readFile(demande.fichierImageSource);
-    image = `data:image/png;base64,${octets.toString('base64')}`;
+    const signature = detecterSignatureImage(octets);
+    if (!signature) {
+      return {
+        ok: false, erreur: 'Replicate (video) : image source dans un format non reconnu (ni PNG, ni JPEG, ni WEBP)',
+        jamaisEnvoye: true,
+      };
+    }
+    image = `data:${signature.mime};base64,${octets.toString('base64')}`;
   } catch (e) {
     return {
       ok: false, erreur: `Replicate (video) : image source illisible (${e instanceof Error ? e.message.slice(0, 80) : 'inconnu'})`,

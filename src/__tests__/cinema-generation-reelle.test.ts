@@ -1,3 +1,12 @@
+// @vitest-environment node
+//
+// ⚠️ NÉCESSAIRE pour les tests ajoutés plus bas qui LISENT un vrai fichier (`writeFileSync` +
+// `readFile`) et attendent que `detecterSignatureImage` le reconnaisse : sous l'environnement
+// `jsdom` (par défaut, `vitest.config.ts`), le `Uint8Array` global diffère de celui du `Buffer`
+// natif de Node, et `bytes instanceof Uint8Array` y est TOUJOURS faux pour un fichier lu sur
+// disque — quel que soit son contenu réel. `src/__tests__/ai-generate-bg-route.test.ts` évite
+// ce piège en ne construisant que des `Uint8Array` en mémoire ; ici, l'intégration réelle de
+// `genererVideo` avec un fichier sur disque est précisément ce qu'on veut éprouver.
 /**
  * CINEMA IA — GÉNÉRATION RÉELLE (Replicate) : branchée, éteinte, et jamais appelée par erreur.
  *
@@ -228,14 +237,14 @@ describe('le modèle vidéo exige prompt + image, jamais num_frames', () => {
 
   it('le code envoie `prompt` dans l’appel MODELE_VIDEO', () => {
     const code = src('src/lib/cinema/generation/replicate.ts');
-    const bloc = code.slice(code.indexOf('async function genererVideo'), code.indexOf('async function genererVideo') + 1500);
+    const bloc = code.slice(code.indexOf('async function genererVideo'), code.indexOf('async function genererVideo') + 2200);
     expect(bloc).toMatch(/appeler\(MODELE_VIDEO,\s*\{\s*image,\s*prompt:\s*demande\.prompt/);
   });
 
   it('un prompt vide est refusé AVANT tout appel réseau (image lisible, mais aucun jeton nécessaire)', async () => {
     dir = mkdtempSync(join(tmpdir(), 'studiio-replicate-video-'));
     const image = join(dir, 'source.png');
-    writeFileSync(image, Buffer.from([0x89, 0x50, 0x4e, 0x47])); // en-tête PNG minimal, suffisant pour etre lu en base64
+    writeFileSync(image, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])); // en-tête PNG minimal, suffisant pour etre lu en base64
     delete process.env.REPLICATE_API_TOKEN; // si un vrai appel partait, il échouerait ici — la preuve qu'il ne part pas
     const r = await FOURNISSEUR_REPLICATE_VIDEO.genererVideo({
       fichierImageSource: image, prompt: '   ', dureeS: 3, format: '9:16', graine: 1,
@@ -265,7 +274,7 @@ describe('jamaisEnvoye / incertain — distingués pour le plafond de dépense p
   it('prompt vide : `jamaisEnvoye` (aucune requête n’est jamais partie)', async () => {
     dir = mkdtempSync(join(tmpdir(), 'studiio-replicate-flags-'));
     const image = join(dir, 'source.png');
-    writeFileSync(image, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    writeFileSync(image, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
     const r = await FOURNISSEUR_REPLICATE_VIDEO.genererVideo({ fichierImageSource: image, prompt: '', dureeS: 3, format: '9:16', graine: 1 });
     expect(r).toMatchObject({ ok: false, jamaisEnvoye: true });
     expect((r as { incertain?: boolean }).incertain).toBeFalsy();
@@ -281,7 +290,7 @@ describe('jamaisEnvoye / incertain — distingués pour le plafond de dépense p
   it('REPLICATE_API_TOKEN absent : `jamaisEnvoye` (le client n’est même pas construit)', async () => {
     dir = mkdtempSync(join(tmpdir(), 'studiio-replicate-flags-'));
     const image = join(dir, 'source.png');
-    writeFileSync(image, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    writeFileSync(image, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
     delete process.env.REPLICATE_API_TOKEN;
     const r = await FOURNISSEUR_REPLICATE_VIDEO.genererVideo({ fichierImageSource: image, prompt: 'mouvement', dureeS: 3, format: '9:16', graine: 1 });
     expect(r).toMatchObject({ ok: false, jamaisEnvoye: true });
@@ -315,5 +324,55 @@ describe('jamaisEnvoye / incertain — distingués pour le plafond de dépense p
     // Et la ligne qui DÉCLENCHE l'abandon (le minuteur) ne pose, elle, jamais de drapeau :
     // c'est la détection de l'abandon qui compte, pas son déclenchement.
     expect(code).toContain('setTimeout(() => ctrl.abort(), delaiMs)');
+  });
+});
+
+/**
+ * RÉGRESSION — le data URI envoyé au modèle vidéo déclarait `image/png` SANS REGARDER les
+ * octets réels. Or `genererImage` (juste au-dessus) produit du WEBP (`output_format: 'webp'`) :
+ * animer une image que Cinema IA a elle-même générée revenait donc à annoncer un format faux.
+ * Corrigé en détectant le format réel (même fonction que `lib/ai/affiche-reference.ts`), jamais
+ * deviné. Non prouvé avec certitude comme LA cause de l'échec E002 observé en production (aucun
+ * appel réel n'a été fait pour le confirmer), mais c'est une incohérence réelle, corrigée par
+ * principe.
+ */
+describe('le data URI vidéo déclare le VRAI format de l’image, jamais une supposition', () => {
+  let dir: string;
+  afterEach(() => { if (dir) rmSync(dir, { recursive: true, force: true }); });
+
+  it('le code détecte la signature réelle au lieu d’écrire `data:image/png` en dur', () => {
+    const code = src('src/lib/cinema/generation/replicate.ts');
+    expect(code).toContain("await import('@/lib/storage/image-signature')");
+    expect(code).toContain('detecterSignatureImage(octets)');
+    expect(code).toContain('data:${signature.mime};base64');
+    // Hors commentaires : le hardcode fautif ne doit plus apparaître comme code actif.
+    const sansCommentaires = code.split('\n').filter((l) => !l.trimStart().startsWith('*') && !l.trimStart().startsWith('//')).join('\n');
+    expect(sansCommentaires).not.toContain('data:image/png;base64');
+  });
+
+  it('une image WEBP réelle (celle que `genererImage` produit) passe la détection — jamais rejetée pour son format', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'studiio-replicate-mime-'));
+    const image = join(dir, 'source.webp');
+    // En-tête RIFF/WEBP minimal, suffisant pour la signature (pas une image décodable complète).
+    writeFileSync(image, Buffer.from([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]));
+    delete process.env.REPLICATE_API_TOKEN; // preuve qu'aucun appel reseau ne part, meme ici
+    const r = await FOURNISSEUR_REPLICATE_VIDEO.genererVideo({
+      fichierImageSource: image, prompt: 'mouvement', dureeS: 3, format: '9:16', graine: 1,
+    });
+    // Le refus vient du jeton absent, PAS du format de l'image : la preuve qu'il a été lu et
+    // reconnu avant d'atteindre l'appel réseau.
+    expect(r).toMatchObject({ ok: false, jamaisEnvoye: true });
+    expect((r as { erreur: string }).erreur).not.toContain('format non reconnu');
+  });
+
+  it('un contenu qui n’est ni PNG, ni JPEG, ni WEBP est refusé AVANT tout appel réseau', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'studiio-replicate-mime-'));
+    const image = join(dir, 'source.bin');
+    writeFileSync(image, Buffer.from([0, 1, 2, 3, 4, 5, 6, 7]));
+    const r = await FOURNISSEUR_REPLICATE_VIDEO.genererVideo({
+      fichierImageSource: image, prompt: 'mouvement', dureeS: 3, format: '9:16', graine: 1,
+    });
+    expect(r).toMatchObject({ ok: false, jamaisEnvoye: true });
+    expect((r as { erreur: string }).erreur).toContain('format non reconnu');
   });
 });

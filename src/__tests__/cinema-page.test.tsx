@@ -228,6 +228,32 @@ describe('page Cinema IA — production asynchrone', () => {
     expect(confirmSpy).not.toHaveBeenCalled();
   });
 
+  it('une generation termine annonce que le solde a pu changer — la barre laterale peut se rafraichir', async () => {
+    // Le solde affiche ailleurs sur l'ecran ne se rafraichissait plus jamais apres une
+    // operation payante : cet evenement est le seul lien entre cette page et la Sidebar.
+    generationIaActive = true;
+    const ecoute = vi.fn();
+    window.addEventListener('studiio:credits-changed', ecoute);
+    await ouvrir();
+    const bouton = document.querySelector('[data-cinema-generation="image"]') as HTMLButtonElement;
+    fireEvent.click(bouton);
+    await waitFor(() => expect(ecoute).toHaveBeenCalledTimes(1));
+    window.removeEventListener('studiio:credits-changed', ecoute);
+  });
+
+  it('un echec de generation qui a quand meme pris des credits le DIT, rembourses ou non', async () => {
+    generationModeForce = 'reelle';
+    reponses['/generation'] = () => ({ ok: false, erreur: 'Replicate (image) : generation refusee par le fournisseur', creditsPris: 5, creditsRembourses: true });
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await ouvrir();
+    const bouton = document.querySelector('[data-cinema-generation="image"]') as HTMLButtonElement;
+    fireEvent.click(bouton);
+    const alerte = await screen.findByRole('alert');
+    expect(alerte.textContent).toContain('5 credit(s) pris');
+    expect(alerte.textContent).toContain('rembourses');
+    confirmSpy.mockRestore();
+  });
+
   it('une erreur de lancement (plafond) est affichee telle quelle', async () => {
     await ouvrir();
     reponses['/produire'] = () => ({ ok: false, erreur: 'plafond depasse : 2.00 $' });
@@ -260,5 +286,40 @@ describe('suppression d\'un film — deux gestes, erreur visible', () => {
     fireEvent.click(screen.getByRole('button', { name: /confirmer la suppression/i }));
     expect((await screen.findByRole('alert')).textContent).toMatch(/un rendu est en cours/);
     expect(screen.getByRole('heading', { name: /Export MP4/ })).toBeTruthy();
+  });
+});
+
+/**
+ * RÉGRESSION — « interface bloquée » : `appel()` n'avait ni `AbortController` ni délai.
+ * Une réponse serveur qui ne vient JAMAIS (ex. la voix off qui attend Edge TTS indéfiniment)
+ * laissait `enCours` armé pour toujours : tous les boutons de l'écran restaient désactivés,
+ * sans aucun message, et seul un rechargement complet de la page s'en sortait.
+ *
+ * ⚠️ PREUVE STATIQUE, DÉLIBÉRÉMENT. Un vrai test ferait pendre un `fetch` indéfiniment puis
+ * avancerait 20 s d'horloge simulée à travers un `AbortController` réel : ce projet a déjà
+ * rencontré ce genre de test systématiquement instable (fausses horloges + promesses
+ * asynchrones imbriquées) sur un cas très proche (voir `cinema-generation-reelle.test.ts`,
+ * « le délai dépassé… »). La ligne par ligne est ici la preuve fiable.
+ */
+describe('un appel qui ne répond jamais ne bloque plus la page indéfiniment', () => {
+  it('`appel()` pose un AbortController avec un délai, et le nettoie toujours', () => {
+    const fs = require('fs') as typeof import('fs');
+    const code = fs.readFileSync('src/app/dashboard/cinema/page.tsx', 'utf-8');
+    expect(code).toContain('const ctrl = new AbortController();');
+    expect(code).toContain('setTimeout(() => ctrl.abort(), DELAI_APPEL_MS)');
+    expect(code).toContain("const r = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...options, signal: ctrl.signal });");
+    expect(code).toContain('clearTimeout(minuteur);');
+    // Le message montré à l'utilisateur nomme le délai, pas une exception technique brute.
+    expect(code).toContain("e instanceof Error && e.name === 'AbortError'");
+    expect(code).toContain('le serveur ne repond pas');
+  });
+
+  it('le sondage de travail recule aussi sur une réponse serveur inexploitable, pas seulement sur une panne réseau', () => {
+    const fs = require('fs') as typeof import('fs');
+    const code = fs.readFileSync('src/app/dashboard/cinema/page.tsx', 'utf-8');
+    // Avant : `data.ok` faux et statut != 404 ne faisait RIEN — le sondage continuait au
+    // rythme rapide (1,5 s) indéfiniment, sans jamais le signaler.
+    const bloc = code.slice(code.indexOf("if (!filmId || !travailId || !actif) return;"), code.indexOf('minuteur = setTimeout(tick, 600);'));
+    expect(bloc).toMatch(/\} else \{\s*\/\/[^\n]*\n(\s*\/\/[^\n]*\n)*\s*delai = Math\.min\(delai \* 2, 10_000\);\s*\n\s*\}/);
   });
 });

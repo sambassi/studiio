@@ -103,11 +103,22 @@ export default function CinemaPage() {
     if (Array.isArray(data?.scenesAProduire)) setAProduire(data.scenesAProduire);
   }, []);
 
+  /**
+   * ⚠️ DELAI DUR, OBLIGATOIRE. Sans lui, une reponse serveur qui ne vient jamais (par
+   * exemple la voix off qui attend un service TTS injoignable) laissait `enCours` arme
+   * pour toujours : TOUS les boutons de l'ecran restaient desactives sans aucun message,
+   * et rien ne pouvait debloquer la page sinon la recharger. Le `finally` existant ne
+   * protegeait de rien, puisqu'il ne s'execute qu'apres que la promesse se resout.
+   */
+  const DELAI_APPEL_MS = 20_000;
+
   const appel = useCallback(async (url: string, options: RequestInit, libelle: string) => {
     setEnCours(libelle);
     setErreur(null);
+    const ctrl = new AbortController();
+    const minuteur = setTimeout(() => ctrl.abort(), DELAI_APPEL_MS);
     try {
-      const r = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...options });
+      const r = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...options, signal: ctrl.signal });
       const data = await r.json();
       if (!r.ok || data?.ok === false) {
         // Un media manquant est nomme plan par plan : c'est la seule
@@ -115,15 +126,30 @@ export default function CinemaPage() {
         const details = Array.isArray(data?.manquants)
           ? ` — ${data.manquants.map((m: { planId: string; url: string }) => `${m.planId} : ${m.url}`).join(' / ')}`
           : '';
-        throw new Error(`${data?.erreur ?? `echec (${r.status})`}${details}`);
+        // Dire la verite sur l'argent, quand le serveur l'a dite : un refus qui a quand
+        // meme pris des credits ne doit jamais ressembler a un refus gratuit.
+        const argent = typeof data?.creditsPris === 'number'
+          ? ` — ${data.creditsPris} credit(s) pris, ${data.creditsRembourses ? 'rembourses' : 'NON rembourses : verifiez le solde'}`
+          : '';
+        throw new Error(`${data?.erreur ?? `echec (${r.status})`}${details}${argent}`);
       }
       appliquer(data);
       return data;
     } catch (e) {
-      setErreur(e instanceof Error ? e.message : 'echec');
+      const delaiDepasse = e instanceof Error && e.name === 'AbortError';
+      setErreur(delaiDepasse
+        ? `le serveur ne repond pas (delai de ${DELAI_APPEL_MS / 1000} s depasse) — reessayez`
+        : (e instanceof Error ? e.message : 'echec'));
       return null;
     } finally {
+      clearTimeout(minuteur);
       setEnCours(null);
+      // Le solde affiche dans la barre laterale ne se rafraichit jamais tout seul : une
+      // generation reelle peut avoir pris, puis rendu, des credits sans que rien ne le
+      // signale avant un rechargement complet de la page.
+      if (libelle.startsWith('generation:')) {
+        try { window.dispatchEvent(new Event('studiio:credits-changed')); } catch { /* confort, jamais bloquant */ }
+      }
     }
   }, [appliquer]);
 
@@ -336,7 +362,14 @@ export default function CinemaPage() {
           setTravail(data.travail);
           delai = 1500;
           if (!ACTIF(data.travail)) { rafraichirFilm(filmId); return; }
-        } else if (r.status === 404) { return; }
+        } else if (r.status === 404) {
+          return;
+        } else {
+          // Reponse recue mais pas exploitable (ex. erreur serveur inattendue) : le
+          // sondage ne doit ni s'arreter en silence, ni continuer au rythme rapide
+          // indefiniment sans jamais le dire — meme traitement que l'echec reseau.
+          delai = Math.min(delai * 2, 10_000);
+        }
       } catch {
         delai = Math.min(delai * 2, 10_000);
       }
