@@ -30,24 +30,38 @@
  * esperant. Un refus est une information ; une depense non comptee n'en est pas une.
  *
  * ─────────────────────────────────────────────────────────────────────────
- * AUCUN REMBOURSEMENT, PARCE QU'IL N'Y A RIEN A RENDRE
+ * LE DEBIT, AU DERNIER MOMENT — ET LE REMBOURSEMENT, QUAND L'APPEL ECHOUE
  * ─────────────────────────────────────────────────────────────────────────
  * Le debit est pris AU DERNIER MOMENT, juste avant l'appel au fournisseur (`atelier.ts`,
  * option `payer`), apres TOUS les controles qui peuvent encore refuser : plan, operation,
  * plafond du film, fournisseur eteint. Un refus survient donc avant le debit, et ne laisse
- * rien a rembourser.
+ * rien a rembourser — c'est le cas le plus frequent, et il reste inchange.
  *
- * C'est aussi ce qui evite une SECONDE ecriture de solde. Rendre des credits voulait dire
- * relire le solde puis le reecrire depuis l'application : deux operations concurrentes
- * pouvaient s'ecraser et perdre une mise a jour. Le seul mouvement d'argent ici est le debit
- * atomique de PostgreSQL, qui fait `credits = credits - montant` dans sa transaction. Aucun
- * solde n'est jamais calcule en JavaScript.
+ * ⚠️ MAIS UN PAIEMENT REUSSI N'EST PAS UNE GARANTIE DE RESULTAT. L'appel au fournisseur peut
+ * encore echouer APRES avoir ete facture par Studiio (delai depasse, prompt ou image refuses
+ * par le fournisseur, reponse illisible) : le compte a paye, et n'a rien recu. Observe en
+ * production : une erreur de forme sur l'appel Replicate faisait perdre des credits a chaque
+ * tentative, sans aucun recours. `rembourserCredits` corrige cela — appelee par la route des
+ * qu'un debit reussi est suivi d'un echec de generation.
  *
- * Reste le cas honnete : l'appel est parti et echoue (delai, resultat illisible). Il a ete
- * facture par le fournisseur, les credits restent pris, et la reponse le dit.
+ * Le remboursement garde la MEME discipline que le debit, jamais une ecriture a main levee :
+ *
+ *   - ATOMIQUE. `rembourser_credits_operation` (SQL, migration
+ *     `2026-10-30-remboursement-credits-operation.sql`) fait `credits = credits + montant`
+ *     et journalise, dans UNE transaction — jamais un solde relu puis reecrit en JavaScript.
+ *   - IDEMPOTENT, SANS DOUBLE REMBOURSEMENT. La reference du remboursement derive de celle du
+ *     debit (`referenceRemboursement`, jamais la meme chaine) : un second appel avec la meme
+ *     reference ne credite pas une seconde fois, l'index unique `(user_id, reference_id)` le
+ *     garantit exactement comme pour le debit.
+ *   - BUDGET INCONNU = PAS DE PROMESSE EN L'AIR. Si la migration n'est pas appliquee sur ce
+ *     serveur, le remboursement est NON prouve : l'appelant le dit (`rembourse: false`),
+ *     jamais un succes qui n'a pas eu lieu.
  */
 import { randomUUID } from 'crypto';
-import { debiterOperationAtomique, referenceOperation } from '@/lib/credits/atomique';
+import {
+  debiterOperationAtomique, referenceOperation,
+  rembourserOperationAtomique, referenceRemboursement,
+} from '@/lib/credits/atomique';
 import { prixDe } from '@/lib/tarifs/serveur';
 import type { CleTarif } from '@/lib/tarifs/catalogue';
 import type { OperationGenerationIA } from '@/lib/cinema/generation/fournisseur';
@@ -136,4 +150,55 @@ export async function reserverCredits(
   }
 
   return { ok: true, reservation: { cout, reference } };
+}
+
+export interface IssueRemboursement {
+  ok: boolean;
+  /** Absent si `ok` : sinon, pourquoi le remboursement n'a pas pu être PROUVÉ. */
+  motif?: 'budget_inconnu' | 'refuse' | 'erreur';
+}
+
+/**
+ * Rend les crédits d'une réservation dont la génération a ÉCHOUÉ APRÈS paiement.
+ *
+ * Ne lève jamais : un remboursement qui échoue est grave (le compte a payé pour rien), mais
+ * ce n'est jamais une raison de faire échouer la réponse HTTP qui annonce l'échec de
+ * génération — la route journalise et le dit, elle ne bloque pas dessus.
+ *
+ * Gratuit (`reservation.cout === 0`, tarif administré à zéro) : rien n'a été débité, rien à
+ * rembourser — rendu `ok: true` sans appeler la base.
+ */
+export async function rembourserCredits(
+  userId: string,
+  reservation: Reservation,
+  operation: OperationGenerationIA,
+  o: { rembourser?: typeof rembourserOperationAtomique } = {},
+): Promise<IssueRemboursement> {
+  if (reservation.cout <= 0) return { ok: true };
+  const rembourser = o.rembourser ?? rembourserOperationAtomique;
+  const reference = referenceRemboursement(reservation.reference);
+
+  let issue: Awaited<ReturnType<typeof rembourserOperationAtomique>>;
+  try {
+    issue = await rembourser(
+      userId, reservation.cout, reference,
+      `Cinema IA — remboursement génération ${operation} (échec après paiement)`,
+    );
+  } catch (e) {
+    console.error('[Cinema/Credits] remboursement impossible :', e instanceof Error ? e.message : e);
+    return { ok: false, motif: 'erreur' };
+  }
+
+  if (!issue.ok) {
+    // Migration absente : on ne peut pas PROUVER le remboursement, donc on ne prétend pas
+    // qu'il a eu lieu. Le motif distingue ce cas (`budget_inconnu`) d'un refus franc.
+    const motif = issue.motif === 'socle_absent' ? 'budget_inconnu' : 'refuse';
+    console.error(
+      `[Cinema/Credits] remboursement refusé (${issue.motif ?? 'motif inconnu'}) — `
+      + `compte ${userId}, référence ${reference}, ${reservation.cout} crédit(s) non rendus.`,
+    );
+    return { ok: false, motif };
+  }
+
+  return { ok: true };
 }

@@ -58,6 +58,12 @@ export interface DemandeImageGeneration {
 export interface DemandeVideoGeneration {
   /** Image SOURCE, deja sur le disque (generee ou importee) — image-vers-video. */
   fichierImageSource: string;
+  /**
+   * Mouvement attendu, en ANGLAIS — comme `promptConstruit` pour l'image. Les
+   * modeles image-vers-video de la famille Wan EXIGENT ce champ : une image
+   * seule, sans texte, est refusee par le fournisseur (422).
+   */
+  prompt: string;
   /** Duree visee, bornee par le fournisseur. */
   dureeS: number;
   format: FormatFilm;

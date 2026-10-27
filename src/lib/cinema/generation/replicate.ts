@@ -156,8 +156,6 @@ async function genererImage(demande: DemandeImageGeneration): Promise<ResultatGe
 }
 
 async function genererVideo(demande: DemandeVideoGeneration): Promise<ResultatGenerationIA> {
-  // Le tarif est AU SECONDE : la duree est bornee ici, pas seulement esperee.
-  const duree = Math.max(DUREE_VIDEO_MIN_S, Math.min(DUREE_VIDEO_MAX_S, Math.round(demande.dureeS)));
   // L'image source est un fichier LOCAL : le modele veut une donnee, on lui passe un data URI.
   let image: string;
   try {
@@ -167,7 +165,15 @@ async function genererVideo(demande: DemandeVideoGeneration): Promise<ResultatGe
   } catch (e) {
     return { ok: false, erreur: `Replicate (video) : image source illisible (${e instanceof Error ? e.message.slice(0, 80) : 'inconnu'})` };
   }
-  const r = await appeler(MODELE_VIDEO, { image, num_frames: duree * 16, seed: demande.graine }, DELAI_VIDEO_MS);
+  // ⚠️ `prompt` EST OBLIGATOIRE : ce modele image-vers-video refuse (422) une prediction
+  // sans texte decrivant le mouvement, meme avec une image. `num_frames` N'EST PAS un
+  // champ de cette variante 480p (elle differe de la 720p qui l'accepte) : l'envoyer la
+  // fait refuser aussi. La duree REELLE de la video produite est mesuree sur le fichier
+  // rapatrie, jamais devinee depuis un parametre d'entree.
+  if (!demande.prompt || !demande.prompt.trim()) {
+    return { ok: false, erreur: 'Replicate (video) : prompt manquant — le fournisseur refuse une image seule' };
+  }
+  const r = await appeler(MODELE_VIDEO, { image, prompt: demande.prompt, seed: demande.graine }, DELAI_VIDEO_MS);
   if (!r.ok) return { ok: false, erreur: `Replicate (video) : ${r.erreur}` };
   const f = await rapatrier(r.url, 'mp4');
   if (!f.ok) return { ok: false, erreur: `Replicate (video) : ${f.erreur}` };

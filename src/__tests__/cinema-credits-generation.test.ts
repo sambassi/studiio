@@ -3,12 +3,14 @@
  *
  * Ce que ces tests prouvent : un budget qui vit sur le COMPTE (donc qui survit à la
  * suppression d'un film), une réservation prise AVANT l'appel payant, aucune double
- * facturation, aucun appel quand le budget est inconnu, et un remboursement seulement
- * quand rien n'est parti chez le fournisseur.
+ * facturation, aucun appel quand le budget est inconnu — et, depuis le correctif du
+ * 30/10/2026, un remboursement FIABLE et IDEMPOTENT quand l'appel payé échoue ensuite
+ * (`rembourserCredits`, symétrique de `reserverCredits`).
  *
- * Ce que cela NE prouve PAS : l'atomicité du débit sous concurrence réelle — c'est une
- * propriété du MOTEUR PostgreSQL, éprouvée par `tests-pg/debit-operation.pg.test.ts`.
- * Ici la fonction SQL est doublée, avec les mêmes règles.
+ * Ce que cela NE prouve PAS : l'atomicité du débit (ni du remboursement) sous concurrence
+ * réelle — ce sont des propriétés du MOTEUR PostgreSQL, éprouvées par
+ * `tests-pg/debit-operation.pg.test.ts` et `tests-pg/remboursement-credits-operation.pg.test.ts`.
+ * Ici les fonctions SQL sont doublées, avec les mêmes règles.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { readFileSync } from 'fs';
@@ -54,8 +56,9 @@ vi.mock('@/lib/db/supabase', () => ({
 }));
 
 import {
-  reserverCredits, cleTarifGeneration, CLE_TARIF_IMAGE, CLE_TARIF_VIDEO, PREFIXE_REFERENCE,
+  reserverCredits, rembourserCredits, cleTarifGeneration, CLE_TARIF_IMAGE, CLE_TARIF_VIDEO, PREFIXE_REFERENCE,
 } from '@/lib/cinema/generation/credits';
+import { referenceRemboursement } from '@/lib/credits/atomique';
 
 /** Un double de `debiter_credits_operation` : mêmes règles que la fonction SQL. */
 function debiteur(solde: { credits: number }, o: { socleAbsent?: boolean; jette?: boolean } = {}) {
@@ -167,12 +170,14 @@ describe('budget inconnu : on ne dépense pas à l’aveugle', () => {
   });
 });
 
-describe('rien à rembourser : l’argent est pris au DERNIER moment', () => {
-  it('la réservation ne sait pas rendre — elle n’a pas à le savoir', async () => {
+describe('la réservation elle-même reste simple : rembourser est une fonction À PART', () => {
+  it('la réservation ne sait pas rendre — ce n’est pas sa responsabilité (voir `rembourserCredits` plus bas)', async () => {
     const r = await reserverCredits('u1', 'video', { prix: prix(15), debiter: debiteur({ credits: 100 }) });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    // Aucune API de remboursement : le débit n'arrive qu'une fois tous les refus passés.
+    // Aucune API de remboursement SUR la réservation : `rembourserCredits` la prend en
+    // paramètre, elle n'est pas une méthode de l'objet — même séparation que le débit et
+    // son miroir `rembourserOperationAtomique` côté `lib/credits/atomique.ts`.
     expect('rembourser' in r.reservation).toBe(false);
     expect(Object.keys(r.reservation).sort()).toEqual(['cout', 'reference']);
   });
@@ -208,6 +213,73 @@ describe('rien à rembourser : l’argent est pris au DERNIER moment', () => {
   });
 });
 
+describe('rembourserCredits — fiable, idempotent, jamais une seconde écriture', () => {
+  /** Un double de `rembourser_credits_operation` : mêmes règles que la fonction SQL. */
+  function rembourseur(solde: { credits: number }, o: { socleAbsent?: boolean; jette?: boolean } = {}) {
+    const vus = new Map<string, number>();
+    return vi.fn(async (_userId: string, montant: number, reference: string) => {
+      if (o.jette) throw new Error('ECONNREFUSED');
+      if (o.socleAbsent) return { ok: false, solde: 0, dejaRembourse: false, motif: 'socle_absent' as const };
+      if (vus.has(reference)) return { ok: true, solde: solde.credits, dejaRembourse: true, motif: null };
+      solde.credits += montant;
+      vus.set(reference, montant);
+      return { ok: true, solde: solde.credits, dejaRembourse: false, motif: null };
+    });
+  }
+
+  it('gratuit (coût 0) : rien à rendre, aucun appel à la base', async () => {
+    const rembourser = rembourseur({ credits: 0 });
+    const r = await rembourserCredits('u1', { cout: 0, reference: 'cinema-generation:x' }, 'image', { rembourser });
+    expect(r.ok).toBe(true);
+    expect(rembourser).not.toHaveBeenCalled();
+  });
+
+  it('remboursement nominal : crédite le montant, avec une référence DÉRIVÉE du débit', async () => {
+    const solde = { credits: 85 };
+    const rembourser = rembourseur(solde);
+    const r = await rembourserCredits('u1', { cout: 15, reference: 'cinema-generation:abc' }, 'video', { rembourser });
+    expect(r.ok).toBe(true);
+    expect(solde.credits).toBe(100);
+    expect(rembourser).toHaveBeenCalledTimes(1);
+    const [, montant, reference] = rembourser.mock.calls[0];
+    expect(montant).toBe(15);
+    // JAMAIS la même référence que le débit : sinon l'index unique confondrait les deux.
+    expect(reference).not.toBe('cinema-generation:abc');
+    expect(reference).toBe(referenceRemboursement('cinema-generation:abc'));
+  });
+
+  it('idempotent : un second appel avec la même réservation ne crédite pas deux fois', async () => {
+    const solde = { credits: 85 };
+    const rembourser = rembourseur(solde);
+    const reservation = { cout: 15, reference: 'cinema-generation:abc' };
+    await rembourserCredits('u1', reservation, 'video', { rembourser });
+    await rembourserCredits('u1', reservation, 'video', { rembourser });
+    expect(solde.credits).toBe(100); // pas 115
+  });
+
+  it('migration absente : REFUS explicite (`budget_inconnu`), jamais un succès qui n’a pas eu lieu', async () => {
+    const r = await rembourserCredits(
+      'u1', { cout: 15, reference: 'cinema-generation:abc' }, 'video',
+      { rembourser: rembourseur({ credits: 0 }, { socleAbsent: true }) },
+    );
+    expect(r).toMatchObject({ ok: false, motif: 'budget_inconnu' });
+  });
+
+  it('base injoignable : REFUS, ne lève jamais (la route doit pouvoir répondre quand même)', async () => {
+    const r = await rembourserCredits(
+      'u1', { cout: 15, reference: 'cinema-generation:abc' }, 'video',
+      { rembourser: rembourseur({ credits: 0 }, { jette: true }) },
+    );
+    expect(r).toMatchObject({ ok: false, motif: 'erreur' });
+  });
+
+  it('un motif de refus franc (ex. utilisateur inconnu) est rendu tel quel, sous `refuse`', async () => {
+    const rembourser = vi.fn(async () => ({ ok: false, solde: 0, dejaRembourse: false, motif: 'utilisateur_inconnu' as const }));
+    const r = await rembourserCredits('u1', { cout: 15, reference: 'cinema-generation:abc' }, 'video', { rembourser });
+    expect(r).toMatchObject({ ok: false, motif: 'refuse' });
+  });
+});
+
 describe('câblage de la route', () => {
   const r = readFileSync('src/app/api/cinema/films/[id]/generation/route.ts', 'utf8');
 
@@ -222,9 +294,9 @@ describe('câblage de la route', () => {
     expect(r).toContain("status: resultat.refusPaiement === 'solde_insuffisant' ? 402 : 409");
   });
 
-  it('la réponse dit la vérité sur l’argent : l’appel est parti, il est payé', () => {
+  it('la réponse dit la vérité sur l’argent : l’appel est parti, payé, puis rendu ou non', () => {
     expect(r).toContain('creditsPris:');
-    expect(r).not.toContain('creditsRendus');
+    expect(r).toContain('creditsRembourses');
   });
 
   it('aucune substitution silencieuse : un refus n’est jamais remplacé par une simulation', () => {
@@ -232,5 +304,24 @@ describe('câblage de la route', () => {
     expect(r.indexOf('const choix = fournisseurServeur')).toBeLessThan(r.indexOf('await reserverCredits('));
     expect(r).not.toMatch(/simule[^\n]*(apres|fallback|repli)/i);
     expect((r.match(/fournisseurServeur\(/g) ?? []).length).toBe(1);
+  });
+
+  it('le remboursement est appelé APRÈS le refus de paiement, jamais avant — rien n’est payé', () => {
+    // `refusPaiement` retourne (402/409) avant même d'atteindre le bloc de remboursement :
+    // aucun débit n'a eu lieu, il n'y a donc rien à rendre pour ce cas.
+    const iRefusPaiement = r.indexOf('if (resultat.refusPaiement) {');
+    const iRembourse = r.indexOf('await rembourserCredits(');
+    expect(iRefusPaiement).toBeGreaterThan(0);
+    expect(iRembourse).toBeGreaterThan(iRefusPaiement);
+  });
+
+  it('le remboursement n’est tenté QUE si des crédits ont réellement été pris', () => {
+    const bloc = r.slice(r.indexOf('if (!resultat.ok) {'), r.indexOf('await rembourserCredits(') + 200);
+    expect(bloc).toMatch(/if \(reservation && \(reservation as Reservation\)\.cout > 0\) \{/);
+  });
+
+  it('un remboursement non prouvé est journalisé, mais ne bloque jamais la réponse d’échec', () => {
+    expect(r).toContain('issue.ok');
+    expect(r).toContain('console.error(`[Cinema] remboursement non prouve');
   });
 });
