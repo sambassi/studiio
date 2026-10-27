@@ -78,6 +78,15 @@ export type ResultatGenerationPlan =
      * Absent ou `0` : rien n'est parti (fournisseur eteint, plafond refuse, plan inconnu).
      */
     depenseUsd?: number;
+    /**
+     * Repris du fournisseur SEULEMENT sur l'echec de l'appel lui-meme (jamais sur un echec
+     * de lecture du resultat ou d'import, survenus APRES un appel reussi) : `jamaisEnvoye`
+     * quand aucune requete n'est jamais partie, `incertain` quand le delai a expire sans
+     * reponse. Utilise par `route.ts` pour liberer ou maintenir la reservation du plafond
+     * de depense par compte — voir `generation/plafond-compte.ts`.
+     */
+    jamaisEnvoye?: boolean;
+    incertain?: boolean;
   };
 
 /** Les apparences des personnages PRESENTS dans un plan, dans la forme qu'un fournisseur recoit. */
@@ -160,7 +169,12 @@ export async function genererMediaPlan(film: Film, planId: string, options: Opti
       graine,
     });
     // L'appel est parti : qu'il reussisse ou non, il peut avoir ete facture.
-    if (!resultat.ok) return { ok: false, erreur: resultat.erreur, depenseUsd: devis.totalUsd ?? 0 };
+    if (!resultat.ok) {
+      return {
+        ok: false, erreur: resultat.erreur, depenseUsd: devis.totalUsd ?? 0,
+        jamaisEnvoye: resultat.jamaisEnvoye, incertain: resultat.incertain,
+      };
+    }
     fichierTemporaire = resultat.fichier;
     nomSuggere = resultat.nomSuggere;
   } else {
@@ -176,7 +190,12 @@ export async function genererMediaPlan(film: Film, planId: string, options: Opti
       format: film.format,
       graine,
     });
-    if (!resultat.ok) return { ok: false, erreur: resultat.erreur, depenseUsd: devis.totalUsd ?? 0 };
+    if (!resultat.ok) {
+      return {
+        ok: false, erreur: resultat.erreur, depenseUsd: devis.totalUsd ?? 0,
+        jamaisEnvoye: resultat.jamaisEnvoye, incertain: resultat.incertain,
+      };
+    }
     fichierTemporaire = resultat.fichier;
     nomSuggere = resultat.nomSuggere;
   }

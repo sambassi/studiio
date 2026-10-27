@@ -91,12 +91,24 @@ function extraireUrl(sortie: unknown): string | null {
   return null;
 }
 
-/** Appelle le modele et rend l'URL du resultat, ou un motif d'echec lisible. */
+type ResultatAppel = { ok: true; url: string } | { ok: false; erreur: string; jamaisEnvoye?: boolean; incertain?: boolean };
+
+/**
+ * Appelle le modele et rend l'URL du resultat, ou un motif d'echec lisible.
+ *
+ * ⚠️ `incertain: true` EST POSE UNIQUEMENT QUAND NOTRE DELAI EXPIRE. A ce moment, notre
+ * requete est abandonnee, mais rien ne dit que le fournisseur a lui-meme annule la
+ * prediction : elle peut continuer, et etre facturee, sans que nous le sachions. C'est le
+ * SEUL cas ou l'issue financiere reste incertaine — toute autre erreur (token absent,
+ * reponse HTTP d'erreur, media illisible) est un echec COMPREHENSIBLE, pas un echec
+ * EN SUSPENS.
+ */
 async function appeler(
   modele: string, entree: Record<string, unknown>, delaiMs: number,
-): Promise<{ ok: true; url: string } | { ok: false; erreur: string }> {
+): Promise<ResultatAppel> {
   const cle = process.env.REPLICATE_API_TOKEN?.trim();
-  if (!cle) return { ok: false, erreur: 'REPLICATE_API_TOKEN absent' };
+  // Jamais envoye : le client Replicate n'a meme pas ete construit.
+  if (!cle) return { ok: false, erreur: 'REPLICATE_API_TOKEN absent', jamaisEnvoye: true };
 
   const replicate = new Replicate({ auth: cle });
   const ctrl = new AbortController();
@@ -111,14 +123,16 @@ async function appeler(
       signal: ctrl.signal,
     });
   } catch (e) {
-    if (ctrl.signal.aborted) return { ok: false, erreur: `delai depasse (${Math.round(delaiMs / 1000)} s) — prediction annulee` };
+    if (ctrl.signal.aborted) {
+      return { ok: false, erreur: `delai depasse (${Math.round(delaiMs / 1000)} s) — prediction annulee`, incertain: true };
+    }
     return { ok: false, erreur: e instanceof Error ? e.message.slice(0, 140) : 'generation refusee par le fournisseur' };
   } finally {
     clearTimeout(minuteur);
   }
 
   const url = extraireUrl(sortie);
-  if (!url && ctrl.signal.aborted) return { ok: false, erreur: 'delai depasse — prediction annulee' };
+  if (!url && ctrl.signal.aborted) return { ok: false, erreur: 'delai depasse — prediction annulee', incertain: true };
   if (!url) return { ok: false, erreur: 'le fournisseur a repondu, mais sans media exploitable' };
   return { ok: true, url };
 }
@@ -149,7 +163,7 @@ async function genererImage(demande: DemandeImageGeneration): Promise<ResultatGe
     seed: demande.graine,
     num_outputs: 1,
   }, DELAI_IMAGE_MS);
-  if (!r.ok) return { ok: false, erreur: `Replicate (image) : ${r.erreur}` };
+  if (!r.ok) return { ok: false, erreur: `Replicate (image) : ${r.erreur}`, jamaisEnvoye: r.jamaisEnvoye, incertain: r.incertain };
   const f = await rapatrier(r.url, 'webp');
   if (!f.ok) return { ok: false, erreur: `Replicate (image) : ${f.erreur}` };
   return { ok: true, fichier: f.fichier, nomSuggere: `replicate-${demande.graine}.webp` };
@@ -163,7 +177,10 @@ async function genererVideo(demande: DemandeVideoGeneration): Promise<ResultatGe
     const octets = await readFile(demande.fichierImageSource);
     image = `data:image/png;base64,${octets.toString('base64')}`;
   } catch (e) {
-    return { ok: false, erreur: `Replicate (video) : image source illisible (${e instanceof Error ? e.message.slice(0, 80) : 'inconnu'})` };
+    return {
+      ok: false, erreur: `Replicate (video) : image source illisible (${e instanceof Error ? e.message.slice(0, 80) : 'inconnu'})`,
+      jamaisEnvoye: true,
+    };
   }
   // ⚠️ `prompt` EST OBLIGATOIRE : ce modele image-vers-video refuse (422) une prediction
   // sans texte decrivant le mouvement, meme avec une image. `num_frames` N'EST PAS un
@@ -171,10 +188,10 @@ async function genererVideo(demande: DemandeVideoGeneration): Promise<ResultatGe
   // fait refuser aussi. La duree REELLE de la video produite est mesuree sur le fichier
   // rapatrie, jamais devinee depuis un parametre d'entree.
   if (!demande.prompt || !demande.prompt.trim()) {
-    return { ok: false, erreur: 'Replicate (video) : prompt manquant — le fournisseur refuse une image seule' };
+    return { ok: false, erreur: 'Replicate (video) : prompt manquant — le fournisseur refuse une image seule', jamaisEnvoye: true };
   }
   const r = await appeler(MODELE_VIDEO, { image, prompt: demande.prompt, seed: demande.graine }, DELAI_VIDEO_MS);
-  if (!r.ok) return { ok: false, erreur: `Replicate (video) : ${r.erreur}` };
+  if (!r.ok) return { ok: false, erreur: `Replicate (video) : ${r.erreur}`, jamaisEnvoye: r.jamaisEnvoye, incertain: r.incertain };
   const f = await rapatrier(r.url, 'mp4');
   if (!f.ok) return { ok: false, erreur: `Replicate (video) : ${f.erreur}` };
   return { ok: true, fichier: f.fichier, nomSuggere: `replicate-${demande.graine}.mp4` };
