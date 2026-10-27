@@ -66,25 +66,23 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
   const fournisseurId = choix.id;
 
-  // ── LES CREDITS PAIENT LA GENERATION REELLE, AVANT L'APPEL ──────────────
+  // ── LES CREDITS PAIENT LA GENERATION REELLE ─────────────────────────────
   //
-  // Debiter APRES aurait laisse passer une depense superieure au solde ; debiter avant, de
-  // facon atomique, fait du solde la vraie limite — y compris pour deux generations lancees
-  // en meme temps. La generation SIMULEE ne coute rien et ne debite rien.
+  // Le debit est confie a l'atelier, qui l'appelle AU DERNIER MOMENT : apres ses propres
+  // controles (plan, operation, plafond du film) et juste avant l'appel payant. Rien n'est
+  // donc preleve pour une generation qui va etre refusee, et il n'y a jamais a rembourser.
   //
-  // Budget inconnu (prix illisible, migration du debit absente) : on REFUSE l'appel payant
-  // au lieu de l'engager a l'aveugle.
+  // Atomique : `debiter_credits_operation` fait `credits = credits - montant` dans sa
+  // transaction. Deux generations lancees en meme temps ne peuvent pas depasser le solde.
+  // Budget inconnu (prix illisible, migration absente) : refus, jamais un appel a l'aveugle.
+  // La generation SIMULEE ne coute rien et ne debite rien.
   let reservation: Reservation | null = null;
-  if (choix.mode === 'reelle') {
+  const payer = choix.mode !== 'reelle' ? undefined : async () => {
     const prise = await reserverCredits(s.userId, operation as 'image' | 'video');
-    if (!prise.ok) {
-      return NextResponse.json(
-        { ok: false, erreur: prise.message, motif: prise.motif, cout: prise.cout ?? null },
-        { status: prise.motif === 'solde_insuffisant' ? 402 : 409 },
-      );
-    }
+    if (!prise.ok) return { ok: false as const, motif: prise.motif, message: prise.message };
     reservation = prise.reservation;
-  }
+    return { ok: true as const };
+  };
 
   // Le client peut rabaisser le plafond, jamais le relever.
   let plafondUsd = ctx.plafondUsd;
@@ -103,7 +101,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       if (c) await ctx.objets.telechargerVers(c, fichierDuMedia(racinePublique, source.url));
     }
     const r = await genererMediaPlan(film, planId, {
-      fournisseurId, operation: operation as 'image' | 'video', racinePublique, plafondUsd,
+      fournisseurId, operation: operation as 'image' | 'video', racinePublique, plafondUsd, payer,
     });
     if (!r.ok) return r;
     const cle = cleMedia(s.userId, film.id, r.media.url);
@@ -113,20 +111,23 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   });
 
   if (!resultat.ok) {
-    // ── CREDITS : on ne garde que ce qui a ete reellement engage ──────────
-    // `depenseUsd` absent ou nul = le fournisseur n'a JAMAIS ete appele (plan inconnu,
-    // plafond du film atteint, fournisseur eteint) : rien n'a ete facture, on rend les
-    // credits. Des que l'appel est parti, il est paye : les credits restent pris, et le
-    // message le dit.
-    const engage = (resultat.depenseUsd ?? 0) > 0;
-    if (reservation && !engage) await reservation.rembourser(`generation refusee avant tout appel : ${resultat.erreur}`);
+    // Un refus du PAIEMENT se distingue d'un refus de generation : 402 si le solde manque,
+    // 409 si le budget est inconnu. Dans les deux cas, rien n'a ete appele ni preleve.
+    if (resultat.refusPaiement) {
+      return NextResponse.json(
+        { ok: false, erreur: resultat.erreur, motif: resultat.refusPaiement },
+        { status: resultat.refusPaiement === 'solde_insuffisant' ? 402 : 409 },
+      );
+    }
+    const engageUsd = resultat.depenseUsd ?? 0;
+    const engage = engageUsd > 0;
     // ⚠️ L'APPEL A PU ETRE FACTURE MALGRE L'ECHEC (delai depasse, resultat illisible…).
     // On l'enregistre sur le film : sans cela, chaque echec laissait le compteur intact et
     // le plafond ne serait jamais atteint — on pourrait depenser sans fin.
-    if (resultat.depenseUsd && resultat.depenseUsd > 0) {
+    if (engage) {
       await modifierFilm(ctx.films, params.id, s.userId, (f) => ({
         ...f,
-        coutGenerationUsd: Math.round(((f.coutGenerationUsd ?? 0) + resultat.depenseUsd!) * 10_000) / 10_000,
+        coutGenerationUsd: Math.round(((f.coutGenerationUsd ?? 0) + engageUsd) * 10_000) / 10_000,
       })).catch(() => null);
     }
     // Un refus de plafond ou de fournisseur eteint n'est PAS une erreur serveur.
@@ -135,8 +136,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       ok: false,
       erreur: resultat.erreur,
       verification: resultat.verification ?? null,
-      // Dire la verite sur l'argent : credits rendus, ou pris parce que l'appel est parti.
-      ...(reservation && reservation.cout > 0 ? { creditsRendus: !engage, creditsPris: engage ? reservation.cout : 0 } : null),
+      // Dire la verite sur l'argent : l'appel est parti, il est paye.
+      ...(reservation && (reservation as Reservation).cout > 0 ? { creditsPris: (reservation as Reservation).cout } : null),
     }, { status });
   }
 

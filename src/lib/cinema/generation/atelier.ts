@@ -46,12 +46,27 @@ export interface OptionsGenerationPlan {
   plafondUsd?: number;
   /** Graine de reproductibilite. Defaut : derivee de l'id du plan (stable). */
   graine?: number;
+  /**
+   * PAIEMENT, PRIS AU DERNIER MOMENT — juste avant l'appel au fournisseur.
+   *
+   * Appelee APRES tous les controles qui peuvent encore refuser (plan, operation, plafond)
+   * et AVANT le premier appel payant. C'est ce qui evite tout remboursement : on ne prend
+   * l'argent que lorsqu'on est sur de depenser. Un refus ici n'engage rien.
+   *
+   * Absente : rien n'est preleve (generation gratuite ou simulee).
+   */
+  payer?: () => Promise<{ ok: true } | { ok: false; motif: string; message: string }>;
 }
 
 export type ResultatGenerationPlan =
   | { ok: true; film: Film; media: MediaPlan }
   | {
     ok: false; erreur: string; verification?: VerificationPlafond;
+    /**
+     * Le PAIEMENT a refuse (solde insuffisant, budget inconnu) : rien n'a ete appele ni
+     * preleve. Porte le motif, que la route traduit en 402 ou 409.
+     */
+    refusPaiement?: string;
     /**
      * ⚠️ DEPENSE DEJA ENGAGEE CHEZ LE FOURNISSEUR, malgre l'echec.
      *
@@ -115,6 +130,16 @@ export async function genererMediaPlan(film: Film, planId: string, options: Opti
   if (!verification.autorise) return { ok: false, erreur: verification.motif ?? 'generation refusee', verification };
 
   const graine = options.graine ?? graineParDefaut(planId);
+
+  // ── 3 bis. LE PAIEMENT, AU DERNIER MOMENT ───────────────────────────────
+  // Tout ce qui pouvait refuser a refuse. Le prochain geste est l'appel payant : c'est
+  // maintenant, et pas avant, qu'on prend l'argent. Debiter plus tot aurait impose de
+  // rembourser ensuite — et un remboursement est une seconde ecriture de solde, donc une
+  // course de plus. Ici il n'y a rien a rendre.
+  if (options.payer) {
+    const paiement = await options.payer();
+    if (!paiement.ok) return { ok: false, erreur: paiement.message, refusPaiement: paiement.motif };
+  }
 
   // ── 4. Le fournisseur produit un fichier LOCAL ─────────────────────────
   let fichierTemporaire: string;

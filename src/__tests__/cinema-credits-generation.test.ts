@@ -54,8 +54,7 @@ vi.mock('@/lib/db/supabase', () => ({
 }));
 
 import {
-  reserverCredits, rembourserUneFois, cleTarifGeneration, CLE_TARIF_IMAGE, CLE_TARIF_VIDEO,
-  PREFIXE_REFERENCE, referenceRemboursement,
+  reserverCredits, cleTarifGeneration, CLE_TARIF_IMAGE, CLE_TARIF_VIDEO, PREFIXE_REFERENCE,
 } from '@/lib/cinema/generation/credits';
 
 /** Un double de `debiter_credits_operation` : mêmes règles que la fonction SQL. */
@@ -168,85 +167,64 @@ describe('budget inconnu : on ne dépense pas à l’aveugle', () => {
   });
 });
 
-describe('remboursement : seulement si rien n’est parti, et une seule fois', () => {
-  it('rend le montant RÉELLEMENT débité, pas le tarif du moment', async () => {
-    const solde = { credits: 100 };
-    const r = await reserverCredits('u1', 'video', { prix: prix(15), debiter: debiteur(solde) });
+describe('rien à rembourser : l’argent est pris au DERNIER moment', () => {
+  it('la réservation ne sait pas rendre — elle n’a pas à le savoir', async () => {
+    const r = await reserverCredits('u1', 'video', { prix: prix(15), debiter: debiteur({ credits: 100 }) });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(await r.reservation.rembourser('fournisseur eteint')).toBe(true);
-    expect(credites).toEqual([{ userId: 'u1', montant: 15, type: 'refund' }]);
+    // Aucune API de remboursement : le débit n'arrive qu'une fois tous les refus passés.
+    expect('rembourser' in r.reservation).toBe(false);
+    expect(Object.keys(r.reservation).sort()).toEqual(['cout', 'reference']);
   });
 
-  it('un second remboursement est refusé PAR LA BASE (index unique), rien n’est rendu deux fois', async () => {
-    const r = await reserverCredits('u1', 'image', { prix: prix(5), debiter: debiteur({ credits: 50 }) });
-    if (!r.ok) throw new Error('réservation attendue');
-    expect(await r.reservation.rembourser('x')).toBe(true);
-    expect(await r.reservation.rembourser('x')).toBe(false);
-    expect(await rembourserUneFois('u1', r.reservation.reference, 'x')).toBe(false);
-    expect(credites).toHaveLength(1);
-    // La trace porte sa propre référence, dérivée du débit.
-    expect(journal.lignes.filter((l) => l.reference === referenceRemboursement(r.reservation.reference))).toHaveLength(1);
+  it('aucun solde n’est jamais calculé dans l’application (pas de lecture-puis-écriture)', () => {
+    const code = readFileSync('src/lib/cinema/generation/credits.ts', 'utf8');
+    // Le seul mouvement d'argent est le débit atomique de PostgreSQL.
+    expect(code).not.toMatch(/from\('users'\)/);
+    expect(code).not.toMatch(/addCredits|credits:\s*\(/);
+    expect(code).toContain('debiterOperationAtomique');
   });
 
-  it('deux remboursements SIMULTANÉS : un seul passe', async () => {
-    const r = await reserverCredits('u1', 'video', { prix: prix(15), debiter: debiteur({ credits: 100 }) });
-    if (!r.ok) throw new Error('réservation attendue');
-    const issues = await Promise.all([r.reservation.rembourser('a'), r.reservation.rembourser('b')]);
-    expect(issues.filter(Boolean)).toHaveLength(1);
-    expect(credites).toHaveLength(1);
+  it('l’atelier appelle le paiement APRÈS tous ses refus et AVANT le premier appel payant', () => {
+    const a = readFileSync('src/lib/cinema/generation/atelier.ts', 'utf8');
+    const iPlafond = a.indexOf('if (!verification.autorise)');
+    const iVideoSansImage = a.indexOf("'une video se genere depuis une image");
+    const iPayer = a.indexOf('const paiement = await options.payer();');
+    const iAppel = a.indexOf('await fournisseur.genererImage(');
+    expect(iPlafond).toBeGreaterThan(0);
+    expect(iPayer).toBeGreaterThan(iPlafond);
+    expect(iPayer).toBeGreaterThan(iVideoSansImage);
+    expect(iPayer).toBeLessThan(iAppel);
   });
 
-  it('le solde du compte remonte du montant rendu', async () => {
-    journal.solde = 35;
-    const r = await reserverCredits('u1', 'video', { prix: prix(15), debiter: debiteur({ credits: 100 }) });
-    if (!r.ok) throw new Error('réservation attendue');
-    await r.reservation.rembourser('x');
-    expect(journal.solde).toBe(50);
-  });
-
-  it('rien au journal (aucun débit) : rien à rendre', async () => {
-    expect(await rembourserUneFois('u1', 'cinema-generation:jamais-debitee', 'x')).toBe(false);
-    expect(credites).toHaveLength(0);
-  });
-
-  it('journal illisible : remboursement différé, jamais un crédit inventé', async () => {
-    const r = await reserverCredits('u1', 'image', { prix: prix(5), debiter: debiteur({ credits: 50 }) });
-    if (!r.ok) throw new Error('réservation attendue');
-    journal.erreurLecture = true;
-    expect(await r.reservation.rembourser('x')).toBe(false);
-    expect(credites).toHaveLength(0);
-  });
-
-  it('une réservation gratuite n’a rien à rendre', async () => {
-    const r = await reserverCredits('u1', 'image', { prix: prix(0), debiter: debiteur({ credits: 0 }) });
-    if (!r.ok) throw new Error('réservation attendue');
-    expect(await r.reservation.rembourser('x')).toBe(false);
+  it('un refus de paiement n’engage rien : pas de `depenseUsd`, donc rien à compter', () => {
+    const a = readFileSync('src/lib/cinema/generation/atelier.ts', 'utf8');
+    expect(a).toContain("return { ok: false, erreur: paiement.message, refusPaiement: paiement.motif };");
+    // Les `depenseUsd` ne sont posés qu'APRÈS le paiement.
+    const iPayer = a.indexOf('const paiement = await options.payer();');
+    for (const m of a.matchAll(/depenseUsd: devis\.totalUsd \?\? 0/g)) {
+      expect(m.index!).toBeGreaterThan(iPayer);
+    }
   });
 });
 
 describe('câblage de la route', () => {
   const r = readFileSync('src/app/api/cinema/films/[id]/generation/route.ts', 'utf8');
 
-  it('la réservation est prise AVANT tout travail, et seulement en mode réel', () => {
-    expect(r).toContain("if (choix.mode === 'reelle') {");
+  it('le paiement est confié à l’atelier, et seulement en mode réel', () => {
+    expect(r).toContain("const payer = choix.mode !== 'reelle' ? undefined : async () => {");
     expect(r).toContain("const prise = await reserverCredits(s.userId, operation as 'image' | 'video');");
-    expect(r.indexOf('reserverCredits')).toBeLessThan(r.indexOf('await avecDossierTemporaire(ctx,'));
+    expect(r).toContain('plafondUsd, payer,');
   });
 
-  it('solde insuffisant → 402 ; budget inconnu → 409 ; aucun appel dans les deux cas', () => {
-    expect(r).toContain("status: prise.motif === 'solde_insuffisant' ? 402 : 409");
-    expect(r.indexOf("if (!prise.ok) {")).toBeLessThan(r.indexOf('await avecDossierTemporaire(ctx,'));
+  it('un refus de paiement est distingué d’un refus de génération (402 ou 409)', () => {
+    expect(r).toContain("if (resultat.refusPaiement) {");
+    expect(r).toContain("status: resultat.refusPaiement === 'solde_insuffisant' ? 402 : 409");
   });
 
-  it('les crédits ne sont rendus que si le fournisseur n’a JAMAIS été appelé', () => {
-    expect(r).toContain('const engage = (resultat.depenseUsd ?? 0) > 0;');
-    expect(r).toContain('if (reservation && !engage) await reservation.rembourser(');
-  });
-
-  it('la réponse dit la vérité sur l’argent (rendu ou pris)', () => {
-    expect(r).toContain('creditsRendus: !engage');
-    expect(r).toContain('creditsPris: engage ? reservation.cout : 0');
+  it('la réponse dit la vérité sur l’argent : l’appel est parti, il est payé', () => {
+    expect(r).toContain('creditsPris:');
+    expect(r).not.toContain('creditsRendus');
   });
 
   it('aucune substitution silencieuse : un refus n’est jamais remplacé par une simulation', () => {

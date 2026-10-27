@@ -30,17 +30,23 @@
  * esperant. Un refus est une information ; une depense non comptee n'en est pas une.
  *
  * ─────────────────────────────────────────────────────────────────────────
- * REMBOURSEMENT : SEULEMENT SI RIEN N'EST PARTI
+ * AUCUN REMBOURSEMENT, PARCE QU'IL N'Y A RIEN A RENDRE
  * ─────────────────────────────────────────────────────────────────────────
- * Le debit precede l'appel — c'est la seule facon de ne pas depenser plus que le solde.
- * Si la generation est refusee AVANT que le fournisseur soit appele (plan inconnu, plafond
- * du film atteint, fournisseur eteint), rien n'a ete facture : on rend les credits. Des que
- * l'appel est parti, il est paye, meme s'il echoue : les credits restent pris, et c'est dit.
- * On rend TOUJOURS le montant reellement debite, relu au journal — jamais le tarif du
- * moment, que l'admin a pu changer entre-temps.
+ * Le debit est pris AU DERNIER MOMENT, juste avant l'appel au fournisseur (`atelier.ts`,
+ * option `payer`), apres TOUS les controles qui peuvent encore refuser : plan, operation,
+ * plafond du film, fournisseur eteint. Un refus survient donc avant le debit, et ne laisse
+ * rien a rembourser.
+ *
+ * C'est aussi ce qui evite une SECONDE ecriture de solde. Rendre des credits voulait dire
+ * relire le solde puis le reecrire depuis l'application : deux operations concurrentes
+ * pouvaient s'ecraser et perdre une mise a jour. Le seul mouvement d'argent ici est le debit
+ * atomique de PostgreSQL, qui fait `credits = credits - montant` dans sa transaction. Aucun
+ * solde n'est jamais calcule en JavaScript.
+ *
+ * Reste le cas honnete : l'appel est parti et echoue (delai, resultat illisible). Il a ete
+ * facture par le fournisseur, les credits restent pris, et la reponse le dit.
  */
 import { randomUUID } from 'crypto';
-import { supabaseAdmin } from '@/lib/db/supabase';
 import { debiterOperationAtomique, referenceOperation } from '@/lib/credits/atomique';
 import { prixDe } from '@/lib/tarifs/serveur';
 import type { CleTarif } from '@/lib/tarifs/catalogue';
@@ -61,11 +67,6 @@ export interface Reservation {
   cout: number;
   /** Référence du débit, unique à cette tentative. */
   reference: string;
-  /**
-   * Rend les crédits — à appeler SEULEMENT si le fournisseur n'a jamais été appelé.
-   * Idempotente : un second appel ne rend rien de plus.
-   */
-  rembourser: (raison: string) => Promise<boolean>;
 }
 
 export type MotifRefusCredits = 'solde_insuffisant' | 'budget_inconnu' | 'refuse';
@@ -77,9 +78,9 @@ export type IssueReservation =
 const MESSAGE_BUDGET_INCONNU =
   'Le coût de cette génération ne peut pas être établi sur ce serveur : rien n’a été lancé ni débité.';
 
-/** Une réservation qui ne prend rien (tarif à zéro) : rien à rendre. */
+/** Une réservation qui ne prend rien (tarif administré à zéro). */
 function gratuite(reference: string): Reservation {
-  return { cout: 0, reference, rembourser: async () => false };
+  return { cout: 0, reference };
 }
 
 /**
@@ -134,93 +135,5 @@ export async function reserverCredits(
     return { ok: false, motif: 'refuse', cout, message: `Génération refusée (${issue.motif ?? 'raison inconnue'}) — rien n’a été débité.` };
   }
 
-  return {
-    ok: true,
-    reservation: {
-      cout,
-      reference,
-      rembourser: (raison: string) => rembourserUneFois(userId, reference, raison),
-    },
-  };
-}
-
-/** Référence du remboursement, dérivée du débit : c'est elle que l'index unique protège. */
-export const referenceRemboursement = (reference: string) => `${reference}:remboursement`;
-
-/**
- * Rend le montant RÉELLEMENT débité pour cette référence, UNE SEULE FOIS.
- *
- * ─────────────────────────────────────────────────────────────────────────
- * C'EST LA BASE QUI GARANTIT L'UNICITÉ, PAS UNE LECTURE PRÉALABLE
- * ─────────────────────────────────────────────────────────────────────────
- * `addCredits` n'écrit aucune `reference_id` : un remboursement ne laissait donc aucune
- * trace reconnaissable, et deux appels rendaient deux fois. On ÉCRIT ici la ligne de
- * remboursement avec sa propre référence (`<débit>:remboursement`), que l'index unique
- * partiel `credit_transactions_reference_unique (user_id, reference_id)` refuse en double.
- * Le second appel se heurte donc à la base, pas à une lecture qui peut arriver trop tard —
- * et deux requêtes simultanées ne peuvent pas rembourser deux fois.
- *
- * Le montant est RELU au journal, jamais pris au tarif du moment : l'admin a pu le changer
- * entre le débit et l'échec.
- */
-export async function rembourserUneFois(userId: string, reference: string, raison: string): Promise<boolean> {
-  try {
-    const { data, error } = await supabaseAdmin
-      .from('credit_transactions')
-      .select('id, amount, type')
-      .eq('user_id', userId)
-      .eq('reference_id', reference);
-    if (error) {
-      console.error(`[Cinema/Credits] journal illisible — remboursement différé (${reference}) :`, error.message);
-      return false;
-    }
-    const lignes = (data ?? []) as Array<{ amount?: unknown; type?: unknown }>;
-    if (lignes.length === 0) return false; // rien n'a été débité
-
-    const montant = Math.abs(Number(lignes[0]?.amount));
-    if (!Number.isFinite(montant) || montant === 0) return false;
-
-    // 1. LA RÉSERVATION DU DROIT DE REMBOURSER — refusée en double par l'index unique.
-    const { error: erreurTrace } = await supabaseAdmin
-      .from('credit_transactions')
-      .insert({
-        user_id: userId,
-        amount: montant,
-        type: 'refund',
-        reference_id: referenceRemboursement(reference),
-        description: `Cinema IA — ${raison}`.slice(0, 200),
-        created_at: new Date().toISOString(),
-      });
-    if (erreurTrace) {
-      // 23505 : déjà remboursé. Ce n'est pas une panne, c'est la réponse à une course.
-      const deja = String((erreurTrace as { code?: unknown }).code ?? '') === '23505'
-        || /duplicate key|unique/i.test(erreurTrace.message ?? '');
-      if (!deja) console.error(`[Cinema/Credits] trace de remboursement refusée (${reference}) :`, erreurTrace.message);
-      return false;
-    }
-
-    // 2. LE SOLDE — la trace est posée, le crédit peut être rendu.
-    await crediterSolde(userId, montant);
-    console.warn(`[Cinema/Credits] ${montant} crédit(s) rendu(s) — ${raison} (${reference})`);
-    return true;
-  } catch (e) {
-    // Jamais d'exception vers l'appelant : un remboursement manqué se dit, il n'emporte
-    // pas la réponse de la route.
-    console.error(`[Cinema/Credits] remboursement impossible (${reference}) :`, e instanceof Error ? e.message : e);
-    return false;
-  }
-}
-
-/**
- * Remonte le solde du compte. La ligne de journal est déjà écrite ci-dessus : on n'appelle
- * donc pas `addCredits`, qui en écrirait une SECONDE, sans référence — deux lignes pour un
- * seul remboursement rendraient le journal illisible.
- */
-async function crediterSolde(userId: string, montant: number): Promise<void> {
-  const { data } = await supabaseAdmin.from('users').select('credits').eq('id', userId).maybeSingle();
-  const actuel = Number((data as { credits?: unknown } | null)?.credits);
-  await supabaseAdmin
-    .from('users')
-    .update({ credits: (Number.isFinite(actuel) ? actuel : 0) + montant })
-    .eq('id', userId);
+  return { ok: true, reservation: { cout, reference } };
 }

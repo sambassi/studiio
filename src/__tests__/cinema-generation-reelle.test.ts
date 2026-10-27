@@ -199,7 +199,8 @@ describe('une dépense engagée est TOUJOURS comptée, même quand l’appel éc
   it('la route l’enregistre sur le film, échec comme conflit — sinon le plafond ne serait jamais atteint', () => {
     const r = src('src/app/api/cinema/films/[id]/generation/route.ts');
     expect(r.match(/coutGenerationUsd: Math\.round/g)?.length).toBeGreaterThanOrEqual(3);
-    expect(r).toContain('if (resultat.depenseUsd && resultat.depenseUsd > 0) {');
+    expect(r).toContain('const engageUsd = resultat.depenseUsd ?? 0;');
+    expect(r).toContain('if (engage) {');
     expect(r).toContain('if (depense > 0) {');
   });
 });
