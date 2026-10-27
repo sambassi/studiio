@@ -208,3 +208,78 @@ export async function debiterOperationAtomique(
     motif: ligne.motif ?? null,
   };
 }
+
+export interface ResultatRemboursement {
+  ok: boolean;
+  /** Solde APRÈS l'opération. */
+  solde: number;
+  /** Vrai si ce remboursement avait déjà eu lieu : le rejeu n'a rien re-crédité. */
+  dejaRembourse: boolean;
+  motif: MotifRefusRemboursement | null;
+}
+
+/** Sous-ensemble de `MotifRefus` : rembourser ne vérifie ni solde ni `type` (toujours `refund`). */
+export type MotifRefusRemboursement =
+  | 'reference_absente'
+  | 'utilisateur_inconnu'
+  | 'montant_invalide'
+  | 'socle_absent';
+
+/**
+ * Référence idempotente d'un remboursement, dérivée de celle du débit.
+ *
+ * ⚠️ JAMAIS la même chaîne que la référence débitée : l'index unique est
+ * `(user_id, reference_id)` sans distinction de `type` — réutiliser la
+ * référence du débit ferait passer le remboursement pour « déjà fait » (ou
+ * pire, le débit pour « déjà remboursé ») sans jamais bouger le solde.
+ */
+export function referenceRemboursement(referenceDebit: string): string {
+  return `${referenceDebit}:remboursement`;
+}
+
+/**
+ * Rembourse une opération déjà débitée, une seule fois.
+ *
+ * Symétrique de `debiterOperationAtomique`, mais sans contrôle de solde
+ * minimum : créditer ne peut jamais échouer « faute de crédits ». La même
+ * garantie d'idempotence protège contre un second remboursement — à
+ * condition que l'appelant passe une référence distincte de celle du débit
+ * (`referenceRemboursement`).
+ */
+export async function rembourserOperationAtomique(
+  userId: string,
+  montant: number,
+  reference: string,
+  description?: string,
+): Promise<ResultatRemboursement> {
+  const { data, error } = await supabaseAdmin.rpc('rembourser_credits_operation', {
+    p_user_id: userId,
+    p_montant: montant,
+    p_reference: reference,
+    p_description: description ?? null,
+  });
+
+  if (error) {
+    if (socleAbsent(error)) {
+      console.warn(
+        '[credits] `rembourser_credits_operation` introuvable — migration '
+        + '2026-10-30-remboursement-credits-operation.sql non appliquée sur ce serveur.',
+      );
+      return { ok: false, solde: 0, dejaRembourse: false, motif: 'socle_absent' };
+    }
+    throw new Error(error.message || 'remboursement impossible');
+  }
+
+  const ligne = (Array.isArray(data) ? data[0] : data) as {
+    ok: boolean; solde: number; deja_rembourse: boolean; motif: MotifRefusRemboursement | null;
+  } | undefined;
+
+  if (!ligne) throw new Error('remboursement sans reponse');
+
+  return {
+    ok: !!ligne.ok,
+    solde: typeof ligne.solde === 'number' ? ligne.solde : 0,
+    dejaRembourse: !!ligne.deja_rembourse,
+    motif: ligne.motif ?? null,
+  };
+}

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { LayoutDashboard, Library, Share2, Calendar, Shield, Settings, Menu, X, UserSquare2, Wand2, Clapperboard } from 'lucide-react';
+import { LayoutDashboard, Library, Share2, Calendar, Shield, Settings, Menu, X, UserSquare2, Wand2, Clapperboard, Film } from 'lucide-react';
 import { useTranslations } from '@/i18n/client';
 import { LanguageSelector } from '@/components/LanguageSelector';
 import { ETAT_INTERACTIF_SANS_FOND, ETAT_SELECTION } from '@/lib/ui/etats';
@@ -34,6 +34,24 @@ export function Sidebar() {
   const [isOpen, setIsOpen] = useState(false);
   const isAdmin = session?.user?.email === 'contact.artboost@gmail.com';
   const t = useTranslations('sidebar');
+
+  /**
+   * Cinema IA n'apparaît QUE si le serveur confirme qu'il est réellement utilisable pour
+   * ce compte — même route que la page elle-même (`GET /api/cinema/films`), aucun nouvel
+   * endpoint. `CINEMA_ACTIVE` est fermé par défaut (voir `lib/cinema/garde.ts`) : sans ce
+   * contrôle, l'entrée mènerait tout le monde vers une page qui refuse tout en 404. Le menu
+   * dit la vérité, comme l'écran lui-même le fait déjà pour le mode de génération.
+   */
+  const [cinemaDisponible, setCinemaDisponible] = useState(false);
+
+  useEffect(() => {
+    let actif = true;
+    fetch('/api/cinema/films')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => { if (actif && data?.ok === true) setCinemaDisponible(true); })
+      .catch(() => { /* indisponible : l'entrée reste cachée, comme si le module n'existait pas */ });
+    return () => { actif = false; };
+  }, []);
 
   useEffect(() => {
     async function fetchCredits() {
@@ -99,6 +117,34 @@ export function Sidebar() {
             </Link>
           );
         })}
+
+        {cinemaDisponible && (() => {
+          const href = '/dashboard/cinema';
+          const isActive = pathname === href || pathname.startsWith(`${href}/`);
+          return (
+            <Link
+              href={href}
+              onClick={handleNavClick}
+              aria-current={isActive ? 'page' : undefined}
+              className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl ${ETAT_INTERACTIF_SANS_FOND} ${
+                isActive ? ETAT_SELECTION : 'text-gray-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              {isActive && <span aria-hidden data-barre className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-purple-400" />}
+              <div
+                className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: '#F43F5E20', color: '#F43F5E' }}
+              >
+                {/* `Film`, pas `Clapperboard` (déjà pris par « Média ») : l'audit
+                    d'icônes (CLAUDE.md, point E) note la famille Film/Video/
+                    Clapperboard déjà chargée dans l'éditeur — ici, aucune des deux
+                    autres entrées de ce menu ne l'utilise. */}
+                <Film size={18} />
+              </div>
+              <span className={`font-medium text-sm ${isActive ? 'text-white' : ''}`}>{t('cinema')}</span>
+            </Link>
+          );
+        })()}
 
         {isAdmin && (
           <Link

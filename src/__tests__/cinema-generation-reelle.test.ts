@@ -9,7 +9,9 @@
  * vrai jeton pour ensuite générer. On n'éprouve que la DÉCISION, jamais la dépense.
  */
 import { describe, it, expect, afterEach } from 'vitest';
-import { readFileSync } from 'fs';
+import { readFileSync, mkdtempSync, writeFileSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
 import {
   generationReelleActive, FOURNISSEUR_REPLICATE_IMAGE, FOURNISSEUR_REPLICATE_VIDEO,
   MODELE_IMAGE, MODELE_VIDEO, ID_REPLICATE_IMAGE, ID_REPLICATE_VIDEO, DUREE_VIDEO_MAX_S,
@@ -59,7 +61,7 @@ describe('la génération réelle exige DEUX conditions', () => {
   });
 
   it('chaque fournisseur refuse l’opération qui n’est pas la sienne, sans appeler personne', async () => {
-    expect(await FOURNISSEUR_REPLICATE_IMAGE.genererVideo({ fichierImageSource: '/x', dureeS: 3, format: '9:16', graine: 1 }))
+    expect(await FOURNISSEUR_REPLICATE_IMAGE.genererVideo({ fichierImageSource: '/x', prompt: 'x', dureeS: 3, format: '9:16', graine: 1 }))
       .toMatchObject({ ok: false });
     expect(await FOURNISSEUR_REPLICATE_VIDEO.genererImage({ promptPlan: 'x', promptConstruit: 'x', personnages: [], format: '9:16', graine: 1 }))
       .toMatchObject({ ok: false });
@@ -202,5 +204,49 @@ describe('une dépense engagée est TOUJOURS comptée, même quand l’appel éc
     expect(r).toContain('const engageUsd = resultat.depenseUsd ?? 0;');
     expect(r).toContain('if (engage) {');
     expect(r).toContain('if (depense > 0) {');
+  });
+});
+
+/**
+ * RÉGRESSION — le modèle image-vers-video (wavespeedai/wan-2.1-i2v-480p) exige `prompt`
+ * ET `image`, et REFUSE `num_frames` (422), contrairement à la variante 720p qui l'accepte.
+ * Avant ce correctif, l'appel réel échouait systématiquement : aucune vidéo Cinema IA n'a
+ * jamais pu être produite en mode réel, et les crédits déjà pris (lot 2) n'étaient jamais
+ * rendus (voir la description ci-dessous).
+ */
+describe('le modèle vidéo exige prompt + image, jamais num_frames', () => {
+  let dir: string;
+  afterEach(() => { if (dir) rmSync(dir, { recursive: true, force: true }); });
+
+  it('le code n’envoie plus `num_frames` au fournisseur vidéo', () => {
+    // Hors commentaires : le mot peut légitimement apparaître pour EXPLIQUER pourquoi il
+    // n'est plus envoyé, mais jamais comme champ réellement construit dans l'appel.
+    const code = src('src/lib/cinema/generation/replicate.ts')
+      .split('\n').filter((l) => !l.trimStart().startsWith('*') && !l.trimStart().startsWith('//')).join('\n');
+    expect(code).not.toContain('num_frames');
+  });
+
+  it('le code envoie `prompt` dans l’appel MODELE_VIDEO', () => {
+    const code = src('src/lib/cinema/generation/replicate.ts');
+    const bloc = code.slice(code.indexOf('async function genererVideo'), code.indexOf('async function genererVideo') + 1500);
+    expect(bloc).toMatch(/appeler\(MODELE_VIDEO,\s*\{\s*image,\s*prompt:\s*demande\.prompt/);
+  });
+
+  it('un prompt vide est refusé AVANT tout appel réseau (image lisible, mais aucun jeton nécessaire)', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'studiio-replicate-video-'));
+    const image = join(dir, 'source.png');
+    writeFileSync(image, Buffer.from([0x89, 0x50, 0x4e, 0x47])); // en-tête PNG minimal, suffisant pour etre lu en base64
+    delete process.env.REPLICATE_API_TOKEN; // si un vrai appel partait, il échouerait ici — la preuve qu'il ne part pas
+    const r = await FOURNISSEUR_REPLICATE_VIDEO.genererVideo({
+      fichierImageSource: image, prompt: '   ', dureeS: 3, format: '9:16', graine: 1,
+    });
+    expect(r).toMatchObject({ ok: false });
+    expect((r as { erreur: string }).erreur).toContain('prompt manquant');
+  });
+
+  it('l’atelier construit le prompt vidéo depuis `plan.description`, comme pour l’image', () => {
+    const a = src('src/lib/cinema/generation/atelier.ts');
+    expect(a).toContain("construirePromptImage(plan.description, { mode: 'texte' })");
+    expect(a).toMatch(/fournisseur\.genererVideo\(\{[^}]*prompt:\s*promptVideo/s);
   });
 });

@@ -17,6 +17,7 @@ import {
   Info, Loader2, Plus, Trash2, RefreshCw, CheckCircle2, AlertTriangle,
   ImageIcon, Film, Volume2, VolumeX, Upload, Sparkles, X, Check, Circle,
 } from 'lucide-react';
+import { useTarifs, libellePrix } from '@/lib/tarifs/client';
 
 interface SegmentApi {
   sceneId: string; sceneIndex: number; planId: string; cadre: string;
@@ -159,20 +160,41 @@ export default function CinemaPage() {
     }
   };
 
+  /** Le prix affiché AVANT de dépenser — le serveur seul décide du prix réellement débité. */
+  const tarifs = useTarifs();
+
   /**
-   * Genere le media d'un plan par IA (lot 3). Le SEUL fournisseur branche
-   * est `simule` (local, gratuit, deterministe) : aucune generation
-   * payante ne part d'ici. Le serveur refuse tout fournisseur eteint et
-   * tout depassement du plafond de depense AVANT d'appeler quoi que ce
-   * soit — voir `generation/atelier.ts`.
+   * Genere le media d'un plan par IA (lot 3+4). En mode REEL, la generation
+   * depense de vrais credits Studiio (`generation/credits.ts`) : l'ecran
+   * demande une confirmation explicite, avec le cout affiche en credits,
+   * avant de lancer quoi que ce soit. En mode SIMULE (local, deterministe,
+   * gratuit) aucune confirmation n'est necessaire — rien n'est debite.
+   *
+   * ⚠️ CET ECRAN NE DECIDE DE RIEN : le serveur refuse tout fournisseur
+   * eteint, tout depassement de plafond ET tout solde insuffisant AVANT
+   * d'appeler qui que ce soit (`generation/atelier.ts`, `generation/credits.ts`).
+   * La confirmation ici est une politesse envers l'utilisateur, pas une
+   * frontiere de securite.
    */
-  const genererMedia = (planId: string, operation: 'image' | 'video') => film && appel(
-    `/api/cinema/films/${film.id}/generation`,
-    // Aucun `fournisseurId` : c'est le SERVEUR qui choisit (une generation reelle depense
-    // de l'argent — un navigateur ne doit pas pouvoir la nommer).
-    { method: 'POST', body: JSON.stringify({ planId, operation }) },
-    `generation:${planId}:${operation}`,
-  );
+  const genererMedia = (planId: string, operation: 'image' | 'video') => {
+    if (!film) return;
+    if (generationMode === 'reelle') {
+      const cle = operation === 'video' ? 'ai.image_to_video' : 'ai.generate_background';
+      const prix = libellePrix(tarifs, cle);
+      const action = operation === 'video' ? 'Animer ce plan en vidéo' : 'Générer cette image';
+      const confirme = window.confirm(
+        `${action} par IA ?\n\nCoût : ${prix}.\nSi la génération échoue après paiement, les crédits pris sont automatiquement remboursés.`,
+      );
+      if (!confirme) return;
+    }
+    appel(
+      `/api/cinema/films/${film.id}/generation`,
+      // Aucun `fournisseurId` : c'est le SERVEUR qui choisit (une generation reelle depense
+      // de l'argent — un navigateur ne doit pas pouvoir la nommer).
+      { method: 'POST', body: JSON.stringify({ planId, operation }) },
+      `generation:${planId}:${operation}`,
+    );
+  };
 
   /**
    * Prepare les VOIX sans rendre la video : l'apercu a besoin du son, pas de
@@ -584,6 +606,9 @@ export default function CinemaPage() {
                                 >
                                   {enCours === `generation:${plan.id}:image` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
                                   {generationMode === 'simulee' ? 'Generer (IA, simule)' : 'Generer l’image (IA)'}
+                                  {generationMode === 'reelle' && (
+                                    <span className="text-violet-300/80">· {libellePrix(tarifs, 'ai.generate_background')}</span>
+                                  )}
                                 </button>
                               )}
                             </>
@@ -597,6 +622,9 @@ export default function CinemaPage() {
                             >
                               {enCours === `generation:${plan.id}:video` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
                               {generationMode === 'simulee' ? 'Animer en video (IA, simule)' : 'Animer en video (IA)'}
+                              {generationMode === 'reelle' && (
+                                <span className="text-violet-300/80">· {libellePrix(tarifs, 'ai.image_to_video')}</span>
+                              )}
                             </button>
                           )}
 

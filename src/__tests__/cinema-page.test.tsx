@@ -32,12 +32,15 @@ let reponses: Record<string, () => unknown>;
 /** Ce que le SERVEUR annonce : la génération simulée est éteinte en production. */
 let generationIaActive: boolean;
 const generationIa = () => generationIaActive;
+/** Force le mode RÉEL (dépense de vrais crédits) — `null` garde le comportement existant. */
+let generationModeForce: 'reelle' | null;
 
 beforeEach(() => {
   appels = [];
   etatTravail = null;
   reponses = {};
   generationIaActive = false;
+  generationModeForce = null;
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? 'GET';
@@ -45,7 +48,11 @@ beforeEach(() => {
     const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: { 'content-type': 'application/json' } });
     if (method === 'DELETE') return json(reponses.delete ? reponses.delete() : { ok: true, objetsSupprimes: 3 }, reponses.deleteStatus ? (reponses.deleteStatus() as number) : 200);
     for (const [motif, f] of Object.entries(reponses)) if (url.includes(motif)) return json(f());
-    if (url === '/api/cinema/films' && method === 'GET') return json({ ok: true, generationIa: generationIa(), generationMode: generationIa() ? 'simulee' : null, films: [{ id: film.id, titre: 'Mon film', majLe: film.majLe }] });
+    if (url === '/api/tarifs') return json({ ok: true, prix: { 'ai.generate_background': 5, 'ai.image_to_video': 15 }, exempte: false });
+    if (url === '/api/cinema/films' && method === 'GET') {
+      const mode = generationModeForce ?? (generationIa() ? 'simulee' : null);
+      return json({ ok: true, generationIa: generationIa() || !!generationModeForce, generationMode: mode, films: [{ id: film.id, titre: 'Mon film', majLe: film.majLe }] });
+    }
     if (url === `/api/cinema/films/${film.id}`) return json(reponseFilm());
     if (url.endsWith('/travaux')) return json({ ok: true, travail: etatTravail });
     if (url.includes('/annuler')) return json({ ok: true, travail: { ...etatTravail, annulationDemandee: true } });
@@ -54,7 +61,7 @@ beforeEach(() => {
     return json({ ok: false, erreur: 'inattendu' }, 404);
   }));
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 async function ouvrir() {
   render(<CinemaPage />);
@@ -163,6 +170,62 @@ describe('page Cinema IA — production asynchrone', () => {
     const boutons = screen.getAllByRole('button', { name: /generer \(ia, simule\)/i });
     expect(boutons.length).toBeGreaterThan(0);
     expect(screen.getAllByText(/animer en video|generer \(ia, simule\)/i).length).toBeGreaterThan(0);
+  });
+
+  describe('mode RÉEL (de vrais crédits sont en jeu)', () => {
+    it('le coût en crédits est affiché SUR le bouton, avant tout clic', async () => {
+      generationModeForce = 'reelle';
+      await ouvrir();
+      // Le prix vient de `/api/tarifs` (5 crédits/image dans ce test), jamais inventé par l'écran.
+      expect(screen.getAllByText(/5 crédits?/i).length).toBeGreaterThan(0);
+    });
+
+    it('un clic demande confirmation AVEC le coût, avant de dépenser quoi que ce soit', async () => {
+      generationModeForce = 'reelle';
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      await ouvrir();
+      const bouton = document.querySelector('[data-cinema-generation="image"]') as HTMLButtonElement;
+      expect(bouton).toBeTruthy();
+      fireEvent.click(bouton);
+      expect(confirmSpy).toHaveBeenCalledTimes(1);
+      expect(confirmSpy.mock.calls[0][0]).toMatch(/5 crédits?/i);
+      // Confirmé : l'appel part bien.
+      await waitFor(() => expect(appels.some((a) => a.url.includes('/generation') && a.method === 'POST')).toBe(true));
+    });
+
+    it('annuler la confirmation n’envoie AUCUNE requête — rien n’est dépensé', async () => {
+      generationModeForce = 'reelle';
+      vi.spyOn(window, 'confirm').mockReturnValue(false);
+      await ouvrir();
+      const bouton = document.querySelector('[data-cinema-generation="image"]') as HTMLButtonElement;
+      fireEvent.click(bouton);
+      // Le temps que l'éventuel appel parte, s'il partait à tort.
+      await new Promise((r) => { setTimeout(r, 0); });
+      expect(appels.some((a) => a.url.includes('/generation'))).toBe(false);
+    });
+
+    it('la vidéo utilise SA propre clé de tarif (`ai.image_to_video`), pas celle de l’image', () => {
+      // Le bouton vidéo n'apparaît que sur un plan qui a DÉJÀ une image (contrôle serveur
+      // identique dans `atelier.ts`) : un film fraîchement créé n'en a aucun. On vérifie donc
+      // ici, sur la source, que les deux boutons sont bien tarifés par deux clés distinctes —
+      // le comportement du bouton image (coût affiché + confirmation) est, lui, éprouvé en
+      // interaction juste au-dessus.
+      const fs = require('fs') as typeof import('fs');
+      const p = fs.readFileSync('src/app/dashboard/cinema/page.tsx', 'utf-8');
+      expect(p).toMatch(/operation === 'video' \? 'ai\.image_to_video' : 'ai\.generate_background'/);
+      expect(p).toContain("libellePrix(tarifs, 'ai.generate_background')");
+      expect(p).toContain("libellePrix(tarifs, 'ai.image_to_video')");
+    });
+  });
+
+  it('en mode SIMULÉ (gratuit), aucune confirmation n’est demandée — rien n’est débité', async () => {
+    generationIaActive = true; // mode 'simulee'
+    const confirmSpy = vi.spyOn(window, 'confirm');
+    await ouvrir();
+    const bouton = document.querySelector('[data-cinema-generation="image"]') as HTMLButtonElement;
+    fireEvent.click(bouton);
+    await waitFor(() => expect(appels.some((a) => a.url.includes('/generation') && a.method === 'POST')).toBe(true));
+    expect(confirmSpy).not.toHaveBeenCalled();
   });
 
   it('une erreur de lancement (plafond) est affichee telle quelle', async () => {

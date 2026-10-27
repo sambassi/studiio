@@ -24,7 +24,7 @@ import { presenterMontage } from '@/lib/cinema/stockage/presentation';
 import { typeContenuDepuisCle } from '@/lib/storage/acces-objet';
 import { idPlanValide } from '@/lib/cinema/acces';
 import { fournisseurServeur } from '@/lib/cinema/garde';
-import { reserverCredits, type Reservation } from '@/lib/cinema/generation/credits';
+import { reserverCredits, rembourserCredits, type Reservation } from '@/lib/cinema/generation/credits';
 
 // Imports pour leur SEULE presence : ils enregistrent les fournisseurs dans le registre.
 // Enregistres ne veut pas dire actifs : chacun lit son interrupteur a chaque usage.
@@ -130,14 +130,28 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         coutGenerationUsd: Math.round(((f.coutGenerationUsd ?? 0) + engageUsd) * 10_000) / 10_000,
       })).catch(() => null);
     }
+    // ⚠️ CREDITS PAYES, GENERATION RATEE : on les rend. Le paiement a eu lieu « au dernier
+    // moment », juste avant cet appel qui vient d'echouer — le compte n'a rien recu pour ce
+    // qu'il a paye. Idempotent (reference derivee du debit) : jamais un second remboursement
+    // si cette route est, par hypothese, rappelee pour le meme echec.
+    let creditsRembourses: boolean | undefined;
+    if (reservation && (reservation as Reservation).cout > 0) {
+      const issue = await rembourserCredits(s.userId, reservation as Reservation, operation as 'image' | 'video');
+      creditsRembourses = issue.ok;
+      if (!issue.ok) {
+        // Grave, mais pas bloquant : la reponse doit quand meme dire l'echec de generation.
+        // Le journal (`rembourserCredits`) porte deja le compte et la reference concernes.
+        console.error(`[Cinema] remboursement non prouve pour le film ${params.id} — motif : ${issue.motif ?? 'inconnu'}`);
+      }
+    }
     // Un refus de plafond ou de fournisseur eteint n'est PAS une erreur serveur.
     const status = resultat.verification ? 402 : 400;
     return NextResponse.json({
       ok: false,
       erreur: resultat.erreur,
       verification: resultat.verification ?? null,
-      // Dire la verite sur l'argent : l'appel est parti, il est paye.
-      ...(reservation && (reservation as Reservation).cout > 0 ? { creditsPris: (reservation as Reservation).cout } : null),
+      // Dire la verite sur l'argent : l'appel est parti, il a ete paye, puis rendu (ou non).
+      ...(reservation && (reservation as Reservation).cout > 0 ? { creditsPris: (reservation as Reservation).cout, creditsRembourses } : null),
     }, { status });
   }
 

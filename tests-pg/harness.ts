@@ -26,6 +26,8 @@ export const MIGRATIONS_SOCLE = [
   join(RACINE, 'migrations/2026-08-29-facturation-partenaires.sql'),
   join(RACINE, 'migrations/2026-08-30-debit-operation.sql'),
   join(RACINE, 'migrations/2026-08-31-shoot-sessions-rushes.sql'),
+  // Symétrique du débit ci-dessus — NON encore appliquée en production (PR en cours).
+  join(RACINE, 'migrations/2026-10-30-remboursement-credits-operation.sql'),
 ];
 
 /**
@@ -315,6 +317,31 @@ export async function debiterOperation(
   const { rows } = await client.query<Debit>(
     'select * from public.debiter_credits_operation($1, $2, $3, $4, $5)',
     [userId, montant, type, reference, description],
+  );
+  return rows[0];
+}
+
+export interface Remboursement {
+  ok: boolean;
+  solde: number;
+  deja_rembourse: boolean;
+  motif: string | null;
+}
+
+/**
+ * Appelle `rembourser_credits_operation` — la fonction de production, telle
+ * quelle. Symétrique de `debiterOperation` ci-dessus.
+ */
+export async function rembourserOperation(
+  client: Client,
+  userId: string,
+  montant: number,
+  reference: string,
+  description: string | null = null,
+): Promise<Remboursement> {
+  const { rows } = await client.query<Remboursement>(
+    'select * from public.rembourser_credits_operation($1, $2, $3, $4)',
+    [userId, montant, reference, description],
   );
   return rows[0];
 }

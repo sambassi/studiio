@@ -166,8 +166,12 @@ export async function genererMediaPlan(film: Film, planId: string, options: Opti
   } else {
     // Garanti present et de genre 'image' par le controle plus haut.
     const imageSource = fichierDuMedia(options.racinePublique, plan.media!.url);
+    // Meme construction que l'image (lot 1) : le fournisseur image-vers-video exige un
+    // prompt ANGLAIS decrivant le mouvement, pas seulement l'image source.
+    const { promptFinal: promptVideo } = construirePromptImage(plan.description, { mode: 'texte' });
     const resultat = await fournisseur.genererVideo({
       fichierImageSource: imageSource,
+      prompt: promptVideo,
       dureeS: plan.dureeS,
       format: film.format,
       graine,
