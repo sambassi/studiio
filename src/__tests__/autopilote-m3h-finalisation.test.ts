@@ -86,6 +86,12 @@ vi.mock('@/lib/storage/minio-client', async (orig) => ({
 // La session, et la base : doublées pour que les ROUTES tournent vraiment
 // ───────────────────────────────────────────────────────────────────────────
 let session: { user: { id: string } } | null = { user: { id: UID } };
+// Pool commun des rendus lourds : la base des baux n'est pas l'objet de ce fichier (voir
+// rendus-lourds-communs.test.ts). Ici la place est toujours accordée ; la saturation testée est celle de `capacite`.
+vi.mock('@/lib/autopilot/limite-rendus', async (orig) => ({
+  ...(await orig<typeof import('@/lib/autopilot/limite-rendus')>()),
+  prendrePlaceInteractive: async () => ({ ok: true, bail: { liberer: async () => {}, verifierBail: async () => {} } }),
+}));
 vi.mock('@/lib/auth/config', () => ({ auth: async () => session }));
 
 /**

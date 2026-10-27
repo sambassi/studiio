@@ -49,6 +49,7 @@ import { notifyOnce } from '@/lib/notifications/store';
 import { avatarAvecAutresSources } from '@/lib/autopilot/sources';
 import { scriptJumeauMontage as scriptJumeauPur } from '@/lib/autopilot/script-jumeau';
 import { estJumeauIllisible, MESSAGE_JUMEAU_ILLISIBLE } from '@/lib/autopilot/duree-jumeau';
+import { estErreurDeFile, RenduDoublonError } from '@/lib/autopilot/limite-rendus';
 import {
   echeanceDecisionJumeau, instantPublicationCreneau, libelleCreneau, politiqueRepliJumeau,
   type PolitiqueRepliJumeau,
@@ -452,6 +453,16 @@ export async function finaliserJumeauxPrets(opts: { userId?: string; max?: numbe
       res.echecs += 1;
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
+      // ── File de rendu (`limite-rendus.ts`) : serveur occupé, ou ce créneau déjà en rendu ─────
+      // Le jumeau est PRODUIT (et payé) : un serveur saturé n'est ni son échec ni celui du
+      // montage. Rien n'a été rendu ni débité ; on rouvre SANS consommer de tentative — des
+      // heures de saturation ne doivent jamais abandonner un avatar livré.
+      if (estErreurDeFile(e)) {
+        console.warn(`[Autopilote/Jumeau] ${ligne.user_id} — montage ${ligne.id} reporté (file de rendu) : ${message}`);
+        await rouvrir(ligne.id, { tentatives: ligne.tentatives });
+        res.encore += 1;
+        continue;
+      }
       // ── A1 : la DURÉE du jumeau est illisible ───────────────────────────
       // `produireUnMontage` s'est arrêté AVANT tout rendu et tout débit. On
       // ne monte JAMAIS le créneau sans l'avatar (pas de `rendreSansJumeau`) :
@@ -533,7 +544,7 @@ async function abandonnerGeneration(ligne: LigneAttente): Promise<void> {
   }
 }
 
-async function rouvrir(id: string, complement: { snapshot?: SnapshotMontage } = {}): Promise<void> {
+async function rouvrir(id: string, complement: { snapshot?: SnapshotMontage; tentatives?: number } = {}): Promise<void> {
   await supabaseAdmin
     .from('autopilot_jumeau_attente')
     .update({ statut: 'en_attente', ...complement, updated_at: new Date().toISOString() })
@@ -663,7 +674,7 @@ async function rendreMontage(ligne: LigneAttente, jumeauVideoUrl: string): Promi
       metadataSupplement: { ...(s.metadataSupplement ?? {}), ...tardif.supplement, jumeau: true },
       jumeauVideoUrl,
       ...(manuel ? { onProgression: (etape, avancement) => noterProgression(ligne.user_id, etape, avancement) } : {}),
-    });
+    }, { sansAttente: !manuel });
   } finally {
     // Fin (ou échec) du rendu : l'écran repasse sur l'état PROUVÉ de la file
     // (`depose` seulement quand le brouillon est relu dans le Calendrier).
@@ -700,10 +711,12 @@ async function rendreSansJumeau(ligne: LigneAttente, motif: string, o: { garderS
       journal: s.journal ?? '[Autopilote/Jumeau]',
       metadataSupplement: { ...(s.metadataSupplement ?? {}), ...tardif.supplement, jumeauIgnore: true, jumeauIgnoreMotif: motif },
       // Pas de jumeauVideoUrl : montage ordinaire.
-    });
+    }, { sansAttente: !ligne.job_id.startsWith('autopilote-manuel-') });
     if (tardif.tardif) await notifierBrouillonTardif(ligne, 'sans');
     return true;
   } catch (e) {
+    // Créneau produit par un autre passage pendant l'attente : il est traité, rien à refaire.
+    if (e instanceof RenduDoublonError && e.raison === 'deja_produit') return true;
     console.error(`[Autopilote/Jumeau] ${ligne.user_id} — montage de repli (sans jumeau) impossible :`, e instanceof Error ? e.message : e);
     return false;
   }

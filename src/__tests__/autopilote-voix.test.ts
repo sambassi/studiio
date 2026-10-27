@@ -132,7 +132,7 @@ describe('Rien ne peut faire échouer un cycle', () => {
   it('la voix est générée AVANT le design — ce sont ses durées qui calent', () => {
     // Dans le corps de `produireUnMontage` (le montage extrait du cron), pas
     // dans ses imports.
-    const bloc = cron.slice(cron.indexOf('export async function produireUnMontage'));
+    const bloc = cron.slice(cron.indexOf('async function produireUnMontageInterne'));
     expect(bloc.indexOf('buildAutopilotVoices')).toBeLessThan(bloc.indexOf('buildAutopilotDesign'));
   });
 });

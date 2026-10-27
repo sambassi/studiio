@@ -21,6 +21,7 @@ let insertions: Array<Record<string, unknown>>;
 vi.mock('@/lib/db/supabase', () => ({
   supabaseAdmin: {
     from: () => ({
+      select: () => { const q: Record<string, unknown> = { eq: () => q, then: (ok: (r: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(ok) }; return q; },
       insert(row: Record<string, unknown>) {
         insertions.push(row);
         return { async select() { return { data: [{ id: `post-${insertions.length}` }], error: null }; } };

@@ -20,6 +20,7 @@ import {
   lancerJumeauMontage, creneauxJumeauEnAttente, finaliserJumeauxPrets,
 } from '@/lib/autopilot/jumeau-async';
 import { doitPasserLeRush, rushReussi } from '@/lib/autopilot/echec-rush';
+import { estErreurDeFile } from '@/lib/autopilot/limite-rendus';
 
 /**
  * Moteur de l'Autopilote — un passage par appel.
@@ -340,7 +341,15 @@ export async function GET(req: NextRequest) {
       console.log(`[Autopilote/Cron] ${userId} — sujets : ${topics.join(', ')}`);
 
       const posts = preparePosts({ config, topic: topics, count: decision.count, now });
-      const dejaFaits = await creneauxExistants(userId);
+      // Lecture impossible : on ne SAIT PAS ce qui est déjà produit — rien n'est lancé pour ce compte
+      // à ce passage (jamais un cycle « par défaut », qui doublerait les posts).
+      let dejaFaits: Set<string>;
+      try {
+        dejaFaits = await creneauxExistants(userId);
+      } catch (e) {
+        console.error(`[Autopilote/Cron] ${userId} — créneaux illisibles, cycle reporté :`, e instanceof Error ? e.message : e);
+        continue;
+      }
       // Les créneaux déjà EN FILE pour leur jumeau comptent comme faits : sans
       // ça, chaque passe du cron relancerait une génération d'avatar (facturée)
       // tant que la précédente n'a pas fini de rendre.
@@ -432,7 +441,7 @@ export async function GET(req: NextRequest) {
             // Smart montage : les extraits déjà montés dans ce cycle sont
             // évités par les vidéos suivantes (tant qu'il reste mieux).
             plagesCycle,
-          });
+          }, { sansAttente: true });
           const { rushUrl } = rendu;
 
           dejaFaits.add(jeton);
@@ -440,6 +449,13 @@ export async function GET(req: NextRequest) {
           rushReussi(userId, rushUrl);
           reussis += 1;
         } catch (err) {
+          // File de rendu (`limite-rendus.ts`) : serveur occupé ou même créneau déjà en
+          // cours de rendu. Ni le rush ni le montage n'y sont pour rien : rien n'a été rendu
+          // ni débité, la rotation ne bouge pas, le créneau sera retenté au passage suivant.
+          if (estErreurDeFile(err)) {
+            console.warn(`[Autopilote/Cron] ${userId} — montage ${post.scheduledDate} reporté : ${err.message}`);
+            continue;
+          }
           echecs += 1;
           const message = err instanceof Error ? err.message : String(err);
           // ⚠️ LA ROTATION N'AVANCE SUR UN ECHEC QUE SI LE RUSH EN EST LA

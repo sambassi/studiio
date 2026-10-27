@@ -27,6 +27,9 @@ import {
 } from '@/lib/email/unsubscribe';
 import { isAdmin } from '@/lib/admin';
 import { isCronAuthorized } from '@/lib/cron/auth';
+import {
+  lireReglagesTiktok, validerTiktok, CONFIDENTIALITE_SECURITE,
+} from '@/lib/social/couverture';
 
 const execFileAsync = promisify(execFile);
 
@@ -928,7 +931,7 @@ export async function GET(req: NextRequest) {
                 result = await publishToFacebook(authedAccount, videoData, post.caption, post.user_id);
                 break;
               case 'tiktok':
-                result = await publishToTikTok(authedAccount, videoData, post.caption, post.user_id);
+                result = await publishToTikTok(authedAccount, videoData, post.caption, post.user_id, meta);
                 break;
               case 'youtube':
                 result = await publishToYouTube(authedAccount, videoData, post.caption, post.user_id);
@@ -1583,6 +1586,13 @@ async function publishToTikTok(
   caption: string | null | undefined,
   /** Proprietaire du post : seul ses objets prives peuvent etre signes. */
   userId: string,
+  /**
+   * Metadata du post : elle porte les REGLAGES TIKTOK CHOISIS PAR L'UTILISATEUR
+   * (confidentialite, commentaires, duos, collages) et sa case de consentement.
+   * Le chemin Zernio les honorait deja (`publishViaZernio`) ; ce chemin direct
+   * publiait tout en `SELF_ONLY`, donc en PRIVE, en ignorant son choix.
+   */
+  meta?: unknown,
 ): Promise<{ success: boolean; platformPostId?: string; platformUrl?: string; error?: string }> {
   const accessToken = account.access_token;
 
@@ -1594,6 +1604,19 @@ async function publishToTikTok(
     // TikTok tire le fichier lui-meme (PULL_FROM_URL) : il lui faut une URL
     // absolue et publique, comme a Meta.
     const publicVideoUrl = await ensurePublicUrl(video.video_url, userId);
+
+    // ── LA CONFIDENTIALITE EST CELLE QUE L'UTILISATEUR A CHOISIE ────────────
+    // Reglages absents, invalides, ou case de consentement non cochee : on
+    // retombe sur `SELF_ONLY` (prive). C'est le defaut de securite, et c'est
+    // aussi ce qu'exige TikTok sans consentement expose a l'ecran — jamais une
+    // publication publique que l'utilisateur n'a pas demandee.
+    const reglages = lireReglagesTiktok(meta);
+    const consenti = validerTiktok(reglages).ok;
+    const confidentialite = consenti && reglages ? reglages.privacy_level : CONFIDENTIALITE_SECURITE;
+    if (!consenti) {
+      console.warn('[CRON][TIKTOK] reglages absents ou consentement non donne — publication en prive (SELF_ONLY)');
+    }
+
     const initRes = await fetch(
       'https://open.tiktokapis.com/v2/post/publish/video/init/',
       {
@@ -1605,10 +1628,13 @@ async function publishToTikTok(
         body: JSON.stringify({
           post_info: {
             title: (caption || video.title || '').slice(0, 150),
-            privacy_level: 'SELF_ONLY',
-            disable_duet: false,
-            disable_comment: false,
-            disable_stitch: false,
+            privacy_level: confidentialite,
+            // Les trois autorisations suivent aussi le choix de l'utilisateur :
+            // `disable_*` est l'inverse de son `allow_*`. Sans reglages, on
+            // garde le comportement d'avant (tout autorise).
+            disable_duet: reglages ? !reglages.allow_duet : false,
+            disable_comment: reglages ? !reglages.allow_comment : false,
+            disable_stitch: reglages ? !reglages.allow_stitch : false,
           },
           source_info: {
             source: 'PULL_FROM_URL',
@@ -1657,7 +1683,12 @@ async function publishToYouTube(
     const metadata = {
       snippet: {
         title: (caption || video.title || '').slice(0, 100),
-        description: `${caption || video.title || ''}\n\nPowered by Afroboost - afroboost.com`,
+        // La description est CELLE DE L'UTILISATEUR, et rien d'autre. Elle portait une
+        // signature « Powered by … » renvoyant vers un autre site : une marque etrangere
+        // ajoutee sous la video d'un client de Studiio, sans qu'il l'ait demandee.
+        // (Le CANAL de diffusion afroboost, lui, reste intact : c'est une destination
+        // choisie, pas une signature imposee.)
+        description: caption || video.title || '',
         categoryId: '22',
       },
       status: {

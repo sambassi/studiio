@@ -1,0 +1,775 @@
+// @vitest-environment node
+/**
+ * CINEMA IA — la production ASYNCHRONE : travaux, reprise, cache de scene.
+ *
+ * Chromium, ffmpeg et la voix sont remplaces par des moteurs fictifs : ce qui
+ * est teste ici, c'est l'ORCHESTRATION — qui rend quoi, dans quel ordre, avec
+ * quelle progression, et ce qui survit a une interruption. Le rendu reel est
+ * prouve par le banc (`tests-cinema/`).
+ */
+import { describe, it, expect, afterEach } from 'vitest';
+import { mkdtemp, readdir, readFile, rm, writeFile, mkdir, stat } from 'fs/promises';
+import { tmpdir } from 'os';
+import path from 'path';
+import { preparerFilm } from '@/lib/cinema/atelier';
+import { scenesAReproduire, empreinteScene } from '@/lib/cinema/empreinte';
+import { appliquerPatch } from '@/lib/cinema/patch';
+import { cleMedia, cleScene } from '@/lib/cinema/stockage/cles';
+import { depotFilmsMemoire, modifierFilm } from '@/lib/cinema/stockage/depot-films';
+import { objetsMemoire } from '@/lib/cinema/stockage/objets';
+import { depotTravauxMemoire } from '@/lib/cinema/travaux/depot-travaux';
+import { executerTravail, type DependancesExecuteur, type MoteursProduction } from '@/lib/cinema/travaux/executeur';
+import {
+  BAIL_S, TENTATIVES_MAX, cleTravail, pourcent, presenterTravail, repriseAutorisee, scenesValides,
+} from '@/lib/cinema/travaux/types';
+import { demarrerTravail, attendreFile, reinitialiserLanceurPourTests, reprendreOrphelins } from '@/lib/cinema/travaux/lanceur';
+import type { Film } from '@/lib/cinema/types';
+
+// La memoire libre du poste de dev n'est pas celle d'un serveur : les ressources sont injectees.
+const RESSOURCES_LIBRES = { lire: () => ({ rendusEnCours: 0, ramLibreMo: 64_000, cpus: 8 }), pause: async () => {} };
+const A = '11111111-1111-4111-8111-111111111111';
+const B = '22222222-2222-4222-8222-222222222222';
+const HISTOIRE = 'Nina entre dans la salle avant le lever du jour. Le tatami est encore froid. Marco la regarde sans bouger. Nina murmure « je ne reculerai pas ». Marco hoche la tete. Le jour se leve sur la salle vide.';
+
+const controle = async (fichier: string) => ({
+  fichier, octets: (await stat(fichier)).size, dureeS: 12.5, largeur: 1920, hauteur: 1080, codecVideo: 'h264', codecAudio: 'aac',
+});
+
+interface Monde {
+  film: Film; films: ReturnType<typeof depotFilmsMemoire>; travaux: ReturnType<typeof depotTravauxMemoire>;
+  objets: ReturnType<typeof objetsMemoire>; dep: DependancesExecuteur; horloge: { t: Date };
+  rendus: string[]; publicDirs: string[]; racine: string; dossierTravail: string;
+  surRendu: { fn: ((sceneId: string) => Promise<void>) | null };
+}
+
+let racines: string[] = [];
+async function monde(options: { plafondUsd?: number } = {}): Promise<Monde> {
+  const racine = await mkdtemp(path.join(tmpdir(), 'cinema-travaux-'));
+  racines.push(racine);
+  const dossierTravail = path.join(racine, 'var', 'cinema', 'travail');
+  const horloge = { t: new Date('2026-10-26T10:00:00Z') };
+  const films = depotFilmsMemoire();
+  const travaux = depotTravauxMemoire(() => horloge.t);
+  const objets = objetsMemoire();
+  const rendus: string[] = [];
+  const publicDirs: string[] = [];
+  const surRendu: Monde['surRendu'] = { fn: null };
+
+  const moteurs: MoteursProduction = {
+    synthetiser: async () => ({ voix: {}, details: [], echecs: [], moteur: 'edge', motifRepli: null }),
+    mesurerVoix: async () => ({}),
+    preparerRendu: async (o) => {
+      publicDirs.push(o.publicDir ?? '');
+      return async (t) => {
+        const id = path.basename(t.sortie, '.mp4');
+        rendus.push(id);
+        await mkdir(path.dirname(t.sortie), { recursive: true });
+        await writeFile(t.sortie, `mp4:${id}`);
+        if (surRendu.fn) await surRendu.fn(id);
+        return controle(t.sortie);
+      };
+    },
+    concatener: async (fichiers, sortie) => {
+      const morceaux = await Promise.all(fichiers.map((f) => readFile(f, 'utf-8')));
+      await mkdir(path.dirname(sortie), { recursive: true });
+      await writeFile(sortie, morceaux.join('+'));
+      return controle(sortie);
+    },
+    controler: controle,
+  };
+
+  const film = preparerFilm({
+    histoire: HISTOIRE, personnages: [{ nom: 'Nina', description: 'veste rouge' }, { nom: 'Marco', description: 'ceinture noire' }],
+    idFilm: 'film-trav-1', maintenant: () => new Date('2026-10-26T09:00:00Z'),
+  });
+  await films.creer(film, A);
+  const dep: DependancesExecuteur = {
+    films, travaux, objets, moteurs, racine, dossierTravail, plafondUsd: options.plafondUsd ?? 2, maintenant: () => horloge.t,
+    ressources: RESSOURCES_LIBRES,
+  };
+  return { film: { ...film, proprietaire: A }, films, travaux, objets, dep, horloge, rendus, publicDirs, racine, dossierTravail, surRendu };
+}
+
+async function lancer(m: Monde, scenesDemandees: string[] = []) {
+  const lu = (await m.films.lire(m.film.id, A))!;
+  const r = await m.travaux.creerOuRetrouver({
+    film: lu.film, proprietaire: A, cle: cleTravail(lu.film, scenesDemandees), scenesDemandees, maxActifs: 2,
+  });
+  return r.travail!;
+}
+
+afterEach(async () => {
+  reinitialiserLanceurPourTests();
+  for (const r of racines) await rm(r, { recursive: true, force: true });
+  racines = [];
+});
+
+describe('pourcent — derive de l\'etat reel', () => {
+  it('suit les scenes terminees, pas une animation', () => {
+    const scenes = (e: Array<'a_faire' | 'faite' | 'reutilisee'>) => Object.fromEntries(e.map((x, i) => [`s${i}`, x]));
+    expect(pourcent({ etape: 'preparation', scenes: scenes(['a_faire', 'a_faire']) })).toBe(0);
+    expect(pourcent({ etape: 'voix', scenes: scenes(['a_faire', 'a_faire']) })).toBe(5);
+    expect(pourcent({ etape: 'rendu', scenes: scenes(['a_faire', 'a_faire']) })).toBe(15);
+    expect(pourcent({ etape: 'rendu', scenes: scenes(['faite', 'a_faire']) })).toBe(53);
+    expect(pourcent({ etape: 'rendu', scenes: scenes(['faite', 'reutilisee']) })).toBe(90);
+    expect(pourcent({ etape: 'assemblage', scenes: scenes(['faite', 'faite']) })).toBe(90);
+    expect(pourcent({ etape: 'termine', scenes: scenes(['faite']) })).toBe(100);
+  });
+  it('ne depasse jamais 99 avant la fin', () => {
+    expect(pourcent({ etape: 'rendu', scenes: { s: 'faite' } })).toBeLessThan(100);
+  });
+});
+
+describe('cle de travail et reprise', () => {
+  it('stable pour un film inchange, differente des qu\'une scene change', async () => {
+    const m = await monde();
+    expect(cleTravail(m.film, [])).toBe(cleTravail(m.film, []));
+    expect(cleTravail(m.film, ['s1', 's2'])).toBe(cleTravail(m.film, ['s2', 's1']));
+    expect(cleTravail(m.film, ['s1'])).not.toBe(cleTravail(m.film, []));
+    const modifie = appliquerPatch(m.film, { plans: [{ id: m.film.scenes[0].plans[0].id, texte: 'Autre chose' }] });
+    expect(cleTravail(modifie, [])).not.toBe(cleTravail(m.film, []));
+  });
+
+  it('scenesValides ne garde que les scenes du film, sans doublon', async () => {
+    const m = await monde();
+    const id = m.film.scenes[0].id;
+    expect(scenesValides(m.film, [id, id, 'inconnue', 42, null])).toEqual([id]);
+    expect(scenesValides(m.film, 'pas un tableau')).toEqual([]);
+  });
+
+  it('repriseAutorisee : en attente, bail expire, jamais au-dela de la limite', () => {
+    const now = new Date('2026-10-26T10:00:00Z');
+    const passe = new Date(now.getTime() - 1000).toISOString();
+    const futur = new Date(now.getTime() + 1000).toISOString();
+    expect(repriseAutorisee({ statut: 'en_attente', tentatives: 0, bailJusqua: null }, now)).toBe(true);
+    expect(repriseAutorisee({ statut: 'en_cours', tentatives: 1, bailJusqua: passe }, now)).toBe(true);
+    expect(repriseAutorisee({ statut: 'en_cours', tentatives: 1, bailJusqua: futur }, now)).toBe(false);
+    expect(repriseAutorisee({ statut: 'en_cours', tentatives: TENTATIVES_MAX, bailJusqua: passe }, now)).toBe(false);
+    expect(repriseAutorisee({ statut: 'termine', tentatives: 1, bailJusqua: null }, now)).toBe(false);
+  });
+});
+
+describe('depot de travaux — un seul actif par film, un seul executeur par prise', () => {
+  it('creerOuRetrouver : le second appel retrouve le premier', async () => {
+    const m = await monde();
+    const lu = (await m.films.lire(m.film.id, A))!;
+    const demande = { film: lu.film, proprietaire: A, cle: 'c', scenesDemandees: [], maxActifs: 2 };
+    const un = await m.travaux.creerOuRetrouver(demande);
+    const deux = await m.travaux.creerOuRetrouver(demande);
+    expect(un.cree).toBe(true);
+    expect(deux.cree).toBe(false);
+    expect(deux.travail!.id).toBe(un.travail!.id);
+    expect(m.travaux.tous()).toHaveLength(1);
+  });
+
+  it('plafonne les travaux actifs par compte', async () => {
+    const m = await monde();
+    const f2 = { ...m.film, id: 'film-trav-2' }; const f3 = { ...m.film, id: 'film-trav-3' };
+    const d = (film: Film) => ({ film, proprietaire: A, cle: 'c', scenesDemandees: [], maxActifs: 2 });
+    expect((await m.travaux.creerOuRetrouver(d(m.film))).cree).toBe(true);
+    expect((await m.travaux.creerOuRetrouver(d(f2))).cree).toBe(true);
+    expect(await m.travaux.creerOuRetrouver(d(f3))).toMatchObject({ cree: false, motif: 'trop_de_travaux', travail: null });
+  });
+
+  it('un travail n\'est lisible que par son proprietaire', async () => {
+    const m = await monde();
+    const t = await lancer(m);
+    expect(await m.travaux.lire(t.id, A)).not.toBeNull();
+    expect(await m.travaux.lire(t.id, B)).toBeNull();
+    expect(await m.travaux.demanderAnnulation(t.id, B)).toBeNull();
+  });
+
+  it('reclamer : deux executeurs en meme temps, un seul gagne', async () => {
+    const m = await monde();
+    const t = await lancer(m);
+    const [x, y] = await Promise.all([m.travaux.reclamer(t.id, BAIL_S, m.horloge.t), m.travaux.reclamer(t.id, BAIL_S, m.horloge.t)]);
+    expect([x, y].filter(Boolean)).toHaveLength(1);
+  });
+
+  it('reclamer : un bail vivant protege, un bail expire se reprend', async () => {
+    const m = await monde();
+    const t = await lancer(m);
+    const premier = await m.travaux.reclamer(t.id, BAIL_S, m.horloge.t);
+    expect(premier!.tentatives).toBe(1);
+    expect(await m.travaux.reclamer(t.id, BAIL_S, m.horloge.t)).toBeNull();
+    m.horloge.t = new Date(m.horloge.t.getTime() + (BAIL_S + 1) * 1000);
+    const second = await m.travaux.reclamer(t.id, BAIL_S, m.horloge.t);
+    expect(second!.tentatives).toBe(2);
+  });
+
+  it('jeton de prise : l\'executeur perime ne peut plus rien ecrire', async () => {
+    const m = await monde();
+    const t = await lancer(m);
+    const p1 = (await m.travaux.reclamer(t.id, BAIL_S, m.horloge.t))!;
+    m.horloge.t = new Date(m.horloge.t.getTime() + (BAIL_S + 1) * 1000);
+    const p2 = (await m.travaux.reclamer(t.id, BAIL_S, m.horloge.t))!;
+    expect((await m.travaux.noter(t.id, p1.tentatives, p1.progression, BAIL_S)).perdu).toBe(true);
+    expect(await m.travaux.terminer(t.id, p1.tentatives, {} as never, p1.progression)).toBe(false);
+    expect(await m.travaux.echouer(t.id, p1.tentatives, 'x', null)).toBe(false);
+    expect((await m.travaux.noter(t.id, p2.tentatives, p2.progression, BAIL_S)).perdu).toBe(false);
+  });
+
+  it('au-dela de la limite de prises, le travail passe en echec au lieu de boucler', async () => {
+    const m = await monde();
+    const t = await lancer(m);
+    for (let i = 0; i < TENTATIVES_MAX; i++) {
+      expect(await m.travaux.reclamer(t.id, BAIL_S, m.horloge.t)).not.toBeNull();
+      m.horloge.t = new Date(m.horloge.t.getTime() + (BAIL_S + 1) * 1000);
+    }
+    expect(await m.travaux.reclamer(t.id, BAIL_S, m.horloge.t)).toBeNull();
+    const fin = (await m.travaux.lire(t.id, A))!;
+    expect(fin.statut).toBe('echec');
+    expect(fin.erreur).toMatch(/tentatives/);
+    expect(await m.travaux.aReprendre(m.horloge.t)).toEqual([]);
+  });
+
+  it('presenterTravail ne laisse sortir aucune cle d\'objet', async () => {
+    const m = await monde();
+    const t = await lancer(m);
+    const avecResultat = { ...t, resultat: { cleMp4: `${A}/cinema/film-trav-1/exports/film-deadbeef.mp4`, scenesRendues: [], scenesReutilisees: [], avertissements: [], dureeS: 1, octets: 1, largeur: 1, hauteur: 1, codecVideo: 'h264', codecAudio: 'aac', coutUsd: 0 } };
+    const json = JSON.stringify(presenterTravail(avecResultat));
+    expect(json).not.toContain('exports/');
+    expect(json).not.toContain(A);
+    expect(JSON.parse(json).resultat.aMp4).toBe(true);
+  });
+});
+
+describe('executeur — production complete', () => {
+  it('rend chaque scene, assemble, depose, scelle, nettoie', async () => {
+    const m = await monde();
+    const t = await lancer(m);
+    expect(await executerTravail(t.id, A, m.dep)).toBe('termine');
+
+    const fin = (await m.travaux.lire(t.id, A))!;
+    expect(fin.statut).toBe('termine');
+    expect(fin.progression.pourcent).toBe(100);
+    expect(Object.values(fin.progression.scenes).every((e) => e === 'faite')).toBe(true);
+    expect(fin.resultat!.scenesRendues).toEqual(m.film.scenes.map((s) => s.id));
+    expect(fin.resultat!.scenesReutilisees).toEqual([]);
+    expect(fin.resultat!.coutUsd).toBe(0);
+    expect(fin.resultat!.octets).toBeGreaterThan(0);
+
+    // Des objets DURABLES : une scene par empreinte, et le film recolle.
+    const lu = (await m.films.lire(m.film.id, A))!.film;
+    for (const s of m.film.scenes) {
+      expect(m.objets.cles()).toContain(cleScene(A, m.film.id, s.id, empreinteScene(s, m.film.personnages))!);
+    }
+    expect(m.objets.cles().filter((c) => c.includes('/exports/'))).toHaveLength(1);
+    expect(fin.resultat!.cleMp4).toMatch(new RegExp(`^${A}/cinema/film-trav-1/exports/film-[0-9a-f]{8}\\.mp4$`));
+    // Le film recolle contient les scenes dans l'ordre.
+    const mp4 = new TextDecoder().decode(m.objets.contenu(fin.resultat!.cleMp4!)!);
+    expect(mp4).toBe(m.film.scenes.map((s) => `mp4:${s.id}`).join('+'));
+
+    // Scellees : plus rien a reproduire. Rien de ce dossier ne reste.
+    expect(scenesAReproduire(lu)).toEqual([]);
+    expect(await readdir(m.dossierTravail)).toEqual([]);
+  });
+
+  it('les medias prives vont dans le dossier de travail, JAMAIS dans public/', async () => {
+    const m = await monde();
+    const plan = m.film.scenes[0].plans[0];
+    const url = `cinema/${m.film.id}/medias/${plan.id}-abcd1234.png`;
+    const avecMedia = { ...m.film, scenes: m.film.scenes.map((s, i) => i ? s : { ...s, plans: s.plans.map((p) => p.id === plan.id ? { ...p, media: { url, genre: 'image' as const, largeur: 10, hauteur: 10, dureeS: null, octets: 4, origine: 'import' as const } } : p) }) };
+    await modifierFilm(m.films, m.film.id, A, () => avecMedia);
+    await m.objets.deposerOctets(cleMedia(A, m.film.id, url)!, new Uint8Array([1, 2, 3, 4]), 'image/png');
+
+    let vu = false;
+    m.surRendu.fn = async () => { vu = (await stat(path.join(m.publicDirs[0], url))).size === 4; };
+    const t = await lancer(m);
+    expect(await executerTravail(t.id, A, m.dep)).toBe('termine');
+    expect(vu).toBe(true);                                          // le rendu a vu le media...
+    expect(m.publicDirs[0]).toContain(path.join('var', 'cinema', 'travail'));   // ...dans le dossier de travail
+    await expect(stat(path.join(m.racine, 'public'))).rejects.toThrow();       // ...et public/ n'a jamais existe
+  });
+
+  it('un media declare et absent ARRETE le travail avec la liste des plans — pas de carte de secours', async () => {
+    const m = await monde();
+    const plan = m.film.scenes[0].plans[0];
+    const url = `cinema/${m.film.id}/medias/${plan.id}-abcd1234.mp4`;
+    await modifierFilm(m.films, m.film.id, A, (f) => ({ ...f, scenes: f.scenes.map((s, i) => i ? s : { ...s, plans: s.plans.map((p) => p.id === plan.id ? { ...p, media: { url, genre: 'video' as const, largeur: 10, hauteur: 10, dureeS: 3, octets: 4, origine: 'import' as const } } : p) }) }));
+    const t = await lancer(m);
+    expect(await executerTravail(t.id, A, m.dep)).toBe('echec');
+    const fin = (await m.travaux.lire(t.id, A))!;
+    expect(fin.statut).toBe('echec');
+    expect(fin.erreur).toContain(plan.id);
+    expect(m.rendus).toEqual([]);
+    expect(m.objets.cles()).toEqual([]);
+  });
+
+  it('le detail technique d\'un echec reste dans le journal, la ligne ne porte qu\'une reference', async () => {
+    const m = await monde();
+    m.dep.moteurs.preparerRendu = async () => { throw new Error('Chromium: /home/studiio/secret/chemin crashed'); };
+    const t = await lancer(m);
+    expect(await executerTravail(t.id, A, m.dep)).toBe('echec');
+    const fin = (await m.travaux.lire(t.id, A))!;
+    expect(fin.erreur).toMatch(/^echec de production \(reference [a-z0-9]+\)$/);
+    expect(fin.erreur).not.toContain('secret');
+    expect(fin.reference).toMatch(/^[a-z0-9]+$/);
+  });
+});
+
+describe('executeur — ne regenerer que ce qui change', () => {
+  it('relancer un film deja produit ne rend RIEN (pas de double generation)', async () => {
+    const m = await monde();
+    await executerTravail((await lancer(m)).id, A, m.dep);
+    const avant = m.rendus.length;
+    const t2 = await lancer(m);
+    expect(await executerTravail(t2.id, A, m.dep)).toBe('termine');
+    expect(m.rendus.length).toBe(avant);
+    const fin = (await m.travaux.lire(t2.id, A))!;
+    expect(fin.resultat!.scenesRendues).toEqual([]);
+    expect(fin.resultat!.scenesReutilisees).toEqual(m.film.scenes.map((s) => s.id));
+    expect(Object.values(fin.progression.scenes).every((e) => e === 'reutilisee')).toBe(true);
+  });
+
+  it('modifier UNE scene ne refait que celle-la', async () => {
+    const m = await monde();
+    await executerTravail((await lancer(m)).id, A, m.dep);
+    m.rendus.length = 0;
+
+    const cible = m.film.scenes[1];
+    await modifierFilm(m.films, m.film.id, A, (f) => appliquerPatch(f, { plans: [{ id: cible.plans[0].id, texte: 'Une description toute nouvelle du plan' }] }));
+    const t2 = await lancer(m);
+    expect(await executerTravail(t2.id, A, m.dep)).toBe('termine');
+
+    expect(m.rendus).toEqual([cible.id]);
+    const fin = (await m.travaux.lire(t2.id, A))!;
+    expect(fin.resultat!.scenesRendues).toEqual([cible.id]);
+    expect(fin.resultat!.scenesReutilisees).toEqual(m.film.scenes.filter((s) => s.id !== cible.id).map((s) => s.id));
+    // Le film recolle reprend les scenes inchangees ET la nouvelle.
+    const mp4 = new TextDecoder().decode(m.objets.contenu(fin.resultat!.cleMp4!)!);
+    expect(mp4).toBe(m.film.scenes.map((s) => `mp4:${s.id}`).join('+'));
+    // L'ancienne version de la scene n'est pas ecrasee : une cle par empreinte.
+    expect(m.objets.cles().filter((c) => c.includes(`/scenes/${cible.id}-`))).toHaveLength(2);
+  });
+
+  it('une scene demandee explicitement est refaite, les autres reprises', async () => {
+    const m = await monde();
+    await executerTravail((await lancer(m)).id, A, m.dep);
+    m.rendus.length = 0;
+    const voulue = m.film.scenes[0].id;
+    const t2 = await lancer(m, [voulue]);
+    await executerTravail(t2.id, A, m.dep);
+    expect(m.rendus).toEqual([voulue]);
+  });
+
+  it('une scene modifiee PENDANT le travail reste « a reproduire »', async () => {
+    const m = await monde();
+    const s0 = m.film.scenes[0];
+    m.surRendu.fn = async (id) => {
+      if (id !== s0.id) return;
+      await modifierFilm(m.films, m.film.id, A, (f) => appliquerPatch(f, { plans: [{ id: s0.plans[0].id, texte: 'Modifiee pendant le rendu' }] }));
+    };
+    const t = await lancer(m);
+    expect(await executerTravail(t.id, A, m.dep)).toBe('termine');
+    const restant = scenesAReproduire((await m.films.lire(m.film.id, A))!.film).map((s) => s.id);
+    expect(restant).toEqual([s0.id]);
+  });
+});
+
+describe('executeur — interruption et reprise', () => {
+  it('un executeur qui meurt : un autre reprend, les scenes terminees ne sont pas refaites', async () => {
+    const m = await monde();
+    expect(m.film.scenes.length).toBeGreaterThanOrEqual(3);
+    const t = await lancer(m);
+
+    // L'executeur 1 rend la scene 1, puis « meurt » en plein rendu de la scene 2.
+    let liberer!: () => void;
+    const bloque = new Promise<void>((r) => { liberer = r; });
+    let signaleBloque!: () => void;
+    const estBloque = new Promise<void>((r) => { signaleBloque = r; });
+    const mort = m.film.scenes[1].id;
+    m.surRendu.fn = async (id) => { if (id === mort && m.rendus.filter((x) => x === mort).length === 1) { signaleBloque(); await bloque; } };
+    const premier = executerTravail(t.id, A, m.dep);
+    await estBloque;
+    expect(m.rendus).toEqual([m.film.scenes[0].id, mort]);
+
+    // Le bail expire : le serveur est tombe. Un autre executeur reprend.
+    m.horloge.t = new Date(m.horloge.t.getTime() + (BAIL_S + 5) * 1000);
+    expect(await m.travaux.aReprendre(m.horloge.t)).toEqual([{ id: t.id, proprietaire: A }]);
+    const rendusAvant = m.rendus.length;
+    m.surRendu.fn = null;
+    expect(await executerTravail(t.id, A, m.dep)).toBe('termine');
+
+    // La scene 1 est reprise du stockage ; les autres sont rendues par l'executeur 2.
+    const fin = (await m.travaux.lire(t.id, A))!;
+    expect(fin.tentatives).toBe(2);
+    expect(fin.resultat!.scenesReutilisees).toEqual([m.film.scenes[0].id]);
+    expect(m.rendus.slice(rendusAvant)).toEqual(m.film.scenes.slice(1).map((s) => s.id));
+
+    // L'ancien executeur se reveille : son jeton est perime, il ne touche a rien.
+    liberer();
+    expect(await premier).toBe('bail_perdu');
+    const apres = (await m.travaux.lire(t.id, A))!;
+    expect(apres.statut).toBe('termine');
+    expect(apres.tentatives).toBe(2);
+  });
+
+  it('reprendreOrphelins relance un travail laisse en plan', async () => {
+    const m = await monde();
+    const t = await lancer(m);
+    await m.travaux.reclamer(t.id, BAIL_S, m.horloge.t);                       // pris, puis le serveur tombe
+    m.horloge.t = new Date(m.horloge.t.getTime() + (BAIL_S + 5) * 1000);
+    const n = await reprendreOrphelins(m.travaux, () => m.dep, Date.now() + 10 * 60_000);
+    expect(n).toBe(1);
+    await attendreFile();
+    expect((await m.travaux.lire(t.id, A))!.statut).toBe('termine');
+  });
+
+  it('deux demarrages du meme travail dans un processus ne le lancent qu\'une fois', async () => {
+    const m = await monde();
+    const t = await lancer(m);
+    expect(demarrerTravail(t.id, A, () => m.dep)).toBe(true);
+    expect(demarrerTravail(t.id, A, () => m.dep)).toBe(false);
+    await attendreFile();
+    expect(m.rendus).toHaveLength(m.film.scenes.length);
+  });
+
+  it('deux executeurs simultanes sur le meme travail : un seul travaille', async () => {
+    const m = await monde();
+    const t = await lancer(m);
+    const issues = await Promise.all([executerTravail(t.id, A, m.dep), executerTravail(t.id, A, m.dep)]);
+    expect(issues.sort()).toEqual(['non_prenable', 'termine']);
+    expect(m.rendus).toHaveLength(m.film.scenes.length);   // pas de double generation
+  });
+
+  it('un executeur ne prend pas le travail d\'un autre compte', async () => {
+    const m = await monde();
+    const t = await lancer(m);
+    expect(await executerTravail(t.id, B, m.dep)).toBe('non_prenable');
+    expect(m.rendus).toEqual([]);
+  });
+});
+
+describe('executeur — annulation', () => {
+  it('s\'arrete a la scene suivante et GARDE les scenes deja rendues', async () => {
+    const m = await monde();
+    const t = await lancer(m);
+    const premiere = m.film.scenes[0].id;
+    m.surRendu.fn = async (id) => { if (id === premiere) await m.travaux.demanderAnnulation(t.id, A); };
+    expect(await executerTravail(t.id, A, m.dep)).toBe('annule');
+
+    const fin = (await m.travaux.lire(t.id, A))!;
+    expect(fin.statut).toBe('annule');
+    expect(m.rendus).toEqual([premiere]);
+    expect(m.objets.cles().filter((c) => c.includes('/scenes/'))).toHaveLength(1);
+    expect(m.objets.cles().filter((c) => c.includes('/exports/'))).toHaveLength(0);
+
+    // Un nouveau travail reprend la scene gardee.
+    m.surRendu.fn = null;
+    const t2 = await lancer(m);
+    await executerTravail(t2.id, A, m.dep);
+    expect((await m.travaux.lire(t2.id, A))!.resultat!.scenesReutilisees).toEqual([premiere]);
+  });
+
+  it('annuler un travail encore en attente l\'annule tout de suite', async () => {
+    const m = await monde();
+    const t = await lancer(m);
+    expect((await m.travaux.demanderAnnulation(t.id, A))!.statut).toBe('annule');
+    expect(await executerTravail(t.id, A, m.dep)).toBe('non_prenable');
+  });
+});
+
+describe('executeur — plafond de depense cote serveur', () => {
+  it('un plafond invalide refuse AVANT le premier octet de travail', async () => {
+    const m = await monde({ plafondUsd: Number.NaN });
+    const t = await lancer(m);
+    expect(await executerTravail(t.id, A, m.dep)).toBe('echec');
+    expect((await m.travaux.lire(t.id, A))!.erreur).toMatch(/plafond/);
+    expect(m.rendus).toEqual([]);
+    expect(m.publicDirs).toEqual([]);
+  });
+
+  it('un plafond deja atteint par la generation IA refuse la production', async () => {
+    const m = await monde({ plafondUsd: 1 });
+    await modifierFilm(m.films, m.film.id, A, (f) => ({ ...f, qualite: 'cinema', coutGenerationUsd: 5 }));
+    const t = await lancer(m);
+    expect(await executerTravail(t.id, A, m.dep)).toBe('echec');
+    expect(m.rendus).toEqual([]);
+  });
+});
+
+describe('aucun debit, aucun fournisseur payant', () => {
+  it('les credits ne sont touches QU\'a l\'endroit qui facture ; ni Stripe ni paiement ailleurs', async () => {
+    // La generation REELLE de Cinema IA est payee par les credits de Studiio (decision du
+    // proprietaire, 27/10/2026). Deux fichiers SEULEMENT ont le droit d'y toucher : le
+    // module de reservation, et la route de generation qui l'appelle. Partout ailleurs,
+    // l'interdiction tient — un rendu, un montage ou une suppression ne debite rien.
+    const AUTORISES = [
+      path.join('lib', 'cinema', 'generation', 'credits.ts'),
+      path.join('app', 'api', 'cinema', 'films', '[id]', 'generation', 'route.ts'),
+    ];
+    const { readdir, readFile } = await import('fs/promises');
+    const racine = path.resolve(__dirname, '..');
+    const fichiers: string[] = [];
+    const parcourir = async (d: string) => {
+      for (const e of await readdir(d, { withFileTypes: true })) {
+        const p = path.join(d, e.name);
+        if (e.isDirectory()) await parcourir(p); else if (/\.(ts|tsx)$/.test(e.name)) fichiers.push(p);
+      }
+    };
+    await parcourir(path.join(racine, 'lib', 'cinema'));
+    await parcourir(path.join(racine, 'app', 'api', 'cinema'));
+    await parcourir(path.join(racine, 'app', 'dashboard', 'cinema'));
+    expect(fichiers.length).toBeGreaterThan(20);
+    let autorisesVus = 0;
+    for (const f of fichiers) {
+      const src = await readFile(f, 'utf-8');
+      const imports = src.split('\n').filter((l) => /^\s*(import|export)\b.*from\s|require\(/.test(l)).join('\n');
+      // Stripe, PawaPay et les rendus de Studiio : interdits PARTOUT, sans exception.
+      expect(imports, f).not.toMatch(/lib\/stripe|\/stripe|pawapay|lib\/rendus|composerEtFacturer/i);
+      if (AUTORISES.some((a) => f.endsWith(a))) {
+        autorisesVus += 1;
+        continue; // ces deux-la peuvent lire les credits et les tarifs
+      }
+      expect(imports, f).not.toMatch(/lib\/credits|debiter/i);
+    }
+    // Les deux fichiers autorises existent bien : la liste ne protege pas du vide.
+    expect(autorisesVus).toBe(AUTORISES.length);
+  });
+});
+
+describe('executeur — serveur Linux : voix, ressources, concurrence', () => {
+  it('voix indisponible : le travail s\'arrete AVANT tout rendu, avec une phrase claire', async () => {
+    const m = await monde();
+    m.dep.moteurs.synthetiser = async () => ({
+      voix: {}, details: [], moteur: 'edge', motifRepli: null,
+      echecs: [{ planId: 's1-p-1', motif: 'Connect Error: getaddrinfo ENOTFOUND speech.platform.bing.com' }, { planId: 's1-p-2', motif: 'Connect Error' }],
+    });
+    const t = await lancer(m);
+    expect(await executerTravail(t.id, A, m.dep)).toBe('echec');
+    const fin = (await m.travaux.lire(t.id, A))!;
+    expect(fin.statut).toBe('echec');
+    expect(fin.erreur).toMatch(/synthese vocale indisponible pour 2 replique\(s\)/);
+    expect(fin.erreur).toMatch(/Rien n'a ete rendu ni facture/);
+    expect(fin.erreur).not.toMatch(/bing|ENOTFOUND/);       // le detail reseau reste dans le journal
+    expect(m.rendus).toEqual([]);
+    expect(m.objets.cles().filter((k) => k.includes('/scenes/'))).toEqual([]);
+  });
+
+  it('serveur occupe : attend son tour, annonce l\'attente, puis rend', async () => {
+    const m = await monde();
+    const etats = [{ rendusEnCours: 1, ramLibreMo: 8000, cpus: 4 }, { rendusEnCours: 1, ramLibreMo: 8000, cpus: 4 }, { rendusEnCours: 0, ramLibreMo: 8000, cpus: 4 }];
+    let i = 0;
+    const messages: Array<string | null> = [];
+    m.dep.ressources = { lire: () => etats[Math.min(i++, etats.length - 1)], pause: async () => { messages.push((await m.travaux.dernierDuFilm(m.film.id, A))?.progression.message ?? null); } };
+    const t = await lancer(m);
+    expect(await executerTravail(t.id, A, m.dep)).toBe('termine');
+    expect(messages.some((x) => /En attente : un autre rendu est en cours/.test(x ?? ''))).toBe(true);
+    expect(m.rendus.length).toBeGreaterThan(0);
+  });
+
+  it('memoire insuffisante au-dela de la patience : echec « serveur occupe », rien de rendu', async () => {
+    const m = await monde();
+    m.dep.ressources = { lire: () => ({ rendusEnCours: 0, ramLibreMo: 300, cpus: 4 }), pause: async () => {}, seuils: { delaiMaxMs: 20_000, pasMs: 5_000, ramMinMo: 1536 } };
+    const t = await lancer(m);
+    expect(await executerTravail(t.id, A, m.dep)).toBe('echec');
+    const fin = (await m.travaux.lire(t.id, A))!;
+    expect(fin.erreur).toMatch(/^serveur occupe : memoire du serveur insuffisante \(300 Mo libres, 1536 Mo requis\)/);
+    expect(m.rendus).toEqual([]);
+  });
+
+  it('pendant son rendu, Cinema s\'annonce aux autres (compteur Remotion) et se retire a la fin', async () => {
+    const { rendusRemotionActifs } = await import('@/lib/render/occupation-remotion');
+    const m = await monde();
+    const vus: number[] = [];
+    m.surRendu.fn = async () => { vus.push(rendusRemotionActifs()); };
+    const avant = rendusRemotionActifs();
+    expect(await executerTravail((await lancer(m)).id, A, m.dep)).toBe('termine');
+    expect(vus.length).toBeGreaterThan(0);
+    for (const v of vus) expect(v).toBe(avant + 1);
+    expect(rendusRemotionActifs()).toBe(avant);
+    // Un echec de rendu libere aussi sa place.
+    const m2 = await monde();
+    m2.dep.moteurs.preparerRendu = async () => { throw new Error('boom'); };
+    await executerTravail((await lancer(m2)).id, A, m2.dep);
+    expect(rendusRemotionActifs()).toBe(avant);
+  });
+
+  it('un arret demande pendant l\'attente est honore', async () => {
+    const m = await monde();
+    const t = await lancer(m);
+    m.dep.ressources = {
+      lire: () => ({ rendusEnCours: 1, ramLibreMo: 8000, cpus: 4 }),
+      pause: async () => { await m.travaux.demanderAnnulation(t.id, A); },
+    };
+    expect(await executerTravail(t.id, A, m.dep)).toBe('annule');
+    expect(m.rendus).toEqual([]);
+  });
+});
+
+describe('ressources — regles pures', () => {
+  it('concurrence : 1 par defaut, reglable jusqu\'a 4, 1 sur 2 coeurs ou moins, valeurs invalides ignorees', async () => {
+    const { concurrenceRendu } = await import('@/lib/cinema/travaux/ressources');
+    const e = (v?: string) => ({ CINEMA_CONCURRENCE_RENDU: v }) as unknown as NodeJS.ProcessEnv;
+    expect(concurrenceRendu(e(), 8)).toBe(1);
+    expect(concurrenceRendu(e('3'), 8)).toBe(3);
+    expect(concurrenceRendu(e('99'), 8)).toBe(4);
+    expect(concurrenceRendu(e('0'), 8)).toBe(1);
+    expect(concurrenceRendu(e('abc'), 8)).toBe(1);
+    expect(concurrenceRendu(e('4'), 2)).toBe(1);
+    expect(concurrenceRendu(e(), 1)).toBe(1);
+  });
+
+  it('dossier de travail durable : sous le dossier temporaire (le conteneur n\'ecrit pas dans /app)', async () => {
+    const { dossierTravailDurable } = await import('@/lib/cinema/contexte');
+    const os = await import('os');
+    const e = (v?: string) => ({ CINEMA_DOSSIER_TRAVAIL: v }) as unknown as NodeJS.ProcessEnv;
+    expect(dossierTravailDurable(e())).toBe(path.join(os.tmpdir(), 'studiio-cinema'));
+    expect(dossierTravailDurable(e('/data/cinema'))).toBe('/data/cinema');
+    for (const mauvais of ['relatif/x', '/', '', '   ']) expect(dossierTravailDurable(e(mauvais))).toBe(path.join(os.tmpdir(), 'studiio-cinema'));
+  });
+
+  it('sur Linux (ni macOS), Edge qui echoue ne declenche PAS « say » : l\'echec est rendu tel quel', async () => {
+    const src = (await import('fs')).readFileSync(path.resolve(__dirname, '../lib/cinema/voix.ts'), 'utf-8');
+    expect(src).toMatch(/process\.platform !== 'darwin'\) throw e/);
+  });
+});
+
+describe('economie de ressources — bundle, scenes, processus, dossiers abandonnes', () => {
+  it('le bundle Remotion vit DANS le dossier du travail (jamais le temporaire du systeme) et disparait avec lui', async () => {
+    const { tmpdir } = await import('os');
+    const m = await monde();
+    const vus: Array<{ dossierBundle?: string; concurrence?: number }> = [];
+    const avantMoteur = m.dep.moteurs.preparerRendu;
+    m.dep.moteurs.preparerRendu = async (o) => {
+      vus.push({ dossierBundle: o.dossierBundle, concurrence: o.concurrence });
+      // Comme Remotion : le bundle contient une COPIE des medias prives.
+      await mkdir(path.join(o.dossierBundle!, 'public'), { recursive: true });
+      await writeFile(path.join(o.dossierBundle!, 'public', 'media-prive.mp4'), 'prive');
+      return avantMoteur(o);
+    };
+    const t = await lancer(m);
+    expect(await executerTravail(t.id, A, m.dep)).toBe('termine');
+    expect(vus).toHaveLength(1);                                   // un seul bundle pour tout le film
+    const b = path.resolve(vus[0].dossierBundle!);
+    expect(b.startsWith(path.resolve(m.dossierTravail) + path.sep)).toBe(true);
+    expect(b.startsWith(path.resolve(tmpdir()) + path.sep) && !b.startsWith(path.resolve(m.dossierTravail))).toBe(false);
+    expect(vus[0].concurrence).toBe(1);
+    const { access } = await import('fs/promises');
+    await expect(access(b)).rejects.toThrow();                     // bundle et medias prives effaces
+    expect(await readdir(m.dossierTravail)).toEqual([]);
+  });
+
+  it('meme apres un echec de rendu, le bundle et ses medias sont effaces', async () => {
+    const m = await monde();
+    let b = '';
+    m.dep.moteurs.preparerRendu = async (o) => {
+      b = o.dossierBundle!;
+      await mkdir(path.join(b, 'public'), { recursive: true });
+      await writeFile(path.join(b, 'public', 'media-prive.mp4'), 'prive');
+      throw new Error('Chromium a plante');
+    };
+    expect(await executerTravail((await lancer(m)).id, A, m.dep)).toBe('echec');
+    const { access } = await import('fs/promises');
+    await expect(access(b)).rejects.toThrow();
+    expect(await readdir(m.dossierTravail)).toEqual([]);
+  });
+
+  it('ni les films ni les medias enregistres ne sont touches par le nettoyage', async () => {
+    const m = await monde();
+    const cleMediaEnregistre = `${A}/cinema/${m.film.id}/medias/s1-p-1-0a1b2c3d.mp4`;
+    await m.objets.deposerOctets(cleMediaEnregistre, new Uint8Array([1, 2, 3]), 'video/mp4');
+    expect(await executerTravail((await lancer(m)).id, A, m.dep)).toBe('termine');
+    expect(m.objets.contenu(cleMediaEnregistre)).toEqual(new Uint8Array([1, 2, 3]));
+    expect(await m.films.lire(m.film.id, A)).not.toBeNull();
+    expect(m.objets.cles().filter((k) => k.includes('/scenes/')).length).toBeGreaterThan(0);
+  });
+
+  it('la RAM et l\'activite du serveur sont verifiees avant CHAQUE scene, sans que Cinema s\'attende lui-meme', async () => {
+    const { rendusRemotionActifs } = await import('@/lib/render/occupation-remotion');
+    const m = await monde();
+    let lectures = 0;
+    // Compteur REEL (qui inclut Cinema pendant son rendu) : si Cinema s'attendait lui-meme, ce test bloquerait.
+    m.dep.ressources = { lire: () => { lectures += 1; return { rendusEnCours: rendusRemotionActifs(), ramLibreMo: 64_000, cpus: 8, processusLourds: 0 }; }, pause: async () => {} };
+    expect(await executerTravail((await lancer(m)).id, A, m.dep)).toBe('termine');
+    expect(lectures).toBeGreaterThanOrEqual(m.film.scenes.length);
+  });
+
+  it('la RAM qui s\'effondre ENTRE deux scenes met le travail en attente, puis il reprend', async () => {
+    const m = await monde();
+    const pauses: string[] = [];
+    let basse = false;
+    m.surRendu.fn = async () => { basse = true; };                // apres la 1re scene, la memoire chute
+    m.dep.ressources = {
+      lire: () => ({ rendusEnCours: 0, ramLibreMo: basse ? 200 : 64_000, cpus: 8 }),
+      pause: async () => { pauses.push('attente'); basse = false; }, // le serveur se libere pendant l'attente
+    };
+    expect(await executerTravail((await lancer(m)).id, A, m.dep)).toBe('termine');
+    expect(pauses.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('un autre Chromium/ffmpeg detecte (Autopilote) met en attente ; detection impossible = jamais pretendu « libre »', async () => {
+    const { motifAttente, SEUILS_DEFAUT } = await import('@/lib/cinema/travaux/ressources');
+    const base = { rendusEnCours: 0, ramLibreMo: 8000, cpus: 4 };
+    expect(motifAttente({ ...base, processusLourds: 1 }, SEUILS_DEFAUT)).toMatch(/Chromium ou ffmpeg/);
+    expect(motifAttente({ ...base, processusLourds: 0 }, SEUILS_DEFAUT)).toBeNull();
+    // `null` = on ne sait pas : pas d'attente inventee, et la documentation ne promet aucune garantie.
+    expect(motifAttente({ ...base, processusLourds: null }, SEUILS_DEFAUT)).toBeNull();
+    const { compterProcessusLourds, estProcessusLourd } = await import('@/lib/cinema/travaux/processus');
+    expect(['chrome-headless', 'chrome', 'chromium', 'ffmpeg'].every(estProcessusLourd)).toBe(true);
+    expect(['node', 'remotion', 'sh', 'ffprobe', 'postgres'].some(estProcessusLourd)).toBe(false);
+    const procs: Record<string, { comm: string; etat: string }> = {
+      '1': { comm: 'node', etat: 'S' }, '2': { comm: 'chrome-headless', etat: 'S' }, '3': { comm: 'ffmpeg', etat: 'Z' }, '4': { comm: 'ffmpeg', etat: 'R' },
+    };
+    expect(await compterProcessusLourds({ pids: async () => Object.keys(procs), lire: async (p) => procs[p] ?? null })).toBe(2);
+    expect(await compterProcessusLourds({ pids: async () => { throw new Error('pas de /proc'); }, lire: async () => null })).toBeNull();
+    expect(await compterProcessusLourds({ pids: async () => [], lire: async () => null })).toBeNull();
+  });
+});
+
+describe('dossiers de travail abandonnes — balayage prudent', () => {
+  const UUID = '33333333-3333-4333-8333-333333333333';
+  const ANCIEN = Date.now() - 10 * 3_600_000;
+
+  async function base() {
+    const racine = await mkdtemp(path.join(tmpdir(), 'cinema-balai-'));
+    racines.push(racine);
+    return racine;
+  }
+  const vieillir = async (chemin: string, ms = ANCIEN) => { const { utimes } = await import('fs/promises'); await utimes(chemin, ms / 1000, ms / 1000); };
+
+  it('efface un dossier Cinema abandonne et ancien, et rien d\'autre', async () => {
+    const { balayerDossiersAbandonnes } = await import('@/lib/cinema/travaux/executeur');
+    const b = await base();
+    const garde = [`${UUID}-1x`, 'autre-application', 'remotion-webpack-bundle-AbCdEf', 'tmp-zz', `${UUID}-9`, UUID, '..cache'];
+    for (const n of [`${UUID}-2`, 'tmp-0123456789ab', ...garde]) { await mkdir(path.join(b, n), { recursive: true }); await writeFile(path.join(b, n, 'f'), 'x'); await vieillir(path.join(b, n)); }
+    // Trop recent : conserve, meme avec le bon nom.
+    await mkdir(path.join(b, `${UUID}-3`)); await writeFile(path.join(b, `${UUID}-3`, 'f'), 'x');
+    // Un FICHIER au nom d'un dossier de travail : conserve.
+    await writeFile(path.join(b, `${UUID}-4`), 'x'); await vieillir(path.join(b, `${UUID}-4`));
+
+    expect(await balayerDossiersAbandonnes(b)).toBe(2);
+    const restant = (await readdir(b)).sort();
+    expect(restant).toEqual([...garde, `${UUID}-3`, `${UUID}-4`].sort());
+  });
+
+  it('un lien symbolique au nom d\'un dossier de travail n\'est ni suivi ni efface, et sa cible reste intacte', async () => {
+    const { balayerDossiersAbandonnes } = await import('@/lib/cinema/travaux/executeur');
+    const { symlink, lstat, utimes, lutimes } = await import('fs/promises');
+    const b = await base();
+    const dehors = await base();
+    await writeFile(path.join(dehors, 'precieux.txt'), 'ne pas toucher');
+    await symlink(dehors, path.join(b, `${UUID}-1`));
+    await utimes(dehors, ANCIEN / 1000, ANCIEN / 1000);
+    await lutimes(path.join(b, `${UUID}-1`), ANCIEN / 1000, ANCIEN / 1000);   // le lien lui-meme est ANCIEN
+    expect(await balayerDossiersAbandonnes(b)).toBe(0);
+    expect((await lstat(path.join(b, `${UUID}-1`))).isSymbolicLink()).toBe(true);
+    expect(await readdir(dehors)).toEqual(['precieux.txt']);
+  });
+
+  it('un travail ACTIF dans ce processus n\'est jamais balaye, meme tres ancien ; base absente = 0', async () => {
+    const { balayerDossiersAbandonnes } = await import('@/lib/cinema/travaux/executeur');
+    const m = await monde();
+    let pendant = -1;
+    m.dep.moteurs.preparerRendu = async () => {
+      // Balayage « age minimum 0 » PENDANT le travail : son dossier est actif, il doit survivre.
+      pendant = await balayerDossiersAbandonnes(m.dossierTravail, { ageMinMs: 0 });
+      return async (tache) => { await mkdir(path.dirname(tache.sortie), { recursive: true }); await writeFile(tache.sortie, 'mp4:x'); return { fichier: tache.sortie, octets: 5, dureeS: 9, largeur: 1920, hauteur: 1080, codecVideo: 'h264', codecAudio: 'aac' }; };
+    };
+    expect(await executerTravail((await lancer(m)).id, A, m.dep)).toBe('termine');
+    expect(pendant).toBe(0);
+    expect(await balayerDossiersAbandonnes(path.join(m.racine, 'inexistant'))).toBe(0);
+  });
+});
+

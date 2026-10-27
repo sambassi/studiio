@@ -749,3 +749,44 @@ psql -U studiio -d studiio -f migrations/2026-08-08-zernio.sql
 docker kill -s SIGUSR1 studiio-postgrest
 ```
 Variables Coolify : `ZERNIO_API_KEY` (sk_…) et `ZERNIO_WEBHOOK_SECRET`.
+
+## 2026-10-26 — Cinema IA lot 4 : stockage durable + production asynchrone
+
+- [x] Migration `2026-10-27-cinema-ia.sql` (+ rollback) : `cinema_films`, `cinema_travaux`, 2 fonctions SECURITY DEFINER — ECRITE, TESTEE sur PostgreSQL local, NON APPLIQUEE
+- [x] Stockage : cles par compte (`stockage/cles.ts`), objets memoire/dossier/MinIO, depots de films (versionnes) memoire/dossier/PostgreSQL
+- [x] Production : travaux, bail, jeton de prise, un actif par film, cache de scene par empreinte, annulation, plafond serveur
+- [x] Routes : film/PATCH versionne, medias, references, voix, travaux, export, generation (plafond serveur)
+- [x] Page : progression reelle, reprise d'un film, erreurs visibles, actions secondaires en icones
+- [x] Tests : 191 unitaires cinema, 21 pg reels (PostgreSQL + PostgREST), 4 benches Remotion reels
+- [ ] **Appliquer la migration en production** (puis `docker kill -s SIGUSR1 studiio-postgrest`) — SEULEMENT sur GO explicite
+- [ ] Poser `CINEMA_STOCKAGE=durable` dans Coolify APRES la migration
+- [x] Interrupteur general `CINEMA_ACTIVE` (eteint par defaut) pour tous les utilisateurs authentifies — remplace le verrou a un compte du lot 5
+- [x] Suppression d'un film + purge de ses objets (lot 5). Reste : purge a la suppression d'un COMPTE (`tasks/dette-rgpd-purge-stockage.md`) et ancien scenes orphelines apres modification
+- [x] Un seul rendu lourd a la fois (lot 5) : attente bornee + annonce dans le compteur Remotion
+
+
+## 2026-10-26 — Cinema IA lot 5 : securite et compatibilite (non deploye)
+
+- [x] Verrou d'acces (remplace ensuite par l'interrupteur general `CINEMA_ACTIVE`)
+- [x] MinIO : SDK reel + serveur reel JETABLE (banc) ; **MinIO de production NON interroge**
+- [x] Linux : dossier de travail sous tmp, `gl: angle`, attente des ressources, voix Linux sans `say` + erreur claire
+- [x] Suppression securisee d'un film (route, UI, objets fictifs)
+- [ ] Verification MinIO production en lecture seule (procedure en `docs/CINEMA-IA.md` 11.2) — sur GO
+- [ ] Construire l'image Docker et lancer un rendu Cinema dedans (Docker absent du poste)
+- [ ] Verifier la joignabilite d'Edge TTS depuis le serveur
+- [ ] Poser `CINEMA_STOCKAGE=durable` puis `CINEMA_ACTIVE=true` dans Coolify APRES migration
+
+## 2026-10-26 — Cinema IA : preparation multiutilisateur
+
+- [x] Restriction a un compte supprimee ; interrupteur `CINEMA_ACTIVE` eteint par defaut ; 13 routes verifiees
+- [ ] **BLOQUE** : image Docker non construite (Docker/podman absents du poste) — aucun rendu Linux prouve
+- [ ] MinIO de production : non verifie (aucun acces) — procedure `docs/CINEMA-IA.md` 11.2
+
+## 2026-10-26 — Cinema IA : economie de ressources (local, non deploye)
+
+- [x] Bundle Remotion dans le dossier du travail (plus de fuite ni de copie des medias prives dans tmp)
+- [x] Concurrence Chromium 1, encodage non parallele, caches de decodage bornes
+- [x] RAM + processus Chromium/ffmpeg verifies avant chaque scene (aucune garantie face a l'Autopilote)
+- [x] Balayage prudent des dossiers de travail abandonnes
+- [ ] Mesurer la RAM reelle d'un rendu sur le serveur (estimations seulement)
+- [ ] Docker : cache de build / images hors retour arriere, zram — actions SERVEUR, sur autorisation

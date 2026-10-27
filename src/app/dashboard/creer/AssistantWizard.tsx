@@ -196,7 +196,7 @@ import {
 } from '@/lib/creer/batch';
 import {
   batchRunId, batchItemId, initialBatchItems, setItemState, batchSummary,
-  batchPartiel, repriseAutorisee, titreInterruption, messageInterruption,
+  batchPartiel, titreInterruption, messageInterruption,
   bilanSerie, type BatchItem,
 } from '@/lib/creer/batchRun';
 import {
@@ -14421,10 +14421,15 @@ export default function AssistantWizard() {
                         simple message d'erreur : impossible de savoir ce qui
                         etait passe. On liste chaque contenu et son etat.
 
-                        La REPRISE est volontairement inactive : relancer un
-                        contenu echoue suppose de savoir qu'il n'a pas ete
-                        facture, et le debit ne dispose d'aucune cle
-                        d'idempotence. `repriseAutorisee` porte cette regle. */}
+                        AUCUN BOUTON DE REPRISE : relancer un contenu echoue
+                        suppose de savoir qu'il n'a pas ete facture, et le debit
+                        ne dispose d'aucune cle d'idempotence par contenu. Un
+                        bouton grise en permanence ne rendait aucun service — sa
+                        raison est deja ecrite en clair sous la liste
+                        (`messageInterruption`, qui reprend `REPRISE_INDISPONIBLE`).
+                        La regle vit dans `repriseAutorisee` : le jour ou la cle
+                        existera, c'est la qu'elle changera, et le bouton
+                        reviendra ici. */}
                     {!sending && batchPartiel(batchItems) && (
                       <div data-batch-report className="rounded-lg border border-amber-900/60 bg-amber-950/20 p-3 space-y-2">
                         <div className="flex items-center gap-2 text-sm font-medium text-amber-300">
@@ -14475,17 +14480,6 @@ export default function AssistantWizard() {
 
                             Plusieurs contenus : le vocabulaire Serie et sa
                             regle de reprise sont conserves tels quels. */}
-                        {batchItems.length > 1 && (
-                          <button
-                            type="button"
-                            data-batch-retry
-                            disabled
-                            title={repriseAutorisee(batchItems).raison}
-                            className="w-full rounded-lg border border-gray-800 px-3 py-2 text-xs text-gray-500 cursor-not-allowed"
-                          >
-                            Reprendre les contenus échoués
-                          </button>
-                        )}
                         <p className="text-[11px] text-gray-500" data-interruption-message>
                           {messageInterruption(batchItems.length)}
                         </p>

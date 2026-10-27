@@ -2,6 +2,7 @@
  * Progression RÉELLE d'une production Autopilote manuelle (« Produire
  * maintenant »), par étapes du pipeline — jamais un minuteur inventé.
  *
+ *   En file d'attente          0 %   (rendu global occupé, voir `limite-rendus.ts`)
  *   Analyse des rushes        0–15 %
  *   Préparation du montage   15–25 %
  *   Composition (Remotion)   25–85 %  ← avancement réel des images rendues
@@ -13,9 +14,10 @@
  */
 import { etapeDepuisStatutJumeauAutopilote, progressionVideoAvatar } from '@/lib/avatar/etapes-video-avatar';
 
-export type EtapeProduction = 'analyse' | 'preparation' | 'composition' | 'envoi' | 'finalisation';
+export type EtapeProduction = 'attente' | 'analyse' | 'preparation' | 'composition' | 'envoi' | 'finalisation';
 
 export const BORNES_ETAPES: Record<EtapeProduction, [number, number]> = {
+  attente: [0, 0],
   analyse: [0, 15],
   preparation: [15, 25],
   composition: [25, 85],
@@ -24,6 +26,7 @@ export const BORNES_ETAPES: Record<EtapeProduction, [number, number]> = {
 };
 
 export const LIBELLES_ETAPES: Record<EtapeProduction, string> = {
+  attente: 'En file d’attente : un autre rendu est en cours…',
   analyse: 'Analyse des rushes…',
   preparation: 'Préparation du montage…',
   composition: 'Composition de la vidéo…',
