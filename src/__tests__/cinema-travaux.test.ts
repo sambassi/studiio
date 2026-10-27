@@ -490,7 +490,15 @@ describe('executeur — plafond de depense cote serveur', () => {
 });
 
 describe('aucun debit, aucun fournisseur payant', () => {
-  it('le module n\'importe ni credits, ni Stripe, ni paiement', async () => {
+  it('les credits ne sont touches QU\'a l\'endroit qui facture ; ni Stripe ni paiement ailleurs', async () => {
+    // La generation REELLE de Cinema IA est payee par les credits de Studiio (decision du
+    // proprietaire, 27/10/2026). Deux fichiers SEULEMENT ont le droit d'y toucher : le
+    // module de reservation, et la route de generation qui l'appelle. Partout ailleurs,
+    // l'interdiction tient — un rendu, un montage ou une suppression ne debite rien.
+    const AUTORISES = [
+      path.join('lib', 'cinema', 'generation', 'credits.ts'),
+      path.join('app', 'api', 'cinema', 'films', '[id]', 'generation', 'route.ts'),
+    ];
     const { readdir, readFile } = await import('fs/promises');
     const racine = path.resolve(__dirname, '..');
     const fichiers: string[] = [];
@@ -504,11 +512,20 @@ describe('aucun debit, aucun fournisseur payant', () => {
     await parcourir(path.join(racine, 'app', 'api', 'cinema'));
     await parcourir(path.join(racine, 'app', 'dashboard', 'cinema'));
     expect(fichiers.length).toBeGreaterThan(20);
+    let autorisesVus = 0;
     for (const f of fichiers) {
       const src = await readFile(f, 'utf-8');
       const imports = src.split('\n').filter((l) => /^\s*(import|export)\b.*from\s|require\(/.test(l)).join('\n');
-      expect(imports, f).not.toMatch(/lib\/credits|lib\/stripe|\/stripe|pawapay|lib\/rendus|debiter|composerEtFacturer/i);
+      // Stripe, PawaPay et les rendus de Studiio : interdits PARTOUT, sans exception.
+      expect(imports, f).not.toMatch(/lib\/stripe|\/stripe|pawapay|lib\/rendus|composerEtFacturer/i);
+      if (AUTORISES.some((a) => f.endsWith(a))) {
+        autorisesVus += 1;
+        continue; // ces deux-la peuvent lire les credits et les tarifs
+      }
+      expect(imports, f).not.toMatch(/lib\/credits|debiter/i);
     }
+    // Les deux fichiers autorises existent bien : la liste ne protege pas du vide.
+    expect(autorisesVus).toBe(AUTORISES.length);
   });
 });
 

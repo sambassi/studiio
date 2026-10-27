@@ -24,6 +24,7 @@ import { presenterMontage } from '@/lib/cinema/stockage/presentation';
 import { typeContenuDepuisCle } from '@/lib/storage/acces-objet';
 import { idPlanValide } from '@/lib/cinema/acces';
 import { fournisseurServeur } from '@/lib/cinema/garde';
+import { reserverCredits, type Reservation } from '@/lib/cinema/generation/credits';
 
 // Imports pour leur SEULE presence : ils enregistrent les fournisseurs dans le registre.
 // Enregistres ne veut pas dire actifs : chacun lit son interrupteur a chaque usage.
@@ -65,6 +66,26 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
   const fournisseurId = choix.id;
 
+  // ── LES CREDITS PAIENT LA GENERATION REELLE, AVANT L'APPEL ──────────────
+  //
+  // Debiter APRES aurait laisse passer une depense superieure au solde ; debiter avant, de
+  // facon atomique, fait du solde la vraie limite — y compris pour deux generations lancees
+  // en meme temps. La generation SIMULEE ne coute rien et ne debite rien.
+  //
+  // Budget inconnu (prix illisible, migration du debit absente) : on REFUSE l'appel payant
+  // au lieu de l'engager a l'aveugle.
+  let reservation: Reservation | null = null;
+  if (choix.mode === 'reelle') {
+    const prise = await reserverCredits(s.userId, operation as 'image' | 'video');
+    if (!prise.ok) {
+      return NextResponse.json(
+        { ok: false, erreur: prise.message, motif: prise.motif, cout: prise.cout ?? null },
+        { status: prise.motif === 'solde_insuffisant' ? 402 : 409 },
+      );
+    }
+    reservation = prise.reservation;
+  }
+
   // Le client peut rabaisser le plafond, jamais le relever.
   let plafondUsd = ctx.plafondUsd;
   if (corps?.plafondUsd !== undefined) {
@@ -92,6 +113,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   });
 
   if (!resultat.ok) {
+    // ── CREDITS : on ne garde que ce qui a ete reellement engage ──────────
+    // `depenseUsd` absent ou nul = le fournisseur n'a JAMAIS ete appele (plan inconnu,
+    // plafond du film atteint, fournisseur eteint) : rien n'a ete facture, on rend les
+    // credits. Des que l'appel est parti, il est paye : les credits restent pris, et le
+    // message le dit.
+    const engage = (resultat.depenseUsd ?? 0) > 0;
+    if (reservation && !engage) await reservation.rembourser(`generation refusee avant tout appel : ${resultat.erreur}`);
     // ⚠️ L'APPEL A PU ETRE FACTURE MALGRE L'ECHEC (delai depasse, resultat illisible…).
     // On l'enregistre sur le film : sans cela, chaque echec laissait le compteur intact et
     // le plafond ne serait jamais atteint — on pourrait depenser sans fin.
@@ -103,7 +131,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }
     // Un refus de plafond ou de fournisseur eteint n'est PAS une erreur serveur.
     const status = resultat.verification ? 402 : 400;
-    return NextResponse.json({ ok: false, erreur: resultat.erreur, verification: resultat.verification ?? null }, { status });
+    return NextResponse.json({
+      ok: false,
+      erreur: resultat.erreur,
+      verification: resultat.verification ?? null,
+      // Dire la verite sur l'argent : credits rendus, ou pris parce que l'appel est parti.
+      ...(reservation && reservation.cout > 0 ? { creditsRendus: !engage, creditsPris: engage ? reservation.cout : 0 } : null),
+    }, { status });
   }
 
   // La depense et la trace de reference s'appliquent au film LE PLUS RECENT.

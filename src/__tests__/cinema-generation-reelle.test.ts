@@ -70,27 +70,35 @@ const U = 'compte-autorise';
 const AUTRE = 'compte-ordinaire';
 /** Tout est allumé ET le compte `U` est autorisé à dépenser. */
 const REELLE = { CINEMA_GENERATION_REELLE: 'true', REPLICATE_API_TOKEN: 'r8_x', CINEMA_GENERATION_REELLE_COMPTES: U };
+/** Rien ne restreint : les credits decident (le cas normal). */
+const REELLE_OUVERTE = { CINEMA_GENERATION_REELLE: 'true', REPLICATE_API_TOKEN: 'r8_x' };
 
-describe('dépenser exige une autorisation PAR COMPTE', () => {
-  it('liste absente ou vide : PERSONNE ne dépense (jamais « tout le monde » par défaut)', () => {
-    expect(compteAutoriseADepenser(U, env({}))).toBe(false);
+describe('qui peut dépenser : les crédits décident, la liste ne fait que restreindre', () => {
+  it('liste ABSENTE : tout compte authentifié — ce sont les crédits qui autorisent', () => {
+    expect(compteAutoriseADepenser(U, env({}))).toBe(true);
+    expect(compteAutoriseADepenser(AUTRE, env({}))).toBe(true);
+    // Sans identifiant, rien n'est jamais autorisé.
+    expect(compteAutoriseADepenser(null, env({}))).toBe(false);
+    expect(compteAutoriseADepenser('', env({}))).toBe(false);
+  });
+
+  it('liste DÉFINIE : restriction volontaire, comparaison exacte', () => {
+    const e = env({ CINEMA_GENERATION_REELLE_COMPTES: ` ${U} , autre ` });
+    expect(compteAutoriseADepenser(U, e)).toBe(true);
+    expect(compteAutoriseADepenser('autre', e)).toBe(true);
+    for (const v of [AUTRE, U.toUpperCase(), `${U}x`]) {
+      expect(compteAutoriseADepenser(v, e)).toBe(false);
+    }
+  });
+
+  it('définie mais VIDE : personne (fermeture explicite, jamais « tout le monde » par erreur)', () => {
     for (const l of ['', '   ', ',', ' , ,']) {
       expect(compteAutoriseADepenser(U, env({ CINEMA_GENERATION_REELLE_COMPTES: l }))).toBe(false);
     }
   });
 
-  it('seuls les comptes listés, en comparaison exacte', () => {
-    const e = env({ CINEMA_GENERATION_REELLE_COMPTES: ` ${U} , autre ` });
-    expect(compteAutoriseADepenser(U, e)).toBe(true);
-    expect(compteAutoriseADepenser('autre', e)).toBe(true);
-    for (const v of [AUTRE, U.toUpperCase(), `${U}x`, '', null, undefined]) {
-      expect(compteAutoriseADepenser(v, e)).toBe(false);
-    }
-  });
-
-  it('un seul interrupteur ne suffit PAS à ouvrir la dépense à tous', () => {
-    // Tout est allumé, mais aucune liste : aucun compte n'atteint le fournisseur payant.
-    const e = env({ CINEMA_GENERATION_REELLE: 'true', REPLICATE_API_TOKEN: 'r8_x' });
+  it('la liste peut fermer la dépense même quand tout le reste est allumé', () => {
+    const e = env({ CINEMA_GENERATION_REELLE: 'true', REPLICATE_API_TOKEN: 'r8_x', CINEMA_GENERATION_REELLE_COMPTES: '' });
     expect(generationReelleActive(e)).toBe(true); // le fournisseur est prêt…
     expect(fournisseurServeur('image', U, e)).toBeNull(); // …mais personne n'y accède
   });
@@ -115,11 +123,16 @@ describe('c’est le SERVEUR qui choisit le fournisseur', () => {
     expect(modeGenerationAffiche(U, e)).toBe('reelle');
   });
 
-  it('un compte NON autorisé retombe sur le simulé, jamais sur le payant', () => {
+  it('un compte hors de la liste restrictive retombe sur le simulé, jamais sur le payant', () => {
     const e = env({ ...REELLE, CINEMA_GENERATION_SIMULEE: 'true' });
     expect(fournisseurServeur('image', AUTRE, e)).toEqual({ id: 'simule', mode: 'simulee' });
     // Et si le simulé est éteint aussi : rien du tout.
     expect(fournisseurServeur('image', AUTRE, env(REELLE))).toBeNull();
+  });
+
+  it('sans liste : tout compte atteint la génération réelle, et ce sont ses crédits qui la paient', () => {
+    expect(fournisseurServeur('image', AUTRE, env(REELLE_OUVERTE))).toEqual({ id: ID_REPLICATE_IMAGE, mode: 'reelle' });
+    expect(modeGenerationAffiche(AUTRE, env(REELLE_OUVERTE))).toBe('reelle');
   });
 
   it('la route IGNORE tout fournisseur envoyé par le navigateur, et refuse proprement s’il n’y en a aucun', () => {

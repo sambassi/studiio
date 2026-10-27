@@ -78,23 +78,25 @@ export type ModeGeneration = 'reelle' | 'simulee';
 export type OperationGeneration = 'image' | 'video';
 
 /**
- * QUELS COMPTES ONT LE DROIT DE DEPENSER (generation REELLE).
+ * QUI PEUT DEPENSER (generation REELLE) — ce sont les CREDITS qui decident.
  *
- * Ce n'est PAS une reserve de fonctionnalite : c'est une limite de COUT. Une generation
- * reelle est facturee au compte Replicate du proprietaire, pas aux credits de celui qui
- * clique. Un seul interrupteur ne doit donc pas pouvoir ouvrir cette depense a tous les
- * utilisateurs authentifies.
+ * La generation reelle est payee par les credits de Studiio : `reserverCredits`
+ * (`generation/credits.ts`) les debite de facon atomique AVANT chaque appel. Un compte sans
+ * credits ne peut donc rien depenser, et la depense totale est bornee par les credits
+ * vendus. C'est la vraie autorisation par compte, et elle n'a besoin d'aucune liste.
  *
- * `CINEMA_GENERATION_REELLE_COMPTES` : identifiants separes par des virgules.
- * ABSENTE ou vide ⇒ PERSONNE, jamais « tout le monde » par defaut.
+ * `CINEMA_GENERATION_REELLE_COMPTES` reste disponible comme RESTRICTION VOLONTAIRE, pour
+ * une premiere ouverture prudente :
+ *   - variable ABSENTE ⇒ tout compte authentifie, les credits decident (le cas normal) ;
+ *   - variable DEFINIE ⇒ seuls les identifiants listes, comparaison exacte ;
+ *   - definie mais vide ⇒ personne (fermeture explicite, jamais « tout le monde » par erreur).
  *
- * Le jour ou la generation sera reliee aux credits de Studiio, cette liste disparaitra :
- * c'est le credit qui autorisera la depense, compte par compte.
+ * Ce n'est donc pas un verrou par defaut : c'est un robinet qu'on peut serrer.
  */
 export function compteAutoriseADepenser(userId: string | null | undefined, env: NodeJS.ProcessEnv = process.env): boolean {
   if (!userId) return false;
   const liste = env.CINEMA_GENERATION_REELLE_COMPTES;
-  if (!liste) return false;
+  if (liste === undefined) return true; // les credits sont l'autorisation
   return liste.split(',').map((x) => x.trim()).filter(Boolean).includes(userId);
 }
 
