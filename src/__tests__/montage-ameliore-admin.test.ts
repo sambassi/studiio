@@ -1,6 +1,7 @@
 /**
- * MONTAGE AMÉLIORÉ — activation par l'interrupteur serveur pour tout utilisateur connecté.
- * Interrupteur absent ou pas de session : le comportement de la production, à l'identique.
+ * MONTAGE AMÉLIORÉ — ACTIF par défaut pour tout utilisateur connecté.
+ * Pas de session : éteint. Arrêt d'urgence (`STUDIIO_MONTAGE_AMELIORE_ENABLED=false`) : éteint pour tous.
+ * Plus aucune liste de comptes : une variable `…_COMPTES` qui traînerait ne réserve ni n'éteint plus rien.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { readFileSync } from 'fs';
@@ -19,94 +20,90 @@ vi.mock('@/lib/creer/smart-montage', async () => {
   return { ...actual, planMontage: (...a: unknown[]) => { spy.plans.push(a); return (actual.planMontage as (...x: unknown[]) => unknown)(...a); } };
 });
 
-import { montageAmelioreActifPourCompte, montageAmelioreServeurActif, compteDansListeBlanche } from '@/lib/creer/montage-ameliore-config';
+import { montageAmelioreActifPourCompte, montageAmelioreServeurActif } from '@/lib/creer/montage-ameliore-config';
 import { GET } from '@/app/api/creer/montage-ameliore/route';
 import { preparerPlanMontage } from '@/lib/creer/preparer-plan-montage';
 import type { AnalyseRush, EchantillonRush } from '@/lib/creer/smart-montage';
 
-const ADMIN_ON = { STUDIIO_MONTAGE_AMELIORE_ENABLED: 'true' };
+/** Environnement de production : aucune variable — le montage amélioré est actif. */
+const ACTIF: Record<string, string | undefined> = {};
 beforeEach(() => { base.ligne = null; base.erreur = false; session.id = undefined; session.boom = false; spy.plans.length = 0; });
 
-describe('décision serveur', () => {
-  it('interrupteur absent ou autre que « true » : éteint pour TOUS, y compris un administrateur', async () => {
+describe('décision serveur : actif par défaut, pour tous', () => {
+  it('aucune variable : ACTIF pour tout utilisateur connecté, sans rôle ni identifiant particulier', async () => {
+    base.ligne = { role: 'user', email: 'client@example.com' };
+    expect(montageAmelioreServeurActif({})).toBe(true);
+    expect(await montageAmelioreActifPourCompte('u2', { env: {} })).toBe(true);
+    base.ligne = { role: 'admin', email: 'autre@x.fr' };
+    expect(await montageAmelioreActifPourCompte('u1', { env: {} })).toBe(true);
+    expect(await montageAmelioreActifPourCompte('nouvel-utilisateur-jamais-vu', { env: {} })).toBe(true);
+    // La base des comptes n'est jamais lue pour cette décision.
+    expect(await montageAmelioreActifPourCompte('u3', { env: { AUTRE: 'x' } })).toBe(true);
+  });
+
+  it('arrêt d’urgence : « false », « 0 », « off », « no », « non », casse et espaces indifférents ⇒ éteint pour TOUS', async () => {
     base.ligne = { role: 'admin', email: 'x@y.z' };
-    for (const env of [{}, { STUDIIO_MONTAGE_AMELIORE_ENABLED: 'TRUE' }, { STUDIIO_MONTAGE_AMELIORE_ENABLED: '1' }, { STUDIIO_MONTAGE_AMELIORE_ENABLED: 'true ' }, { STUDIIO_MONTAGE_AMELIORE_ENABLED: 'false' }]) {
+    for (const v of ['false', 'FALSE', ' false ', '0', 'off', 'OFF', 'no', 'non', 'No']) {
+      const env = { STUDIIO_MONTAGE_AMELIORE_ENABLED: v };
       expect(montageAmelioreServeurActif(env)).toBe(false);
       expect(await montageAmelioreActifPourCompte('u1', { env })).toBe(false);
     }
   });
-  it('interrupteur + utilisateur connecté : actif, sans rôle ni identifiant particulier', async () => {
-    base.ligne = { role: 'user', email: 'client@example.com' };
-    expect(await montageAmelioreActifPourCompte('u2', { env: ADMIN_ON })).toBe(true);
-    base.ligne = { role: 'admin', email: 'autre@x.fr' };
-    expect(await montageAmelioreActifPourCompte('u1', { env: ADMIN_ON })).toBe(true);
-  });
-  it('aucun utilisateur connu (identifiant absent ou vide) : éteint, même interrupteur allumé', async () => {
-    expect(await montageAmelioreActifPourCompte(undefined, { env: ADMIN_ON })).toBe(false);
-    expect(await montageAmelioreActifPourCompte(null, { env: ADMIN_ON })).toBe(false);
-    expect(await montageAmelioreActifPourCompte('', { env: ADMIN_ON })).toBe(false);
-  });
-});
 
-describe('liste blanche facultative STUDIIO_MONTAGE_AMELIORE_COMPTES', () => {
-  const avec = (v: string) => ({ ...ADMIN_ON, STUDIIO_MONTAGE_AMELIORE_COMPTES: v });
-  it('variable absente : comportement de #621 (tout utilisateur connecté), inchangé', async () => {
-    expect(await montageAmelioreActifPourCompte('u1', { env: ADMIN_ON })).toBe(true);
-    expect(await montageAmelioreActifPourCompte('u2', { env: ADMIN_ON })).toBe(true);
-    expect(compteDansListeBlanche('u2', {})).toBe(true);
-  });
-  it('variable définie : seuls les identifiants listés (exact, espaces tolérés autour des virgules)', async () => {
-    expect(await montageAmelioreActifPourCompte('u1', { env: avec('u1') })).toBe(true);
-    expect(await montageAmelioreActifPourCompte('u2', { env: avec(' u1 , u2 ') })).toBe(true);
-    expect(await montageAmelioreActifPourCompte('u3', { env: avec('u1,u2') })).toBe(false);
-    for (const v of ['U1', 'u', '1', 'u1x', 'xu1']) expect(await montageAmelioreActifPourCompte('u1', { env: avec(v) })).toBe(false);
-  });
-  it('définie mais vide ou sans identifiant : personne (jamais tout le monde par erreur)', async () => {
-    for (const v of ['', '   ', ',', ' , ,']) expect(await montageAmelioreActifPourCompte('u1', { env: avec(v) })).toBe(false);
-  });
-  it('interrupteur non « true » : éteint pour tous, même un compte listé', async () => {
-    for (const e of [undefined, 'false', 'TRUE', '1']) {
-      const env: Record<string, string | undefined> = { STUDIIO_MONTAGE_AMELIORE_COMPTES: 'u1' };
-      if (e !== undefined) env.STUDIIO_MONTAGE_AMELIORE_ENABLED = e;
-      expect(await montageAmelioreActifPourCompte('u1', { env })).toBe(false);
+  it('toute autre valeur laisse le montage amélioré ACTIF (jamais éteint par accident)', async () => {
+    for (const v of ['true', 'TRUE', '1', 'on', 'oui', '', '  ', 'nimporte']) {
+      const env = { STUDIIO_MONTAGE_AMELIORE_ENABLED: v };
+      expect(montageAmelioreServeurActif(env)).toBe(true);
+      expect(await montageAmelioreActifPourCompte('u1', { env })).toBe(true);
     }
   });
-  it('sans identifiant : refusé même si la liste est absente', async () => {
-    expect(await montageAmelioreActifPourCompte(undefined, { env: ADMIN_ON })).toBe(false);
-    expect(await montageAmelioreActifPourCompte('', { env: avec('') })).toBe(false);
+
+  it('aucun utilisateur connu (identifiant absent ou vide) : éteint', async () => {
+    expect(await montageAmelioreActifPourCompte(undefined, { env: {} })).toBe(false);
+    expect(await montageAmelioreActifPourCompte(null, { env: {} })).toBe(false);
+    expect(await montageAmelioreActifPourCompte('', { env: {} })).toBe(false);
   });
-  it('route : un compte non listé reçoit { ameliore: false }, le compte listé true', async () => {
-    const on = process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED; const liste = process.env.STUDIIO_MONTAGE_AMELIORE_COMPTES;
+
+  it('plus de liste de comptes : une variable `…_COMPTES` résiduelle ne réserve rien et n’éteint rien', async () => {
+    for (const liste of ['u1', '', 'autre-compte', ' , ,']) {
+      const env = { STUDIIO_MONTAGE_AMELIORE_COMPTES: liste };
+      expect(await montageAmelioreActifPourCompte('u1', { env })).toBe(true);
+      expect(await montageAmelioreActifPourCompte('compte-non-liste', { env })).toBe(true);
+    }
+    expect(readFileSync('src/lib/creer/montage-ameliore-config.ts', 'utf8')).not.toMatch(/env\[?\.?STUDIIO_MONTAGE_AMELIORE_COMPTES/);
+  });
+
+  it('route : tout compte connecté reçoit { ameliore: true } ; l’arrêt d’urgence le passe à false', async () => {
+    const on = process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED;
     try {
-      process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED = 'true';
-      process.env.STUDIIO_MONTAGE_AMELIORE_COMPTES = 'u1';
+      delete process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED;
       session.id = 'u2';
-      expect((await (await GET()).json())).toEqual({ ameliore: false });
+      expect((await (await GET()).json())).toEqual({ ameliore: true });
       session.id = 'u1';
       expect((await (await GET()).json())).toEqual({ ameliore: true });
+      process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED = 'false';
+      expect((await (await GET()).json())).toEqual({ ameliore: false });
     } finally {
       if (on === undefined) delete process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED; else process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED = on;
-      if (liste === undefined) delete process.env.STUDIIO_MONTAGE_AMELIORE_COMPTES; else process.env.STUDIIO_MONTAGE_AMELIORE_COMPTES = liste;
     }
   });
 });
 
 describe('route /api/creer/montage-ameliore', () => {
   const lire = async () => { const r = await GET(); return { corps: await r.json(), cache: r.headers.get('Cache-Control') }; };
-  it('sans session, panne d\'auth, interrupteur éteint : { ameliore: false } ; connecté + interrupteur : true, jamais en cache', async () => {
+  it('sans session ou panne d\'auth : { ameliore: false } ; connecté : true, jamais en cache ; arrêt d\'urgence : false', async () => {
     const env = process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED;
     try {
-      process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED = 'true';
+      delete process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED;
       expect((await lire()).corps).toEqual({ ameliore: false }); // pas de session
       session.id = 'u2'; session.boom = true;
       expect((await lire()).corps).toEqual({ ameliore: false }); // erreur d'auth
       session.boom = false;
-      delete process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED;
-      expect((await lire()).corps).toEqual({ ameliore: false }); // interrupteur éteint
-      process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED = 'true';
       const r = await lire();
-      expect(r.corps).toEqual({ ameliore: true }); // utilisateur connecté + interrupteur
+      expect(r.corps).toEqual({ ameliore: true }); // utilisateur connecté, aucune variable
       expect(r.cache).toBe('private, no-store');
+      process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED = 'false';
+      expect((await lire()).corps).toEqual({ ameliore: false }); // arrêt d'urgence
     } finally { if (env === undefined) delete process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED; else process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED = env; }
   });
 });
@@ -121,7 +118,7 @@ const entree = (urls: string[]) => ({
   rushs: urls.map((url) => ({ url })), cibleEcran: 30, debutVideo: 0, methode: 'A', contexte: { theme: null, titre: null, sousTitre: null, objectif: null, cartes: [] },
 }) as unknown as Parameters<typeof preparerPlanMontage>[0];
 
-describe('Créer — plan automatique (interrupteur éteint = production)', () => {
+describe('Créer — plan automatique (le drapeau `ameliore` reste explicite côté moteur)', () => {
   const NET = rush('https://x/n.mp4', 3, 0.7);
   const FLOU = rush('https://x/f.mp4', 40, 0.1);
   const NET2 = rush('https://x/n2.mp4', 40, 0.7);
@@ -139,7 +136,7 @@ describe('Créer — plan automatique (interrupteur éteint = production)', () =
     expect(p.plan!.some((s) => s.url === FLOU.url)).toBe(true);
     expect(p.raccourci?.message ?? '').not.toContain('flou');
   });
-  it('administrateur : exclusion des flous, protection de la parole, avertissement de durée', () => {
+  it('montage amélioré : exclusion des flous, protection de la parole, avertissement de durée', () => {
     spy.plans.length = 0;
     const p = preparerPlanMontage(entree([NET.url, FLOU.url]), { analysesBrutes: [NET, FLOU], rythme: null, ameliore: true });
     expect(spy.plans[0][2]).toMatchObject({ netteteCommune: true, protectionParole: true });
@@ -157,7 +154,7 @@ describe('Créer — plan automatique (interrupteur éteint = production)', () =
     const admin = preparerPlanMontage(e, { ...a, ameliore: true });
     expect(preparerPlanMontage(e, a, admin).reutilise).toBe(false);
   });
-  it('la méthode B (essai administrateur) n’est pas concernée', () => {
+  it('la méthode B n’est pas concernée', () => {
     spy.plans.length = 0;
     preparerPlanMontage({ ...entree([NET2.url, FLOU.url]), methode: 'B' } as never, { analysesBrutes: [NET2, FLOU], rythme: null, ameliore: true });
     expect(spy.plans[0][2]).not.toHaveProperty('netteteCommune');

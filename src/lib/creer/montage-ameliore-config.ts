@@ -1,5 +1,5 @@
 /**
- * MONTAGE AMÉLIORÉ — Créer ET Autopilote, pour tout utilisateur CONNECTÉ quand il est activé.
+ * MONTAGE AMÉLIORÉ — ACTIF POUR TOUT UTILISATEUR CONNECTÉ, par défaut.
  *
  * Une seule décision, prise CÔTÉ SERVEUR, pour les cinq corrections regroupées sous
  * « montage amélioré » :
@@ -9,17 +9,24 @@
  *   - protection des passages parlés (`protectionParole`) ;
  *   - contrôle qualité du MP4 final (Autopilote, MP4 durable de Créer).
  *
+ * ─────────────────────────────────────────────────────────────────────────
+ * PLUS DE RÉSERVE À QUELQUES COMPTES
+ * ─────────────────────────────────────────────────────────────────────────
+ * Ces corrections sont le comportement NORMAL du produit : il n'y a ni rôle, ni liste de comptes,
+ * ni essai privé. La liste blanche `STUDIIO_MONTAGE_AMELIORE_COMPTES` a été retirée — une variable
+ * qui traîne n'éteint plus rien et ne réserve plus rien (décision du propriétaire, 27/10/2026 :
+ * tout développement vise directement tous les utilisateurs).
+ *
  * Vrai SEULEMENT si :
- *   1. l'interrupteur serveur `STUDIIO_MONTAGE_AMELIORE_ENABLED` vaut exactement `"true"`
- *      (jamais `NEXT_PUBLIC_*`) — absent ou autre chose : ÉTEINT POUR TOUS, c'est le retour
- *      arrière rapide (retirer la variable, redémarrer ; aucune donnée à toucher) ;
- *   2. un utilisateur authentifié est connu (identifiant issu de la session ou du propriétaire
- *      du post, jamais du corps ou de l'URL d'une requête) ;
- *   3. LISTE BLANCHE FACULTATIVE `STUDIIO_MONTAGE_AMELIORE_COMPTES` (identifiants séparés par
- *      des virgules) : variable ABSENTE ⇒ tout utilisateur connecté (comportement de #621) ;
- *      variable DÉFINIE ⇒ seuls les identifiants listés, comparaison exacte. Définie mais vide
- *      ou sans identifiant valide ⇒ personne (jamais « tout le monde » par erreur).
- * Aucun rôle n'est exigé. Pas d'utilisateur ⇒ FAUX.
+ *   1. un utilisateur authentifié est connu (identifiant issu de la session ou du propriétaire du
+ *      post, jamais du corps ni de l'URL d'une requête) — pas d'utilisateur ⇒ FAUX ;
+ *   2. l'ARRÊT D'URGENCE n'est pas tiré : `STUDIIO_MONTAGE_AMELIORE_ENABLED` ne vaut pas
+ *      « false » / « 0 » / « off » / « no » (casse et espaces indifférents).
+ *      Variable ABSENTE ⇒ ACTIF. C'est le seul interrupteur, et il est volontairement tolérant :
+ *      un arrêt d'urgence doit obéir à la première chose qu'on y écrit pour couper.
+ *
+ * Retour arrière en production : poser `STUDIIO_MONTAGE_AMELIORE_ENABLED=false` puis redémarrer.
+ * Aucune donnée à toucher, aucun déploiement à refaire.
  *
  * Aucun réglage du navigateur n'active quoi que ce soit : le navigateur de Créer reçoit la
  * réponse de la route serveur `/api/creer/montage-ameliore`, et les traitements serveur
@@ -30,18 +37,16 @@
  *
  * Aucun crédit, aucun paiement, aucun fournisseur : cette décision ne les touche pas.
  */
-export function montageAmelioreServeurActif(env: Record<string, string | undefined> = process.env): boolean {
-  return env.STUDIIO_MONTAGE_AMELIORE_ENABLED === 'true';
-}
+export const VARIABLE_ARRET = 'STUDIIO_MONTAGE_AMELIORE_ENABLED';
 
-/** Vrai si `userId` passe la liste blanche facultative (variable absente : tout le monde). */
-export function compteDansListeBlanche(
-  userId: string,
-  env: Record<string, string | undefined> = process.env,
-): boolean {
-  const liste = env.STUDIIO_MONTAGE_AMELIORE_COMPTES;
-  if (liste === undefined) return true;
-  return liste.split(',').map((x) => x.trim()).filter(Boolean).includes(userId);
+/** Valeurs qui COUPENT le montage amélioré. Tout le reste (y compris l'absence) le laisse actif. */
+const VALEURS_ARRET = new Set(['false', '0', 'off', 'no', 'non']);
+
+/** L'arrêt d'urgence est-il relâché ? (variable absente : oui, le montage amélioré est actif) */
+export function montageAmelioreServeurActif(env: Record<string, string | undefined> = process.env): boolean {
+  const v = env[VARIABLE_ARRET];
+  if (v === undefined) return true;
+  return !VALEURS_ARRET.has(v.trim().toLowerCase());
 }
 
 export async function montageAmelioreActifPourCompte(
@@ -50,9 +55,7 @@ export async function montageAmelioreActifPourCompte(
 ): Promise<boolean> {
   try {
     if (!userId) return false;
-    const env = deps.env ?? process.env;
-    if (!montageAmelioreServeurActif(env)) return false;
-    return compteDansListeBlanche(userId, env);
+    return montageAmelioreServeurActif(deps.env ?? process.env);
   } catch {
     return false;
   }

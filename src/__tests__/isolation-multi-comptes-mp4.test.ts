@@ -158,9 +158,8 @@ describe('isolation : un compte ne touche jamais le post, le rendu ou le MP4 d�
   });
 });
 
-describe('montage amélioré activé publiquement : aucun rôle requis', () => {
-  it('interrupteur seul : un compte standard est contrôlé comme un administrateur ; la base des comptes n’est jamais lue', async () => {
-    process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED = 'true';
+describe('montage amélioré actif par défaut : aucun rôle, aucune liste', () => {
+  it('par défaut : un compte standard est contrôlé comme un administrateur ; la base des comptes n’est jamais lue', async () => {
     expect((await produireMp4DuPost('user-b', 'post-b')).ok).toBe(true);
     expect(spies.controles).toBe(1);
     expect((await produireMp4DuPost('admin-1', 'post-admin')).ok).toBe(true);
@@ -169,19 +168,19 @@ describe('montage amélioré activé publiquement : aucun rôle requis', () => {
     expect(await montageAmelioreActifPourCompte('nouvel-utilisateur-jamais-vu')).toBe(true);
   });
 
-  it('interrupteur éteint : MP4 produit pour tous, aucun contrôle ajouté (comportement de la production)', async () => {
+  it('arrêt d’urgence : MP4 produit pour tous, aucun contrôle ajouté (retour au comportement d’avant)', async () => {
+    process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED = 'false';
     expect((await produireMp4DuPost('user-b', 'post-b')).ok).toBe(true);
     expect((await produireMp4DuPost('admin-1', 'post-admin')).ok).toBe(true);
     expect(spies.controles).toBe(0);
   });
 
-  it('liste blanche temporaire : seul le compte listé est contrôlé ; le standard garde le comportement de la production', async () => {
-    process.env.STUDIIO_MONTAGE_AMELIORE_ENABLED = 'true';
+  it('plus de liste de comptes : une variable `…_COMPTES` résiduelle ne réserve plus le contrôle à personne', async () => {
     process.env.STUDIIO_MONTAGE_AMELIORE_COMPTES = 'admin-1';
     expect((await produireMp4DuPost('user-b', 'post-b')).ok).toBe(true);
-    expect(spies.controles).toBe(0);
+    expect(spies.controles).toBe(1); // le compte NON listé est contrôlé comme les autres
     expect((await produireMp4DuPost('admin-1', 'post-admin')).ok).toBe(true);
-    expect(spies.controles).toBe(1);
+    expect(spies.controles).toBe(2);
   });
 });
 

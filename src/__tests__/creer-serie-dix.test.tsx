@@ -557,15 +557,15 @@ describe('2. La quatrième échoue à la confirmation : trois gagnées, six jama
     expect(document.body.textContent).not.toContain('Envoyé au calendrier');
   });
 
-  it('aucune reprise : refusée dans le code, grisée à l écran, et un clic ne réserve rien', async () => {
+  it('aucune reprise : refusée dans le code, AUCUN bouton mort à l’écran, et la raison est écrite en clair', async () => {
     expect(repriseAutorisee([]).autorisee).toBe(false);
-    const reprise = document.querySelector('[data-batch-retry]') as HTMLButtonElement | null;
-    expect(reprise, 'le bouton de reprise doit exister sur un lot').not.toBeNull();
-    expect(reprise!.disabled).toBe(true);
-    const avant = compter('reservation');
-    await act(async () => { fireEvent.click(reprise!); });
+    // Plus de bouton grisé en permanence : il ne rendait aucun service.
+    expect(document.querySelector('[data-batch-retry]')).toBeNull();
+    // La raison reste visible, elle, sous la liste des contenus.
+    expect(document.querySelector('[data-interruption-message]')?.textContent ?? '')
+      .toContain('La reprise n’est pas encore activée');
+    // Et rien ne réserve ni ne débite de ce fait.
     await attendre(20);
-    expect(compter('reservation')).toBe(avant);
     expect(compter('reservation')).toBe(4);
   });
 
@@ -602,10 +602,9 @@ describe('2 bis. La VARIATION de la quatrième échoue : rien n est réservé po
     expect(document.body.textContent).not.toContain('Envoyé au calendrier');
   });
 
-  it('la reprise reste fermée', () => {
+  it('la reprise reste fermée, et sans bouton mort à l’écran', () => {
     expect(repriseAutorisee([]).autorisee).toBe(false);
-    const reprise = document.querySelector('[data-batch-retry]') as HTMLButtonElement | null;
-    expect(reprise?.disabled).toBe(true);
+    expect(document.querySelector('[data-batch-retry]')).toBeNull();
     expect(compter('DEBIT_APRES_COUP')).toBe(0);
   });
 });

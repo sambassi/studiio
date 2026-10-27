@@ -249,14 +249,14 @@ describe('Suivi par contenu et echec partiel', () => {
   });
 });
 
-describe('La reprise est PREPAREE mais desactivee', () => {
-  it('rend le bouton inactif', () => {
-    expect(wizard).toContain('data-batch-retry');
-    expect(wizard).toMatch(/data-batch-retry\s+disabled/);
+describe('La reprise est PREPAREE mais desactivee : aucun bouton mort', () => {
+  it('ne rend AUCUN bouton de reprise (il etait grise en permanence)', () => {
+    expect(wizard).not.toContain('data-batch-retry');
+    expect(wizard).not.toContain('Reprendre les contenus échoués');
   });
 
-  it('affiche la vraie raison, pas un « indisponible »', () => {
-    expect(wizard).toContain('{repriseAutorisee(batchItems).raison}');
+  it('affiche la vraie raison sous la liste, pas un « indisponible »', () => {
+    expect(wizard).toContain('{messageInterruption(batchItems.length)}');
   });
 
   it('ne contourne jamais la garde : aucun chemin ne relance un contenu', () => {
