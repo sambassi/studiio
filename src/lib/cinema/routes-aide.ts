@@ -10,7 +10,7 @@ import { randomBytes } from 'crypto';
 import { mkdir, rm } from 'fs/promises';
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
-import { accesCinemaAutorise, cinemaActive } from '@/lib/cinema/garde';
+import { accesCinemaAutorise, cinemaActive , stockageCinemaUtilisable } from '@/lib/cinema/garde';
 import type { Film } from '@/lib/cinema/types';
 import { cleMedia, cleReference } from '@/lib/cinema/stockage/cles';
 import { fichierDuMedia } from '@/lib/cinema/medias';
@@ -23,8 +23,9 @@ export type SessionCinema = { userId: string } | { refus: NextResponse };
 
 /** 404 si l'interrupteur general est ferme, 401 sans session, et 401 aussi si l'identifiant du compte n'est pas un segment de chemin sain. */
 export async function sessionCinema(): Promise<SessionCinema> {
-  // Interrupteur ferme : le module « n'existe pas », meme pour une session valide.
-  if (!cinemaActive()) {
+  // Interrupteur ferme, OU stockage non durable en production (les films seraient perdus au
+  // prochain remplacement du conteneur) : le module « n'existe pas », meme pour une session valide.
+  if (!cinemaActive() || !stockageCinemaUtilisable()) {
     return { refus: NextResponse.json({ ok: false, erreur: 'introuvable' }, { status: 404 }) };
   }
   const session = await auth();

@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { readFileSync } from 'fs';
-import { cinemaActive, generationIaSimuleeActive } from '@/lib/cinema/garde';
+import { cinemaActive, generationIaSimuleeActive, stockageCinemaUtilisable, accesCinemaAutorise } from '@/lib/cinema/garde';
 
 /** Un environnement de test, sans prétendre porter tout `ProcessEnv`. */
 const env = (o: Record<string, string>) => o as unknown as NodeJS.ProcessEnv;
@@ -95,5 +95,39 @@ describe('câblage : le serveur refuse, l’écran ne propose pas', () => {
     ]) {
       expect(src(f)).not.toContain('generationIaSimuleeActive');
     }
+  });
+});
+
+describe('en production, le module n’ouvre pas sans stockage durable', () => {
+  const user = { id: '00000000-0000-4000-8000-000000000001' };
+
+  it('hors production : le mode local reste utilisable (développement)', () => {
+    expect(stockageCinemaUtilisable(env({ NODE_ENV: 'development' }))).toBe(true);
+    expect(stockageCinemaUtilisable(env({ NODE_ENV: 'test' }))).toBe(true);
+  });
+
+  it('production + stockage local : FERMÉ — les films seraient perdus au remplacement du conteneur', () => {
+    const e = env({ NODE_ENV: 'production', CINEMA_ACTIVE: 'true' });
+    expect(stockageCinemaUtilisable(e)).toBe(false);
+    expect(cinemaActive(e)).toBe(true); // l'interrupteur est bien posé…
+    expect(accesCinemaAutorise(user, e)).toBe(false); // …mais la porte reste fermée
+  });
+
+  it('production + CINEMA_STOCKAGE=durable : ouvert', () => {
+    const e = env({ NODE_ENV: 'production', CINEMA_ACTIVE: 'true', CINEMA_STOCKAGE: 'durable' });
+    expect(stockageCinemaUtilisable(e)).toBe(true);
+    expect(accesCinemaAutorise(user, e)).toBe(true);
+  });
+
+  it('une valeur approchante ne suffit pas : seul « durable » compte', () => {
+    for (const v of ['Durable', 'DURABLE', 'postgres', 'minio', 'true', '1']) {
+      expect(stockageCinemaUtilisable(env({ NODE_ENV: 'production', CINEMA_STOCKAGE: v }))).toBe(false);
+    }
+  });
+
+  it('les routes referment le module (404) dans ce cas, comme si l’interrupteur était éteint', () => {
+    const r = src('src/lib/cinema/routes-aide.ts');
+    expect(r).toContain('if (!cinemaActive() || !stockageCinemaUtilisable()) {');
+    expect(r).toContain("status: 404");
   });
 });

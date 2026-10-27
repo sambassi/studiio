@@ -12,6 +12,7 @@
  *   - les bornes par compte (50 films, 2 travaux actifs, plafond de depense serveur).
  */
 import { proprietaireValide } from '@/lib/cinema/stockage/cles';
+import { modeStockage } from '@/lib/cinema/contexte';
 
 export type SujetSession = { id?: string | null } | null | undefined;
 
@@ -41,7 +42,32 @@ export function generationIaSimuleeActive(env: NodeJS.ProcessEnv = process.env):
   return v === 'true' || v === '1';
 }
 
-/** Interrupteur ouvert ET utilisateur authentifie dont l'identifiant est un segment de chemin sain. */
+/**
+ * EN PRODUCTION, LE MODULE N'OUVRE PAS SANS STOCKAGE DURABLE.
+ *
+ * `CINEMA_STOCKAGE=durable` absent, les films vivent dans des fichiers sous `var/` et les
+ * travaux en memoire. C'est le bon defaut en developpement, et un PIEGE en production : le
+ * conteneur est remplace a chaque deploiement, et l'utilisateur perdrait des films qu'on lui
+ * a montres comme enregistres. Plutot que de l'accueillir dans un module qui oubliera son
+ * travail, on garde la porte fermee (404) et on le dit dans les journaux.
+ *
+ * Hors production, rien ne change : le mode local reste utilisable.
+ */
+export function stockageCinemaUtilisable(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (env.NODE_ENV !== 'production') return true;
+  return modeStockage(env) === 'durable';
+}
+
+/** Interrupteur ouvert, STOCKAGE utilisable, ET utilisateur authentifie dont l'identifiant est sain. */
 export function accesCinemaAutorise(user: SujetSession, env: NodeJS.ProcessEnv = process.env): boolean {
-  return cinemaActive(env) && !!user && proprietaireValide(user.id);
+  if (!cinemaActive(env)) return false;
+  if (!stockageCinemaUtilisable(env)) {
+    console.error(
+      '[Cinema] CINEMA_ACTIVE est pose mais CINEMA_STOCKAGE n\'est pas « durable » : '
+      + 'le module reste FERME en production — sans base ni MinIO, les films des utilisateurs '
+      + 'seraient perdus au prochain remplacement du conteneur.',
+    );
+    return false;
+  }
+  return !!user && proprietaireValide(user.id);
 }
