@@ -65,6 +65,7 @@ vi.mock('@/lib/credits/atomique', () => ({ referenceOperation: (p: string, id: s
 let insertions: Array<Record<string, unknown>>;
 vi.mock('@/lib/db/supabase', () => {
   const from = () => ({
+    select: () => { const q: Record<string, unknown> = { eq: () => q, then: (ok: (r: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(ok) }; return q; },
     insert(row: Record<string, unknown>) {
       insertions.push(row);
       return { select: async () => ({ data: [{ id: `p${insertions.length}` }], error: null }) };

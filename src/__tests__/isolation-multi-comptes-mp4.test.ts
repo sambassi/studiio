@@ -256,15 +256,19 @@ describe('plafond COMMUN des rendus lourds (pool PostgreSQL partagé avec l’Au
     expect(baux.pris.size).toBe(0);
   });
 
-  it('base des baux en panne : la conversion Créer est refusée proprement (occupe), rien téléchargé ni mis à jour', async () => {
+  it('base des baux en panne : la conversion ABOUTIT quand même (mode dégradé), sous le seul limiteur local', async () => {
+    // Refuser ici serait infliger une panne de plus à un utilisateur qui attend, alors que
+    // le limiteur de conversions (1 par compte, 2 par machine) protège déjà la machine.
     baux.actif = true;
-    const rpcOriginal = (await import('@/lib/db/supabase')).supabaseAdmin as unknown as { rpc: unknown };
-    const sauvegarde = rpcOriginal.rpc;
-    rpcOriginal.rpc = async () => { throw new Error('ECONNREFUSED'); };
+    const client = (await import('@/lib/db/supabase')).supabaseAdmin as unknown as { rpc: unknown };
+    const sauvegarde = client.rpc;
+    client.rpc = async () => { throw new Error('ECONNREFUSED'); };
     try {
-      expect(await produireMp4DuPost('user-b', 'post-b')).toEqual({ ok: false, motif: 'occupe' });
-    } finally { rpcOriginal.rpc = sauvegarde; }
-    expect(spies.telechargements).toEqual([]);
-    expect(bd.majs).toEqual([]);
+      const r = await produireMp4DuPost('user-b', 'post-b');
+      expect(r.ok).toBe(true);
+    } finally { client.rpc = sauvegarde; }
+    // Le compte reste isolé : seul SON post est mis à jour.
+    expect(bd.majs).toEqual([{ table: 'scheduled_posts', id: 'post-b', user: 'user-b' }]);
+    expect(spies.telechargements.every((t) => t.startsWith('user-b|'))).toBe(true);
   });
 });
