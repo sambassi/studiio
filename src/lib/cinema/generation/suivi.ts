@@ -32,18 +32,44 @@ import type { Film, GenerationSuivie, StatutGeneration } from '@/lib/cinema/type
 export type { GenerationSuivie, StatutGeneration };
 
 /**
- * Au-dela, une generation `en_cours` n'a plus d'executeur vivant (conteneur
- * remplace, processus tue) : l'appel le plus long est borne a 10 min
- * (`DELAI_VIDEO_MS`, replicate.ts). Elle est alors lue `interrompue`.
+ * ⚠️ CORRECTIF SECURITE (revue automatique) : une generation n'est plus jugee perimee
+ * sur son AGE DEPUIS CREATION, mais sur l'ECHEANCE DE SON BAIL — un executeur vivant le
+ * renouvelle (voir `executeur-generation.ts`, meme principe que `travaux/executeur.ts`).
+ *
+ * L'ancienne regle (« en_cours depuis plus de 15 min = interrompue ») declarait a tort
+ * interrompue — et donc REMBOURSAIT — une generation video LEGITIMEMENT en train de
+ * reussir : l'appel Replicate le plus long (`DELAI_VIDEO_MS`, replicate.ts) est deja
+ * borne a 10 min, et le telechargement + depot du resultat pouvait suffire a depasser
+ * les 15 min sous charge. Le resultat tardif ecrivait alors `reussie` PAR-DESSUS un
+ * remboursement deja effectue : l'utilisateur recuperait ses credits ET la video,
+ * pendant que le compte Replicate du proprietaire avait ete facture pour rien.
+ *
+ * Conserve pour les generations ANTERIEURES a ce champ (pas de migration, voir
+ * l'en-tete du fichier) : sans bail enregistre, l'ancienne regle par age s'applique —
+ * ce sont des generations qui ne peuvent plus etre en cours de toute facon au moment
+ * ou ce code tourne (aucune n'a pu survivre a un deploiement).
  */
 export const DELAI_GENERATION_PERIMEE_MS = 15 * 60_000;
+
+/**
+ * Duree du bail, et intervalle de son renouvellement par battement de coeur
+ * (`bailS / 3`, meme ratio que `travaux/types.ts` → `BAIL_S`) : deux battements peuvent
+ * manquer sans que le bail n'expire.
+ */
+export const BAIL_GENERATION_S = 90;
 
 /** Historique conserve sur le film (les plus recentes). */
 export const HISTORIQUE_GENERATIONS_MAX = 20;
 
-/** Le statut REEL a l'instant `maintenant` : une generation perimee n'est plus « en cours ». */
+/** Le statut REEL a l'instant `maintenant` : un bail expire n'est plus « en cours ». */
 export function statutEffectif(g: GenerationSuivie, maintenant = Date.now()): StatutGeneration {
   if (g.statut !== 'en_cours') return g.statut;
+  if (g.bailJusqua) {
+    const echeance = Date.parse(g.bailJusqua);
+    if (Number.isFinite(echeance) && maintenant > echeance) return 'interrompue';
+    return 'en_cours';
+  }
+  // Repli pour une generation d'avant ce champ, voir le commentaire ci-dessus.
   const debut = Date.parse(g.creeLe);
   if (Number.isFinite(debut) && maintenant - debut > DELAI_GENERATION_PERIMEE_MS) return 'interrompue';
   return 'en_cours';
@@ -99,6 +125,9 @@ export async function reserverGeneration(
     const g: GenerationSuivie = {
       id, planId: demande.planId, operation: demande.operation, mode: demande.mode,
       statut: 'en_cours', creeLe: iso, majLe: iso, erreur: null,
+      // Bail initial : le premier battement de coeur de l'executeur (voir
+      // `executeur-generation.ts`) le renouvelle bien avant son echeance.
+      bailJusqua: new Date(t + BAIL_GENERATION_S * 1000).toISOString(),
     };
     creee = g;
     // Les perimees sont ecrites telles qu'on les lit : `interrompue`.
@@ -113,7 +142,7 @@ export async function reserverGeneration(
 
 /** Champs qu'une generation peut recevoir en cours de route ou a sa fin. */
 export type PatchGeneration = Partial<Pick<GenerationSuivie,
-  'statut' | 'erreur' | 'creditsPris' | 'referenceCredits' | 'creditsRembourses'>>;
+  'statut' | 'erreur' | 'creditsPris' | 'referenceCredits' | 'creditsRembourses' | 'bailJusqua'>>;
 
 /** Applique un patch a UNE generation d'un film (pure, rejouable). */
 export function appliquerPatchGeneration(f: Film, id: string, patch: PatchGeneration, maintenant = Date.now()): Film {
@@ -130,6 +159,51 @@ export async function noterGeneration(
 ): Promise<void> {
   await modifierFilm(depot, filmId, proprietaire, (f) => appliquerPatchGeneration(f, id, patch)).catch((e) => {
     console.error('[Cinema/Generation] suivi non ecrit —', e instanceof Error ? e.message : e);
+  });
+}
+
+/**
+ * Renouvelle le bail d'une generation ENCORE `en_cours` — le battement de coeur de
+ * l'executeur (voir `executeur-generation.ts`). Rend `false` sans rien ecrire si la
+ * generation a deja change d'etat ailleurs (ex. declaree interrompue) : l'executeur
+ * continue son appel (deja parti, non annulable), mais son resultat sera jete a la fin
+ * (`appliquerPatchTerminal`) plutot que d'ecraser l'etat deja tranche.
+ */
+export async function renouvelerBailGeneration(
+  depot: DepotFilms, filmId: string, proprietaire: string, id: string, bailS = BAIL_GENERATION_S,
+): Promise<boolean> {
+  let renouvele = false;
+  await modifierFilm(depot, filmId, proprietaire, (f) => {
+    const g = (f.generations ?? []).find((x) => x.id === id);
+    if (!g || g.statut !== 'en_cours') return null;
+    renouvele = true;
+    return appliquerPatchGeneration(f, id, { bailJusqua: new Date(Date.now() + bailS * 1000).toISOString() });
+  }).catch(() => { renouvele = false; });
+  return renouvele;
+}
+
+/**
+ * Applique un patch TERMINAL (reussie / echouee) a une generation UNIQUEMENT si elle
+ * est encore `en_cours`. Un resultat tardif — la generation a ete entre-temps declaree
+ * interrompue et remboursee par une reconciliation — ne doit JAMAIS ecraser cet etat :
+ * ni faire croire a un succes gratuit apres remboursement, ni effacer la preuve d'un
+ * remboursement deja applique en le remplacant par un simple echec.
+ *
+ * `surFilm`, si fourni, transforme le reste du film (media, cout) DANS LA MEME
+ * transaction que le patch — jamais appele si la generation n'est plus `en_cours`.
+ *
+ * Rend `null` si le patch n'a PAS ete applique (deja tranchee ailleurs, ou film
+ * introuvable) : l'appelant doit alors relire l'etat reel plutot que d'en supposer un.
+ */
+export async function appliquerPatchTerminal(
+  depot: DepotFilms, filmId: string, proprietaire: string, id: string,
+  patch: PatchGeneration, surFilm?: (f: Film) => Film,
+): Promise<Film | null> {
+  return modifierFilm(depot, filmId, proprietaire, (f) => {
+    const g = (f.generations ?? []).find((x) => x.id === id);
+    if (!g || g.statut !== 'en_cours') return null;
+    const base = surFilm ? surFilm(f) : f;
+    return appliquerPatchGeneration(base, id, { ...patch, bailJusqua: null });
   });
 }
 

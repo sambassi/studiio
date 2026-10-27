@@ -200,6 +200,15 @@ export interface GenerationSuivie {
   /** Reference du debit — permet un remboursement IDEMPOTENT apres interruption. */
   referenceCredits?: string;
   creditsRembourses?: boolean;
+  /**
+   * Echeance du BAIL (meme principe que `travaux/types.ts`, `bailJusqua`) : tant que
+   * l'executeur vivant le renouvelle, une generation longue (video lente) n'est JAMAIS
+   * declaree interrompue a sa place. `null` une fois la generation terminale (reussie,
+   * echouee, interrompue) : plus rien ne la protege d'une expiration, elle n'en a plus
+   * besoin. Absent sur une generation creee AVANT ce champ (pas de migration) : traitee
+   * comme avant, via `creeLe` (voir `statutEffectif`).
+   */
+  bailJusqua?: string | null;
 }
 
 /**

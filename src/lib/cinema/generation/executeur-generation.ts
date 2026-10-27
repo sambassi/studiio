@@ -26,8 +26,11 @@ import { typeContenuDepuisCle } from '@/lib/storage/acces-objet';
 import { reserverCredits, rembourserCredits, type Reservation } from '@/lib/cinema/generation/credits';
 import { devisGeneration } from '@/lib/cinema/generation/couts';
 import { reserverDepenseReplicate, confirmerDepenseReplicate, type StatutDepense } from '@/lib/cinema/generation/plafond-compte';
-import { aRembourser, appliquerPatchGeneration, noterGeneration } from '@/lib/cinema/generation/suivi';
-import type { GenerationSuivie, StatutGeneration } from '@/lib/cinema/types';
+import {
+  aRembourser, appliquerPatchGeneration, appliquerPatchTerminal, noterGeneration,
+  renouvelerBailGeneration, statutEffectif, BAIL_GENERATION_S,
+} from '@/lib/cinema/generation/suivi';
+import type { Film, GenerationSuivie, StatutGeneration } from '@/lib/cinema/types';
 
 // Imports pour leur SEULE presence : ils enregistrent les fournisseurs dans le registre.
 import '@/lib/cinema/generation/simule';
@@ -75,6 +78,17 @@ export async function executerGeneration(p: ParametresGeneration): Promise<Statu
     return { ok: true as const };
   };
 
+  // ⚠️ BATTEMENT DE COEUR — CORRECTIF SECURITE (voir `suivi.ts`, `statutEffectif`).
+  // Renouvelle le bail PENDANT tout l'appel, au meme rythme que `travaux/executeur.ts`
+  // (bailS / 3) : tant que ce processus est vivant, une generation video lente ne peut
+  // jamais etre declaree interrompue — et donc remboursee — a sa place. Un battement
+  // manque n'est pas une erreur : le suivant, ou l'ecriture finale gardee plus bas,
+  // tranchera. `unref()` : ce minuteur ne doit jamais empecher le processus de sortir.
+  const battement = setInterval(() => {
+    renouvelerBailGeneration(ctx.films, filmId, userId, generation.id).catch(() => {});
+  }, Math.max(1000, Math.floor((BAIL_GENERATION_S * 1000) / 3)));
+  battement.unref?.();
+
   try {
     const lu = await ctx.films.lire(filmId, userId);
     if (!lu) {
@@ -103,8 +117,8 @@ export async function executerGeneration(p: ParametresGeneration): Promise<Statu
     if (!resultat.ok) {
       // Paiement refuse : rien n'a ete appele ni preleve.
       if ('refusPaiement' in resultat && resultat.refusPaiement) {
-        await noterGeneration(ctx.films, filmId, userId, generation.id, { statut: 'echouee', erreur: resultat.erreur });
-        return 'echouee';
+        await conclureTerminal(ctx, filmId, userId, generation.id, { statut: 'echouee', erreur: resultat.erreur });
+        return await statutFinal(ctx, filmId, userId, generation.id, 'echouee');
       }
       const engageUsd = ('depenseUsd' in resultat ? resultat.depenseUsd : 0) ?? 0;
       if (dep) {
@@ -112,39 +126,61 @@ export async function executerGeneration(p: ParametresGeneration): Promise<Statu
           : ('incertain' in resultat && resultat.incertain) ? 'incertaine' : 'confirmee';
         await confirmerDepenseReplicate(userId, dep.reference, statutDepense).catch(() => null);
       }
+      // ⚠️ LE REMBOURSEMENT EST IDEMPOTENT (reference derivee du debit, `rembourserCredits`) :
+      // le rejouer ici, meme si `solderGenerationsInterrompues` l'a deja fait entre-temps pour
+      // la MEME generation, ne credite jamais deux fois.
       let creditsRembourses: boolean | undefined;
       if (res && res.cout > 0) {
         const issue = await rembourserCredits(userId, res, operation);
         creditsRembourses = issue.ok;
         if (!issue.ok) console.error(`[Cinema] remboursement non prouve pour le film ${filmId} — motif : ${issue.motif ?? 'inconnu'}`);
       }
-      await modifierFilm(ctx.films, filmId, userId, (f) => appliquerPatchGeneration({
-        ...f,
-        coutGenerationUsd: engageUsd > 0 ? arrondi((f.coutGenerationUsd ?? 0) + engageUsd) : f.coutGenerationUsd,
-      }, generation.id, {
+      // ⚠️ ECRITURE GARDEE (CORRECTIF SECURITE) : si une reconciliation a deja declare cette
+      // generation `interrompue` pendant cet appel (bail expire a tort, ou executeur juge mort
+      // par erreur), ce resultat tardif ne doit PAS ecraser cet etat — la preuve du
+      // remboursement deja applique serait sinon remplacee par un simple `echouee`.
+      await conclureTerminal(ctx, filmId, userId, generation.id, {
         statut: 'echouee', erreur: resultat.erreur,
         ...(res && res.cout > 0 ? { creditsPris: res.cout, creditsRembourses } : null),
-      })).catch(() => null);
-      return 'echouee';
+      }, (f) => ({
+        ...f,
+        coutGenerationUsd: engageUsd > 0 ? arrondi((f.coutGenerationUsd ?? 0) + engageUsd) : f.coutGenerationUsd,
+      }));
+      return await statutFinal(ctx, filmId, userId, generation.id, 'echouee');
     }
 
     if (dep) await confirmerDepenseReplicate(userId, dep.reference, 'confirmee').catch(() => null);
 
     const depense = arrondi((resultat.film.coutGenerationUsd ?? 0) - (film.coutGenerationUsd ?? 0));
     const refsUtilisees = new Map(resultat.film.scenes.flatMap((x) => x.plans).map((pl) => [pl.id, pl.referencesUtilisees] as const));
-    const suivant = await modifierFilm(ctx.films, filmId, userId, (f) => {
+    // ⚠️ ECRITURE GARDEE (CORRECTIF SECURITE) : le coeur du correctif. Un resultat REUSSI
+    // qui arrive apres qu'une reconciliation a declare la generation `interrompue` (et
+    // rembourse les credits) ne doit JAMAIS etre attache au film — l'utilisateur recevrait
+    // alors la video ET ses credits rembourses, pendant que le compte Replicate du
+    // proprietaire a bien ete facture. Le media est jete dans ce cas, jamais livre « gratuit ».
+    const suivant = await appliquerPatchTerminal(ctx.films, filmId, userId, generation.id, { statut: 'reussie', erreur: null }, (f) => {
       const avecMedia = remplacerMedia(f, planId, resultat.media);
-      return appliquerPatchGeneration({
+      return {
         ...avecMedia,
         coutGenerationUsd: arrondi((f.coutGenerationUsd ?? 0) + depense),
         scenes: avecMedia.scenes.map((x) => ({ ...x, plans: x.plans.map((pl) => pl.id !== planId ? pl : { ...pl, referencesUtilisees: refsUtilisees.get(pl.id) }) })),
-      }, generation.id, { statut: 'reussie', erreur: null });
+      };
     }).catch(() => null);
     if (!suivant) {
-      // Le film a disparu entre-temps : le media est jete, la depense reste comptee.
+      // Le media produit est jete dans TOUS les cas ou l'ecriture n'a pas ete appliquee :
+      // film disparu, OU generation deja tranchee ailleurs (voir le commentaire ci-dessus).
       const cle = cleMedia(userId, filmId, resultat.media.url);
       if (cle) await ctx.objets.supprimer(cle).catch(() => {});
-      await noterGeneration(ctx.films, filmId, userId, generation.id, { statut: 'echouee', erreur: 'film modifie ou supprime pendant la generation' });
+      // La depense Replicate reste comptee independamment de l'issue du media : le
+      // fournisseur a bien ete facture, que le resultat soit livre ou jete.
+      if (depense > 0) {
+        await modifierFilm(ctx.films, filmId, userId, (f) => ({
+          ...f, coutGenerationUsd: arrondi((f.coutGenerationUsd ?? 0) + depense),
+        })).catch(() => null);
+      }
+      const actuel = await statutFinal(ctx, filmId, userId, generation.id, 'echouee');
+      if (actuel !== 'echouee') return actuel; // deja interrompue (ou autre) ailleurs : on ne la reecrit pas
+      await noterGeneration(ctx.films, filmId, userId, generation.id, { statut: 'echouee', erreur: 'film modifie, supprime, ou generation deja tranchee pendant le traitement' });
       return 'echouee';
     }
     return 'reussie';
@@ -155,12 +191,39 @@ export async function executerGeneration(p: ParametresGeneration): Promise<Statu
     const res = reservation as Reservation | null;
     let creditsRembourses: boolean | undefined;
     if (res && res.cout > 0) creditsRembourses = (await rembourserCredits(userId, res, operation).catch(() => ({ ok: false }))).ok;
-    await noterGeneration(ctx.films, filmId, userId, generation.id, {
+    await conclureTerminal(ctx, filmId, userId, generation.id, {
       statut: 'echouee', erreur: 'erreur interne pendant la generation',
       ...(res && res.cout > 0 ? { creditsPris: res.cout, creditsRembourses } : null),
     });
     return 'echouee';
+  } finally {
+    clearInterval(battement);
   }
+}
+
+/**
+ * Applique un patch TERMINAL de facon GARDEE (`appliquerPatchTerminal`) : jamais par-dessus
+ * un etat deja tranche ailleurs. Best-effort (n'a jamais fait echouer l'appelant).
+ */
+async function conclureTerminal(
+  ctx: Pick<ContexteCinema, 'films'>, filmId: string, userId: string, id: string,
+  patch: Parameters<typeof appliquerPatchTerminal>[4], surFilm?: (f: Film) => Film,
+): Promise<void> {
+  await appliquerPatchTerminal(ctx.films, filmId, userId, id, patch, surFilm).catch(() => null);
+}
+
+/**
+ * Le statut REEL d'une generation apres une tentative d'ecriture terminale — qu'elle ait
+ * ete appliquee ou non (deja tranchee ailleurs). `repli` est rendu si la generation est
+ * introuvable (film disparu). Sert a ce que l'appelant ne declare JAMAIS un statut qu'il
+ * n'a pas reellement obtenu.
+ */
+async function statutFinal(
+  ctx: Pick<ContexteCinema, 'films'>, filmId: string, userId: string, id: string, repli: StatutGeneration,
+): Promise<StatutGeneration> {
+  const relu = await ctx.films.lire(filmId, userId).catch(() => null);
+  const g = relu?.film.generations?.find((x) => x.id === id);
+  return g ? statutEffectif(g) : repli;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -185,15 +248,58 @@ export async function attendreGenerations(): Promise<void> {
 }
 
 /**
- * Rend les credits des generations INTERROMPUES (serveur redemarre pendant l'appel).
- * Idempotent : la reference du remboursement derive de celle du debit.
+ * Rend les credits des generations INTERROMPUES (serveur redemarre pendant l'appel, ou
+ * bail realistement expire). Idempotent : la reference du remboursement derive de celle
+ * du debit.
+ *
+ * ⚠️ CORRECTIF SECURITE : NE DECIDE JAMAIS sur l'instantane `film` recu (potentiellement
+ * perime des l'instant ou cette fonction est appelee). Il ne sert qu'a eviter une lecture
+ * pour le cas courant — « rien a faire ». Des qu'un candidat existe, tout est RE-VERIFIE
+ * sur une lecture FRAICHE avant le remboursement, et l'ECRITURE est GARDEE (atomique,
+ * rejouee sur conflit) : si l'executeur a conclu `reussie`/`echouee` entre-temps, cette
+ * fonction ne l'ecrase jamais — et inversement, l'executeur qui conclut APRES cette
+ * ecriture trouvera la generation deja `interrompue` et jettera son resultat au lieu de
+ * l'attacher (voir `executerGeneration`).
  */
 export async function solderGenerationsInterrompues(
-  ctx: Pick<ContexteCinema, 'films'>, filmId: string, userId: string, film: Pick<import('@/lib/cinema/types').Film, 'generations'>,
+  ctx: Pick<ContexteCinema, 'films'>, filmId: string, userId: string, film: Pick<Film, 'generations'>,
 ): Promise<void> {
-  for (const gen of aRembourser(film)) {
+  if (!aRembourser(film).length) return; // rien a faire sur cet instantane : pas la peine de relire
+  const frais = await ctx.films.lire(filmId, userId).catch(() => null);
+  if (!frais) return;
+  for (const gen of aRembourser(frais.film)) {
+    // ⚠️ ORDRE CRITIQUE (CORRECTIF SECURITE) : on REVENDIQUE D'ABORD, de facon ATOMIQUE
+    // (ecriture gardee, rejouee sur conflit par `modifierFilm`), le droit de conclure cette
+    // generation comme interrompue — et seulement SI cette revendication reussit, on
+    // rembourse. Inverser l'ordre (rembourser PUIS ecrire) rembourserait a tort une
+    // generation que l'executeur vient de livrer avec succes ENTRE les deux : le
+    // remboursement, lui, n'est pas annulable apres coup.
+    const revendique = await modifierFilm(ctx.films, filmId, userId, (f) => {
+      const g = (f.generations ?? []).find((x) => x.id === gen.id);
+      if (!g) return null;
+      if (g.statut === 'interrompue') {
+        // Deja revendiquee (appel concurrent anterieur, ou tentative precedente dont le
+        // remboursement avait echoue) : pas de nouvelle ecriture ici, juste l'autorisation
+        // de retenter le remboursement plus bas (la boucle `aRembourser` ne retient que
+        // les generations pas encore `creditsRembourses === true`).
+        return g.creditsRembourses === true ? null : f;
+      }
+      // Conclue ailleurs ENTRE la lecture fraiche ci-dessus et cette ecriture (l'executeur
+      // a fini, ou a renouvele son bail) : cette reconciliation ne doit RIEN ecraser, et ne
+      // doit SURTOUT PAS rembourser ce qui vient d'etre livre.
+      if (g.statut !== 'en_cours' || statutEffectif(g) !== 'interrompue') return null;
+      return appliquerPatchGeneration(f, gen.id, {
+        statut: 'interrompue', erreur: g.erreur ?? 'generation interrompue', bailJusqua: null,
+      });
+    }).catch(() => null);
+    if (!revendique) continue; // deja remboursee, ou conclue ailleurs : ne JAMAIS rembourser dans ce cas
+
     const issue = await rembourserCredits(userId, { cout: gen.creditsPris ?? 0, reference: gen.referenceCredits as string }, gen.operation)
       .catch(() => ({ ok: false }));
-    await noterGeneration(ctx.films, filmId, userId, gen.id, { statut: 'interrompue', creditsRembourses: issue.ok, erreur: gen.erreur ?? 'generation interrompue' });
+    await modifierFilm(ctx.films, filmId, userId, (f) => {
+      const g = (f.generations ?? []).find((x) => x.id === gen.id);
+      if (!g || g.statut !== 'interrompue') return null; // ecrit juste au-dessus : ne devrait pas arriver
+      return appliquerPatchGeneration(f, gen.id, { creditsRembourses: issue.ok });
+    }).catch(() => null);
   }
 }
