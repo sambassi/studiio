@@ -25,7 +25,7 @@ export async function GET() {
   // `generationIa` / `generationMode` : l'ecran n'affiche les boutons « Generer » que si le
   // SERVEUR declare la generation disponible, et il dit laquelle — reelle ou simulee. Par
   // defaut : aucune (`garde.ts`).
-  const mode = modeGenerationAffiche();
+  const mode = modeGenerationAffiche(s.userId);
   return NextResponse.json({
     ok: true,
     films: await contexteCinema().films.lister(s.userId),

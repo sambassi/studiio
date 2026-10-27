@@ -14,7 +14,7 @@ import {
   generationReelleActive, FOURNISSEUR_REPLICATE_IMAGE, FOURNISSEUR_REPLICATE_VIDEO,
   MODELE_IMAGE, MODELE_VIDEO, ID_REPLICATE_IMAGE, ID_REPLICATE_VIDEO, DUREE_VIDEO_MAX_S,
 } from '@/lib/cinema/generation/replicate';
-import { fournisseurServeur, modeGenerationAffiche } from '@/lib/cinema/garde';
+import { fournisseurServeur, modeGenerationAffiche, compteAutoriseADepenser } from '@/lib/cinema/garde';
 import { tarifGeneration, CATALOGUE_GENERATION } from '@/lib/cinema/generation/couts';
 
 const env = (o: Record<string, string>) => o as unknown as NodeJS.ProcessEnv;
@@ -66,29 +66,66 @@ describe('la génération réelle exige DEUX conditions', () => {
   });
 });
 
+const U = 'compte-autorise';
+const AUTRE = 'compte-ordinaire';
+/** Tout est allumé ET le compte `U` est autorisé à dépenser. */
+const REELLE = { CINEMA_GENERATION_REELLE: 'true', REPLICATE_API_TOKEN: 'r8_x', CINEMA_GENERATION_REELLE_COMPTES: U };
+
+describe('dépenser exige une autorisation PAR COMPTE', () => {
+  it('liste absente ou vide : PERSONNE ne dépense (jamais « tout le monde » par défaut)', () => {
+    expect(compteAutoriseADepenser(U, env({}))).toBe(false);
+    for (const l of ['', '   ', ',', ' , ,']) {
+      expect(compteAutoriseADepenser(U, env({ CINEMA_GENERATION_REELLE_COMPTES: l }))).toBe(false);
+    }
+  });
+
+  it('seuls les comptes listés, en comparaison exacte', () => {
+    const e = env({ CINEMA_GENERATION_REELLE_COMPTES: ` ${U} , autre ` });
+    expect(compteAutoriseADepenser(U, e)).toBe(true);
+    expect(compteAutoriseADepenser('autre', e)).toBe(true);
+    for (const v of [AUTRE, U.toUpperCase(), `${U}x`, '', null, undefined]) {
+      expect(compteAutoriseADepenser(v, e)).toBe(false);
+    }
+  });
+
+  it('un seul interrupteur ne suffit PAS à ouvrir la dépense à tous', () => {
+    // Tout est allumé, mais aucune liste : aucun compte n'atteint le fournisseur payant.
+    const e = env({ CINEMA_GENERATION_REELLE: 'true', REPLICATE_API_TOKEN: 'r8_x' });
+    expect(generationReelleActive(e)).toBe(true); // le fournisseur est prêt…
+    expect(fournisseurServeur('image', U, e)).toBeNull(); // …mais personne n'y accède
+  });
+});
+
 describe('c’est le SERVEUR qui choisit le fournisseur', () => {
   it('aucune génération autorisée : aucun fournisseur, aucun mode annoncé', () => {
-    expect(fournisseurServeur('image', env({}))).toBeNull();
-    expect(modeGenerationAffiche(env({}))).toBeNull();
+    expect(fournisseurServeur('image', U, env({}))).toBeNull();
+    expect(modeGenerationAffiche(U, env({}))).toBeNull();
   });
 
   it('simulée seule : le fournisseur simulé, annoncé comme SIMULÉ', () => {
     const e = env({ CINEMA_GENERATION_SIMULEE: 'true' });
-    expect(fournisseurServeur('image', e)).toEqual({ id: 'simule', mode: 'simulee' });
-    expect(modeGenerationAffiche(e)).toBe('simulee');
+    expect(fournisseurServeur('image', U, e)).toEqual({ id: 'simule', mode: 'simulee' });
+    expect(modeGenerationAffiche(U, e)).toBe('simulee');
   });
 
-  it('réelle autorisée : elle PRIME, et l’opération décide du modèle', () => {
-    const e = env({ CINEMA_GENERATION_REELLE: 'true', REPLICATE_API_TOKEN: 'r8_x', CINEMA_GENERATION_SIMULEE: 'true' });
-    expect(fournisseurServeur('image', e)).toEqual({ id: ID_REPLICATE_IMAGE, mode: 'reelle' });
-    expect(fournisseurServeur('video', e)).toEqual({ id: ID_REPLICATE_VIDEO, mode: 'reelle' });
-    expect(modeGenerationAffiche(e)).toBe('reelle');
+  it('réelle autorisée POUR CE COMPTE : elle PRIME, et l’opération décide du modèle', () => {
+    const e = env({ ...REELLE, CINEMA_GENERATION_SIMULEE: 'true' });
+    expect(fournisseurServeur('image', U, e)).toEqual({ id: ID_REPLICATE_IMAGE, mode: 'reelle' });
+    expect(fournisseurServeur('video', U, e)).toEqual({ id: ID_REPLICATE_VIDEO, mode: 'reelle' });
+    expect(modeGenerationAffiche(U, e)).toBe('reelle');
+  });
+
+  it('un compte NON autorisé retombe sur le simulé, jamais sur le payant', () => {
+    const e = env({ ...REELLE, CINEMA_GENERATION_SIMULEE: 'true' });
+    expect(fournisseurServeur('image', AUTRE, e)).toEqual({ id: 'simule', mode: 'simulee' });
+    // Et si le simulé est éteint aussi : rien du tout.
+    expect(fournisseurServeur('image', AUTRE, env(REELLE))).toBeNull();
   });
 
   it('la route IGNORE tout fournisseur envoyé par le navigateur, et refuse proprement s’il n’y en a aucun', () => {
     const r = src('src/app/api/cinema/films/[id]/generation/route.ts');
     expect(r).not.toMatch(/corps\?\.fournisseurId/);
-    expect(r).toContain("const choix = fournisseurServeur(operation as 'image' | 'video');");
+    expect(r).toContain("const choix = fournisseurServeur(operation as 'image' | 'video', s.userId);");
     expect(r).toContain('const fournisseurId = choix.id;');
     expect(r).toContain('status: 409');
     // Le choix précède tout travail : dossier temporaire, téléchargement, génération.
@@ -134,5 +171,22 @@ describe('les tarifs viennent d’une page officielle, avec sa date', () => {
     for (const t of CATALOGUE_GENERATION) {
       if (t.actif) expect(t.usdParUnite, `${t.fournisseurId}/${t.operation}`).not.toBeNull();
     }
+  });
+});
+
+describe('une dépense engagée est TOUJOURS comptée, même quand l’appel échoue', () => {
+  it('l’atelier rend `depenseUsd` sur chaque échec survenu APRÈS l’appel au fournisseur', () => {
+    const a = src('src/lib/cinema/generation/atelier.ts');
+    // Les quatre échecs possibles après l'appel : image, vidéo, fichier illisible, import refusé.
+    expect(a.match(/depenseUsd: devis\.totalUsd \?\? 0/g)?.length).toBe(4);
+    // Et le refus de plafond, lui, n'engage rien : il est AVANT l'appel.
+    expect(a.indexOf('if (!verification.autorise)')).toBeLessThan(a.indexOf('fournisseur.genererImage'));
+  });
+
+  it('la route l’enregistre sur le film, échec comme conflit — sinon le plafond ne serait jamais atteint', () => {
+    const r = src('src/app/api/cinema/films/[id]/generation/route.ts');
+    expect(r.match(/coutGenerationUsd: Math\.round/g)?.length).toBeGreaterThanOrEqual(3);
+    expect(r).toContain('if (resultat.depenseUsd && resultat.depenseUsd > 0) {');
+    expect(r).toContain('if (depense > 0) {');
   });
 });

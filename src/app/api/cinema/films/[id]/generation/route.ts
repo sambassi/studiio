@@ -56,7 +56,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return NextResponse.json({ ok: false, erreur: 'operation invalide (image ou video attendu)' }, { status: 400 });
   }
 
-  const choix = fournisseurServeur(operation as 'image' | 'video');
+  const choix = fournisseurServeur(operation as 'image' | 'video', s.userId);
   if (!choix) {
     return NextResponse.json(
       { ok: false, erreur: 'la generation de medias par IA n’est pas disponible sur ce serveur' },
@@ -92,6 +92,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   });
 
   if (!resultat.ok) {
+    // ⚠️ L'APPEL A PU ETRE FACTURE MALGRE L'ECHEC (delai depasse, resultat illisible…).
+    // On l'enregistre sur le film : sans cela, chaque echec laissait le compteur intact et
+    // le plafond ne serait jamais atteint — on pourrait depenser sans fin.
+    if (resultat.depenseUsd && resultat.depenseUsd > 0) {
+      await modifierFilm(ctx.films, params.id, s.userId, (f) => ({
+        ...f,
+        coutGenerationUsd: Math.round(((f.coutGenerationUsd ?? 0) + resultat.depenseUsd!) * 10_000) / 10_000,
+      })).catch(() => null);
+    }
     // Un refus de plafond ou de fournisseur eteint n'est PAS une erreur serveur.
     const status = resultat.verification ? 402 : 400;
     return NextResponse.json({ ok: false, erreur: resultat.erreur, verification: resultat.verification ?? null }, { status });
@@ -111,6 +120,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!suivant) {
     const cle = cleMedia(s.userId, film.id, resultat.media.url);
     if (cle) await ctx.objets.supprimer(cle).catch(() => {});
+    // Le media est jete, mais le fournisseur a bien ete paye : la depense reste comptee.
+    if (depense > 0) {
+      await modifierFilm(ctx.films, params.id, s.userId, (f) => ({
+        ...f,
+        coutGenerationUsd: Math.round(((f.coutGenerationUsd ?? 0) + depense) * 10_000) / 10_000,
+      })).catch(() => null);
+    }
     return NextResponse.json({ ok: false, erreur: 'film modifie en parallele, reessayez' }, { status: 409 });
   }
 

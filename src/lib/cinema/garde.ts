@@ -78,6 +78,27 @@ export type ModeGeneration = 'reelle' | 'simulee';
 export type OperationGeneration = 'image' | 'video';
 
 /**
+ * QUELS COMPTES ONT LE DROIT DE DEPENSER (generation REELLE).
+ *
+ * Ce n'est PAS une reserve de fonctionnalite : c'est une limite de COUT. Une generation
+ * reelle est facturee au compte Replicate du proprietaire, pas aux credits de celui qui
+ * clique. Un seul interrupteur ne doit donc pas pouvoir ouvrir cette depense a tous les
+ * utilisateurs authentifies.
+ *
+ * `CINEMA_GENERATION_REELLE_COMPTES` : identifiants separes par des virgules.
+ * ABSENTE ou vide ⇒ PERSONNE, jamais « tout le monde » par defaut.
+ *
+ * Le jour ou la generation sera reliee aux credits de Studiio, cette liste disparaitra :
+ * c'est le credit qui autorisera la depense, compte par compte.
+ */
+export function compteAutoriseADepenser(userId: string | null | undefined, env: NodeJS.ProcessEnv = process.env): boolean {
+  if (!userId) return false;
+  const liste = env.CINEMA_GENERATION_REELLE_COMPTES;
+  if (!liste) return false;
+  return liste.split(',').map((x) => x.trim()).filter(Boolean).includes(userId);
+}
+
+/**
  * QUEL FOURNISSEUR, DECIDE PAR LE SERVEUR — et par lui seul.
  *
  * Le navigateur envoyait l'identifiant du fournisseur. Il ne le choisit plus : une
@@ -89,16 +110,17 @@ export type OperationGeneration = 'image' | 'video';
  *   3. sinon `null` : aucune generation n'est proposee ni possible (la production).
  */
 export function fournisseurServeur(
-  operation: OperationGeneration, env: NodeJS.ProcessEnv = process.env,
+  operation: OperationGeneration, userId: string | null | undefined, env: NodeJS.ProcessEnv = process.env,
 ): { id: string; mode: ModeGeneration } | null {
-  if (generationReelleActive(env)) {
+  // REELLE : interrupteur + jeton + CE COMPTE explicitement autorise a depenser.
+  if (generationReelleActive(env) && compteAutoriseADepenser(userId, env)) {
     return { id: operation === 'video' ? ID_REPLICATE_VIDEO : ID_REPLICATE_IMAGE, mode: 'reelle' };
   }
   if (generationIaSimuleeActive(env)) return { id: ID_FOURNISSEUR_SIMULE, mode: 'simulee' };
   return null;
 }
 
-/** Le mode annonce a l'ecran : `null` = aucun bouton de generation. */
-export function modeGenerationAffiche(env: NodeJS.ProcessEnv = process.env): ModeGeneration | null {
-  return fournisseurServeur('image', env)?.mode ?? null;
+/** Le mode annonce a l'ecran, POUR CE COMPTE : `null` = aucun bouton de generation. */
+export function modeGenerationAffiche(userId: string | null | undefined, env: NodeJS.ProcessEnv = process.env): ModeGeneration | null {
+  return fournisseurServeur('image', userId, env)?.mode ?? null;
 }

@@ -74,7 +74,7 @@ describe('câblage : le serveur refuse, l’écran ne propose pas', () => {
 
   it('la liste des films dit à l’écran si la génération est disponible', () => {
     const r = src('src/app/api/cinema/films/route.ts');
-    expect(r).toContain('const mode = modeGenerationAffiche();');
+    expect(r).toContain('const mode = modeGenerationAffiche(s.userId);');
     expect(r).toContain('generationIa: mode !== null');
     expect(r).toContain('generationMode: mode');
   });

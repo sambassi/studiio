@@ -50,7 +50,20 @@ export interface OptionsGenerationPlan {
 
 export type ResultatGenerationPlan =
   | { ok: true; film: Film; media: MediaPlan }
-  | { ok: false; erreur: string; verification?: VerificationPlafond };
+  | {
+    ok: false; erreur: string; verification?: VerificationPlafond;
+    /**
+     * ⚠️ DEPENSE DEJA ENGAGEE CHEZ LE FOURNISSEUR, malgre l'echec.
+     *
+     * Des que l'appel est PARTI, le fournisseur facture — meme si le resultat n'arrive pas,
+     * arrive trop tard, ou arrive illisible. Sans ce champ, chacun de ces echecs laissait le
+     * compteur du film INCHANGE : on pouvait donc depenser sans fin sans jamais atteindre le
+     * plafond. L'appelant DOIT l'enregistrer (`route.ts`).
+     *
+     * Absent ou `0` : rien n'est parti (fournisseur eteint, plafond refuse, plan inconnu).
+     */
+    depenseUsd?: number;
+  };
 
 /** Les apparences des personnages PRESENTS dans un plan, dans la forme qu'un fournisseur recoit. */
 export function apparencesDuPlan(film: Film, plan: Pick<PlanCinema, 'personnages'>): ApparencePersonnageGeneration[] {
@@ -121,7 +134,8 @@ export async function genererMediaPlan(film: Film, planId: string, options: Opti
       format: film.format,
       graine,
     });
-    if (!resultat.ok) return { ok: false, erreur: resultat.erreur };
+    // L'appel est parti : qu'il reussisse ou non, il peut avoir ete facture.
+    if (!resultat.ok) return { ok: false, erreur: resultat.erreur, depenseUsd: devis.totalUsd ?? 0 };
     fichierTemporaire = resultat.fichier;
     nomSuggere = resultat.nomSuggere;
   } else {
@@ -133,7 +147,7 @@ export async function genererMediaPlan(film: Film, planId: string, options: Opti
       format: film.format,
       graine,
     });
-    if (!resultat.ok) return { ok: false, erreur: resultat.erreur };
+    if (!resultat.ok) return { ok: false, erreur: resultat.erreur, depenseUsd: devis.totalUsd ?? 0 };
     fichierTemporaire = resultat.fichier;
     nomSuggere = resultat.nomSuggere;
   }
@@ -143,7 +157,7 @@ export async function genererMediaPlan(film: Film, planId: string, options: Opti
   try {
     donnees = await readFile(fichierTemporaire);
   } catch {
-    return { ok: false, erreur: 'le fournisseur n’a pas produit de fichier lisible' };
+    return { ok: false, erreur: 'le fournisseur n’a pas produit de fichier lisible', depenseUsd: devis.totalUsd ?? 0 };
   }
 
   const importe = await importerMedia({
@@ -151,7 +165,7 @@ export async function genererMediaPlan(film: Film, planId: string, options: Opti
     racinePublique: options.racinePublique, origine: 'genere',
   });
   await rm(fichierTemporaire, { force: true }).catch(() => {});
-  if (!importe.ok) return { ok: false, erreur: importe.erreur };
+  if (!importe.ok) return { ok: false, erreur: importe.erreur, depenseUsd: devis.totalUsd ?? 0 };
 
   // ── Tracabilite (mission 2) : QUEL fournisseur, QUELLES references ─────
   //
