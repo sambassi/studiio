@@ -253,7 +253,7 @@ export async function POST(req: NextRequest) {
       console.warn('[CONVERT-API]', { conversionId, etape: 'refus_plafond_commun', motif: place.motif });
       return NextResponse.json(
         place.motif === 'doublon' ? REPONSE_429_COMPTE : REPONSE_429_GLOBAL,
-        { status: place.motif === 'indetermine' ? 503 : 429, headers: { 'Retry-After': String(RETRY_AFTER_CONVERSION_S) } },
+        { status: 429, headers: { 'Retry-After': String(RETRY_AFTER_CONVERSION_S) } },
       );
     }
     lierBailALaPlace(jeton, place.bail);

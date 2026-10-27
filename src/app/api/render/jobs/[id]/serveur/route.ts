@@ -150,7 +150,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       if (commun.motif === 'doublon') return NextResponse.json({ ok: false, motif: 'deja_en_cours' }, { status: 409 });
       return NextResponse.json(
         { ok: false, motif: 'capacite_saturee', error: 'Un rendu est déjà en cours sur ce serveur.' },
-        { status: commun.motif === 'indetermine' ? 503 : 429, headers: { 'Retry-After': String(Math.max(retryAfterSecondes(), RETRY_AFTER_INTERACTIF_S)) } },
+        { status: 429, headers: { 'Retry-After': String(Math.max(retryAfterSecondes(), RETRY_AFTER_INTERACTIF_S)) } },
       );
     }
     const prise = prendreExecution(rendu.id, rendusRemotionActifs());

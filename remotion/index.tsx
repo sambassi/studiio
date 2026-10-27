@@ -4,6 +4,8 @@ import { AfroboostComposition } from "./AfroboostComposition";
 import { InfographicComposition } from "./InfographicComposition";
 import { AiMontageComposition } from "./AiMontageComposition";
 import { CreerSimpleMontage, planFromProps } from "./CreerSimpleMontage";
+import { CinemaFilm } from "./CinemaFilm";
+import { totalFrames } from "../src/lib/cinema/montage";
 import { totalDurationFrames, VIDEO_SIZE } from "../src/lib/creer/designSpec";
 import type { AfroboostProps, InfographicProps } from "./types";
 
@@ -144,6 +146,29 @@ const RemotionRoot: React.FC = () => {
           ],
           renderSeed: Date.now(),
         } as InfographicProps}
+      />
+
+      {/* CINEMA IA — le film entier. Dimensions, fps ET duree viennent du
+          montage (`monterFilm`), jamais d'une valeur ecrite ici : une duree
+          fixee a la main finirait par couper la derniere scene. */}
+      <Composition
+        id="cinema-film"
+        component={CinemaFilm as any}
+        durationInFrames={300}
+        fps={30}
+        width={1920}
+        height={1080}
+        defaultProps={{ montage: { filmId: '', titre: '', format: '16:9', largeur: 1920, hauteur: 1080, fps: 30, segments: [], dureeS: 0 } } as any}
+        calculateMetadata={({ props }: { props: any }) => {
+          const montage = props?.montage;
+          if (!montage?.segments?.length) return {};
+          return {
+            durationInFrames: totalFrames(montage),
+            width: montage.largeur,
+            height: montage.hauteur,
+            fps: montage.fps,
+          };
+        }}
       />
     </>
   );

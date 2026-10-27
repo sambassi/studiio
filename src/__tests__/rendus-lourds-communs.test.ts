@@ -6,7 +6,7 @@
  * le NAVIGATEUR ne passent par aucun de ces modules.
  * Ne prouve PAS : la base réelle (voir tests-pg/rendu-baux.pg.test.ts) ni un rendu complet.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 import {
@@ -117,9 +117,29 @@ describe('refus propres, libération, reprise', () => {
     expect(c.ok).toBe(true); // reprise après libération
   });
 
-  it('base en panne : « indétermine » (503 côté route), jamais un rendu lancé par défaut', async () => {
-    const r = await prendrePlaceInteractive('u', 'j', { rpc: async () => { throw new Error('ECONNREFUSED'); }, env: env(1), avertir: () => {} });
-    expect(r).toMatchObject({ ok: false, motif: 'indetermine' });
+  it('base des baux injoignable : l’action ABOUTIT en mode dégradé (la limite locale de la route protège seule), et c’est journalisé', async () => {
+    const avertir = vi.fn();
+    const r = await prendrePlaceInteractive('u', 'j', { rpc: async () => { throw new Error('ECONNREFUSED'); }, env: env(1), avertir });
+    expect(r).toMatchObject({ ok: true, degrade: true });
+    expect(avertir.mock.calls.some((c) => String(c[0]).includes('SEULE limite locale'))).toBe(true);
+    if (r.ok) await r.bail.liberer(); // sans effet, et sans erreur
+  });
+
+  it('migration non appliquée (fonctions absentes) : même repli dégradé, l’export de Créer n’est pas bloqué', async () => {
+    const r = await prendrePlaceInteractive('u', 'j', {
+      rpc: async () => ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function' } }),
+      env: env(1), avertir: () => {},
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it('« occupe » et « doublon » restent des REFUS : ce sont les réponses d’une base qui fonctionne', async () => {
+    const bd = rpcSimule();
+    const a = await prendrePlaceInteractive('u', 'j1', { rpc: bd.rpc, env: env(1) });
+    const b = await prendrePlaceInteractive('v', 'j2', { rpc: bd.rpc, env: env(1) });
+    expect([a.ok, b.ok]).toEqual([true, true]);
+    expect(await prendrePlaceInteractive('w', 'j3', { rpc: bd.rpc, env: env(1) })).toMatchObject({ ok: false, motif: 'occupe' });
+    expect(await prendrePlaceInteractive('u', 'j1', { rpc: bd.rpc, env: env(1) })).toMatchObject({ ok: false, motif: 'doublon' });
   });
 
   it('lierBailALaPlace : libérer la place d’origine rend aussi le bail, une seule fois, même si on libère deux fois', async () => {
@@ -204,6 +224,19 @@ describe('clé de bail bornée : un chemin de fichier très long ne fait pas éc
     expect(a.ok).toBe(true);
     expect(b).toMatchObject({ ok: false, motif: 'doublon' });
     if (a.ok) await a.bail.liberer();
+  });
+});
+
+describe('les routes traduisent un refus en 429, jamais en panne', () => {
+  const src = (p: string) => readFileSync(p, 'utf8');
+  it('aucune route ne répond 503 pour une place refusée (plus de motif « indetermine »)', () => {
+    for (const f of [
+      'src/app/api/convert/to-mp4/route.ts',
+      'src/app/api/render/jobs/[id]/serveur/route.ts',
+      'src/app/api/autopilot/montages/[montagePlanId]/rendu/route.ts',
+    ]) {
+      expect(src(f)).not.toContain("motif === 'indetermine'");
+    }
   });
 });
 

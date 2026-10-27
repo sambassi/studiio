@@ -96,3 +96,10 @@ e2e/banc-montage/resultats/*
 e2e/banc-montage/annotations/*
 !e2e/banc-montage/annotations/modele.json
 e2e/banc-montage/fiches/*
+
+# Cinema IA — films, voix et rendus locaux (jamais versionnes)
+var/
+public/cinema/
+
+# Medias de test generes localement
+tests-cinema/medias/

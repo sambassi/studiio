@@ -436,24 +436,46 @@ export function reserverBail(userId: string, jobId: string, o: OptionsLimite = {
 }
 
 export type PlaceInteractive =
-  | { ok: true; bail: BailTenu }
-  | { ok: false; motif: 'occupe' | 'doublon' | 'indetermine'; message: string };
+  /** Place obtenue. `degrade` : sans bail global (base injoignable) — la limite LOCALE de la route protège seule. */
+  | { ok: true; bail: BailTenu; degrade?: boolean }
+  | { ok: false; motif: 'occupe' | 'doublon'; message: string };
+
+/** Bail neutre : rien à renouveler, rien à libérer. Sert au repli dégradé. */
+const BAIL_NEUTRE: BailTenu = { liberer: async () => {}, verifierBail: async () => {} };
 
 /**
- * Place d'une action INTERACTIVE de Créer : sans attente (l'écran réessaie après `Retry-After`),
- * plafond = Autopilote + réserve. Ne lève jamais : le refus est une valeur que la route traduit en 429/503.
+ * Place d'une action INTERACTIVE de Créer (export serveur, conversion MP4, rendu de plan) :
+ * sans attente — l'écran réessaie après `Retry-After` — et plafond = Autopilote + réserve.
+ * Ne lève jamais : le refus est une valeur que la route traduit en 429.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * BASE DES BAUX INJOIGNABLE : ON N'ARRÊTE PAS L'UTILISATEUR
+ * ─────────────────────────────────────────────────────────────────────────
+ * `occupe` et `doublon` sont des réponses d'une base qui FONCTIONNE : elles refusent, et
+ * c'est juste. Mais si la base ne répond pas (ou si la migration n'est pas appliquée), refuser
+ * un export serait une panne de plus, infligée à un utilisateur qui attend, alors que la route
+ * garde sa propre limite — une place par processus, celle qui protégeait la machine avant ce
+ * pool. On rend donc la place en mode DÉGRADÉ, journalisé : jamais moins sûr qu'avant, et
+ * l'action aboutit.
+ *
+ * ⚠️ L'Autopilote, lui, REPORTE dans ce cas (`avecLimiteRendus`) : un travail de fond qui
+ * attendra le passage suivant ne coûte rien à personne, et sa place n'est pas bornée ailleurs.
  */
 export async function prendrePlaceInteractive(
   userId: string, jobId: string, o: OptionsLimite = {},
 ): Promise<PlaceInteractive> {
+  const env = o.env ?? process.env;
+  const avertir = o.avertir ?? ((m: string) => console.warn(m));
   try {
-    const env = o.env ?? process.env;
     const bail = await reserverBail(userId, jobId, { max: rendusMaxInteractifs(env), attenteMaxMs: 0, ...o });
     return { ok: true, bail };
   } catch (e) {
     if (e instanceof RenduDoublonError) return { ok: false, motif: 'doublon', message: e.message };
-    if (e instanceof RenduIndeterminError) return { ok: false, motif: 'indetermine', message: e.message };
     if (e instanceof RenduOccupeError) return { ok: false, motif: 'occupe', message: e.message };
+    if (e instanceof RenduIndeterminError) {
+      avertir(`[Rendus/File] baux globaux indisponibles (${e.detail || 'base injoignable'}) — ${jobId} passe sous la SEULE limite locale de la route.`);
+      return { ok: true, bail: BAIL_NEUTRE, degrade: true };
+    }
     throw e;
   }
 }

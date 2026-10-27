@@ -157,7 +157,7 @@ export async function POST(
         error: 'Un rendu est déjà en cours sur ce serveur.',
         rendu: actif.rendu ? renduPublic(actif.rendu) : null,
       }, {
-        status: commun.motif === 'indetermine' ? 503 : 429,
+        status: 429,
         headers: { 'Retry-After': String(Math.ceil(BUDGET_RENDU_MAX_MS / 1000)) },
       });
     }
