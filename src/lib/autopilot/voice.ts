@@ -245,12 +245,27 @@ async function synthetiser(
   }
 }
 
-/** Durée d'un MP3 déjà écrit sur disque, en secondes — `null` si illisible. */
-async function dureeSecondes(cheminFichier: string): Promise<number | null> {
+/**
+ * Durée d'un MP3 déjà écrit sur disque, en secondes — `null` si illisible.
+ *
+ * ⚠️ `reader: nodeReader` EST OBLIGATOIRE ICI. Sans lui, `parseMedia` utilise
+ * son lecteur par défaut (fondé sur `fetch`, pensé pour une URL) : donné un
+ * CHEMIN LOCAL, il échoue systématiquement — silencieusement, puisque
+ * l'appelant traite toute exception comme une durée illisible. Résultat
+ * observé en production : les 4 séquences (titre, cartes, vidéo, CTA)
+ * perdaient leur voix à chaque rendu, alors que le MP3 était valide. Même
+ * correctif déjà en place dans `poster.ts` (`probeRushSeconds`) pour un
+ * fichier local téléchargé.
+ *
+ * Exportée pour le test de régression ciblé (fichier MP3 réel, non mocké).
+ */
+export async function dureeSecondes(cheminFichier: string): Promise<number | null> {
   try {
     const { parseMedia } = await import('@remotion/media-parser');
+    const { nodeReader } = await import('@remotion/media-parser/node');
     const { durationInSeconds } = await parseMedia({
       src: cheminFichier,
+      reader: nodeReader,
       fields: { durationInSeconds: true },
       acknowledgeRemotionLicense: true,
     });
