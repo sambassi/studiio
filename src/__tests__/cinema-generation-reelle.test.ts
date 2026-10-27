@@ -150,10 +150,11 @@ describe('c’est le SERVEUR qui choisit le fournisseur', () => {
     const r = src('src/app/api/cinema/films/[id]/generation/route.ts');
     expect(r).not.toMatch(/corps\?\.fournisseurId/);
     expect(r).toContain("const choix = fournisseurServeur(operation as 'image' | 'video', s.userId);");
-    expect(r).toContain('const fournisseurId = choix.id;');
+    expect(r).toContain('fournisseurId: choix.id');
     expect(r).toContain('status: 409');
-    // Le choix précède tout travail : dossier temporaire, téléchargement, génération.
-    expect(r.indexOf('const choix = fournisseurServeur')).toBeLessThan(r.indexOf('await avecDossierTemporaire(ctx,'));
+    // Le choix précède tout travail : réservation de la génération, puis exécution.
+    expect(r.indexOf('const choix = fournisseurServeur')).toBeLessThan(r.indexOf('reserverGeneration('));
+    expect(r.indexOf('reserverGeneration(')).toBeLessThan(r.indexOf('lancerGeneration('));
   });
 
   it('l’écran n’envoie plus de fournisseur et dit la vérité sur ce qu’il déclenche', () => {
@@ -207,12 +208,11 @@ describe('une dépense engagée est TOUJOURS comptée, même quand l’appel éc
     expect(a.indexOf('if (!verification.autorise)')).toBeLessThan(a.indexOf('fournisseur.genererImage'));
   });
 
-  it('la route l’enregistre sur le film, échec comme conflit — sinon le plafond ne serait jamais atteint', () => {
-    const r = src('src/app/api/cinema/films/[id]/generation/route.ts');
-    expect(r.match(/coutGenerationUsd: Math\.round/g)?.length).toBeGreaterThanOrEqual(3);
-    expect(r).toContain('const engageUsd = resultat.depenseUsd ?? 0;');
-    expect(r).toContain('if (engage) {');
-    expect(r).toContain('if (depense > 0) {');
+  it('l’exécuteur l’enregistre sur le film, en échec comme en succès — sinon le plafond ne serait jamais atteint', () => {
+    const x = src('src/lib/cinema/generation/executeur-generation.ts');
+    expect(x).toContain("const engageUsd = ('depenseUsd' in resultat ? resultat.depenseUsd : 0) ?? 0;");
+    expect(x).toContain('coutGenerationUsd: engageUsd > 0 ? arrondi((f.coutGenerationUsd ?? 0) + engageUsd) : f.coutGenerationUsd,');
+    expect(x).toContain('coutGenerationUsd: arrondi((f.coutGenerationUsd ?? 0) + depense),');
   });
 });
 

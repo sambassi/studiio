@@ -15,8 +15,10 @@ import { devisFilm } from '@/lib/cinema/couts';
 
 const HISTOIRE = 'Nina entre dans la salle avant le lever du jour. Le tatami est encore froid. Marco la regarde sans bouger. Marco hoche la tete. Le jour se leve sur la salle vide.';
 const film = { ...preparerFilm({ histoire: HISTOIRE, personnages: [{ nom: 'Nina', description: 'veste rouge' }, { nom: 'Marco', description: 'ceinture noire' }], idFilm: 'film-ui-1', titre: 'Mon film' }), proprietaire: 'u1' };
+/** Le suivi des generations tel que le SERVEUR le renvoie avec le film. */
+let generationsFilm: Array<Record<string, unknown>> = [];
 const reponseFilm = () => ({
-  ok: true, film, montage: presenterMontage(monterFilm(film), film.id),
+  ok: true, film: { ...film, generations: generationsFilm }, montage: presenterMontage(monterFilm(film), film.id),
   scenesAProduire: film.scenes.map((s) => s.id), devis: devisFilm(film, film.scenes.map((s) => s.id)),
 });
 
@@ -37,6 +39,7 @@ let generationModeForce: 'reelle' | null;
 
 beforeEach(() => {
   appels = [];
+  generationsFilm = [];
   etatTravail = null;
   reponses = {};
   generationIaActive = false;
@@ -58,6 +61,12 @@ beforeEach(() => {
     if (url.includes('/annuler')) return json({ ok: true, travail: { ...etatTravail, annulationDemandee: true } });
     if (url.includes('/travaux/')) return json({ ok: true, travail: etatTravail });
     if (url.endsWith('/produire')) return json({ ok: true, dejaEnCours: false, travail: etatTravail, devis: reponseFilm().devis }, 202);
+    if (url.endsWith('/generation') && method === 'POST') {
+      // Le serveur reserve la generation et repond tout de suite ; l'execution suit.
+      const g = { id: 'gen-1', planId: JSON.parse(String(init?.body ?? '{}')).planId, operation: 'image', mode: 'simulee', statut: 'en_cours', creeLe: new Date().toISOString(), majLe: new Date().toISOString() };
+      generationsFilm = [g];
+      return json({ ok: true, generation: g, generations: generationsFilm }, 202);
+    }
     return json({ ok: false, erreur: 'inattendu' }, 404);
   }));
 });
@@ -180,28 +189,32 @@ describe('page Cinema IA — production asynchrone', () => {
       expect(screen.getAllByText(/5 crédits?/i).length).toBeGreaterThan(0);
     });
 
-    it('un clic demande confirmation AVEC le coût, avant de dépenser quoi que ce soit', async () => {
+    it('un clic demande confirmation DANS la page, AVEC le coût, avant de dépenser quoi que ce soit', async () => {
       generationModeForce = 'reelle';
-      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      const confirmSpy = vi.spyOn(window, 'confirm');
       await ouvrir();
       const bouton = document.querySelector('[data-cinema-generation="image"]') as HTMLButtonElement;
       expect(bouton).toBeTruthy();
       fireEvent.click(bouton);
-      expect(confirmSpy).toHaveBeenCalledTimes(1);
-      expect(confirmSpy.mock.calls[0][0]).toMatch(/5 crédits?/i);
-      // Confirmé : l'appel part bien.
+      // Plus de boite native (elle bloque tout le fil de la page) : une confirmation en ligne.
+      expect(confirmSpy).not.toHaveBeenCalled();
+      const groupe = await screen.findByRole('group', { name: /confirmer la generation payante/i });
+      expect(groupe.textContent).toMatch(/5 crédits?/i);
+      expect(appels.some((a) => a.url.includes('/generation'))).toBe(false);
+      fireEvent.click(within(groupe).getByText(/confirmer/i));
       await waitFor(() => expect(appels.some((a) => a.url.includes('/generation') && a.method === 'POST')).toBe(true));
     });
 
     it('annuler la confirmation n’envoie AUCUNE requête — rien n’est dépensé', async () => {
       generationModeForce = 'reelle';
-      vi.spyOn(window, 'confirm').mockReturnValue(false);
       await ouvrir();
       const bouton = document.querySelector('[data-cinema-generation="image"]') as HTMLButtonElement;
       fireEvent.click(bouton);
-      // Le temps que l'éventuel appel parte, s'il partait à tort.
+      const groupe = await screen.findByRole('group', { name: /confirmer la generation payante/i });
+      fireEvent.click(within(groupe).getByRole('button', { name: /annuler/i }));
       await new Promise((r) => { setTimeout(r, 0); });
       expect(appels.some((a) => a.url.includes('/generation'))).toBe(false);
+      expect(screen.queryByRole('group', { name: /confirmer la generation payante/i })).toBeNull();
     });
 
     it('la vidéo utilise SA propre clé de tarif (`ai.image_to_video`), pas celle de l’image', () => {
@@ -237,21 +250,48 @@ describe('page Cinema IA — production asynchrone', () => {
     await ouvrir();
     const bouton = document.querySelector('[data-cinema-generation="image"]') as HTMLButtonElement;
     fireEvent.click(bouton);
-    await waitFor(() => expect(ecoute).toHaveBeenCalledTimes(1));
+    await screen.findByText(/generation image en cours/i);
+    // Le serveur termine : le sondage le voit, et previent la barre laterale.
+    generationsFilm = [{ ...generationsFilm[0], statut: 'reussie' }];
+    await waitFor(() => expect(ecoute).toHaveBeenCalledTimes(1), { timeout: 5000 });
     window.removeEventListener('studiio:credits-changed', ecoute);
   });
 
   it('un echec de generation qui a quand meme pris des credits le DIT, rembourses ou non', async () => {
-    generationModeForce = 'reelle';
-    reponses['/generation'] = () => ({ ok: false, erreur: 'Replicate (image) : generation refusee par le fournisseur', creditsPris: 5, creditsRembourses: true });
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    generationIaActive = true;
     await ouvrir();
-    const bouton = document.querySelector('[data-cinema-generation="image"]') as HTMLButtonElement;
-    fireEvent.click(bouton);
-    const alerte = await screen.findByRole('alert');
-    expect(alerte.textContent).toContain('5 credit(s) pris');
-    expect(alerte.textContent).toContain('rembourses');
-    confirmSpy.mockRestore();
+    fireEvent.click(document.querySelector('[data-cinema-generation="image"]') as HTMLButtonElement);
+    await screen.findByText(/generation image en cours/i);
+    generationsFilm = [{ ...generationsFilm[0], statut: 'echouee', erreur: 'Replicate (image) : generation refusee par le fournisseur', creditsPris: 5, creditsRembourses: true }];
+    const statut = await waitFor(() => {
+      const el = document.querySelector('[data-cinema-generation-statut="echouee"]');
+      expect(el).toBeTruthy();
+      return el as HTMLElement;
+    }, { timeout: 5000 });
+    expect(statut.textContent).toContain('generation refusee');
+    expect(statut.textContent).toContain('5 credit(s) rembourses');
+  });
+
+  it('rechargement pendant une generation : l’etat EN COURS est retrouve, et aucun bouton ne peut en relancer une', async () => {
+    generationIaActive = true;
+    const planId = film.scenes[0].plans[0].id;
+    generationsFilm = [{ id: 'gen-9', planId, operation: 'image', mode: 'simulee', statut: 'en_cours', creeLe: new Date(Date.now() - 42_000).toISOString(), majLe: new Date().toISOString() }];
+    await ouvrir();
+    expect(await screen.findByText(/generation image en cours · 4\d s/i)).toBeTruthy();
+    const boutons = [...document.querySelectorAll('[data-cinema-generation]')] as HTMLButtonElement[];
+    expect(boutons.length).toBeGreaterThan(0);
+    for (const b of boutons) expect(b.disabled).toBe(true);
+    fireEvent.click(boutons[0]);
+    await new Promise((r) => { setTimeout(r, 0); });
+    expect(appels.some((a) => a.url.includes('/generation') && a.method === 'POST')).toBe(false);
+  });
+
+  it('une reponse 409 « deja en cours » n’est pas une erreur de depense : elle affiche la generation existante', async () => {
+    generationIaActive = true;
+    reponses['/generation'] = () => ({ ok: false, enCours: true, erreur: 'une generation est deja en cours', generation: { id: 'gen-x', planId: film.scenes[0].plans[0].id, operation: 'image', mode: 'simulee', statut: 'en_cours', creeLe: new Date().toISOString(), majLe: new Date().toISOString() } });
+    await ouvrir();
+    fireEvent.click(document.querySelector('[data-cinema-generation="image"]') as HTMLButtonElement);
+    expect(await screen.findByText(/generation image en cours/i)).toBeTruthy();
   });
 
   it('une erreur de lancement (plafond) est affichee telle quelle', async () => {

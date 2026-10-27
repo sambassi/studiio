@@ -175,6 +175,31 @@ export interface Film {
    * migration.
    */
   coutGenerationUsd?: number;
+  /**
+   * Suivi DURABLE des generations IA de ce film (`generation/suivi.ts`) : une ligne
+   * par tentative, son statut reel, et ce qu'elle a pris/rendu en credits. Absent =
+   * aucune generation suivie (tous les films anterieurs restent valides).
+   */
+  generations?: GenerationSuivie[];
+}
+
+export type StatutGeneration = 'en_cours' | 'reussie' | 'echouee' | 'interrompue';
+
+/** Une generation IA suivie : jamais un secret, jamais une URL de fournisseur. */
+export interface GenerationSuivie {
+  id: string;
+  planId: string;
+  operation: 'image' | 'video';
+  mode: 'reelle' | 'simulee';
+  statut: StatutGeneration;
+  creeLe: string;
+  majLe: string;
+  erreur?: string | null;
+  /** Credits Studiio pris pour cette generation (0/absent = rien de pris). */
+  creditsPris?: number;
+  /** Reference du debit — permet un remboursement IDEMPOTENT apres interruption. */
+  referenceCredits?: string;
+  creditsRembourses?: boolean;
 }
 
 /**

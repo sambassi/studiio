@@ -280,48 +280,56 @@ describe('rembourserCredits — fiable, idempotent, jamais une seconde écriture
   });
 });
 
-describe('câblage de la route', () => {
+describe('câblage : la route réserve, l’exécuteur paie (hors requête HTTP)', () => {
   const r = readFileSync('src/app/api/cinema/films/[id]/generation/route.ts', 'utf8');
+  // Depuis le suivi durable des générations, TOUTE la logique financière vit dans
+  // l'exécuteur, lancé en arrière-plan : la route ne débite plus rien elle-même.
+  const x = readFileSync('src/lib/cinema/generation/executeur-generation.ts', 'utf8');
 
   it('le paiement est confié à l’atelier, et seulement en mode réel', () => {
-    expect(r).toContain("const payer = choix.mode !== 'reelle' ? undefined : async () => {");
-    expect(r).toContain("const prise = await reserverCredits(s.userId, operation as 'image' | 'video');");
-    expect(r).toContain('plafondUsd, payer,');
+    expect(x).toContain("const payer = mode !== 'reelle' ? undefined : async () => {");
+    expect(x).toContain('const prise = await reserverCredits(userId, operation);');
+    expect(x).toContain('plafondUsd, payer }');
   });
 
-  it('un refus de paiement est distingué d’un refus de génération (402 ou 409)', () => {
-    expect(r).toContain("if (resultat.refusPaiement) {");
-    expect(r).toContain("status: resultat.refusPaiement === 'solde_insuffisant' ? 402 : 409");
+  it('la route ne touche ni aux crédits ni à la dépense : elle valide, réserve la génération et répond 202', () => {
+    expect(r).not.toContain('reserverCredits');
+    expect(r).not.toContain('rembourserCredits');
+    expect(r).not.toContain('reserverDepenseReplicate');
+    expect(r).toContain('reserverGeneration(');
+    expect(r).toContain('lancerGeneration(');
+    expect(r).toContain('status: 202');
   });
 
-  it('la réponse dit la vérité sur l’argent : l’appel est parti, payé, puis rendu ou non', () => {
-    expect(r).toContain('creditsPris:');
-    expect(r).toContain('creditsRembourses');
+  it('un refus de paiement est noté comme échec, sans remboursement (rien n’a été pris)', () => {
+    const iRefus = x.indexOf("if ('refusPaiement' in resultat && resultat.refusPaiement) {");
+    expect(iRefus).toBeGreaterThan(0);
+    const bloc = x.slice(iRefus, x.indexOf('return', iRefus) + 20);
+    expect(bloc).not.toContain('rembourserCredits');
+  });
+
+  it('l’argent est écrit sur la génération : crédits pris, puis rendus ou non', () => {
+    expect(x).toContain('creditsPris');
+    expect(x).toContain('creditsRembourses');
+    // Écrit AVANT l'appel payant : une interruption du serveur ne perd pas l'information.
+    expect(x.indexOf('referenceCredits: prise.reservation.reference')).toBeGreaterThan(0);
   });
 
   it('aucune substitution silencieuse : un refus n’est jamais remplacé par une simulation', () => {
-    // Le fournisseur est choisi UNE fois, avant la réservation ; aucun repli après un refus.
-    expect(r.indexOf('const choix = fournisseurServeur')).toBeLessThan(r.indexOf('await reserverCredits('));
+    expect(r.indexOf('const choix = fournisseurServeur')).toBeLessThan(r.indexOf('reserverGeneration('));
     expect(r).not.toMatch(/simule[^\n]*(apres|fallback|repli)/i);
+    expect(x).not.toMatch(/simule[^\n]*(apres|fallback|repli)/i);
     expect((r.match(/fournisseurServeur\(/g) ?? []).length).toBe(1);
-  });
-
-  it('le remboursement est appelé APRÈS le refus de paiement, jamais avant — rien n’est payé', () => {
-    // `refusPaiement` retourne (402/409) avant même d'atteindre le bloc de remboursement :
-    // aucun débit n'a eu lieu, il n'y a donc rien à rendre pour ce cas.
-    const iRefusPaiement = r.indexOf('if (resultat.refusPaiement) {');
-    const iRembourse = r.indexOf('await rembourserCredits(');
-    expect(iRefusPaiement).toBeGreaterThan(0);
-    expect(iRembourse).toBeGreaterThan(iRefusPaiement);
+    expect(x).not.toContain('fournisseurServeur(');
   });
 
   it('le remboursement n’est tenté QUE si des crédits ont réellement été pris', () => {
-    const bloc = r.slice(r.indexOf('if (!resultat.ok) {'), r.indexOf('await rembourserCredits(') + 200);
-    expect(bloc).toMatch(/if \(reservation && \(reservation as Reservation\)\.cout > 0\) \{/);
+    const bloc = x.slice(x.indexOf('if (!resultat.ok) {'), x.indexOf('await rembourserCredits(') + 200);
+    expect(bloc).toMatch(/if \(res && res\.cout > 0\) \{/);
   });
 
-  it('un remboursement non prouvé est journalisé, mais ne bloque jamais la réponse d’échec', () => {
-    expect(r).toContain('issue.ok');
-    expect(r).toContain('console.error(`[Cinema] remboursement non prouve');
+  it('un remboursement non prouvé est journalisé, mais ne bloque jamais l’issue', () => {
+    expect(x).toContain('issue.ok');
+    expect(x).toContain('console.error(`[Cinema] remboursement non prouve');
   });
 });

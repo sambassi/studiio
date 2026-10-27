@@ -32,7 +32,17 @@ interface MontageApi { filmId: string; titre: string; format: string; largeur: n
 interface PlanApi { id: string; cadre: string; description: string; personnages: string[]; dialogue: { personnageId: string | null; texte: string } | null; dureeS: number; media: MediaApi | null }
 interface SceneApi { id: string; index: number; titre: string; lieu: string; intention: string; personnages: string[]; plans: PlanApi[]; etat: string; coutUsd: number }
 interface PersonnageApi { id: string; nom: string; role: string; voix: string; references: Array<{ id: string; version: number; description: string }>; referenceActiveId: string | null }
-interface FilmApi { id: string; titre: string; histoire?: string; format: string; qualite: string; personnages: PersonnageApi[]; scenes: SceneApi[] }
+interface GenerationApi {
+  id: string; planId: string; operation: 'image' | 'video'; mode: 'reelle' | 'simulee';
+  statut: 'en_cours' | 'reussie' | 'echouee' | 'interrompue'; creeLe: string; majLe: string;
+  erreur?: string | null; creditsPris?: number; creditsRembourses?: boolean;
+}
+interface FilmApi { id: string; titre: string; histoire?: string; format: string; qualite: string; personnages: PersonnageApi[]; scenes: SceneApi[]; generations?: GenerationApi[] }
+/** La generation active du film (une seule a la fois, decide par le serveur). */
+const generationActiveDe = (f: FilmApi | null) => f?.generations?.find((g) => g.statut === 'en_cours') ?? null;
+/** La derniere generation d'un plan, quelle qu'en soit l'issue. */
+const derniereGenerationDuPlan = (f: FilmApi | null, planId: string) =>
+  [...(f?.generations ?? [])].reverse().find((g) => g.planId === planId) ?? null;
 type StatutTravailApi = 'en_attente' | 'en_cours' | 'termine' | 'echec' | 'annule';
 interface TravailApi {
   id: string; filmId: string; statut: StatutTravailApi; erreur: string | null; reference: string | null; annulationDemandee: boolean;
@@ -101,6 +111,10 @@ export default function CinemaPage() {
     if (data?.montage) setMontage(data.montage);
     if (data?.devis) setDevis(data.devis);
     if (Array.isArray(data?.scenesAProduire)) setAProduire(data.scenesAProduire);
+    // Une reponse de generation ne porte que le SUIVI : on le pose sur le film affiche.
+    if (!data?.film && Array.isArray(data?.generations)) {
+      setFilm((f) => (f ? { ...f, generations: data.generations } : f));
+    }
   }, []);
 
   /**
@@ -112,11 +126,11 @@ export default function CinemaPage() {
    */
   const DELAI_APPEL_MS = 20_000;
 
-  const appel = useCallback(async (url: string, options: RequestInit, libelle: string) => {
+  const appel = useCallback(async (url: string, options: RequestInit, libelle: string, delaiMs: number = DELAI_APPEL_MS) => {
     setEnCours(libelle);
     setErreur(null);
     const ctrl = new AbortController();
-    const minuteur = setTimeout(() => ctrl.abort(), DELAI_APPEL_MS);
+    const minuteur = setTimeout(() => ctrl.abort(), delaiMs);
     try {
       const r = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...options, signal: ctrl.signal });
       const data = await r.json();
@@ -138,7 +152,7 @@ export default function CinemaPage() {
     } catch (e) {
       const delaiDepasse = e instanceof Error && e.name === 'AbortError';
       setErreur(delaiDepasse
-        ? `le serveur ne repond pas (delai de ${DELAI_APPEL_MS / 1000} s depasse) — reessayez`
+        ? `le serveur ne repond pas (delai de ${Math.round(delaiMs / 1000)} s depasse) — reessayez`
         : (e instanceof Error ? e.message : 'echec'));
       return null;
     } finally {
@@ -202,34 +216,70 @@ export default function CinemaPage() {
    * La confirmation ici est une politesse envers l'utilisateur, pas une
    * frontiere de securite.
    */
-  const genererMedia = (planId: string, operation: 'image' | 'video') => {
+  /**
+   * Confirmation d'une generation PAYANTE, dans la page (deux gestes, comme la
+   * suppression d'un film). Plus de `window.confirm` : une boite de dialogue native
+   * BLOQUE tout le fil de la page tant qu'elle est ouverte — rendu, minuteurs et
+   * sondages compris — et figeait l'ecran pour tout outil qui le pilote.
+   */
+  const [confirmation, setConfirmation] = useState<{ planId: string; operation: 'image' | 'video' } | null>(null);
+
+  /**
+   * LANCE une generation. Le serveur repond en quelques millisecondes (202) avec
+   * l'identifiant de la generation : le fournisseur, lui, travaille en arriere-plan,
+   * et l'ecran suit son etat REEL en relisant le film (voir le sondage plus bas).
+   * Un second clic, un second onglet ou un rechargement retrouvent la MEME generation :
+   * le serveur n'en accepte qu'une a la fois par film, et ne debite qu'une fois.
+   */
+  const lancerGenerationIa = async (planId: string, operation: 'image' | 'video') => {
     if (!film) return;
-    if (generationMode === 'reelle') {
-      const cle = operation === 'video' ? 'ai.image_to_video' : 'ai.generate_background';
-      const prix = libellePrix(tarifs, cle);
-      const action = operation === 'video' ? 'Animer ce plan en vidéo' : 'Générer cette image';
-      const confirme = window.confirm(
-        `${action} par IA ?\n\nCoût : ${prix}.\nSi la génération échoue après paiement, les crédits pris sont automatiquement remboursés.`,
-      );
-      if (!confirme) return;
+    setConfirmation(null);
+    setEnCours(`generation:${planId}:${operation}`);
+    setErreur(null);
+    const ctrl = new AbortController();
+    const minuteur = setTimeout(() => ctrl.abort(), DELAI_APPEL_MS);
+    try {
+      const r = await fetch(`/api/cinema/films/${film.id}/generation`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        // Aucun `fournisseurId` : c'est le SERVEUR qui choisit.
+        body: JSON.stringify({ planId, operation }),
+        signal: ctrl.signal,
+      });
+      const data = await r.json().catch(() => null);
+      if (Array.isArray(data?.generations)) appliquer({ generations: data.generations });
+      else if (data?.enCours && data?.generation) {
+        // Deja en cours : on l'affiche comme telle, rien n'a ete relance ni debite.
+        setFilm((f) => (f ? { ...f, generations: [...(f.generations ?? []).filter((g) => g.id !== data.generation.id), data.generation] } : f));
+      }
+      if (!r.ok && !data?.enCours) throw new Error(data?.erreur ?? `echec (${r.status})`);
+    } catch (e) {
+      // Un delai ici ne veut PAS dire que rien n'est parti : le sondage dira l'etat reel.
+      setErreur(e instanceof Error && e.name === 'AbortError'
+        ? 'le serveur tarde a repondre — l’etat de la generation va s’afficher, ne relancez pas'
+        : (e instanceof Error ? e.message : 'echec'));
+      if (film) rafraichirFilmRef.current?.(film.id);
+    } finally {
+      clearTimeout(minuteur);
+      setEnCours(null);
     }
-    appel(
-      `/api/cinema/films/${film.id}/generation`,
-      // Aucun `fournisseurId` : c'est le SERVEUR qui choisit (une generation reelle depense
-      // de l'argent — un navigateur ne doit pas pouvoir la nommer).
-      { method: 'POST', body: JSON.stringify({ planId, operation }) },
-      `generation:${planId}:${operation}`,
-    );
+  };
+
+  const genererMedia = (planId: string, operation: 'image' | 'video') => {
+    if (!film || generationActiveDe(film)) return;
+    // Une generation REELLE depense : deux gestes. La SIMULEE est gratuite : un seul.
+    if (generationMode === 'reelle') { setConfirmation({ planId, operation }); return; }
+    lancerGenerationIa(planId, operation);
   };
 
   /**
    * Prepare les VOIX sans rendre la video : l'apercu a besoin du son, pas de
    * Chromium. Sans cette etape, l'apercu serait muet jusqu'a l'export.
    */
+  // La synthese de toutes les repliques peut prendre bien plus de 20 s.
   const preparerVoix = () => film && appel(`/api/cinema/films/${film.id}/produire`, {
     method: 'POST',
     body: JSON.stringify({ rendre: false }),
-  }, 'voix');
+  }, 'voix', 180_000);
 
   /** Les films du compte : ils survivent a un redemarrage du serveur. */
   /** Generation « IA » proposee par le serveur ? Faux par defaut (voir `garde.ts`). */
@@ -261,6 +311,44 @@ export default function CinemaPage() {
       if (data?.ok) appliquer(data);
     } catch { /* le prochain geste relira */ }
   }, [appliquer]);
+
+  const rafraichirFilmRef = useRef<((id: string) => void) | null>(null);
+  rafraichirFilmRef.current = rafraichirFilm;
+
+  // SUIVI d'une generation IA : tant qu'une generation du film est EN COURS (d'apres le
+  // serveur), on relit le film. Ce sondage repart tout seul apres un rechargement, puisque
+  // l'etat vit sur le film. Il s'espace en cas d'erreur, et previent la barre laterale a
+  // la fin (des credits ont pu etre pris, puis rendus).
+  const filmIdGeneration = film?.id ?? null;
+  const idGenerationActive = generationActiveDe(film)?.id ?? null;
+  useEffect(() => {
+    if (!filmIdGeneration || !idGenerationActive) return;
+    let arrete = false;
+    let delai = 2500;
+    let minuteur: ReturnType<typeof setTimeout>;
+    const tick = async () => {
+      try {
+        const r = await fetch(`/api/cinema/films/${filmIdGeneration}`);
+        const data = await r.json();
+        if (arrete) return;
+        if (data?.ok) {
+          appliquer(data);
+          delai = 2500;
+          if (!generationActiveDe(data.film)) {
+            try { window.dispatchEvent(new Event('studiio:credits-changed')); } catch { /* confort */ }
+            return;
+          }
+        } else {
+          delai = Math.min(delai * 2, 15_000);
+        }
+      } catch {
+        delai = Math.min(delai * 2, 15_000);
+      }
+      if (!arrete) minuteur = setTimeout(tick, delai);
+    };
+    minuteur = setTimeout(tick, 1500);
+    return () => { arrete = true; clearTimeout(minuteur); };
+  }, [filmIdGeneration, idGenerationActive, appliquer]);
 
   /** Rouvre un film enregistre — et retrouve sa derniere production, active ou finie. */
   const ouvrirFilm = async (id: string) => {
@@ -633,7 +721,7 @@ export default function CinemaPage() {
                               {generationIa && (
                                 <button
                                   onClick={() => genererMedia(plan.id, 'image')}
-                                  disabled={enCours !== null}
+                                  disabled={enCours !== null || !!generationActiveDe(film)}
                                   data-cinema-generation="image"
                                   className="inline-flex items-center gap-1 rounded border border-violet-700/60 px-2 py-1 hover:border-violet-400 disabled:opacity-50"
                                 >
@@ -649,7 +737,7 @@ export default function CinemaPage() {
                           {generationIa && plan.media?.genre === 'image' && (
                             <button
                               onClick={() => genererMedia(plan.id, 'video')}
-                              disabled={enCours !== null}
+                              disabled={enCours !== null || !!generationActiveDe(film)}
                               data-cinema-generation="video"
                               className="inline-flex items-center gap-1 rounded border border-violet-700/60 px-2 py-1 hover:border-violet-400 disabled:opacity-50"
                             >
@@ -660,6 +748,16 @@ export default function CinemaPage() {
                               )}
                             </button>
                           )}
+
+                          <SuiviGenerationPlan
+                            generation={derniereGenerationDuPlan(film, plan.id)}
+                            confirmation={confirmation?.planId === plan.id ? confirmation.operation : null}
+                            prix={confirmation?.planId === plan.id
+                              ? libellePrix(tarifs, confirmation.operation === 'video' ? 'ai.image_to_video' : 'ai.generate_background')
+                              : ''}
+                            surConfirmer={() => confirmation && lancerGenerationIa(confirmation.planId, confirmation.operation)}
+                            surAnnuler={() => setConfirmation(null)}
+                          />
 
                           {/* Personnages presents DANS CE PLAN. */}
                           <span className="text-slate-600">|</span>
@@ -812,6 +910,62 @@ function Production({ film, travail, surArreter }: { film: FilmApi; travail: Tra
       )}
     </div>
   );
+}
+
+/**
+ * SUIVI D'UNE GENERATION IA, plan par plan — l'etat vient du SERVEUR (le film).
+ * « En cours » et « echouee » ne se confondent jamais, et l'argent est dit tel quel.
+ */
+function SuiviGenerationPlan({ generation, confirmation, prix, surConfirmer, surAnnuler }: {
+  generation: GenerationApi | null;
+  confirmation: 'image' | 'video' | null;
+  prix: string;
+  surConfirmer: () => void;
+  surAnnuler: () => void;
+}) {
+  const [maintenant, setMaintenant] = useState(() => Date.now());
+  const enCours = generation?.statut === 'en_cours';
+  // Un compteur d'une seconde, et SEULEMENT pendant une generation en cours.
+  useEffect(() => {
+    if (!enCours) return;
+    const id = setInterval(() => setMaintenant(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [enCours]);
+
+  if (confirmation) {
+    return (
+      <span className="inline-flex items-center gap-2 rounded border border-amber-500/50 bg-amber-500/10 px-2 py-1 text-amber-100" role="group" aria-label="Confirmer la generation payante">
+        {confirmation === 'video' ? 'Animer ce plan en video' : 'Generer cette image'} · {prix}
+        <button type="button" onClick={surConfirmer} data-cinema-confirmer className="inline-flex items-center gap-1 rounded bg-amber-500/80 px-2 py-0.5 text-slate-950 font-semibold hover:bg-amber-400">
+          <Check className="w-3 h-3" /> Confirmer
+        </button>
+        <button type="button" onClick={surAnnuler} aria-label="Annuler" className="p-0.5 rounded hover:bg-slate-700"><X className="w-3 h-3" /></button>
+      </span>
+    );
+  }
+  if (!generation) return null;
+  const operation = generation.operation === 'video' ? 'video' : 'image';
+  if (enCours) {
+    const ecoule = Math.max(0, Math.round((maintenant - Date.parse(generation.creeLe)) / 1000));
+    return (
+      <span className="inline-flex items-center gap-1 rounded border border-violet-500/40 bg-violet-500/10 px-2 py-1 text-violet-200" data-cinema-generation-statut="en_cours">
+        <Loader2 className="w-3 h-3 animate-spin" /> Generation {operation} en cours · {ecoule} s
+        {operation === 'video' && <span className="text-violet-300/70">(1 a plusieurs minutes — vous pouvez quitter la page)</span>}
+      </span>
+    );
+  }
+  if (generation.statut === 'echouee' || generation.statut === 'interrompue') {
+    const argent = (generation.creditsPris ?? 0) > 0
+      ? ` — ${generation.creditsPris} credit(s) ${generation.creditsRembourses ? 'rembourses' : generation.creditsRembourses === false ? 'NON rembourses : verifiez le solde' : 'en cours de remboursement'}`
+      : '';
+    return (
+      <span className="inline-flex items-center gap-1 rounded border border-rose-500/40 bg-rose-500/10 px-2 py-1 text-rose-200" data-cinema-generation-statut={generation.statut}>
+        <AlertTriangle className="w-3 h-3" />
+        {generation.statut === 'interrompue' ? 'Generation interrompue' : 'Generation echouee'} ({operation}) : {generation.erreur ?? 'raison inconnue'}{argent}
+      </span>
+    );
+  }
+  return null;
 }
 
 /**

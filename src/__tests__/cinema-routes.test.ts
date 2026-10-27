@@ -43,6 +43,9 @@ import * as voixRoute from '@/app/api/cinema/films/[id]/voix/[planId]/route';
 import * as refsRoute from '@/app/api/cinema/films/[id]/references/route';
 import * as refPersoRoute from '@/app/api/cinema/films/[id]/references/[personnageId]/route';
 import * as generationRoute from '@/app/api/cinema/films/[id]/generation/route';
+import { attendreGenerations } from '@/lib/cinema/generation/executeur-generation';
+import { enregistrerFournisseur, fournisseurGeneration, type FournisseurGenerationIA } from '@/lib/cinema/generation/fournisseur';
+import { modifierFilm } from '@/lib/cinema/stockage/depot-films';
 
 const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
@@ -116,6 +119,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  await attendreGenerations().catch(() => {});
   await attendreFile().catch(() => {});
   reinitialiserLanceurPourTests();
   delete (globalThis as unknown as { __cinemaContexte?: ContexteCinema }).__cinemaContexte;
@@ -474,9 +478,13 @@ describe('generation IA simulee — plafond serveur, stockage prive', () => {
     const planId = (await ctx.films.lire(id, A))!.film.scenes[0].plans[0].id;
     const r = await generationRoute.POST(req('/x', { method: 'POST', json: { planId, operation: 'image', fournisseurId: 'simule' } }), P(id));
     const d = await r.json();
-    expect(r.status).toBe(200);
+    // La route ne tient plus la requete pendant la generation : 202 + identifiant.
+    expect(r.status).toBe(202);
     expect(d.ok).toBe(true);
+    expect(d.generation).toMatchObject({ planId, operation: 'image', mode: 'simulee', statut: 'en_cours' });
+    await attendreGenerations();
     const film = (await ctx.films.lire(id, A))!.film;
+    expect(film.generations?.find((g) => g.id === d.generation.id)?.statut).toBe('reussie');
     const media = film.scenes[0].plans[0].media!;
     expect(media.origine).toBe('genere');
     expect(media.fournisseurGeneration).toBe('simule');
@@ -494,11 +502,13 @@ describe('generation IA simulee — plafond serveur, stockage prive', () => {
     const planId = (await ctx.films.lire(id, A))!.film.scenes[0].plans[0].id;
     for (const fournisseurId of ['openai', 'runway', 'replicate-flux-schnell', 'nimporte-quoi']) {
       const r = await generationRoute.POST(req('/x', { method: 'POST', json: { planId, operation: 'image', fournisseurId } }), P(id));
-      expect(r.status, `fournisseur demande : ${fournisseurId}`).toBe(200);
-      const corps = await r.json();
+      expect(r.status, `fournisseur demande : ${fournisseurId}`).toBe(202);
+      await attendreGenerations();
       // Un media a bien ete produit — par le fournisseur du SERVEUR (simule ici), et non par
       // celui que le client a nomme : aucun appel sortant n'a lieu dans ce test.
-      expect(corps.film?.scenes?.[0]?.plans?.[0]?.media?.url).toBeTruthy();
+      const plan = (await ctx.films.lire(id, A))!.film.scenes[0].plans[0];
+      expect(plan.media?.url).toBeTruthy();
+      expect(plan.media?.fournisseurGeneration).toBe('simule');
     }
   });
 
@@ -523,7 +533,13 @@ describe('generation IA simulee — plafond serveur, stockage prive', () => {
     const planId = (await ctx.films.lire(id, A))!.film.scenes[0].plans[0].id;
     ctx.plafondUsd = -1;       // invalide cote serveur
     const r = await generationRoute.POST(req('/x', { method: 'POST', json: { planId, operation: 'image', plafondUsd: 1000 } }), P(id));
-    expect(r.status).toBe(402);
+    // Le refus vient de l'execution (plafond serveur invalide) : la generation est ECHOUEE,
+    // rien n'est produit ni depose, et l'erreur est lisible sur le film.
+    expect(r.status).toBe(202);
+    await attendreGenerations();
+    const g = (await ctx.films.lire(id, A))!.film.generations?.at(-1);
+    expect(g?.statut).toBe('echouee');
+    expect(g?.erreur).toMatch(/plafond/);
     expect(memObjets.cles()).toEqual([]);
   });
 
@@ -534,6 +550,79 @@ describe('generation IA simulee — plafond serveur, stockage prive', () => {
       const r = await generationRoute.POST(req('/x', { method: 'POST', json: { planId, operation: 'image', plafondUsd } }), P(id));
       expect(r.status).toBe(400);
     }
+  });
+});
+
+describe('generation IA — suivi durable, hors requete HTTP', () => {
+  // Un fournisseur LENT (la duree d'une video reelle, en miniature) : la route ne doit
+  // jamais l'attendre, et rien ne doit pouvoir le lancer deux fois.
+  let original: FournisseurGenerationIA | null = null;
+  beforeEach(() => {
+    original = fournisseurGeneration('simule');
+    const o = original!;
+    enregistrerFournisseur({
+      ...o, id: 'simule', libelle: o.libelle, get actif() { return o.actif; },
+      genererImage: async (d) => { await new Promise((r) => setTimeout(r, 600)); return o.genererImage(d); },
+      genererVideo: o.genererVideo,
+    });
+  });
+  afterEach(async () => {
+    await attendreGenerations().catch(() => {});
+    if (original) enregistrerFournisseur(original);
+  });
+
+  it('generation longue : la route repond tout de suite (202), l’etat se relit (rechargement), puis « reussie »', async () => {
+    const id = await creerFilm();
+    const planId = (await ctx.films.lire(id, A))!.film.scenes[0].plans[0].id;
+    const t0 = Date.now();
+    const r = await generationRoute.POST(req('/x', { method: 'POST', json: { planId, operation: 'image' } }), P(id));
+    expect(r.status).toBe(202);
+    expect(Date.now() - t0).toBeLessThan(500); // le fournisseur, lui, prend 600 ms
+    const { generation } = await r.json();
+    // « Rechargement » : une nouvelle lecture du film retrouve la generation EN COURS.
+    const pendant = await (await filmRoute.GET(req('/x'), P(id))).json();
+    expect(pendant.film.generations.find((g: { id: string }) => g.id === generation.id).statut).toBe('en_cours');
+    await attendreGenerations();
+    const apres = await (await filmRoute.GET(req('/x'), P(id))).json();
+    expect(apres.film.generations.find((g: { id: string }) => g.id === generation.id).statut).toBe('reussie');
+    expect(apres.film.scenes[0].plans[0].media?.origine).toBe('genere');
+  }, 60_000);
+
+  it('double clic / deux onglets : UNE seule generation, les autres recoivent 409 sans rien lancer', async () => {
+    const id = await creerFilm();
+    const planId = (await ctx.films.lire(id, A))!.film.scenes[0].plans[0].id;
+    const reponses = await Promise.all([1, 2, 3, 4].map(() =>
+      generationRoute.POST(req('/x', { method: 'POST', json: { planId, operation: 'image' } }), P(id))));
+    const statuts = reponses.map((x) => x.status).sort();
+    expect(statuts).toEqual([202, 409, 409, 409]);
+    const refus = await Promise.all(reponses.filter((x) => x.status === 409).map((x) => x.json()));
+    for (const c of refus) expect(c).toMatchObject({ ok: false, enCours: true });
+    await attendreGenerations();
+    const film = (await ctx.films.lire(id, A))!.film;
+    expect(film.generations).toHaveLength(1);
+    expect(memObjets.cles().filter((c) => c.includes('/medias/'))).toHaveLength(1);
+  }, 60_000);
+
+  it('une generation sans executeur depuis trop longtemps est lue « interrompue » et libere la place', async () => {
+    const id = await creerFilm();
+    const planId = (await ctx.films.lire(id, A))!.film.scenes[0].plans[0].id;
+    const vieux = new Date(Date.now() - 20 * 60_000).toISOString();
+    await modifierFilm(ctx.films, id, A, (f) => ({ ...f, generations: [{
+      id: 'g-morte', planId, operation: 'image', mode: 'simulee', statut: 'en_cours', creeLe: vieux, majLe: vieux,
+    }] }));
+    const lu = await (await filmRoute.GET(req('/x'), P(id))).json();
+    expect(lu.film.generations[0].statut).toBe('interrompue');
+    const r = await generationRoute.POST(req('/x', { method: 'POST', json: { planId, operation: 'image' } }), P(id));
+    expect(r.status).toBe(202);
+    await attendreGenerations();
+  }, 60_000);
+
+  it('un compte ne voit, ni ne lance, de generation sur le film d’un autre (404)', async () => {
+    const id = await creerFilm();
+    const planId = (await ctx.films.lire(id, A))!.film.scenes[0].plans[0].id;
+    session.userId = B;
+    expect((await generationRoute.POST(req('/x', { method: 'POST', json: { planId, operation: 'image' } }), P(id))).status).toBe(404);
+    session.userId = A;
   });
 });
 
