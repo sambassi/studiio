@@ -87,6 +87,13 @@ export type ResultatGenerationPlan =
      */
     jamaisEnvoye?: boolean;
     incertain?: boolean;
+    /**
+     * L'appel est parti et a echoue, mais le fournisseur DOCUMENTE que cette issue n'est
+     * pas facturee (voir `fournisseur.ts`). `depenseUsd` vaut alors 0 et la reservation
+     * est liberee, exactement comme si rien n'etait parti : la consequence financiere est
+     * la meme, et le compteur du film ne doit pas grossir d'une depense qui n'existe pas.
+     */
+    nonFacture?: boolean;
   };
 
 /** Les apparences des personnages PRESENTS dans un plan, dans la forme qu'un fournisseur recoit. */
@@ -183,8 +190,12 @@ export async function genererMediaPlan(film: Film, planId: string, options: Opti
     // L'appel est parti : qu'il reussisse ou non, il peut avoir ete facture.
     if (!resultat.ok) {
       return {
-        ok: false, erreur: resultat.erreur, depenseUsd: devis.totalUsd ?? 0,
+        ok: false, erreur: resultat.erreur,
+        // `nonFacture` : le fournisseur s'engage par ecrit a ne pas facturer cette issue —
+        // rien n'est ajoute au compteur du film, et la reservation sera liberee.
+        depenseUsd: resultat.nonFacture ? 0 : (devis.totalUsd ?? 0),
         jamaisEnvoye: resultat.jamaisEnvoye, incertain: resultat.incertain,
+        nonFacture: resultat.nonFacture,
       };
     }
     fichierTemporaire = resultat.fichier;
@@ -205,8 +216,12 @@ export async function genererMediaPlan(film: Film, planId: string, options: Opti
     });
     if (!resultat.ok) {
       return {
-        ok: false, erreur: resultat.erreur, depenseUsd: devis.totalUsd ?? 0,
+        ok: false, erreur: resultat.erreur,
+        // `nonFacture` : le fournisseur s'engage par ecrit a ne pas facturer cette issue —
+        // rien n'est ajoute au compteur du film, et la reservation sera liberee.
+        depenseUsd: resultat.nonFacture ? 0 : (devis.totalUsd ?? 0),
         jamaisEnvoye: resultat.jamaisEnvoye, incertain: resultat.incertain,
+        nonFacture: resultat.nonFacture,
       };
     }
     fichierTemporaire = resultat.fichier;

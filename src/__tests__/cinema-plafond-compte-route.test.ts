@@ -54,7 +54,10 @@ describe('la route réserve la dépense AVANT les crédits, et la libère si les
 
 describe('après l’appel, la dépense est finalisée avec l’issue RÉELLE — jamais devinée', () => {
   it('échec : `jamaisEnvoye` → liberee, `incertain` → incertaine, sinon confirmee', () => {
-    expect(r).toContain("const statutDepense: StatutDepense = ('jamaisEnvoye' in resultat && resultat.jamaisEnvoye) ? 'liberee'");
+    expect(r).toContain("const statutDepense: StatutDepense = (('jamaisEnvoye' in resultat && resultat.jamaisEnvoye)");
+    // Une issue que le fournisseur s'engage à ne pas facturer (`failed`, `nsfw`, annulation
+    // avant traitement) libère la réservation, exactement comme « jamais envoyé ».
+    expect(r).toContain("|| ('nonFacture' in resultat && resultat.nonFacture)) ? 'liberee'");
     expect(r).toContain(": ('incertain' in resultat && resultat.incertain) ? 'incertaine' : 'confirmee';");
   });
 
