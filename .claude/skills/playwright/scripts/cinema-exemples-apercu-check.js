@@ -19,6 +19,7 @@ const SCREENSHOT_DIR = process.env.CINEMA_CHECK_SCREENSHOT_DIR || '/tmp/cinema-e
 
 const VIEWPORTS = [
   { nom: 'desktop-1440x900', width: 1440, height: 900 },
+  { nom: 'tablette-820x1180', width: 820, height: 1180 },
   { nom: 'mobile-390x844', width: 390, height: 844 },
 ];
 
