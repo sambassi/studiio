@@ -13,11 +13,13 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Clapperboard, Users, Wand2, Link2, MessageSquare, Play, Pause, Download,
+  Clapperboard, Users, Wand2, Link2, Play, Pause, Download,
   Info, Loader2, Plus, Trash2, RefreshCw, CheckCircle2, AlertTriangle,
   ImageIcon, Film, Volume2, VolumeX, Upload, Sparkles, X, Check, Circle,
+  ChevronDown, ChevronLeft, ChevronRight,
 } from 'lucide-react';
-import { useTarifs, libellePrix } from '@/lib/tarifs/client';
+import { useTarifs, libellePrix, type TarifsEcran } from '@/lib/tarifs/client';
+import { ratioCadre } from '@/lib/ui/lecteur-generation';
 
 interface SegmentApi {
   sceneId: string; sceneIndex: number; planId: string; cadre: string;
@@ -43,6 +45,9 @@ const generationActiveDe = (f: FilmApi | null) => f?.generations?.find((g) => g.
 /** La derniere generation d'un plan, quelle qu'en soit l'issue. */
 const derniereGenerationDuPlan = (f: FilmApi | null, planId: string) =>
   [...(f?.generations ?? [])].reverse().find((g) => g.planId === planId) ?? null;
+/** Les medias sont stockes en chemin relatif : meme regle de normalisation partout (voir `Apercu`). */
+/** Le plan « representatif » d'une scene pour la vignette et le panneau de droite : celui qui a deja un media, sinon le premier. Une scene a plusieurs plans ; l'ecran n'en resume qu'un seul media, comme la maquette. */
+const planRepresentatifDeScene = (scene: SceneApi) => scene.plans.find((p) => p.media) ?? scene.plans[0] ?? null;
 type StatutTravailApi = 'en_attente' | 'en_cours' | 'termine' | 'echec' | 'annule';
 interface TravailApi {
   id: string; filmId: string; statut: StatutTravailApi; erreur: string | null; reference: string | null; annulationDemandee: boolean;
@@ -54,14 +59,13 @@ interface DevisApi { totalUsd: number | null; secondesAProduire: number; fournis
 
 const HISTOIRE_EXEMPLE = "Nina entre dans la salle avant le lever du jour. Le tatami est encore froid et personne ne parle. Marco la regarde sans bouger. Nina sait que le combat a deja commence. Marco avance et le silence se brise. Nina tient bon jusqu au dernier instant. Le jour se leve sur la salle vide.";
 
+/** Rail visuel condense : les 7 sections reelles (voir panneaux) se regroupent en 5 etapes a l'ecran. */
 const ETAPES = [
   { icone: Clapperboard, titre: 'Histoire' },
   { icone: Users, titre: 'Personnages' },
-  { icone: Wand2, titre: 'Scenario' },
-  { icone: Link2, titre: 'Association' },
-  { icone: MessageSquare, titre: 'Plans et dialogues' },
+  { icone: Wand2, titre: 'Scenes' },
   { icone: Play, titre: 'Apercu' },
-  { icone: Download, titre: 'Export MP4' },
+  { icone: Download, titre: 'Export' },
 ];
 
 /** Detail replie derriere une icone — l'UI reste epuree, l'information reste accessible. */
@@ -81,6 +85,240 @@ function Detail({ texte }: { texte: string }) {
         <span className="ml-2 text-xs text-slate-400 max-w-md">{texte}</span>
       )}
     </span>
+  );
+}
+
+/**
+ * PANNEAU REPLIABLE — numerote, colonne de gauche. Ouvert par defaut (rien de
+ * nouveau n'est cache au chargement), repliable au clic pour l'ecran epure.
+ */
+/**
+ * `ouvertControle`/`onChangerOuvert` sont optionnels : sans eux, le panneau gere son
+ * propre etat (comportement d'origine). Le rail d'etapes a besoin d'OUVRIR un panneau
+ * precis depuis l'exterieur (ex. cliquer « Personnages ») — d'ou ce controle optionnel,
+ * plutot que de dupliquer tout le composant.
+ */
+function CollapsiblePanel({ numero, titre, icone: Icone, badge, children, ouvertControle, onChangerOuvert }: {
+  numero: number; titre: string; icone: typeof Clapperboard; badge?: React.ReactNode; children: React.ReactNode;
+  ouvertControle?: boolean; onChangerOuvert?: (v: boolean) => void;
+}) {
+  const [ouvertInterne, setOuvertInterne] = useState(true);
+  const ouvert = ouvertControle ?? ouvertInterne;
+  const basculer = () => (onChangerOuvert ? onChangerOuvert(!ouvert) : setOuvertInterne((v) => !v));
+  const id = `panneau-cinema-${numero}`;
+  return (
+    // L'id est sur la SECTION (toujours montee), pas sur le contenu replie : le rail
+    // d'etapes doit pouvoir defiler vers un panneau meme ferme.
+    <section id={id} className="rounded-xl border border-slate-800 bg-slate-900/40 scroll-mt-4">
+      <button
+        type="button"
+        onClick={basculer}
+        aria-expanded={ouvert}
+        aria-controls={`${id}-contenu`}
+        className="w-full flex items-center gap-3 px-5 py-4 text-left"
+      >
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-500/15 text-xs font-semibold text-violet-300">{numero}</span>
+        <Icone className="w-4 h-4 text-violet-400 shrink-0" />
+        <span className="font-semibold flex-1">{titre}</span>
+        {badge}
+        <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform shrink-0 ${ouvert ? 'rotate-180' : ''}`} />
+      </button>
+      {ouvert && <div id={`${id}-contenu`} className="px-5 pb-5">{children}</div>}
+    </section>
+  );
+}
+
+/**
+ * Vignette : le media REEL du plan, ou un repli sobre — jamais un media invente.
+ *
+ * ⚠️ `media.url` est la cle de STOCKAGE (prive), pas une URL navigable — c'est pour ca
+ * que `Apercu` (plus haut dans l'arbre) ne l'affiche jamais directement non plus : il
+ * recoit `segment.media.url` deja resolu par l'API montage. Ici, le media vient du FILM
+ * (`plan.media`), jamais resolu : on passe par la MEME route authentifiee que le reste
+ * de l'app (`/api/cinema/films/{filmId}/medias/{planId}`), proprietaire seulement.
+ */
+function VignetteMedia({ media, filmId, planId, taille }: { media: MediaApi | null; filmId: string; planId: string; taille: 'petite' | 'grande' }) {
+  const classe = taille === 'petite' ? 'w-16 h-16' : 'w-full h-40';
+  if (!media) {
+    return (
+      <span className={`${classe} flex shrink-0 items-center justify-center rounded-lg bg-slate-800 text-slate-600`}>
+        <ImageIcon className="w-5 h-5" />
+      </span>
+    );
+  }
+  const url = `/api/cinema/films/${filmId}/medias/${planId}`;
+  return media.genre === 'image' ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={url} alt="" className={`${classe} shrink-0 rounded-lg object-cover`} />
+  ) : (
+    <video src={url} className={`${classe} shrink-0 rounded-lg object-cover`} muted playsInline preload="metadata" />
+  );
+}
+
+/**
+ * CARROUSEL DE SCENES — colonne de droite. Navigation de confort (scroll vers
+ * la scene dans la liste de gauche) : aucune donnee n'est dupliquee ni
+ * mutee ici, la liste de gauche reste la seule source d'edition.
+ *
+ * Le bloc « details de la scene » (media, etat de generation, actions) agit sur le
+ * plan REPRESENTATIF de la scene (`planRepresentatifDeScene`) : une scene a plusieurs
+ * plans dans le modele actuel, cet ecran compact n'en resume qu'un seul, comme la
+ * maquette. L'edition complete, plan par plan, reste dans le panneau 4 a gauche.
+ */
+function SceneCarousel({
+  film, surRelancer, enCours, travailActif,
+  generationIa, generationMode, tarifs, enCoursTexte,
+  confirmation, surGenererMedia, surImporterMedia,
+}: {
+  film: FilmApi; surRelancer: (sceneId: string) => void; enCours: boolean; travailActif: boolean;
+  generationIa: boolean; generationMode: 'simulee' | 'reelle' | null; tarifs: TarifsEcran; enCoursTexte: string | null;
+  confirmation: { planId: string; operation: 'image' | 'video' } | null;
+  surGenererMedia: (planId: string, operation: 'image' | 'video') => void;
+  surImporterMedia: (planId: string, fichier: File) => void;
+}) {
+  const [index, setIndex] = useState(0);
+  const scenes = film.scenes;
+  const i = Math.min(index, Math.max(0, scenes.length - 1));
+  const scene = scenes[i];
+  if (!scene) return null;
+  const plan = planRepresentatifDeScene(scene);
+
+  const allerA = (k: number) => {
+    const cible = scenes[k];
+    if (!cible) return;
+    setIndex(k);
+    document.getElementById(`scene-cinema-${cible.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  return (
+    <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Scenes ({scenes.length})</h3>
+      <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Choisir une scene">
+        {scenes.map((s, k) => {
+          const planVignette = planRepresentatifDeScene(s);
+          return (
+            <button
+              key={s.id}
+              type="button"
+              role="tab"
+              aria-selected={k === i}
+              onClick={() => allerA(k)}
+              title={s.titre}
+              className={`relative shrink-0 overflow-hidden rounded-lg border ${k === i ? 'border-violet-500/70 ring-2 ring-violet-500/40' : 'border-slate-700 hover:border-slate-600'}`}
+            >
+              <VignetteMedia media={planVignette?.media ?? null} filmId={film.id} planId={planVignette?.id ?? ''} taille="petite" />
+              <span className="absolute bottom-0 inset-x-0 bg-slate-950/80 text-center text-[10px] leading-4 text-slate-200">{k + 1}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mt-3 rounded-lg border border-slate-800/80 bg-slate-950/60 p-3">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => allerA(i - 1)}
+            disabled={i === 0}
+            aria-label="Scene precedente"
+            title="Scene precedente"
+            className="rounded p-1 text-slate-500 hover:text-violet-300 disabled:opacity-30 transition-colors"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <span className="flex-1 text-sm font-semibold truncate">{i + 1}/{scenes.length} · {scene.titre}</span>
+          <button
+            type="button"
+            onClick={() => allerA(i + 1)}
+            disabled={i === scenes.length - 1}
+            aria-label="Scene suivante"
+            title="Scene suivante"
+            className="rounded p-1 text-slate-500 hover:text-violet-300 disabled:opacity-30 transition-colors"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+        </div>
+        <p className="mt-1 text-xs text-slate-400">{scene.lieu} · {scene.intention}</p>
+        {scene.plans[0] && (
+          <p className="mt-2 text-xs text-slate-300 line-clamp-2">{scene.plans[0].dialogue?.texte ?? scene.plans[0].description}</p>
+        )}
+
+        {/* Details de la scene : le media REEL du plan representatif, son etat de generation reel, et les deux actions distinctes.
+            ⚠️ Le suivi INTERACTIF (confirmation payante, « en cours ») reste UNIQUEMENT dans le panneau 4 a
+            gauche (`SuiviGenerationPlan`) : deux confirmations actives pour le MEME plan violeraient la regle
+            « une seule action principale » et rendaient `findByRole('group', ...)`/`findByText` ambigus (tests
+            cinema-page.test.tsx). Ici, uniquement un reflet non-interactif, en texte distinct. */}
+        {plan && (
+          <div className="mt-3 space-y-2">
+            <VignetteMedia media={plan.media} filmId={film.id} planId={plan.id} taille="grande" />
+            <div className="min-w-0 space-y-2">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                {(() => {
+                  const generation = derniereGenerationDuPlan(film, plan.id);
+                  const enAttenteConfirmation = confirmation?.planId === plan.id;
+                  if (enAttenteConfirmation) return <span className="text-amber-300">confirmation en attente dans le panneau Scenes (a gauche)</span>;
+                  if (generation?.statut === 'en_cours') return <span className="inline-flex items-center gap-1 text-violet-300"><Loader2 className="w-3 h-3 animate-spin" /> generation en cours…</span>;
+                  if (generation?.statut === 'echouee' || generation?.statut === 'interrompue') return <span className="inline-flex items-center gap-1 text-rose-300"><AlertTriangle className="w-3 h-3" /> derniere generation en echec</span>;
+                  return <span>{plan.media ? 'media importe' : 'aucun media pour ce plan'}</span>;
+                })()}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <label
+                  title={plan.media ? 'Remplacer le media de ce plan' : 'Importer un media pour ce plan'}
+                  className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 text-xs cursor-pointer hover:border-violet-500/50"
+                >
+                  {enCoursTexte === `media:${plan.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                  {plan.media ? 'Remplacer' : 'Importer'}
+                  <input
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.webm,.m4v"
+                    className="hidden"
+                    aria-label={plan.media ? 'Remplacer le media de ce plan' : 'Importer un media pour ce plan'}
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) surImporterMedia(plan.id, f); e.target.value = ''; }}
+                  />
+                </label>
+                {generationIa && !plan.media && (
+                  <button
+                    type="button"
+                    onClick={() => surGenererMedia(plan.id, 'image')}
+                    disabled={enCours || !!generationActiveDe(film)}
+                    aria-label="Regenerer l’image de ce plan par IA"
+                    title="Regenerer l’image de ce plan par IA"
+                    className="inline-flex items-center gap-1 rounded border border-violet-700/60 px-2 py-1 text-xs hover:border-violet-400 disabled:opacity-50"
+                  >
+                    {enCoursTexte === `generation:${plan.id}:image` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                    Regenerer (IA)
+                    {generationMode === 'reelle' && <span className="text-violet-300/80">· {libellePrix(tarifs, 'ai.generate_background')}</span>}
+                  </button>
+                )}
+                {generationIa && plan.media?.genre === 'image' && (
+                  <button
+                    type="button"
+                    onClick={() => surGenererMedia(plan.id, 'video')}
+                    disabled={enCours || !!generationActiveDe(film)}
+                    aria-label="Animer ce plan en video par IA"
+                    title="Animer ce plan en video par IA"
+                    className="inline-flex items-center gap-1 rounded border border-violet-700/60 px-2 py-1 text-xs hover:border-violet-400 disabled:opacity-50"
+                  >
+                    {enCoursTexte === `generation:${plan.id}:video` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                    Regenerer en video (IA)
+                    {generationMode === 'reelle' && <span className="text-violet-300/80">· {libellePrix(tarifs, 'ai.image_to_video')}</span>}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={() => surRelancer(scene.id)}
+          disabled={enCours || travailActif}
+          className="mt-3 inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-1.5 text-xs hover:border-violet-500/50 disabled:opacity-50"
+        >
+          <RefreshCw className="w-3 h-3" /> Relancer le rendu de la scene affichee
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -105,6 +343,30 @@ export default function CinemaPage() {
   const [mesFilms, setMesFilms] = useState<Array<{ id: string; titre: string; majLe: string }>>([]);
   /** Suppression en deux gestes : l'icone arme, la coche confirme. */
   const [suppressionArmee, setSuppressionArmee] = useState(false);
+  /**
+   * Etat des panneaux 1/2/3/4 remonte ici : le rail d'etapes doit pouvoir en OUVRIR un
+   * (et REFERMER les autres) depuis l'exterieur sans perdre la saisie en cours —
+   * c'est un simple affichage, aucune donnee de formulaire ne vit dans cet etat.
+   * Un clic DIRECT sur l'en-tete d'un panneau (via `basculer` dans `CollapsiblePanel`)
+   * reste independant de cette exclusivite : il ne touche qu'a sa propre cle.
+   */
+  const [panneauxOuverts, setPanneauxOuverts] = useState<Record<number, boolean>>({ 1: true, 2: true, 3: true, 4: true });
+  /**
+   * Panneaux ouverts par etape du rail (les autres se referment) : « une seule
+   * configuration principale a la fois ». Le panneau 3 (« Composer le scenario »)
+   * n'a pas d'etape dediee dans le rail a 5 entrees — c'est l'action-pont entre
+   * Histoire et Personnages (il faut l'un ou l'autre avant de composer), donc il
+   * reste visible pendant ces deux etapes et se referme des que des scenes existent.
+   */
+  const PANNEAUX_PAR_ETAPE: number[][] = [[1, 3], [2, 3], [4], [], []];
+  /** Cible DOM de chaque etape du rail, dans l'ordre Histoire/Personnages/Scenes/Apercu/Export. */
+  const allerAEtape = (index: number) => {
+    const ouverts = new Set(PANNEAUX_PAR_ETAPE[index] ?? []);
+    setPanneauxOuverts({ 1: ouverts.has(1), 2: ouverts.has(2), 3: ouverts.has(3), 4: ouverts.has(4) });
+    const idCible = ['panneau-cinema-1', 'panneau-cinema-2', 'panneau-cinema-4', 'cinema-apercu', 'cinema-export'][index];
+    // Le panneau peut venir de s'ouvrir dans ce meme rendu : laisser le DOM se poser avant de defiler.
+    requestAnimationFrame(() => document.getElementById(idCible)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
 
   const appliquer = useCallback((data: any) => {
     if (data?.film) setFilm(data.film);
@@ -468,7 +730,7 @@ export default function CinemaPage() {
   }, [filmId, travailId, actif, rafraichirFilm]);
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8 text-slate-100">
+    <div className="max-w-7xl mx-auto px-4 py-8 text-slate-100">
       <header className="mb-8">
         <div className="flex items-center gap-3">
           <Clapperboard className="w-7 h-7 text-violet-400" />
@@ -504,15 +766,24 @@ export default function CinemaPage() {
         )}
       </header>
 
-      {/* Rail des etapes */}
+      {/* Rail des etapes — raccourci de navigation ; les panneaux ci-dessous restent TOUS accessibles, rien n'est cache. */}
       <ol className="flex flex-wrap gap-2 mb-8">
         {ETAPES.map((e, i) => {
           const Icone = e.icone;
-          const atteinte = i < 2 || !!film;
+          const atteintes = [true, true, !!film, !!montage, !!film];
+          const atteinte = atteintes[i];
           return (
-            <li key={e.titre} className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm ${atteinte ? 'border-violet-500/40 bg-violet-500/10 text-violet-200' : 'border-slate-700 bg-slate-900/50 text-slate-500'}`}>
-              <Icone className="w-4 h-4" />
-              <span>{i + 1}. {e.titre}</span>
+            <li key={e.titre}>
+              <button
+                type="button"
+                onClick={() => allerAEtape(i)}
+                aria-label={`Aller a l’etape ${e.titre}`}
+                title={e.titre}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors ${atteinte ? 'border-violet-500/40 bg-violet-500/10 text-violet-200 hover:border-violet-400/60' : 'border-slate-700 bg-slate-900/50 text-slate-500 hover:border-slate-600'}`}
+              >
+                <Icone className="w-4 h-4" />
+                <span>{i + 1}. {e.titre}</span>
+              </button>
             </li>
           );
         })}
@@ -525,283 +796,312 @@ export default function CinemaPage() {
         </div>
       )}
 
-      {/* 1 — Histoire */}
-      <section className="mb-8 rounded-xl border border-slate-800 bg-slate-900/40 p-5">
-        <h2 className="font-semibold mb-4 flex items-center gap-2"><Clapperboard className="w-4 h-4 text-violet-400" /> 1. Histoire</h2>
-        <input
-          value={titre}
-          onChange={(e) => setTitre(e.target.value)}
-          placeholder="Titre du film"
-          className="w-full mb-3 rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm"
-        />
-        <textarea
-          value={histoire}
-          onChange={(e) => setHistoire(e.target.value)}
-          rows={5}
-          className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm leading-relaxed"
-        />
-        <div className="mt-3 flex flex-wrap gap-4 text-sm">
-          <label className="flex items-center gap-2">Format
-            <select value={format} onChange={(e) => setFormat(e.target.value as '16:9' | '9:16')} className="rounded bg-slate-950 border border-slate-700 px-2 py-1">
-              <option value="16:9">16:9</option>
-              <option value="9:16">9:16</option>
-            </select>
-          </label>
-          <label className="flex items-center gap-2">Qualite
-            <select value={qualite} onChange={(e) => setQualite(e.target.value)} className="rounded bg-slate-950 border border-slate-700 px-2 py-1">
-              <option value="brouillon">brouillon</option>
-              <option value="standard">standard</option>
-              <option value="cinema">cinema</option>
-            </select>
-            <Detail texte="La qualite choisit la resolution et le fournisseur visuel. Seul le fournisseur local (gratuit) est actif aujourd'hui : les trois qualites rendent donc le meme type d'image." />
-          </label>
-          <label className="flex items-center gap-2">Scenes
-            <input type="number" min={3} max={5} value={nbScenes} onChange={(e) => setNbScenes(Number(e.target.value))} className="w-16 rounded bg-slate-950 border border-slate-700 px-2 py-1" />
-          </label>
-        </div>
-      </section>
-
-      {/* 2 — Personnages */}
-      <section className="mb-8 rounded-xl border border-slate-800 bg-slate-900/40 p-5">
-        <h2 className="font-semibold mb-4 flex items-center gap-2">
-          <Users className="w-4 h-4 text-violet-400" /> 2. Personnages et references
-          <Detail texte="Une apparence changee cree une VERSION de reference : les anciennes restent lisibles, et les scenes concernees sont marquees a reproduire. Aucune coherence visuelle en generation IA n'est promise : rien n'a encore ete teste avec un fournisseur." />
-        </h2>
-        <div className="space-y-3">
-          {casting.map((p, i) => (
-            <div key={i} className="grid grid-cols-1 md:grid-cols-4 gap-2">
-              <input value={p.nom} onChange={(e) => setCasting(casting.map((c, k) => k === i ? { ...c, nom: e.target.value } : c))} placeholder="Nom" className="rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm" />
-              <input value={p.role} onChange={(e) => setCasting(casting.map((c, k) => k === i ? { ...c, role: e.target.value } : c))} placeholder="Role" className="rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm" />
-              <input value={p.description} onChange={(e) => setCasting(casting.map((c, k) => k === i ? { ...c, description: e.target.value } : c))} placeholder="Apparence (reference)" className="rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm md:col-span-2" />
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_380px] gap-6 items-start">
+        {/* Colonne de gauche — panneaux numerotes, repliables, defilement independant. */}
+        <div className="space-y-4 min-w-0 lg:max-h-[calc(100vh-180px)] lg:overflow-y-auto lg:pr-1 order-2 lg:order-1">
+          <CollapsiblePanel
+            numero={1} titre="Histoire" icone={Clapperboard}
+            ouvertControle={panneauxOuverts[1]} onChangerOuvert={(v) => setPanneauxOuverts((p) => ({ ...p, 1: v }))}
+          >
+            <input
+              value={titre}
+              onChange={(e) => setTitre(e.target.value)}
+              placeholder="Titre du film"
+              className="w-full mb-3 rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm"
+            />
+            <textarea
+              value={histoire}
+              onChange={(e) => setHistoire(e.target.value)}
+              rows={5}
+              className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm leading-relaxed"
+            />
+            <div className="mt-3 flex flex-wrap gap-4 text-sm">
+              <label className="flex items-center gap-2">Format
+                <select value={format} onChange={(e) => setFormat(e.target.value as '16:9' | '9:16')} className="rounded bg-slate-950 border border-slate-700 px-2 py-1">
+                  <option value="16:9">16:9</option>
+                  <option value="9:16">9:16</option>
+                </select>
+              </label>
+              <label className="flex items-center gap-2">Qualite
+                <select value={qualite} onChange={(e) => setQualite(e.target.value)} className="rounded bg-slate-950 border border-slate-700 px-2 py-1">
+                  <option value="brouillon">brouillon</option>
+                  <option value="standard">standard</option>
+                  <option value="cinema">cinema</option>
+                </select>
+                <Detail texte="La qualite choisit la resolution et le fournisseur visuel. Seul le fournisseur local (gratuit) est actif aujourd'hui : les trois qualites rendent donc le meme type d'image." />
+              </label>
+              <label className="flex items-center gap-2">Scenes
+                <input type="number" min={3} max={5} value={nbScenes} onChange={(e) => setNbScenes(Number(e.target.value))} className="w-16 rounded bg-slate-950 border border-slate-700 px-2 py-1" />
+              </label>
             </div>
-          ))}
-        </div>
-        <div className="mt-3 flex gap-2">
-          <button onClick={() => setCasting([...casting, { nom: '', role: '', description: '', urlImage: '' }])} className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm hover:border-violet-500/50">
-            <Plus className="w-4 h-4" /> Ajouter un personnage
-          </button>
-          {casting.length > 1 && (
-            <button onClick={() => setCasting(casting.slice(0, -1))} className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm hover:border-red-500/50">
-              <Trash2 className="w-4 h-4" /> Retirer le dernier
-            </button>
-          )}
-        </div>
-      </section>
+          </CollapsiblePanel>
 
-      {/* 3 — Scenario */}
-      <section className="mb-8 rounded-xl border border-slate-800 bg-slate-900/40 p-5">
-        <h2 className="font-semibold mb-4 flex items-center gap-2"><Wand2 className="w-4 h-4 text-violet-400" /> 3. Scenario</h2>
-        <button onClick={composer} disabled={enCours !== null} className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium hover:bg-violet-500 disabled:opacity-50">
-          {enCours === 'scenario' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
-          Composer le scenario
-        </button>
-        {film && montage && (
-          <p className="mt-4 text-sm text-slate-300">
-            {film.scenes.length} scenes, {montage.segments.length} plans, {montage.dureeS.toFixed(1)} s, {montage.largeur}x{montage.hauteur}.
-          </p>
-        )}
-      </section>
-
-      {film && (
-        <>
-          {/* 4 et 5 — Association, plans et dialogues */}
-          <section className="mb-8 rounded-xl border border-slate-800 bg-slate-900/40 p-5">
-            <h2 className="font-semibold mb-4 flex items-center gap-2">
-              <Link2 className="w-4 h-4 text-violet-400" /> 4 et 5. Scenes, personnages, repliques
-              {aProduire.length > 0 && (
-                <span className="ml-2 text-xs px-2 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                  {aProduire.length} scene(s) a reproduire
-                </span>
-              )}
-            </h2>
-            <div className="space-y-5">
-              {film.scenes.map((scene) => (
-                <div key={scene.id} className="rounded-lg border border-slate-800 bg-slate-950/60 p-4">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span className="text-xs text-pink-400 font-semibold tracking-widest">SCENE {scene.index + 1} · {scene.intention.toUpperCase()}</span>
-                    <span className="font-semibold">{scene.titre}</span>
-                    <span className="text-xs text-slate-400">{scene.lieu}</span>
-                    {scene.etat === 'validee' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
-                    {/* Actions secondaires : icones, libelle accessible (UX-PREMIUM.md). */}
-                    <button
-                      type="button"
-                      onClick={() => enregistrer({ scenes: [{ id: scene.id, etat: scene.etat === 'validee' ? 'brouillon' : 'validee' }] })}
-                      aria-label={scene.etat === 'validee' ? 'Repasser la scene en brouillon' : 'Valider la scene'}
-                      aria-pressed={scene.etat === 'validee'}
-                      title={scene.etat === 'validee' ? 'Repasser en brouillon' : 'Valider la scene'}
-                      className="ml-auto rounded p-1.5 text-slate-500 hover:text-emerald-300 transition-colors"
-                    >
-                      <CheckCircle2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => produire([scene.id])}
-                      disabled={enCours !== null || ACTIF(travail)}
-                      aria-label="Regenerer cette scene"
-                      title="Regenerer cette scene"
-                      className="rounded p-1.5 text-slate-500 hover:text-violet-300 transition-colors disabled:opacity-40"
-                    >
-                      <RefreshCw className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {film.personnages.map((p) => {
-                      const present = scene.personnages.includes(p.id);
-                      return (
-                        <button
-                          key={p.id}
-                          onClick={() => enregistrer({ scenes: [{ id: scene.id, personnages: present ? scene.personnages.filter((x) => x !== p.id) : [...scene.personnages, p.id] }] })}
-                          className={`text-xs rounded-full px-3 py-1 border ${present ? 'border-violet-500/50 bg-violet-500/15 text-violet-200' : 'border-slate-700 text-slate-400'}`}
-                        >
-                          {p.nom}
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <div className="mt-3 space-y-2">
-                    {scene.plans.map((plan) => (
-                      <div key={plan.id} className="rounded border border-slate-800/80 bg-slate-900/40 p-2">
-                        <div className="flex flex-col md:flex-row md:items-center gap-2">
-                          <span className="text-xs text-slate-500 w-32 shrink-0">{plan.cadre} · {plan.dureeS.toFixed(1)} s</span>
-                          <input
-                            defaultValue={plan.dialogue?.texte ?? plan.description}
-                            onBlur={(e) => {
-                              const texte = e.target.value;
-                              if (texte !== (plan.dialogue?.texte ?? plan.description)) enregistrer({ plans: [{ id: plan.id, texte }] });
-                            }}
-                            className="flex-1 rounded bg-slate-950 border border-slate-800 px-3 py-2 text-sm"
-                          />
-                          {plan.dialogue && (
-                            <span className="text-xs text-pink-300 w-24 shrink-0">
-                              {film.personnages.find((p) => p.id === plan.dialogue?.personnageId)?.nom ?? 'narrateur'}
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                          {/* Media du plan : importe en octets, mesure par le serveur. */}
-                          {plan.media ? (
-                            <>
-                              <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-emerald-200">
-                                {plan.media.genre === 'image' ? <ImageIcon className="w-3 h-3" /> : <Film className="w-3 h-3" />}
-                                {plan.media.largeur}x{plan.media.hauteur}
-                                {plan.media.dureeS !== null && ` · ${plan.media.dureeS.toFixed(1)} s`}
-                                {` · ${(plan.media.octets / 1_000_000).toFixed(1)} Mo`}
-                              </span>
-                              {plan.media.genre === 'video' && (
-                                <button
-                                  onClick={() => enregistrer({ plans: [{ id: plan.id, sonMedia: !plan.media?.sonActif }] })}
-                                  className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 hover:border-violet-500/50"
-                                >
-                                  {plan.media.sonActif ? <Volume2 className="w-3 h-3" /> : <VolumeX className="w-3 h-3" />}
-                                  {plan.media.sonActif ? 'son du rush garde' : 'son du rush coupe'}
-                                </button>
-                              )}
-                              <button
-                                onClick={() => enregistrer({ plans: [{ id: plan.id, media: null }] })}
-                                className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 hover:border-red-500/50"
-                              >
-                                <Trash2 className="w-3 h-3" /> retirer
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <label className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 cursor-pointer hover:border-violet-500/50">
-                                {enCours === `media:${plan.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
-                                Importer une image ou une video
-                                <input
-                                  type="file"
-                                  accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.webm,.m4v"
-                                  className="hidden"
-                                  onChange={(e) => { const f = e.target.files?.[0]; if (f) importerMedia(plan.id, f); e.target.value = ''; }}
-                                />
-                              </label>
-                              {generationIa && (
-                                <button
-                                  onClick={() => genererMedia(plan.id, 'image')}
-                                  disabled={enCours !== null || !!generationActiveDe(film)}
-                                  data-cinema-generation="image"
-                                  className="inline-flex items-center gap-1 rounded border border-violet-700/60 px-2 py-1 hover:border-violet-400 disabled:opacity-50"
-                                >
-                                  {enCours === `generation:${plan.id}:image` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                                  {generationMode === 'simulee' ? 'Generer (IA, simule)' : 'Generer l’image (IA)'}
-                                  {generationMode === 'reelle' && (
-                                    <span className="text-violet-300/80">· {libellePrix(tarifs, 'ai.generate_background')}</span>
-                                  )}
-                                </button>
-                              )}
-                            </>
-                          )}
-                          {generationIa && plan.media?.genre === 'image' && (
-                            <button
-                              onClick={() => genererMedia(plan.id, 'video')}
-                              disabled={enCours !== null || !!generationActiveDe(film)}
-                              data-cinema-generation="video"
-                              className="inline-flex items-center gap-1 rounded border border-violet-700/60 px-2 py-1 hover:border-violet-400 disabled:opacity-50"
-                            >
-                              {enCours === `generation:${plan.id}:video` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                              {generationMode === 'simulee' ? 'Animer en video (IA, simule)' : 'Animer en video (IA)'}
-                              {generationMode === 'reelle' && (
-                                <span className="text-violet-300/80">· {libellePrix(tarifs, 'ai.image_to_video')}</span>
-                              )}
-                            </button>
-                          )}
-
-                          <SuiviGenerationPlan
-                            generation={derniereGenerationDuPlan(film, plan.id)}
-                            confirmation={confirmation?.planId === plan.id ? confirmation.operation : null}
-                            prix={confirmation?.planId === plan.id
-                              ? libellePrix(tarifs, confirmation.operation === 'video' ? 'ai.image_to_video' : 'ai.generate_background')
-                              : ''}
-                            surConfirmer={() => confirmation && lancerGenerationIa(confirmation.planId, confirmation.operation)}
-                            surAnnuler={() => setConfirmation(null)}
-                          />
-
-                          {/* Personnages presents DANS CE PLAN. */}
-                          <span className="text-slate-600">|</span>
-                          {film.personnages.map((p) => {
-                            const present = plan.personnages.includes(p.id);
-                            return (
-                              <button
-                                key={p.id}
-                                onClick={() => enregistrer({ plans: [{ id: plan.id, personnages: present ? plan.personnages.filter((x) => x !== p.id) : [...plan.personnages, p.id] }] })}
-                                className={`rounded-full px-2 py-1 border ${present ? 'border-violet-500/50 bg-violet-500/15 text-violet-200' : 'border-slate-800 text-slate-500'}`}
-                              >
-                                {p.nom}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+          <CollapsiblePanel numero={2} titre="Personnages et references" icone={Users}
+            ouvertControle={panneauxOuverts[2]} onChangerOuvert={(v) => setPanneauxOuverts((p) => ({ ...p, 2: v }))}
+            badge={<Detail texte="Une apparence changee cree une VERSION de reference : les anciennes restent lisibles, et les scenes concernees sont marquees a reproduire. Aucune coherence visuelle en generation IA n'est promise : rien n'a encore ete teste avec un fournisseur." />}
+          >
+            <div className="space-y-3">
+              {casting.map((p, i) => (
+                <div key={i} className="grid grid-cols-1 md:grid-cols-4 gap-2">
+                  <input value={p.nom} onChange={(e) => setCasting(casting.map((c, k) => k === i ? { ...c, nom: e.target.value } : c))} placeholder="Nom" className="rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm" />
+                  <input value={p.role} onChange={(e) => setCasting(casting.map((c, k) => k === i ? { ...c, role: e.target.value } : c))} placeholder="Role" className="rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm" />
+                  <input value={p.description} onChange={(e) => setCasting(casting.map((c, k) => k === i ? { ...c, description: e.target.value } : c))} placeholder="Apparence (reference)" className="rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm md:col-span-2" />
                 </div>
               ))}
             </div>
-          </section>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button onClick={() => setCasting([...casting, { nom: '', role: '', description: '', urlImage: '' }])} className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm hover:border-violet-500/50">
+                <Plus className="w-4 h-4" /> Ajouter un personnage
+              </button>
+              {casting.length > 1 && (
+                <button onClick={() => setCasting(casting.slice(0, -1))} className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm hover:border-red-500/50">
+                  <Trash2 className="w-4 h-4" /> Retirer le dernier
+                </button>
+              )}
+            </div>
+          </CollapsiblePanel>
 
-          {/* 6 — Apercu */}
-          {montage && <Apercu montage={montage} surPreparerVoix={preparerVoix} voixEnCours={enCours === 'voix'} />}
-
-          {/* 7 — Export */}
-          <section className="mb-12 rounded-xl border border-slate-800 bg-slate-900/40 p-5">
-            <h2 className="font-semibold mb-4 flex items-center gap-2"><Download className="w-4 h-4 text-violet-400" /> 7. Export MP4</h2>
-            {devis && (
-              <p className="text-sm text-slate-300 mb-3">
-                Devis : {devis.totalUsd === null ? 'cout inconnu (tarif non declare)' : devis.totalUsd === 0 ? 'gratuit (rendu local)' : `${devis.totalUsd.toFixed(4)} USD`} pour {devis.secondesAProduire.toFixed(1)} s a produire.
-                <Detail texte="Le devis est etabli AVANT le rendu. Une scene inchangee n'est pas refaite : son MP4 est repris tel quel et recolle. Le plafond de depense est fixe par le serveur." />
+          <CollapsiblePanel
+            numero={3} titre="Scenario" icone={Wand2}
+            ouvertControle={panneauxOuverts[3]} onChangerOuvert={(v) => setPanneauxOuverts((p) => ({ ...p, 3: v }))}
+          >
+            <button onClick={composer} disabled={enCours !== null} className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium hover:bg-violet-500 disabled:opacity-50">
+              {enCours === 'scenario' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
+              Composer le scenario
+            </button>
+            {film && montage && (
+              <p className="mt-4 text-sm text-slate-300">
+                {film.scenes.length} scenes, {montage.segments.length} plans, {montage.dureeS.toFixed(1)} s, {montage.largeur}x{montage.hauteur}.
               </p>
             )}
-            <button onClick={() => produire()} disabled={enCours !== null || ACTIF(travail)} className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium hover:bg-violet-500 disabled:opacity-50">
-              {enCours === 'lancement' || ACTIF(travail) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              {ACTIF(travail) ? 'Production en cours' : 'Exporter le film'}
-            </button>
-            {travail && film && <Production film={film} travail={travail} surArreter={arreterProduction} />}
-          </section>
-        </>
-      )}
+          </CollapsiblePanel>
+
+          {film && (
+            <CollapsiblePanel numero={4} titre="Scenes, personnages, repliques" icone={Link2}
+              ouvertControle={panneauxOuverts[4]} onChangerOuvert={(v) => setPanneauxOuverts((p) => ({ ...p, 4: v }))}
+              badge={aProduire.length > 0 ? (
+                <span className="text-xs px-2 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                  {aProduire.length} scene(s) a reproduire
+                </span>
+              ) : undefined}
+            >
+              <div className="space-y-5">
+                {film.scenes.map((scene) => (
+                  <div key={scene.id} id={`scene-cinema-${scene.id}`} className="rounded-lg border border-slate-800 bg-slate-950/60 p-4 scroll-mt-4">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span className="text-xs text-pink-400 font-semibold tracking-widest">SCENE {scene.index + 1} · {scene.intention.toUpperCase()}</span>
+                      <span className="font-semibold">{scene.titre}</span>
+                      <span className="text-xs text-slate-400">{scene.lieu}</span>
+                      {scene.etat === 'validee' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+                      {/* Actions secondaires : icones, libelle accessible (UX-PREMIUM.md). */}
+                      <button
+                        type="button"
+                        onClick={() => enregistrer({ scenes: [{ id: scene.id, etat: scene.etat === 'validee' ? 'brouillon' : 'validee' }] })}
+                        aria-label={scene.etat === 'validee' ? 'Repasser la scene en brouillon' : 'Valider la scene'}
+                        aria-pressed={scene.etat === 'validee'}
+                        title={scene.etat === 'validee' ? 'Repasser en brouillon' : 'Valider la scene'}
+                        className="ml-auto rounded p-1.5 text-slate-500 hover:text-emerald-300 transition-colors"
+                      >
+                        <CheckCircle2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => produire([scene.id])}
+                        disabled={enCours !== null || ACTIF(travail)}
+                        aria-label="Regenerer cette scene"
+                        title="Regenerer cette scene"
+                        className="rounded p-1.5 text-slate-500 hover:text-violet-300 transition-colors disabled:opacity-40"
+                      >
+                        <RefreshCw className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {film.personnages.map((p) => {
+                        const present = scene.personnages.includes(p.id);
+                        return (
+                          <button
+                            key={p.id}
+                            onClick={() => enregistrer({ scenes: [{ id: scene.id, personnages: present ? scene.personnages.filter((x) => x !== p.id) : [...scene.personnages, p.id] }] })}
+                            className={`text-xs rounded-full px-3 py-1 border ${present ? 'border-violet-500/50 bg-violet-500/15 text-violet-200' : 'border-slate-700 text-slate-400'}`}
+                          >
+                            {p.nom}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <div className="mt-3 space-y-2">
+                      {scene.plans.map((plan) => (
+                        <div key={plan.id} className="rounded border border-slate-800/80 bg-slate-900/40 p-2">
+                          <div className="flex flex-col md:flex-row md:items-center gap-2">
+                            <span className="text-xs text-slate-500 w-32 shrink-0">{plan.cadre} · {plan.dureeS.toFixed(1)} s</span>
+                            <input
+                              defaultValue={plan.dialogue?.texte ?? plan.description}
+                              onBlur={(e) => {
+                                const texte = e.target.value;
+                                if (texte !== (plan.dialogue?.texte ?? plan.description)) enregistrer({ plans: [{ id: plan.id, texte }] });
+                              }}
+                              className="flex-1 rounded bg-slate-950 border border-slate-800 px-3 py-2 text-sm"
+                            />
+                            {plan.dialogue && (
+                              <span className="text-xs text-pink-300 w-24 shrink-0">
+                                {film.personnages.find((p) => p.id === plan.dialogue?.personnageId)?.nom ?? 'narrateur'}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                            {/* Media du plan : importe en octets, mesure par le serveur. */}
+                            {plan.media ? (
+                              <>
+                                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-emerald-200">
+                                  {plan.media.genre === 'image' ? <ImageIcon className="w-3 h-3" /> : <Film className="w-3 h-3" />}
+                                  {plan.media.largeur}x{plan.media.hauteur}
+                                  {plan.media.dureeS !== null && ` · ${plan.media.dureeS.toFixed(1)} s`}
+                                  {` · ${(plan.media.octets / 1_000_000).toFixed(1)} Mo`}
+                                </span>
+                                {plan.media.genre === 'video' && (
+                                  <button
+                                    onClick={() => enregistrer({ plans: [{ id: plan.id, sonMedia: !plan.media?.sonActif }] })}
+                                    className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 hover:border-violet-500/50"
+                                  >
+                                    {plan.media.sonActif ? <Volume2 className="w-3 h-3" /> : <VolumeX className="w-3 h-3" />}
+                                    {plan.media.sonActif ? 'son du rush garde' : 'son du rush coupe'}
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => enregistrer({ plans: [{ id: plan.id, media: null }] })}
+                                  className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 hover:border-red-500/50"
+                                >
+                                  <Trash2 className="w-3 h-3" /> retirer
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <label className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 cursor-pointer hover:border-violet-500/50">
+                                  {enCours === `media:${plan.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                                  Importer une image ou une video
+                                  <input
+                                    type="file"
+                                    accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.webm,.m4v"
+                                    className="hidden"
+                                    onChange={(e) => { const f = e.target.files?.[0]; if (f) importerMedia(plan.id, f); e.target.value = ''; }}
+                                  />
+                                </label>
+                                {generationIa && (
+                                  <button
+                                    onClick={() => genererMedia(plan.id, 'image')}
+                                    disabled={enCours !== null || !!generationActiveDe(film)}
+                                    data-cinema-generation="image"
+                                    className="inline-flex items-center gap-1 rounded border border-violet-700/60 px-2 py-1 hover:border-violet-400 disabled:opacity-50"
+                                  >
+                                    {enCours === `generation:${plan.id}:image` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                                    {generationMode === 'simulee' ? 'Generer (IA, simule)' : 'Generer l’image (IA)'}
+                                    {generationMode === 'reelle' && (
+                                      <span className="text-violet-300/80">· {libellePrix(tarifs, 'ai.generate_background')}</span>
+                                    )}
+                                  </button>
+                                )}
+                              </>
+                            )}
+                            {generationIa && plan.media?.genre === 'image' && (
+                              <button
+                                onClick={() => genererMedia(plan.id, 'video')}
+                                disabled={enCours !== null || !!generationActiveDe(film)}
+                                data-cinema-generation="video"
+                                className="inline-flex items-center gap-1 rounded border border-violet-700/60 px-2 py-1 hover:border-violet-400 disabled:opacity-50"
+                              >
+                                {enCours === `generation:${plan.id}:video` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                                {generationMode === 'simulee' ? 'Animer en video (IA, simule)' : 'Animer en video (IA)'}
+                                {generationMode === 'reelle' && (
+                                  <span className="text-violet-300/80">· {libellePrix(tarifs, 'ai.image_to_video')}</span>
+                                )}
+                              </button>
+                            )}
+
+                            <SuiviGenerationPlan
+                              generation={derniereGenerationDuPlan(film, plan.id)}
+                              confirmation={confirmation?.planId === plan.id ? confirmation.operation : null}
+                              prix={confirmation?.planId === plan.id
+                                ? libellePrix(tarifs, confirmation.operation === 'video' ? 'ai.image_to_video' : 'ai.generate_background')
+                                : ''}
+                              surConfirmer={() => confirmation && lancerGenerationIa(confirmation.planId, confirmation.operation)}
+                              surAnnuler={() => setConfirmation(null)}
+                            />
+
+                            {/* Personnages presents DANS CE PLAN. */}
+                            <span className="text-slate-600">|</span>
+                            {film.personnages.map((p) => {
+                              const present = plan.personnages.includes(p.id);
+                              return (
+                                <button
+                                  key={p.id}
+                                  onClick={() => enregistrer({ plans: [{ id: plan.id, personnages: present ? plan.personnages.filter((x) => x !== p.id) : [...plan.personnages, p.id] }] })}
+                                  className={`rounded-full px-2 py-1 border ${present ? 'border-violet-500/50 bg-violet-500/15 text-violet-200' : 'border-slate-800 text-slate-500'}`}
+                                >
+                                  {p.nom}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CollapsiblePanel>
+          )}
+        </div>
+
+        {/* Colonne de droite — apercu video, scenes, export : visibles sans defiler. UNE SEULE instance d'Apercu. */}
+        <div className="space-y-4 lg:sticky lg:top-6 lg:self-start order-1 lg:order-2">
+          <div id="cinema-apercu" className="scroll-mt-4">
+            {montage ? (
+              <Apercu montage={montage} surPreparerVoix={preparerVoix} voixEnCours={enCours === 'voix'} />
+            ) : (
+              <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-5 text-center">
+                <Play className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                <p className="text-sm text-slate-400">L’apercu apparaitra ici une fois le scenario compose.</p>
+              </section>
+            )}
+          </div>
+
+          {film && film.scenes.length > 0 && (
+            <SceneCarousel
+              film={film}
+              surRelancer={(sceneId) => produire([sceneId])}
+              enCours={enCours !== null}
+              travailActif={ACTIF(travail)}
+              generationIa={generationIa}
+              generationMode={generationMode}
+              tarifs={tarifs}
+              enCoursTexte={enCours}
+              confirmation={confirmation}
+              surGenererMedia={genererMedia}
+              surImporterMedia={importerMedia}
+            />
+          )}
+
+          {film && (
+            <section id="cinema-export" className="rounded-xl border border-slate-800 bg-slate-900/40 p-5 scroll-mt-4">
+              <h2 className="font-semibold mb-4 flex items-center gap-2"><Download className="w-4 h-4 text-violet-400" /> Export MP4</h2>
+              {devis && (
+                <p className="text-sm text-slate-300 mb-3">
+                  Devis : {devis.totalUsd === null ? 'cout inconnu (tarif non declare)' : devis.totalUsd === 0 ? 'gratuit (rendu local)' : `${devis.totalUsd.toFixed(4)} USD`} pour {devis.secondesAProduire.toFixed(1)} s a produire.
+                  <Detail texte="Le devis est etabli AVANT le rendu. Une scene inchangee n'est pas refaite : son MP4 est repris tel quel et recolle. Le plafond de depense est fixe par le serveur." />
+                </p>
+              )}
+              <button onClick={() => produire()} disabled={enCours !== null || ACTIF(travail)} className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium hover:bg-violet-500 disabled:opacity-50">
+                {enCours === 'lancement' || ACTIF(travail) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                {ACTIF(travail) ? 'Production en cours' : 'Exporter le film'}
+              </button>
+              {travail && film && <Production film={film} travail={travail} surArreter={arreterProduction} />}
+            </section>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1025,11 +1325,21 @@ function Apercu({ montage, surPreparerVoix, voixEnCours }: { montage: MontageApi
         <Detail texte="Meme chronologie que le MP4 : les debuts, durees et couleurs viennent du montage renvoye par l'API, pas d'un calcul propre a la page." />
       </h2>
 
+      {/* Largeur responsive : une largeur fixe en pixels debordait sur tout viewport plus
+          etroit que 640px (mobile, colonne de droite en 380px) — `max-width` + `aspect-ratio`
+          gardent les memes proportions 16:9/9:16 tout en retrecissant avec le conteneur.
+          `minHeight` : le texte superpose (titre scene + dialogue centre) est en taille FIXE,
+          pas proportionnelle a la largeur — en dessous de cette hauteur les deux blocs se
+          chevauchent. Une boite plus "carree" qu'un 16:9 strict sur les tres petits ecrans
+          reste lisible ; un chevauchement de texte ne l'est pas. */}
       <div
-        className="relative mx-auto overflow-hidden rounded-xl border border-slate-800"
+        className="relative mx-auto w-full overflow-hidden rounded-xl border border-slate-800"
         style={{
-          width: portrait ? 270 : 640,
-          height: portrait ? 480 : 360,
+          maxWidth: portrait ? 270 : 640,
+          // Ratio CSS via le meme helper canonique que « Mon avatar » (lib/ui/lecteur-generation) :
+          // un contrat verrouille interdit d'ecrire '9 / 16' en dur hors de cette liste.
+          aspectRatio: ratioCadre(portrait ? '9:16' : '16:9'),
+          minHeight: portrait ? 320 : 200,
           background: `radial-gradient(130% 110% at 25% 15%, ${segment.couleurs[0]} 0%, ${segment.couleurs[1]} 55%, #0A0A0F 100%)`,
         }}
       >
@@ -1069,7 +1379,7 @@ function Apercu({ montage, surPreparerVoix, voixEnCours }: { montage: MontageApi
         </div>
       </div>
 
-      <div className="mt-4 flex items-center gap-3">
+      <div className="mt-4 flex flex-wrap items-center gap-3">
         <button onClick={() => setJoue((v) => !v)} className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm hover:border-violet-500/50">
           {joue ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
           {joue ? 'Pause' : 'Lire le montage'}
@@ -1077,7 +1387,7 @@ function Apercu({ montage, surPreparerVoix, voixEnCours }: { montage: MontageApi
         <input
           type="range" min={0} max={montage.dureeS} step={0.1} value={tempsS}
           onChange={(e) => setTempsS(Number(e.target.value))}
-          className="flex-1 accent-violet-500"
+          className="flex-1 min-w-[120px] accent-violet-500"
         />
         {!montage.segments.some((s) => s.voixUrl) && (
           <button onClick={surPreparerVoix} disabled={voixEnCours} className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm hover:border-violet-500/50 disabled:opacity-50">
