@@ -18,7 +18,7 @@ import {
   ImageIcon, Film, Volume2, VolumeX, Upload, Sparkles, X, Check, Circle,
   ChevronDown, ChevronLeft, ChevronRight,
 } from 'lucide-react';
-import { useTarifs, libellePrix } from '@/lib/tarifs/client';
+import { useTarifs, libellePrix, type TarifsEcran } from '@/lib/tarifs/client';
 
 interface SegmentApi {
   sceneId: string; sceneIndex: number; planId: string; cadre: string;
@@ -44,6 +44,9 @@ const generationActiveDe = (f: FilmApi | null) => f?.generations?.find((g) => g.
 /** La derniere generation d'un plan, quelle qu'en soit l'issue. */
 const derniereGenerationDuPlan = (f: FilmApi | null, planId: string) =>
   [...(f?.generations ?? [])].reverse().find((g) => g.planId === planId) ?? null;
+/** Les medias sont stockes en chemin relatif : meme regle de normalisation partout (voir `Apercu`). */
+/** Le plan « representatif » d'une scene pour la vignette et le panneau de droite : celui qui a deja un media, sinon le premier. Une scene a plusieurs plans ; l'ecran n'en resume qu'un seul media, comme la maquette. */
+const planRepresentatifDeScene = (scene: SceneApi) => scene.plans.find((p) => p.media) ?? scene.plans[0] ?? null;
 type StatutTravailApi = 'en_attente' | 'en_cours' | 'termine' | 'echec' | 'annule';
 interface TravailApi {
   id: string; filmId: string; statut: StatutTravailApi; erreur: string | null; reference: string | null; annulationDemandee: boolean;
@@ -88,18 +91,29 @@ function Detail({ texte }: { texte: string }) {
  * PANNEAU REPLIABLE — numerote, colonne de gauche. Ouvert par defaut (rien de
  * nouveau n'est cache au chargement), repliable au clic pour l'ecran epure.
  */
-function CollapsiblePanel({ numero, titre, icone: Icone, badge, children }: {
+/**
+ * `ouvertControle`/`onChangerOuvert` sont optionnels : sans eux, le panneau gere son
+ * propre etat (comportement d'origine). Le rail d'etapes a besoin d'OUVRIR un panneau
+ * precis depuis l'exterieur (ex. cliquer « Personnages ») — d'ou ce controle optionnel,
+ * plutot que de dupliquer tout le composant.
+ */
+function CollapsiblePanel({ numero, titre, icone: Icone, badge, children, ouvertControle, onChangerOuvert }: {
   numero: number; titre: string; icone: typeof Clapperboard; badge?: React.ReactNode; children: React.ReactNode;
+  ouvertControle?: boolean; onChangerOuvert?: (v: boolean) => void;
 }) {
-  const [ouvert, setOuvert] = useState(true);
+  const [ouvertInterne, setOuvertInterne] = useState(true);
+  const ouvert = ouvertControle ?? ouvertInterne;
+  const basculer = () => (onChangerOuvert ? onChangerOuvert(!ouvert) : setOuvertInterne((v) => !v));
   const id = `panneau-cinema-${numero}`;
   return (
-    <section className="rounded-xl border border-slate-800 bg-slate-900/40">
+    // L'id est sur la SECTION (toujours montee), pas sur le contenu replie : le rail
+    // d'etapes doit pouvoir defiler vers un panneau meme ferme.
+    <section id={id} className="rounded-xl border border-slate-800 bg-slate-900/40 scroll-mt-4">
       <button
         type="button"
-        onClick={() => setOuvert((v) => !v)}
+        onClick={basculer}
         aria-expanded={ouvert}
-        aria-controls={id}
+        aria-controls={`${id}-contenu`}
         className="w-full flex items-center gap-3 px-5 py-4 text-left"
       >
         <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-500/15 text-xs font-semibold text-violet-300">{numero}</span>
@@ -108,8 +122,35 @@ function CollapsiblePanel({ numero, titre, icone: Icone, badge, children }: {
         {badge}
         <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform shrink-0 ${ouvert ? 'rotate-180' : ''}`} />
       </button>
-      {ouvert && <div id={id} className="px-5 pb-5">{children}</div>}
+      {ouvert && <div id={`${id}-contenu`} className="px-5 pb-5">{children}</div>}
     </section>
+  );
+}
+
+/**
+ * Vignette : le media REEL du plan, ou un repli sobre — jamais un media invente.
+ *
+ * ⚠️ `media.url` est la cle de STOCKAGE (prive), pas une URL navigable — c'est pour ca
+ * que `Apercu` (plus haut dans l'arbre) ne l'affiche jamais directement non plus : il
+ * recoit `segment.media.url` deja resolu par l'API montage. Ici, le media vient du FILM
+ * (`plan.media`), jamais resolu : on passe par la MEME route authentifiee que le reste
+ * de l'app (`/api/cinema/films/{filmId}/medias/{planId}`), proprietaire seulement.
+ */
+function VignetteMedia({ media, filmId, planId, taille }: { media: MediaApi | null; filmId: string; planId: string; taille: 'petite' | 'grande' }) {
+  const classe = taille === 'petite' ? 'w-16 h-16' : 'w-full h-40';
+  if (!media) {
+    return (
+      <span className={`${classe} flex shrink-0 items-center justify-center rounded-lg bg-slate-800 text-slate-600`}>
+        <ImageIcon className="w-5 h-5" />
+      </span>
+    );
+  }
+  const url = `/api/cinema/films/${filmId}/medias/${planId}`;
+  return media.genre === 'image' ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={url} alt="" className={`${classe} shrink-0 rounded-lg object-cover`} />
+  ) : (
+    <video src={url} className={`${classe} shrink-0 rounded-lg object-cover`} muted playsInline preload="metadata" />
   );
 }
 
@@ -117,15 +158,29 @@ function CollapsiblePanel({ numero, titre, icone: Icone, badge, children }: {
  * CARROUSEL DE SCENES — colonne de droite. Navigation de confort (scroll vers
  * la scene dans la liste de gauche) : aucune donnee n'est dupliquee ni
  * mutee ici, la liste de gauche reste la seule source d'edition.
+ *
+ * Le bloc « details de la scene » (media, etat de generation, actions) agit sur le
+ * plan REPRESENTATIF de la scene (`planRepresentatifDeScene`) : une scene a plusieurs
+ * plans dans le modele actuel, cet ecran compact n'en resume qu'un seul, comme la
+ * maquette. L'edition complete, plan par plan, reste dans le panneau 4 a gauche.
  */
-function SceneCarousel({ film, surRelancer, enCours, travailActif }: {
+function SceneCarousel({
+  film, surRelancer, enCours, travailActif,
+  generationIa, generationMode, tarifs, enCoursTexte,
+  confirmation, surGenererMedia, surImporterMedia,
+}: {
   film: FilmApi; surRelancer: (sceneId: string) => void; enCours: boolean; travailActif: boolean;
+  generationIa: boolean; generationMode: 'simulee' | 'reelle' | null; tarifs: TarifsEcran; enCoursTexte: string | null;
+  confirmation: { planId: string; operation: 'image' | 'video' } | null;
+  surGenererMedia: (planId: string, operation: 'image' | 'video') => void;
+  surImporterMedia: (planId: string, fichier: File) => void;
 }) {
   const [index, setIndex] = useState(0);
   const scenes = film.scenes;
   const i = Math.min(index, Math.max(0, scenes.length - 1));
   const scene = scenes[i];
   if (!scene) return null;
+  const plan = planRepresentatifDeScene(scene);
 
   const allerA = (k: number) => {
     const cible = scenes[k];
@@ -136,21 +191,25 @@ function SceneCarousel({ film, surRelancer, enCours, travailActif }: {
 
   return (
     <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Scenes</h3>
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Scenes ({scenes.length})</h3>
       <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Choisir une scene">
-        {scenes.map((s, k) => (
-          <button
-            key={s.id}
-            type="button"
-            role="tab"
-            aria-selected={k === i}
-            onClick={() => allerA(k)}
-            title={s.titre}
-            className={`shrink-0 rounded-lg border px-3 py-2 text-xs ${k === i ? 'border-violet-500/60 bg-violet-500/15 text-violet-200' : 'border-slate-700 text-slate-400 hover:border-slate-600'}`}
-          >
-            {k + 1}
-          </button>
-        ))}
+        {scenes.map((s, k) => {
+          const planVignette = planRepresentatifDeScene(s);
+          return (
+            <button
+              key={s.id}
+              type="button"
+              role="tab"
+              aria-selected={k === i}
+              onClick={() => allerA(k)}
+              title={s.titre}
+              className={`relative shrink-0 overflow-hidden rounded-lg border ${k === i ? 'border-violet-500/70 ring-2 ring-violet-500/40' : 'border-slate-700 hover:border-slate-600'}`}
+            >
+              <VignetteMedia media={planVignette?.media ?? null} filmId={film.id} planId={planVignette?.id ?? ''} taille="petite" />
+              <span className="absolute bottom-0 inset-x-0 bg-slate-950/80 text-center text-[10px] leading-4 text-slate-200">{k + 1}</span>
+            </button>
+          );
+        })}
       </div>
 
       <div className="mt-3 rounded-lg border border-slate-800/80 bg-slate-950/60 p-3">
@@ -165,7 +224,7 @@ function SceneCarousel({ film, surRelancer, enCours, travailActif }: {
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <span className="flex-1 text-sm font-semibold truncate">{scene.titre}</span>
+          <span className="flex-1 text-sm font-semibold truncate">{i + 1}/{scenes.length} · {scene.titre}</span>
           <button
             type="button"
             onClick={() => allerA(i + 1)}
@@ -181,6 +240,74 @@ function SceneCarousel({ film, surRelancer, enCours, travailActif }: {
         {scene.plans[0] && (
           <p className="mt-2 text-xs text-slate-300 line-clamp-2">{scene.plans[0].dialogue?.texte ?? scene.plans[0].description}</p>
         )}
+
+        {/* Details de la scene : le media REEL du plan representatif, son etat de generation reel, et les deux actions distinctes.
+            ⚠️ Le suivi INTERACTIF (confirmation payante, « en cours ») reste UNIQUEMENT dans le panneau 4 a
+            gauche (`SuiviGenerationPlan`) : deux confirmations actives pour le MEME plan violeraient la regle
+            « une seule action principale » et rendaient `findByRole('group', ...)`/`findByText` ambigus (tests
+            cinema-page.test.tsx). Ici, uniquement un reflet non-interactif, en texte distinct. */}
+        {plan && (
+          <div className="mt-3 space-y-2">
+            <VignetteMedia media={plan.media} filmId={film.id} planId={plan.id} taille="grande" />
+            <div className="min-w-0 space-y-2">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+                {(() => {
+                  const generation = derniereGenerationDuPlan(film, plan.id);
+                  const enAttenteConfirmation = confirmation?.planId === plan.id;
+                  if (enAttenteConfirmation) return <span className="text-amber-300">confirmation en attente dans le panneau Scenes (a gauche)</span>;
+                  if (generation?.statut === 'en_cours') return <span className="inline-flex items-center gap-1 text-violet-300"><Loader2 className="w-3 h-3 animate-spin" /> generation en cours…</span>;
+                  if (generation?.statut === 'echouee' || generation?.statut === 'interrompue') return <span className="inline-flex items-center gap-1 text-rose-300"><AlertTriangle className="w-3 h-3" /> derniere generation en echec</span>;
+                  return <span>{plan.media ? 'media importe' : 'aucun media pour ce plan'}</span>;
+                })()}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <label
+                  title={plan.media ? 'Remplacer le media de ce plan' : 'Importer un media pour ce plan'}
+                  className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 text-xs cursor-pointer hover:border-violet-500/50"
+                >
+                  {enCoursTexte === `media:${plan.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                  {plan.media ? 'Remplacer' : 'Importer'}
+                  <input
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.webm,.m4v"
+                    className="hidden"
+                    aria-label={plan.media ? 'Remplacer le media de ce plan' : 'Importer un media pour ce plan'}
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) surImporterMedia(plan.id, f); e.target.value = ''; }}
+                  />
+                </label>
+                {generationIa && !plan.media && (
+                  <button
+                    type="button"
+                    onClick={() => surGenererMedia(plan.id, 'image')}
+                    disabled={enCours || !!generationActiveDe(film)}
+                    aria-label="Regenerer l’image de ce plan par IA"
+                    title="Regenerer l’image de ce plan par IA"
+                    className="inline-flex items-center gap-1 rounded border border-violet-700/60 px-2 py-1 text-xs hover:border-violet-400 disabled:opacity-50"
+                  >
+                    {enCoursTexte === `generation:${plan.id}:image` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                    Regenerer (IA)
+                    {generationMode === 'reelle' && <span className="text-violet-300/80">· {libellePrix(tarifs, 'ai.generate_background')}</span>}
+                  </button>
+                )}
+                {generationIa && plan.media?.genre === 'image' && (
+                  <button
+                    type="button"
+                    onClick={() => surGenererMedia(plan.id, 'video')}
+                    disabled={enCours || !!generationActiveDe(film)}
+                    aria-label="Animer ce plan en video par IA"
+                    title="Animer ce plan en video par IA"
+                    className="inline-flex items-center gap-1 rounded border border-violet-700/60 px-2 py-1 text-xs hover:border-violet-400 disabled:opacity-50"
+                  >
+                    {enCoursTexte === `generation:${plan.id}:video` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                    Regenerer en video (IA)
+                    {generationMode === 'reelle' && <span className="text-violet-300/80">· {libellePrix(tarifs, 'ai.image_to_video')}</span>}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         <button
           type="button"
           onClick={() => surRelancer(scene.id)}
@@ -215,6 +342,20 @@ export default function CinemaPage() {
   const [mesFilms, setMesFilms] = useState<Array<{ id: string; titre: string; majLe: string }>>([]);
   /** Suppression en deux gestes : l'icone arme, la coche confirme. */
   const [suppressionArmee, setSuppressionArmee] = useState(false);
+  /**
+   * Etat des panneaux 1/2/4 remonte ici : le rail d'etapes doit pouvoir en OUVRIR un
+   * depuis l'exterieur (clic sur « Personnages ») sans perdre la saisie en cours —
+   * c'est un simple affichage, aucune donnee de formulaire ne vit dans cet etat.
+   */
+  const [panneauxOuverts, setPanneauxOuverts] = useState<Record<number, boolean>>({ 1: true, 2: true, 4: true });
+  /** Cible DOM de chaque etape du rail, dans l'ordre Histoire/Personnages/Scenes/Apercu/Export. */
+  const allerAEtape = (index: number) => {
+    const panneauCible = [1, 2, 4][index];
+    if (panneauCible) setPanneauxOuverts((p) => ({ ...p, [panneauCible]: true }));
+    const idCible = ['panneau-cinema-1', 'panneau-cinema-2', 'panneau-cinema-4', 'cinema-apercu', 'cinema-export'][index];
+    // Le panneau peut venir de s'ouvrir dans ce meme rendu : laisser le DOM se poser avant de defiler.
+    requestAnimationFrame(() => document.getElementById(idCible)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
 
   const appliquer = useCallback((data: any) => {
     if (data?.film) setFilm(data.film);
@@ -614,16 +755,24 @@ export default function CinemaPage() {
         )}
       </header>
 
-      {/* Rail des etapes — visuel uniquement, les panneaux ci-dessous restent tous accessibles. */}
+      {/* Rail des etapes — raccourci de navigation ; les panneaux ci-dessous restent TOUS accessibles, rien n'est cache. */}
       <ol className="flex flex-wrap gap-2 mb-8">
         {ETAPES.map((e, i) => {
           const Icone = e.icone;
           const atteintes = [true, true, !!film, !!montage, !!film];
           const atteinte = atteintes[i];
           return (
-            <li key={e.titre} className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm ${atteinte ? 'border-violet-500/40 bg-violet-500/10 text-violet-200' : 'border-slate-700 bg-slate-900/50 text-slate-500'}`}>
-              <Icone className="w-4 h-4" />
-              <span>{i + 1}. {e.titre}</span>
+            <li key={e.titre}>
+              <button
+                type="button"
+                onClick={() => allerAEtape(i)}
+                aria-label={`Aller a l’etape ${e.titre}`}
+                title={e.titre}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors ${atteinte ? 'border-violet-500/40 bg-violet-500/10 text-violet-200 hover:border-violet-400/60' : 'border-slate-700 bg-slate-900/50 text-slate-500 hover:border-slate-600'}`}
+              >
+                <Icone className="w-4 h-4" />
+                <span>{i + 1}. {e.titre}</span>
+              </button>
             </li>
           );
         })}
@@ -639,7 +788,10 @@ export default function CinemaPage() {
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_380px] gap-6 items-start">
         {/* Colonne de gauche — panneaux numerotes, repliables, defilement independant. */}
         <div className="space-y-4 min-w-0 lg:max-h-[calc(100vh-180px)] lg:overflow-y-auto lg:pr-1 order-2 lg:order-1">
-          <CollapsiblePanel numero={1} titre="Histoire" icone={Clapperboard}>
+          <CollapsiblePanel
+            numero={1} titre="Histoire" icone={Clapperboard}
+            ouvertControle={panneauxOuverts[1]} onChangerOuvert={(v) => setPanneauxOuverts((p) => ({ ...p, 1: v }))}
+          >
             <input
               value={titre}
               onChange={(e) => setTitre(e.target.value)}
@@ -674,6 +826,7 @@ export default function CinemaPage() {
           </CollapsiblePanel>
 
           <CollapsiblePanel numero={2} titre="Personnages et references" icone={Users}
+            ouvertControle={panneauxOuverts[2]} onChangerOuvert={(v) => setPanneauxOuverts((p) => ({ ...p, 2: v }))}
             badge={<Detail texte="Une apparence changee cree une VERSION de reference : les anciennes restent lisibles, et les scenes concernees sont marquees a reproduire. Aucune coherence visuelle en generation IA n'est promise : rien n'a encore ete teste avec un fournisseur." />}
           >
             <div className="space-y-3">
@@ -711,6 +864,7 @@ export default function CinemaPage() {
 
           {film && (
             <CollapsiblePanel numero={4} titre="Scenes, personnages, repliques" icone={Link2}
+              ouvertControle={panneauxOuverts[4]} onChangerOuvert={(v) => setPanneauxOuverts((p) => ({ ...p, 4: v }))}
               badge={aProduire.length > 0 ? (
                 <span className="text-xs px-2 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
                   {aProduire.length} scene(s) a reproduire
@@ -887,16 +1041,18 @@ export default function CinemaPage() {
           )}
         </div>
 
-        {/* Colonne de droite — apercu video, scenes, export : visibles sans defiler. */}
+        {/* Colonne de droite — apercu video, scenes, export : visibles sans defiler. UNE SEULE instance d'Apercu. */}
         <div className="space-y-4 lg:sticky lg:top-6 lg:self-start order-1 lg:order-2">
-          {montage ? (
-            <Apercu montage={montage} surPreparerVoix={preparerVoix} voixEnCours={enCours === 'voix'} />
-          ) : (
-            <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-5 text-center">
-              <Play className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-              <p className="text-sm text-slate-400">L’apercu apparaitra ici une fois le scenario compose.</p>
-            </section>
-          )}
+          <div id="cinema-apercu" className="scroll-mt-4">
+            {montage ? (
+              <Apercu montage={montage} surPreparerVoix={preparerVoix} voixEnCours={enCours === 'voix'} />
+            ) : (
+              <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-5 text-center">
+                <Play className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                <p className="text-sm text-slate-400">L’apercu apparaitra ici une fois le scenario compose.</p>
+              </section>
+            )}
+          </div>
 
           {film && film.scenes.length > 0 && (
             <SceneCarousel
@@ -904,11 +1060,18 @@ export default function CinemaPage() {
               surRelancer={(sceneId) => produire([sceneId])}
               enCours={enCours !== null}
               travailActif={ACTIF(travail)}
+              generationIa={generationIa}
+              generationMode={generationMode}
+              tarifs={tarifs}
+              enCoursTexte={enCours}
+              confirmation={confirmation}
+              surGenererMedia={genererMedia}
+              surImporterMedia={importerMedia}
             />
           )}
 
           {film && (
-            <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
+            <section id="cinema-export" className="rounded-xl border border-slate-800 bg-slate-900/40 p-5 scroll-mt-4">
               <h2 className="font-semibold mb-4 flex items-center gap-2"><Download className="w-4 h-4 text-violet-400" /> Export MP4</h2>
               {devis && (
                 <p className="text-sm text-slate-300 mb-3">
