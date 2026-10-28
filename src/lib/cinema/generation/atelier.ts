@@ -263,6 +263,11 @@ export async function genererMediaPlan(film: Film, planId: string, options: Opti
 export async function importerResultatFournisseur(args: {
   film: Film; planId: string; fichier: string; nomSuggere: string; racinePublique: string;
   fournisseurId: string; coutUsd: number;
+  /**
+   * Direction sous laquelle la requete a ete ENVOYEE. Absent = celle du film courant (generation
+   * directe). `null` = inconnue (reprise d'une soumission sans trace) : aucune n'est attribuee.
+   */
+  direction?: string | null;
 }): Promise<{ ok: true; film: Film; media: MediaPlan } | { ok: false; erreur: string }> {
   const { film, planId } = args;
   const plan = film.scenes.flatMap((s) => s.plans).find((p) => p.id === planId);
@@ -297,7 +302,7 @@ export async function importerResultatFournisseur(args: {
   // `direction` : sous quel style/camera ce media a ete genere (voir `direction/signature.ts`).
   const mediaTrace: MediaPlan = {
     ...importe.media, fournisseurGeneration: fournisseur.id,
-    direction: signatureDirection(film, planId, importe.media.genre),
+    ...(args.direction === null ? null : { direction: args.direction ?? signatureDirection(film, planId, importe.media.genre) }),
   };
   const filmAvecMedia = remplacerMedia(importe.film, planId, mediaTrace);
   // Aligne POSITIONNELLEMENT sur `plan.personnages` : `coherence.ts` lit

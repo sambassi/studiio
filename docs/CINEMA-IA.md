@@ -707,5 +707,7 @@ de budget, aucune depense au choix. API : `POST /films {styleCinema}`, `PATCH {s
 - **Rendu** : l'empreinte de scene integre url + signature d'un media genere sous direction, donc
   un nouveau media invalide le rendu en cache (les medias d'avant, sans signature, restent hors
   empreinte).
-- Limite : un media recupere par la reprise apres interruption recoit la signature de la
-  direction au moment de la recuperation.
+- **Reprise apres interruption** : la direction ENVOYEE est figee dans la soumission
+  (`externe.direction`) avant l'appel payant ; la video recuperee recoit cette signature, jamais
+  celle du film d'aujourd'hui. Style change pendant l'arret = media conserve, plan « a regenerer ».
+  Soumission sans trace : aucune direction attribuee (le plan est signale).

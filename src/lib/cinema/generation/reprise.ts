@@ -175,6 +175,8 @@ async function reprendreUne(
     const r = await importerResultatFournisseur({
       film: frais.film, planId: gen.planId, fichier, nomSuggere, racinePublique,
       fournisseurId: externe.fournisseurId, coutUsd: externe.coutEstimeUsd,
+      // La direction ENVOYEE (figee a la soumission), jamais celle du film d'aujourd'hui.
+      direction: externe.direction ?? null,
     });
     if (!r.ok) return conclure('non_livree', MESSAGES_REPRISE.mediaInvalide, ajouterCout);
     const cle = cleMedia(userId, filmId, r.media.url);

@@ -16,6 +16,7 @@
  * S'y ajoute : chaque etape est ECRITE sur la generation suivie, pour qu'un
  * rechargement, ou une interruption du serveur, ne perde jamais l'information.
  */
+import { signatureDirection } from '@/lib/cinema/direction/signature';
 import { genererMediaPlan } from '@/lib/cinema/generation/atelier';
 import { fichierDuMedia, remplacerMedia } from '@/lib/cinema/medias';
 import type { ContexteCinema } from '@/lib/cinema/contexte';
@@ -109,6 +110,8 @@ export async function executerGeneration(p: ParametresGeneration): Promise<Statu
     externe = {
       fournisseurId, cleIdempotence, coutEstimeUsd: estimable ? (usd as number) : 0,
       mediaAvantUrl: filmCourant?.scenes.flatMap((x) => x.plans).find((pl) => pl.id === planId)?.media?.url ?? null,
+      // Meme film que celui dont le prompt est construit : la direction ENVOYEE, figee ici.
+      ...(filmCourant ? { direction: signatureDirection(filmCourant, planId, operation === 'video' ? 'video' : 'image') } : null),
       soumisLe: new Date().toISOString(),
     };
     // ⚠️ ECRIT AVANT L'APPEL PAYANT : une interruption doit pouvoir passer la depense et le

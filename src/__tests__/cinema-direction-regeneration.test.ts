@@ -23,6 +23,9 @@ import {
 import { ID_REPLICATE_IMAGE, ID_REPLICATE_VIDEO } from '@/lib/cinema/generation/replicate';
 import { devisFilm } from '@/lib/cinema/couts';
 import { executer } from '@/lib/cinema/rendu-local';
+import { depotFilmsMemoire, modifierFilm } from '@/lib/cinema/stockage/depot-films';
+import { reserverGeneration } from '@/lib/cinema/generation/suivi';
+import { reprendreGenerationsInterrompues } from '@/lib/cinema/generation/reprise';
 import { cheminFfmpeg, cheminFfprobe } from '@/lib/ffmpeg/binaires';
 import type { Film, MediaPlan } from '@/lib/cinema/types';
 import * as filmsRoute from '@/app/api/cinema/films/route';
@@ -180,5 +183,75 @@ describe.skipIf(!OUTILS)('apres une VRAIE generation (fournisseur double, aucun 
     expect(vues.image[0].promptConstruit).toContain('golden hour');
     expect(vues.image[0].promptConstruit).not.toContain('venetian blind');
     rmSync(racine, { recursive: true, force: true });
+  });
+});
+
+describe.skipIf(!OUTILS)('REPRISE apres interruption : la direction ENVOYEE est conservee', () => {
+  /** Generation interrompue, style change pendant l'arret, puis recuperation du resultat. */
+  async function scenario(directionEnvoyee: string | undefined) {
+    const dossier = mkdtempSync(join(tmpdir(), 'cinema-reprise-dir-'));
+    const depot = depotFilmsMemoire();
+    let film = neuf({ styleCinema: 'noir' });
+    await depot.creer(film, 'u1');
+    const planId = film.scenes[0].plans[0].id;
+    const r = await reserverGeneration(depot, film.id, 'u1', { planId, operation: 'image', mode: 'reelle' });
+    if (!r.ok) throw new Error('reservation');
+    await modifierFilm(depot, film.id, 'u1', (x) => ({
+      ...x,
+      generations: x.generations!.map((g) => ({
+        ...g, statut: 'interrompue' as const, bailJusqua: null,
+        externe: {
+          fournisseurId: 'fournisseur-test', cleIdempotence: 'c', idExterne: '3f2b8c1e-9a4d-4e7f-b6a1-0c5d2e8f9a71',
+          coutEstimeUsd: 0.04, mediaAvantUrl: null, soumisLe: new Date().toISOString(),
+          ...(directionEnvoyee === undefined ? null : { direction: directionEnvoyee }),
+        },
+      })),
+    }));
+    // PENDANT L'ARRET : l'utilisateur change le style du film.
+    await modifierFilm(depot, film.id, 'u1', (x) => appliquerPatch(x, { style: 'romantique' }));
+    const image = join(dossier, 'resultat.png');
+    await executer(cheminFfmpeg(), ['-f', 'lavfi', '-i', 'color=c=green:s=64x64', '-frames:v', '1', '-y', image], { timeoutMs: 20_000 });
+    const appels = { generer: 0, consulter: 0 };
+    const issues = await reprendreGenerationsInterrompues(
+      { films: depot, dossierTravail: join(dossier, 'travail'), objets: { deposerFichier: async () => {}, supprimer: async () => {}, telechargerVers: async () => true } } as never,
+      film.id, 'u1',
+      {
+        fournisseur: () => ({
+          id: 'fournisseur-test', libelle: 't', actif: true,
+          genererImage: async () => { appels.generer++; return { ok: false as const, erreur: 'x' }; },
+          genererVideo: async () => { appels.generer++; return { ok: false as const, erreur: 'x' }; },
+          consulter: async () => { appels.consulter++; return { etat: 'termine' as const, fichier: image, nomSuggere: 'resultat.png' }; },
+        }),
+        confirmerDepense: async () => ({ ok: true, motif: null }), confirmerQuota: async () => ({ ok: true, motif: null }),
+      } as never,
+    );
+    film = (await depot.lire(film.id, 'u1'))!.film;
+    rmSync(dossier, { recursive: true, force: true });
+    return { issues, film, planId, appels, generationId: r.generation.id };
+  }
+
+  it('video livree apres l’arret : garde le style d’ORIGINE, est signalee « a regenerer », aucun nouvel appel, un seul debit', async () => {
+    const { issues, film, planId, appels, generationId } = await scenario('s:noir');
+    expect(issues).toEqual([{ id: generationId, etat: 'livree' }]);
+    const m = film.scenes[0].plans[0].media!;
+    expect(m).not.toBeNull();                       // le media est CONSERVE
+    expect(m.direction).toBe('s:noir');             // direction ENVOYEE, pas 'romantique'
+    expect(film.styleCinema).toBe('romantique');    // le film a bien change entre-temps
+    expect(plansARegenerer(film)).toEqual([{ planId, sceneId: film.scenes[0].id }]);
+    expect(appels.generer).toBe(0);                 // aucune nouvelle generation payante
+    expect(appels.consulter).toBe(1);               // une simple lecture de la demande existante
+    expect(film.coutGenerationUsd).toBe(0.04);      // compte UNE fois
+  });
+
+  it('sans changement de style : la video recuperee est a jour (pas de faux signalement)', async () => {
+    const dossierFilm = await scenario('s:romantique'); // direction envoyee = celle du film actuel
+    expect(plansARegenerer(dossierFilm.film)).toEqual([]);
+  });
+
+  it('soumission SANS trace de direction : aucun style n’est attribue, le plan est signale', async () => {
+    const { film, planId } = await scenario(undefined);
+    const m = film.scenes[0].plans[0].media!;
+    expect(m.direction).toBeUndefined();
+    expect(plansARegenerer(film).map((x) => x.planId)).toEqual([planId]);
   });
 });

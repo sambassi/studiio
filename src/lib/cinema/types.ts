@@ -244,6 +244,12 @@ export interface SoumissionExterne {
   coutEstimeUsd: number;
   /** Media du plan au depart : une livraison tardive n'ecrase jamais plus recent. */
   mediaAvantUrl: string | null;
+  /**
+   * Direction artistique (style, camera) EXACTE de la requete envoyee, figee a la soumission
+   * (`direction/signature.ts`). La reprise la reutilise : une video recuperee apres un arret
+   * n'herite jamais du style que le film a pris entre-temps.
+   */
+  direction?: string;
   soumisLe: string;
   accepteLe?: string;
 }
