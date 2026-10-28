@@ -31,6 +31,9 @@ import {
   renouvelerBailGeneration, statutEffectif, BAIL_GENERATION_S,
 } from '@/lib/cinema/generation/suivi';
 import type { Film, GenerationSuivie, StatutGeneration } from '@/lib/cinema/types';
+import { regimeCinema, evaluerQuota } from '@/lib/cinema/abonnement/regime';
+import { reserverQuota, confirmerQuota } from '@/lib/cinema/abonnement/depot';
+import { messageRefus } from '@/lib/cinema/abonnement/quotas';
 
 // Imports pour leur SEULE presence : ils enregistrent les fournisseurs dans le registre.
 import '@/lib/cinema/generation/simule';
@@ -54,14 +57,56 @@ export async function executerGeneration(p: ParametresGeneration): Promise<Statu
 
   let reservation: Reservation | null = null;
   let depenseReservee: { reference: string; montantUsd: number } | null = null;
+  /** Quota d'abonnement reserve pour CETTE generation (regime `abonnement` seulement). */
+  let quotaReserve: string | null = null;
+  let filmLu: Film | null = null;
 
   const payer = mode !== 'reelle' ? undefined : async () => {
+    // Le regime est decide ICI, cote serveur, au dernier moment (`abonnement/regime.ts`).
+    // Interrupteur `CINEMA_ABONNEMENTS` ferme : toujours `credits`, le chemin d'avant.
+    const regime = await regimeCinema(userId);
+    if (regime.type === 'refus') return { ok: false as const, motif: 'abonnement_illisible', message: regime.message };
+
     const devisTentative = devisGeneration(fournisseurId, [{ planId, operations: [operation] }]);
-    if (devisTentative.totalUsd !== null && devisTentative.totalUsd > 0) {
-      const depense = await reserverDepenseReplicate(userId, devisTentative.totalUsd, operation);
+    const usd = devisTentative.totalUsd;
+    const estimable = usd !== null && Number.isFinite(usd) && usd > 0;
+    // Hors credits, aucun appel sans prix connu : ni l'admin ni l'abonne ne paient a l'aveugle.
+    if (regime.type !== 'credits' && !estimable) {
+      return { ok: false as const, motif: 'estimation_invalide', message: messageRefus('estimation_invalide') };
+    }
+    if (estimable) {
+      // Plafonds de depense par compte et global : pour TOUS les regimes, admin compris.
+      const depense = await reserverDepenseReplicate(userId, usd, operation);
       if (!depense.ok) return { ok: false as const, motif: depense.motif, message: depense.message };
       depenseReservee = { reference: depense.reference, montantUsd: depense.montantUsd };
     }
+    const libererDepense = async () => {
+      const d = depenseReservee as { reference: string } | null;
+      if (d) await confirmerDepenseReplicate(userId, d.reference, 'liberee').catch(() => null);
+    };
+
+    // Administrateur : le cout fournisseur reel, rien d'autre — ni credit, ni marge, ni quota.
+    if (regime.type === 'cout_reel') return { ok: true as const };
+
+    if (regime.type === 'abonnement') {
+      const film = filmLu as Film | null;
+      if (!film) { await libererDepense(); return { ok: false as const, motif: 'film_absent', message: 'film introuvable' }; }
+      const e = await evaluerQuota({ regime, userId, film, operation, usdEstime: usd as number });
+      if (!e.ok) { await libererDepense(); return { ok: false as const, motif: 'quota', message: e.message }; }
+      const reference = `cinema-quota:${generation.id}`;
+      // L'AUTORITE : verrou en base, verification et increment dans la meme transaction.
+      // Deux generations simultanees (ou un double clic) ne peuvent pas depasser le quota.
+      const r = await reserverQuota({
+        userId, periodeDebut: e.periode.debut, periodeFin: e.periode.fin, reference, filmId: film.id,
+        dureeFilmS: e.dureeFilmS, usd: usd as number,
+        maxFilms: e.decision.limites.maxFilms, maxSecondes: e.decision.limites.maxSecondes, maxUsd: e.decision.limites.maxUsd,
+      });
+      if (!r.ok) { await libererDepense(); return { ok: false as const, motif: 'quota', message: messageRefus(r.motif) }; }
+      quotaReserve = reference;
+      // Couverte par l'abonnement : AUCUN credit n'est pris en plus.
+      return { ok: true as const };
+    }
+
     const prise = await reserverCredits(userId, operation);
     if (!prise.ok) {
       if (depenseReservee) await confirmerDepenseReplicate(userId, depenseReservee.reference, 'liberee').catch(() => null);
@@ -96,6 +141,7 @@ export async function executerGeneration(p: ParametresGeneration): Promise<Statu
       return 'echouee';
     }
     const film = lu.film;
+    filmLu = film;
 
     const resultat = await avecDossierTemporaire(ctx, async (racinePublique) => {
       const source = film.scenes.flatMap((x) => x.plans).find((pl) => pl.id === planId)?.media;
@@ -121,11 +167,14 @@ export async function executerGeneration(p: ParametresGeneration): Promise<Statu
         return await statutFinal(ctx, filmId, userId, generation.id, 'echouee');
       }
       const engageUsd = ('depenseUsd' in resultat ? resultat.depenseUsd : 0) ?? 0;
-      if (dep) {
-        const statutDepense: StatutDepense = ('jamaisEnvoye' in resultat && resultat.jamaisEnvoye) ? 'liberee'
-          : ('incertain' in resultat && resultat.incertain) ? 'incertaine' : 'confirmee';
-        await confirmerDepenseReplicate(userId, dep.reference, statutDepense).catch(() => null);
-      }
+      const statutDepense: StatutDepense = ('jamaisEnvoye' in resultat && resultat.jamaisEnvoye) ? 'liberee'
+        : ('incertain' in resultat && resultat.incertain) ? 'incertaine' : 'confirmee';
+      if (dep) await confirmerDepenseReplicate(userId, dep.reference, statutDepense).catch(() => null);
+      // Le quota suit EXACTEMENT la depense : libere seulement sur preuve de non-facturation,
+      // compte s'il y a doute. Un echec d'ecriture laisse la reservation engagee — comptee,
+      // jamais rendue a tort.
+      const refQuotaEchec = quotaReserve as string | null;
+      if (refQuotaEchec) await confirmerQuota(userId, refQuotaEchec, statutDepense).catch(() => false);
       // ⚠️ LE REMBOURSEMENT EST IDEMPOTENT (reference derivee du debit, `rembourserCredits`) :
       // le rejouer ici, meme si `solderGenerationsInterrompues` l'a deja fait entre-temps pour
       // la MEME generation, ne credite jamais deux fois.
@@ -150,6 +199,8 @@ export async function executerGeneration(p: ParametresGeneration): Promise<Statu
     }
 
     if (dep) await confirmerDepenseReplicate(userId, dep.reference, 'confirmee').catch(() => null);
+    const refQuota = quotaReserve as string | null;
+    if (refQuota) await confirmerQuota(userId, refQuota, 'confirmee').catch(() => false);
 
     const depense = arrondi((resultat.film.coutGenerationUsd ?? 0) - (film.coutGenerationUsd ?? 0));
     const refsUtilisees = new Map(resultat.film.scenes.flatMap((x) => x.plans).map((pl) => [pl.id, pl.referencesUtilisees] as const));

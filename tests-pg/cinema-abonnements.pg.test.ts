@@ -29,13 +29,14 @@ const LIMITES = { films: 30, secondes: 1800, usd: 10 };
 
 interface Resa { ok: boolean; motif: string | null; deja_reservee: boolean; films: number; secondes: number; usd_engages: string }
 
+/** `dureeFilm` : duree TOTALE du film apres l'operation (la base en deduit l'ajout). */
 async function reserver(
-  c: Client, u: string, ref: string, film: string, secondes: number, usd = 0.1,
+  c: Client, u: string, ref: string, film: string, dureeFilm: number, usd = 0.1,
   l = LIMITES, debut = DEBUT, fin = FIN,
 ): Promise<Resa> {
   const { rows } = await c.query<Resa>(
     'select * from public.reserver_quota_cinema($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)',
-    [u, debut, fin, ref, film, secondes, usd, l.films, l.secondes, l.usd],
+    [u, debut, fin, ref, film, dureeFilm, usd, l.films, l.secondes, l.usd],
   );
   return rows[0];
 }
@@ -105,8 +106,8 @@ describe('2. Repartir 30 minutes comme on veut', () => {
   it('les regenerations d’un MEME film ne consomment ni film ni minute, mais le budget', async () => {
     const u = await creerUtilisateur(db, 0);
     await reserver(db, u, 'premiere', 'film-a', 120, 0.4);
-    await reserver(db, u, 'regen-1', 'film-a', 0, 0.4);
-    await reserver(db, u, 'regen-2', 'film-a', 0, 0.4);
+    await reserver(db, u, 'regen-1', 'film-a', 120, 0.4);
+    await reserver(db, u, 'regen-2', 'film-a', 90, 0.4); // raccourci : ne rend rien, ne prend rien
     expect(await conso(u)).toMatchObject({ films: 1, secondes: 120, tentatives: 3 });
     expect((await conso(u))!.usd).toBeCloseTo(1.2, 4);
   });
@@ -115,8 +116,18 @@ describe('2. Repartir 30 minutes comme on veut', () => {
     const u = await creerUtilisateur(db, 0);
     const l = { films: 30, secondes: 1800, usd: 1 };
     expect((await reserver(db, u, 'a', 'f', 60, 0.6, l)).ok).toBe(true);
-    expect(await reserver(db, u, 'b', 'f', 0, 0.6, l)).toMatchObject({ ok: false, motif: 'budget_fournisseur_atteint' });
+    expect(await reserver(db, u, 'b', 'f', 60, 0.6, l)).toMatchObject({ ok: false, motif: 'budget_fournisseur_atteint' });
     expect((await conso(u))!.usd).toBeCloseTo(0.6, 4);
+  });
+
+  it('un film qui S’ALLONGE ne consomme que la difference — refusee si elle depasse les minutes', async () => {
+    const u = await creerUtilisateur(db, 0);
+    const l = { films: 30, secondes: 300, usd: 10 };
+    expect((await reserver(db, u, 'a', 'film', 120, 0.1, l)).ok).toBe(true);
+    expect((await reserver(db, u, 'b', 'film', 200, 0.1, l)).ok).toBe(true);
+    expect(await conso(u)).toMatchObject({ films: 1, secondes: 200 });
+    expect(await reserver(db, u, 'c', 'film', 320, 0.1, l)).toMatchObject({ ok: false, motif: 'minutes_epuisees' });
+    expect(await conso(u)).toMatchObject({ films: 1, secondes: 200, tentatives: 2 });
   });
 });
 
@@ -142,6 +153,7 @@ describe('3. Concurrence, idempotence, gardes', () => {
     const u = await creerUtilisateur(db, 0);
     expect((await reserver(db, u, 'a', 'f', 60, 50)).motif).toBe('montant_invalide');
     expect((await reserver(db, u, 'b', 'f', 60, 0)).motif).toBe('montant_invalide');
+    expect((await reserver(db, u, 'b2', 'f', 0, 0.1)).motif).toBe('secondes_invalides');
     const passe = new Date(Date.now() - 40 * JOUR).toISOString();
     const finPasse = new Date(Date.now() - 10 * JOUR).toISOString();
     expect((await reserver(db, u, 'c', 'f', 60, 0.1, LIMITES, passe, finPasse)).motif).toBe('periode_invalide');
@@ -162,7 +174,7 @@ describe('4. Confirmer, liberer, reconcilier', () => {
   it('liberer la PREMIERE reservation d’un film encore utilise : le film reste compte', async () => {
     const u = await creerUtilisateur(db, 0);
     await reserver(db, u, 'premiere', 'film', 120, 0.4);
-    await reserver(db, u, 'regen', 'film', 0, 0.4);
+    await reserver(db, u, 'regen', 'film', 120, 0.4);
     await confirmer(db, u, 'premiere', 'liberee');
     expect(await conso(u)).toMatchObject({ films: 1, secondes: 120, tentatives: 1 });
     // Et si la seconde est liberee a son tour, le film disparait vraiment.

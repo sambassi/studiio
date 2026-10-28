@@ -25,6 +25,9 @@ import { idPlanValide } from '@/lib/cinema/acces';
 import { fournisseurServeur } from '@/lib/cinema/garde';
 import { reserverGeneration, generationsDuFilm } from '@/lib/cinema/generation/suivi';
 import { lancerGeneration, solderGenerationsInterrompues } from '@/lib/cinema/generation/executeur-generation';
+import { devisGeneration } from '@/lib/cinema/generation/couts';
+import { regimeCinema, evaluerQuota } from '@/lib/cinema/abonnement/regime';
+import { messageRefus } from '@/lib/cinema/abonnement/quotas';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -68,6 +71,24 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const v = typeof corps.plafondUsd === 'number' ? corps.plafondUsd : Number.NaN;
     if (!Number.isFinite(v) || v < 0) return NextResponse.json({ ok: false, erreur: 'plafondUsd invalide' }, { status: 400 });
     plafondUsd = Math.min(v, ctx.plafondUsd);
+  }
+
+  // Quota d'abonnement : un refus CLAIR tout de suite, avant toute reservation. Ce n'est
+  // qu'un premier filtre — l'autorite reste la reservation atomique faite par l'executeur.
+  if (choix.mode === 'reelle') {
+    const regime = await regimeCinema(s.userId);
+    if (regime.type === 'refus') return NextResponse.json({ ok: false, quota: true, erreur: regime.message }, { status: 409 });
+    if (regime.type !== 'credits') {
+      const usd = devisGeneration(choix.id, [{ planId, operations: [operation as 'image' | 'video'] }]).totalUsd;
+      if (usd === null || !Number.isFinite(usd) || usd <= 0) {
+        return NextResponse.json({ ok: false, quota: true, erreur: messageRefus('estimation_invalide') }, { status: 409 });
+      }
+      if (regime.type === 'abonnement') {
+        const e = await evaluerQuota({ regime, userId: s.userId, film, operation: operation as 'image' | 'video', usdEstime: usd });
+        // 402 : la limite de l'abonnement est atteinte. Aucune bascule vers les credits.
+        if (!e.ok) return NextResponse.json({ ok: false, quota: true, erreur: e.message }, { status: 402 });
+      }
+    }
   }
 
   // Ce qu'une interruption du serveur aurait laisse pris : rendu avant tout nouveau geste.

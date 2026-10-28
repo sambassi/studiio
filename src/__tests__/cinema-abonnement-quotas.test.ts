@@ -19,7 +19,7 @@ const FORMULE: FormuleCinema = {
 };
 
 const film = (s: number, o: Partial<DemandeQuota> = {}): DemandeQuota => ({
-  filmDejaCompte: false, secondesAjoutees: s, dureeFilmS: s, qualite: 'standard',
+  filmDejaCompte: false, secondesDejaReservees: 0, dureeFilmS: s, qualite: 'standard',
   fonctionnalite: 'image_ia', usdEstime: 0.1, ...o,
 });
 
@@ -95,7 +95,7 @@ describe('30 minutes reparties librement', () => {
   });
 
   it('une regeneration d’un film deja compte ne prend ni film ni minute, mais du budget', () => {
-    const r = enchainer(200, film(0, { filmDejaCompte: true, dureeFilmS: 120, usdEstime: 0.42 }));
+    const r = enchainer(200, film(120, { filmDejaCompte: true, secondesDejaReservees: 120, usdEstime: 0.42 }));
     expect(r.dernier).toBe('budget_fournisseur_atteint');
     expect(r.acceptees).toBe(23); // 23 x 0,42 = 9,66 $ ; la 24e depasserait 10 $
     expect(r.c).toMatchObject({ films: 0, secondes: 0, tentatives: 23 });
@@ -147,15 +147,32 @@ describe('periode de quota', () => {
     expect(periodeQuota('mois_civil', null, new Date('2026-12-31T23:59:59Z'))!.fin).toBe('2027-01-01T00:00:00.000Z');
   });
 
-  it('periode d’abonnement : celle de Stripe, jamais devinee', () => {
-    const sub = { debut: '2026-11-03T08:00:00Z', fin: '2026-12-03T08:00:00Z' };
-    expect(periodeQuota('periode_abonnement', sub, t)).toEqual({
+  it('abonnement mensuel : la periode Stripe elle-meme', () => {
+    expect(periodeQuota('periode_abonnement', { fin: '2026-12-03T08:00:00Z' }, t)).toEqual({
       debut: '2026-11-03T08:00:00.000Z', fin: '2026-12-03T08:00:00.000Z',
     });
+  });
+
+  it('abonnement annuel : fenetres mensuelles aux dates anniversaire de Stripe', () => {
+    expect(periodeQuota('periode_abonnement', { fin: '2027-06-10T12:00:00Z' }, t)).toEqual({
+      debut: '2026-11-10T12:00:00.000Z', fin: '2026-12-10T12:00:00.000Z',
+    });
+  });
+
+  it('fin de mois : le 31 devient le dernier jour du mois court', () => {
+    expect(periodeQuota('periode_abonnement', { fin: '2027-03-31T00:00:00Z' }, new Date('2027-02-15T00:00:00Z'))).toEqual({
+      debut: '2027-01-31T00:00:00.000Z', fin: '2027-02-28T00:00:00.000Z',
+    });
+  });
+
+  it('non verifiable : jamais de nouveau quota accorde', () => {
     expect(periodeQuota('periode_abonnement', null, t)).toBeNull();
-    expect(periodeQuota('periode_abonnement', { debut: sub.debut, fin: null }, t)).toBeNull();
-    // Periode echue (renouvellement pas encore recu) : on ne prolonge pas en silence.
-    expect(periodeQuota('periode_abonnement', sub, new Date('2026-12-05T00:00:00Z'))).toBeNull();
+    expect(periodeQuota('periode_abonnement', { fin: null }, t)).toBeNull();
+    expect(periodeQuota('periode_abonnement', { fin: 'pas une date' }, t)).toBeNull();
+    // Echue : le renouvellement n'est pas encore arrive par le webhook.
+    expect(periodeQuota('periode_abonnement', { fin: '2026-11-15T09:59:59Z' }, t)).toBeNull();
+    // Plus de 13 mois : aucune periode Stripe ne ressemble a ca.
+    expect(periodeQuota('periode_abonnement', { fin: '2028-11-15T10:00:00Z' }, t)).toBeNull();
   });
 });
 

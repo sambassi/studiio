@@ -16,7 +16,7 @@ let corpsEnvoye: Record<string, unknown> | null = null;
 
 beforeEach(() => {
   migration = true; corpsEnvoye = null; reponsePut = { success: true };
-  vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+  vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
     if (init?.method === 'PUT') {
       corpsEnvoye = JSON.parse(String(init.body));
       const r = reponsePut as { success: boolean };

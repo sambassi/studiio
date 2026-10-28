@@ -27,6 +27,7 @@ import * as voixRoute from '@/app/api/cinema/films/[id]/voix/[planId]/route';
 import * as refsRoute from '@/app/api/cinema/films/[id]/references/route';
 import * as refPersoRoute from '@/app/api/cinema/films/[id]/references/[personnageId]/route';
 import * as generationRoute from '@/app/api/cinema/films/[id]/generation/route';
+import * as quotaRoute from '@/app/api/cinema/films/[id]/quota/route';
 
 const USER = { id: 'abcdef01-1111-4111-8111-111111111111', email: 'quelquun@example.org' };
 const env = (v?: string) => ({ CINEMA_ACTIVE: v }) as unknown as NodeJS.ProcessEnv;
@@ -54,8 +55,24 @@ describe('interrupteur — la regle', () => {
     expect(readFileSync('src/app/dashboard/cinema/page.tsx', 'utf8')).not.toMatch(/CINEMA_ACTIVE/);
   });
   it('l\'ancienne restriction a un compte est supprimee du code', () => {
-    const lire = (d: string): string[] => readdirSync(d).flatMap((n) => { const c = path.join(d, n); return statSync(c).isDirectory() ? lire(c) : /\.(ts|tsx)$/.test(n) ? [readFileSync(c, 'utf8')] : []; });
-    for (const src of [...lire('src/lib/cinema'), ...lire('src/app/api/cinema'), ...lire('src/app/dashboard/cinema')]) expect(src).not.toMatch(/CINEMA_COMPTE_AUTORISE|isAdmin/);
+    // UNE exception, et une seule : `abonnement/regime.ts` reconnait l'administrateur pour
+    // sa FACTURATION (cout fournisseur reel, sans credit). L'ACCES a Cinema, lui, ne depend
+    // jamais d'un compte admin — c'est ce que cette regle protege.
+    const EXCEPTION_FACTURATION = path.join('src/lib/cinema/abonnement/regime.ts');
+    const lire = (d: string): Array<[string, string]> => readdirSync(d).flatMap((n) => {
+      const c = path.join(d, n);
+      return statSync(c).isDirectory() ? lire(c) : /\.(ts|tsx)$/.test(n) ? [[c, readFileSync(c, 'utf8')] as [string, string]] : [];
+    });
+    const sources = [...lire('src/lib/cinema'), ...lire('src/app/api/cinema'), ...lire('src/app/dashboard/cinema')];
+    expect(sources.length).toBeGreaterThan(10);
+    for (const [chemin, src] of sources) {
+      expect(src, chemin).not.toMatch(/CINEMA_COMPTE_AUTORISE/);
+      if (chemin !== EXCEPTION_FACTURATION) expect(src, chemin).not.toMatch(/isAdmin/);
+    }
+    // Jamais dans les fichiers qui decident de l'ACCES.
+    for (const f of ['src/lib/cinema/acces.ts', 'src/lib/cinema/garde.ts', 'src/lib/cinema/routes-aide.ts']) {
+      expect(readFileSync(f, 'utf8'), f).not.toMatch(/isAdmin|abonnement\/regime/);
+    }
   });
 });
 
@@ -89,13 +106,14 @@ describe('interrupteur — TOUTES les routes API', () => {
     ['references POST', () => refsRoute.POST(req('POST'), P)],
     ['reference GET', () => refPersoRoute.GET(req(), P)],
     ['generation POST', () => generationRoute.POST(req('POST'), P)],
+    ['quota GET', () => quotaRoute.GET(req(), P)],
   ];
 
-  it('le balayage couvre chaque route.ts : 13 fichiers, 16 handlers, tous derriere sessionCinema', () => {
+  it('le balayage couvre chaque route.ts : 14 fichiers, 17 handlers, tous derriere sessionCinema', () => {
     const trouves: string[] = [];
     const marche = (d: string) => { for (const n of readdirSync(d)) { const c = path.join(d, n); statSync(c).isDirectory() ? marche(c) : n === 'route.ts' && trouves.push(c); } };
     marche('src/app/api/cinema');
-    expect(trouves.length).toBe(13);
+    expect(trouves.length).toBe(14);
     for (const f of trouves) expect(readFileSync(f, 'utf8')).toMatch(/sessionCinema\b/);
     const handlers = trouves.reduce((n, f) => n + (readFileSync(f, 'utf8').match(/export async function (GET|POST|PATCH|PUT|DELETE)/g) ?? []).length, 0);
     expect(handlers).toBe(appels.length);

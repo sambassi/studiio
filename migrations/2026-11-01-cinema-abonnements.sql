@@ -101,7 +101,9 @@ create or replace function public.reserver_quota_cinema(
   p_periode_fin   timestamptz,
   p_reference     text,
   p_film_id       text,
-  p_secondes      integer,
+  -- Duree TOTALE du film apres l'operation. La fonction en deduit elle-meme, sous le
+  -- verrou, les secondes a AJOUTER (allongement d'un film deja compte) : jamais l'appelant.
+  p_duree_film_s  integer,
   p_usd           numeric,
   p_max_films     integer,
   p_max_secondes  integer,
@@ -113,8 +115,9 @@ security definer
 set search_path = pg_catalog, public
 as $$
 declare
-  c         public.cinema_quota_consommation%rowtype;
-  v_nouveau boolean;
+  c          public.cinema_quota_consommation%rowtype;
+  v_nouveau  boolean;
+  v_secondes integer;
 begin
   if p_reference is null or length(btrim(p_reference)) = 0 then
     return query select false, 'reference_absente'::text, false, 0, 0, 0::numeric; return;
@@ -122,7 +125,7 @@ begin
   if p_film_id is null or length(btrim(p_film_id)) = 0 then
     return query select false, 'film_absent'::text, false, 0, 0, 0::numeric; return;
   end if;
-  if p_secondes is null or p_secondes < 0 then
+  if p_duree_film_s is null or p_duree_film_s <= 0 then
     return query select false, 'secondes_invalides'::text, false, 0, 0, 0::numeric; return;
   end if;
   -- Une operation connue coute au pire quelques dixiemes de dollar : un montant
@@ -166,10 +169,17 @@ begin
      where j.user_id = p_user_id and j.periode_debut = p_periode_debut
        and j.film_id = p_film_id and j.nouveau_film and j.statut <> 'liberee');
 
+  -- Secondes deja reservees pour CE film dans la periode : seule la difference compte.
+  -- Un film raccourci ne rend rien ici (les minutes engagees le restent).
+  v_secondes := greatest(0, p_duree_film_s - coalesce((
+    select sum(j.secondes) from public.cinema_quota_journal j
+     where j.user_id = p_user_id and j.periode_debut = p_periode_debut
+       and j.film_id = p_film_id and j.statut <> 'liberee'), 0))::integer;
+
   if c.films + (case when v_nouveau then 1 else 0 end) > p_max_films then
     return query select false, 'films_epuises'::text, false, c.films, c.secondes, c.usd_engages; return;
   end if;
-  if c.secondes + p_secondes > p_max_secondes then
+  if c.secondes + v_secondes > p_max_secondes then
     return query select false, 'minutes_epuisees'::text, false, c.films, c.secondes, c.usd_engages; return;
   end if;
   if c.usd_engages + p_usd > p_max_usd then
@@ -178,11 +188,11 @@ begin
 
   insert into public.cinema_quota_journal
     (user_id, reference, periode_debut, film_id, nouveau_film, secondes, usd, statut)
-    values (p_user_id, p_reference, p_periode_debut, p_film_id, v_nouveau, p_secondes, p_usd, 'engagee');
+    values (p_user_id, p_reference, p_periode_debut, p_film_id, v_nouveau, v_secondes, p_usd, 'engagee');
 
   update public.cinema_quota_consommation q
      set films       = q.films + (case when v_nouveau then 1 else 0 end),
-         secondes    = q.secondes + p_secondes,
+         secondes    = q.secondes + v_secondes,
          usd_engages = q.usd_engages + p_usd,
          tentatives  = q.tentatives + 1,
          maj_le      = now()

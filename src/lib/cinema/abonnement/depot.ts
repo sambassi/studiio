@@ -42,6 +42,66 @@ export async function lireFormules(): Promise<LectureFormules> {
   return { disponible: true, formules, invalides };
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// CONSOMMATION ET RESERVATION
+// ─────────────────────────────────────────────────────────────────────────
+
+export interface LectureConsommation {
+  films: number; secondes: number; usdEngages: number; tentatives: number;
+  /** Le film est-il deja compte dans la periode, et pour combien de secondes ? */
+  film: { compte: boolean; secondes: number };
+}
+
+/** `null` = illisible : l'appelant refuse, il ne suppose jamais un compteur vide. */
+export async function lireConsommation(userId: string, periodeDebut: string, filmId: string): Promise<LectureConsommation | null> {
+  const [c, j] = await Promise.all([
+    supabaseAdmin.from('cinema_quota_consommation').select('films, secondes, usd_engages, tentatives')
+      .eq('user_id', userId).eq('periode_debut', periodeDebut),
+    supabaseAdmin.from('cinema_quota_journal').select('nouveau_film, secondes, statut')
+      .eq('user_id', userId).eq('periode_debut', periodeDebut).eq('film_id', filmId),
+  ]);
+  if (c.error || j.error) return null;
+  const l = ((c.data ?? []) as Array<Record<string, unknown>>)[0];
+  const actives = ((j.data ?? []) as Array<{ nouveau_film: boolean; secondes: number; statut: string }>)
+    .filter((r) => r.statut !== 'liberee');
+  return {
+    films: Number(l?.films ?? 0), secondes: Number(l?.secondes ?? 0),
+    usdEngages: Number(l?.usd_engages ?? 0), tentatives: Number(l?.tentatives ?? 0),
+    film: { compte: actives.some((r) => r.nouveau_film), secondes: actives.reduce((t, r) => t + Number(r.secondes), 0) },
+  };
+}
+
+export type MotifReservationQuota =
+  | 'films_epuises' | 'minutes_epuisees' | 'budget_fournisseur_atteint' | 'reference_liberee'
+  | 'periode_invalide' | 'socle_absent' | 'erreur' | string;
+
+export async function reserverQuota(p: {
+  userId: string; periodeDebut: string; periodeFin: string; reference: string; filmId: string;
+  dureeFilmS: number; usd: number; maxFilms: number; maxSecondes: number; maxUsd: number;
+}): Promise<{ ok: true; dejaReservee: boolean } | { ok: false; motif: MotifReservationQuota }> {
+  const { data, error } = await supabaseAdmin.rpc('reserver_quota_cinema', {
+    p_user_id: p.userId, p_periode_debut: p.periodeDebut, p_periode_fin: p.periodeFin,
+    p_reference: p.reference, p_film_id: p.filmId, p_duree_film_s: p.dureeFilmS, p_usd: p.usd,
+    p_max_films: p.maxFilms, p_max_secondes: p.maxSecondes, p_max_usd: p.maxUsd,
+  });
+  if (error) return { ok: false, motif: socleAbsent(error) ? 'socle_absent' : 'erreur' };
+  const r = (Array.isArray(data) ? data[0] : data) as { ok?: boolean; motif?: string | null; deja_reservee?: boolean } | null;
+  if (!r || typeof r.ok !== 'boolean') return { ok: false, motif: 'erreur' };
+  return r.ok ? { ok: true, dejaReservee: r.deja_reservee === true } : { ok: false, motif: r.motif ?? 'erreur' };
+}
+
+export type StatutQuota = 'confirmee' | 'incertaine' | 'liberee';
+
+/** Best-effort pour l'appelant, mais l'echec est DIT : une reservation non soldee reste comptee. */
+export async function confirmerQuota(userId: string, reference: string, statut: StatutQuota): Promise<boolean> {
+  const { data, error } = await supabaseAdmin.rpc('confirmer_quota_cinema', {
+    p_user_id: userId, p_reference: reference, p_statut: statut,
+  });
+  if (error) return false;
+  const r = (Array.isArray(data) ? data[0] : data) as { ok?: boolean } | null;
+  return r?.ok === true;
+}
+
 export async function enregistrerFormule(
   f: FormuleCinema, adminEmail: string,
 ): Promise<{ ok: true } | { ok: false; raison: 'migration_absente' | 'erreur'; message: string }> {
