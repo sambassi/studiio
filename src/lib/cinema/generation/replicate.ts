@@ -198,6 +198,19 @@ async function rapatrier(url: string, extension: string): Promise<{ ok: true; fi
   return { ok: true, fichier };
 }
 
+/**
+ * ⚠️ BORNE ICI, A L'ENVOI — PAS SEULEMENT A LA SOURCE (diagnostic E002, 2026-10-28).
+ * `graineParDefaut` (atelier.ts) masque deja le bit de poids fort, mais `demande.graine`
+ * peut, par construction du type (`options.graine?: number` dans `genererMediaPlan`), venir
+ * d'un appelant qui fournirait une valeur EXPLICITE sans passer par cette fonction — aucun
+ * appelant actuel ne le fait (verifie), mais la validation doit tenir MEME si un futur
+ * appelant en ajoutait un. Masque le bit de poids fort : rend TOUJOURS une valeur dans
+ * [0, 2^31-1], sure pour toute interpretation usuelle (entier signe ou non signe 32 bits).
+ */
+function seedSur(graine: number): number {
+  return (graine >>> 0) & 0x7fffffff;
+}
+
 async function genererImage(demande: DemandeImageGeneration): Promise<ResultatGenerationIA> {
   const r = await appeler(MODELE_IMAGE, {
     // Le prompt ANGLAIS deja construit par le systeme existant : rien a reconstruire ici.
@@ -205,7 +218,7 @@ async function genererImage(demande: DemandeImageGeneration): Promise<ResultatGe
     aspect_ratio: rapport(demande.format),
     output_format: 'webp',
     // Reproductibilite : la meme graine rend la meme image.
-    seed: demande.graine,
+    seed: seedSur(demande.graine),
     num_outputs: 1,
   }, DELAI_IMAGE_MS);
   if (!r.ok) return { ok: false, erreur: `Replicate (image) : ${r.erreur}`, jamaisEnvoye: r.jamaisEnvoye, incertain: r.incertain };
@@ -285,7 +298,7 @@ async function genererVideo(demande: DemandeVideoGeneration): Promise<ResultatGe
   // le plus courant sur Studiio — recevait silencieusement une video horizontale, deformee
   // au montage. Les deux seules valeurs acceptees par le schema officiel sont EXACTEMENT
   // celles que `rapport()` produit deja pour l'image.
-  const r = await appeler(MODELE_VIDEO, { image, prompt: demande.prompt, seed: demande.graine, aspect_ratio: rapport(demande.format) }, DELAI_VIDEO_MS);
+  const r = await appeler(MODELE_VIDEO, { image, prompt: demande.prompt, seed: seedSur(demande.graine), aspect_ratio: rapport(demande.format) }, DELAI_VIDEO_MS);
   if (!r.ok) {
     // La taille de l'image envoyee est jointe ICI, pas devinee apres coup : au-dela de 1 Mo,
     // Replicate ne recommande plus le data URI inline (voir le commentaire plus haut).

@@ -481,6 +481,9 @@ describe('aspect_ratio : envoye au modele video, jamais laisse au defaut officie
 });
 
 describe('seed : borne a une valeur sure pour toute interpretation (diagnostic E002)', () => {
+  let dir: string;
+  afterEach(() => { if (dir) rmSync(dir, { recursive: true, force: true }); });
+
   it('`graineParDefaut` masque desormais le bit de poids fort — plus jamais > 2^31-1', () => {
     // `graineParDefaut` n'est pas exportee (fonction privee d'`atelier.ts`) : verifiee
     // directement sur le code source, meme convention que les autres preuves statiques de
@@ -502,6 +505,37 @@ describe('seed : borne a une valeur sure pour toute interpretation (diagnostic E
     // Un masque sur 31 bits ramene TOUJOURS une valeur dans l'intervalle sur, quel que soit
     // l'entier non signe 32 bits de depart.
     expect(SEED_INCIDENT & 0x7fffffff).toBeLessThanOrEqual(0x7fffffff);
+  });
+
+  /**
+   * RÉGRESSION (revue critique de la PR #629) : `graineParDefaut` masque la graine PAR
+   * DÉFAUT, mais `genererMediaPlan` accepte un `options.graine` EXPLICITE qui contournerait
+   * ce masquage si un appelant en fournissait une un jour (aucun ne le fait aujourd'hui,
+   * vérifié) — le seed doit donc être borné A L'ENVOI, pas seulement à la source.
+   */
+  it('`seedSur` masque le seed JUSTE AVANT l’envoi a Replicate — image ET video, meme si une graine EXPLICITE hors intervalle est fournie', () => {
+    const code = src('src/lib/cinema/generation/replicate.ts');
+    expect(code).toContain('function seedSur(graine: number): number {');
+    expect(code).toContain('return (graine >>> 0) & 0x7fffffff;');
+    // Les DEUX appels reseau passent par `seedSur`, pas `demande.graine` directement : un
+    // appelant qui fournirait une graine explicite hors intervalle (ex. 3339054566, cite dans
+    // l'incident) ne pourrait plus jamais l'envoyer telle quelle.
+    expect(code).toContain('seed: seedSur(demande.graine)');
+    const occurrences = code.match(/seed:\s*seedSur\(demande\.graine\)/g) ?? [];
+    expect(occurrences).toHaveLength(2); // genererImage ET genererVideo
+    expect(code).not.toMatch(/seed:\s*demande\.graine\b/); // plus aucun envoi NON masque
+  });
+
+  it('une graine EXPLICITE hors intervalle (ex. 3339054566) ne fait pas planter la construction de l’appel — echoue seulement sur le jeton absent', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'studiio-replicate-seed-'));
+    const image = await imagePngReelle(dir);
+    delete process.env.REPLICATE_API_TOKEN;
+    const r = await FOURNISSEUR_REPLICATE_VIDEO.genererVideo({
+      fichierImageSource: image, prompt: 'mouvement', dureeS: 3, format: '9:16',
+      graine: 3339054566, // > 2^31-1 : exactement le seed cite dans l'incident
+    });
+    expect(r).toMatchObject({ ok: false, jamaisEnvoye: true });
+    expect((r as { erreur: string }).erreur).toContain('REPLICATE_API_TOKEN absent');
   });
 });
 
