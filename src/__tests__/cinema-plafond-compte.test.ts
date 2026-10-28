@@ -135,12 +135,38 @@ describe('reserverDepenseReplicate — ne depense jamais a l’aveugle', () => {
     expect(etat.compte).toBeCloseTo(1.353, 5);
   });
 
-  it('plafond global depasse : refus chiffre, meme si le compte a de la marge', async () => {
+  it('plafond global depasse, meme si le compte a de la marge', async () => {
     const etat = { compte: 0, global: 99.6 };
     const reserver = reserveur(etat);
     const r = await reserverDepenseReplicate('u1', 1, 'video', { reserver, plafondCompte: 50, plafondGlobal: 100 });
     expect(r).toMatchObject({ ok: false, motif: 'plafond_global_depasse' });
-    if (!r.ok) expect(r.message).toContain('100.00');
+  });
+
+  /**
+   * CORRECTIF SECURITE (revue automatique, 2026-10-28, sur le correctif precedent de ce
+   * fichier) : le total GLOBAL agrege la depense de TOUS les comptes Studiio. Le montrer a
+   * UN utilisateur revelerait l'activite financiere agregee de tous les autres — contrairement
+   * au total DU COMPTE, qui est la propre donnee de l'utilisateur. Le message global reste
+   * donc VOLONTAIREMENT generique, jamais chiffre ; le total DU COMPTE, lui, reste precis.
+   */
+  it('le message du plafond GLOBAL ne revele JAMAIS le total agrege ni le plafond — contrairement au plafond DE COMPTE', async () => {
+    const etat = { compte: 0, global: 99.6 };
+    const reserver = reserveur(etat);
+    const r = await reserverDepenseReplicate('u1', 1, 'video', { reserver, plafondCompte: 50, plafondGlobal: 100 });
+    expect(r).toMatchObject({ ok: false, motif: 'plafond_global_depasse' });
+    if (!r.ok) {
+      expect(r.message).not.toContain('99.6');  // jamais l'agregat de TOUS les comptes
+      expect(r.message).not.toContain('100.00'); // jamais le plafond global lui-meme
+      expect(r.message.toLowerCase()).toContain('plafond');
+    }
+  });
+
+  it('a l’inverse, le message du plafond DE COMPTE reste precis — c’est la propre donnee de l’utilisateur, sans risque', async () => {
+    const etat = { compte: 1.95, global: 1.95 };
+    const reserver = reserveur(etat);
+    const r = await reserverDepenseReplicate('u1', 0.45, 'video', { reserver, plafondCompte: 2, plafondGlobal: 100 });
+    expect(r).toMatchObject({ ok: false, motif: 'plafond_compte_depasse' });
+    if (!r.ok) expect(r.message).toContain('1.9500');
   });
 
   it('migration absente (socle_absent) : refus explicite, jamais un appel a l’aveugle', async () => {
