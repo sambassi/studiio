@@ -29,6 +29,7 @@ import { reserverDepenseReplicate, confirmerDepenseReplicate, type StatutDepense
 import {
   aReconcilier, depenseAReconcilier, appliquerPatchGeneration, appliquerPatchTerminal, noterGeneration,
   renouvelerBailGeneration, statutEffectif, BAIL_GENERATION_S,
+  livrerApresInterruption, noterNonLivraison, MESSAGE_NON_LIVRE_CREDITS, MESSAGE_NON_LIVRE_REMPLACE,
 } from '@/lib/cinema/generation/suivi';
 import type { Film, GenerationSuivie, StatutGeneration } from '@/lib/cinema/types';
 import { regimeCinema, evaluerQuota } from '@/lib/cinema/abonnement/regime';
@@ -166,6 +167,8 @@ export async function executerGeneration(p: ParametresGeneration): Promise<Statu
     }
     const film = lu.film;
     filmLu = film;
+    /** Le media du plan AU DEPART : une livraison tardive ne doit jamais ecraser plus recent. */
+    const mediaAvantUrl = film.scenes.flatMap((x) => x.plans).find((pl) => pl.id === planId)?.media?.url ?? null;
 
     const resultat = await avecDossierTemporaire(ctx, async (racinePublique) => {
       const source = film.scenes.flatMap((x) => x.plans).find((pl) => pl.id === planId)?.media;
@@ -238,15 +241,26 @@ export async function executerGeneration(p: ParametresGeneration): Promise<Statu
     // rembourse les credits) ne doit JAMAIS etre attache au film — l'utilisateur recevrait
     // alors la video ET ses credits rembourses, pendant que le compte Replicate du
     // proprietaire a bien ete facture. Le media est jete dans ce cas, jamais livre « gratuit ».
-    const suivant = await appliquerPatchTerminal(ctx.films, filmId, userId, generation.id, { statut: 'reussie', erreur: null }, (f) => {
+    const avecResultat = (f: Film): Film => {
       const avecMedia = remplacerMedia(f, planId, resultat.media);
       return {
         ...avecMedia,
         coutGenerationUsd: arrondi((f.coutGenerationUsd ?? 0) + depense),
         scenes: avecMedia.scenes.map((x) => ({ ...x, plans: x.plans.map((pl) => pl.id !== planId ? pl : { ...pl, referencesUtilisees: refsUtilisees.get(pl.id) }) })),
       };
-    }).catch(() => null);
+    };
+    const suivant = await appliquerPatchTerminal(ctx.films, filmId, userId, generation.id, { statut: 'reussie', erreur: null }, avecResultat)
+      .catch(() => null);
     if (!suivant) {
+      // Arrive APRES une interruption : livre si c'est sans risque (aucun credit pris, plan
+      // inchange) — un film facture n'est pas perdu pour rien. Sinon, jete ET explique.
+      const livre = await livrerApresInterruption(ctx.films, filmId, userId, generation.id, planId, mediaAvantUrl, avecResultat);
+      if (livre) return 'reussie';
+      const g = (await ctx.films.lire(filmId, userId).catch(() => null))?.film.generations?.find((x) => x.id === generation.id);
+      if (g?.statut === 'interrompue') {
+        await noterNonLivraison(ctx.films, filmId, userId, generation.id,
+          (g.creditsPris ?? 0) > 0 ? MESSAGE_NON_LIVRE_CREDITS : MESSAGE_NON_LIVRE_REMPLACE);
+      }
       // Le media produit est jete dans TOUS les cas ou l'ecriture n'a pas ete appliquee :
       // film disparu, OU generation deja tranchee ailleurs (voir le commentaire ci-dessus).
       const cle = cleMedia(userId, filmId, resultat.media.url);

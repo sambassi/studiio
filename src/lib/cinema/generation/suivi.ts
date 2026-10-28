@@ -208,6 +208,51 @@ export async function appliquerPatchTerminal(
   });
 }
 
+export const MESSAGE_LIVRE_APRES_INTERRUPTION =
+  'Le resultat est arrive apres une interruption : il a ete livre, sans nouveau cout.';
+export const MESSAGE_NON_LIVRE_CREDITS =
+  'Le resultat est arrive apres une interruption : vos credits ont ete rendus, il n’a donc pas ete livre. Relancez la generation si besoin.';
+export const MESSAGE_NON_LIVRE_REMPLACE =
+  'Le resultat est arrive apres une interruption, mais ce plan avait deja ete modifie : il n’a pas ete livre.';
+
+/**
+ * LIVRAISON D'UN RESULTAT ARRIVE APRES UNE INTERRUPTION — seulement si c'est SANS RISQUE.
+ *
+ * Le fournisseur a FACTURE (le media existe) ; le jeter ferait perdre un film paye. Mais
+ * la regle de `appliquerPatchTerminal` reste vraie dans un cas : si des CREDITS ont ete
+ * pris, la reconciliation a pu les rendre — livrer donnerait le media ET le remboursement.
+ * La livraison n'a donc lieu que si, sous l'ecriture gardee :
+ *   - la generation est `interrompue` (jamais une autre issue ecrasee) ;
+ *   - elle n'a pris AUCUN credit (abonnement, administrateur, tarif nul) ;
+ *   - le media du plan est TOUJOURS celui du depart (rien ne l'a remplace entre-temps :
+ *     jamais ecraser un media plus recent, jamais livrer deux fois).
+ * Rend `null` sinon : l'appelant jette le media et le DIT (`noterNonLivraison`).
+ */
+export async function livrerApresInterruption(
+  depot: DepotFilms, filmId: string, proprietaire: string, id: string,
+  planId: string, mediaAvantUrl: string | null, surFilm: (f: Film) => Film,
+): Promise<Film | null> {
+  return modifierFilm(depot, filmId, proprietaire, (f) => {
+    const g = (f.generations ?? []).find((x) => x.id === id);
+    if (!g || g.statut !== 'interrompue') return null;
+    if ((g.creditsPris ?? 0) > 0) return null;
+    const plan = f.scenes.flatMap((s) => s.plans).find((p) => p.id === planId);
+    if (!plan || (plan.media?.url ?? null) !== mediaAvantUrl) return null;
+    return appliquerPatchGeneration(surFilm(f), id, { statut: 'reussie', erreur: MESSAGE_LIVRE_APRES_INTERRUPTION, bailJusqua: null });
+  }).catch(() => null);
+}
+
+/** Le media tardif n'a pas ete livre : la generation interrompue le dit, sans changer d'issue. */
+export async function noterNonLivraison(
+  depot: DepotFilms, filmId: string, proprietaire: string, id: string, message: string,
+): Promise<void> {
+  await modifierFilm(depot, filmId, proprietaire, (f) => {
+    const g = (f.generations ?? []).find((x) => x.id === id);
+    if (!g || g.statut !== 'interrompue') return null;
+    return appliquerPatchGeneration(f, id, { erreur: message });
+  }).catch(() => null);
+}
+
 /**
  * Les generations interrompues dont les credits ont ete pris mais jamais rendus.
  * Le remboursement est idempotent (reference derivee du debit) : le rejouer est sans risque.

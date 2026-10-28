@@ -586,10 +586,20 @@ pouvait rien.
   rend les credits (regime credits, idempotent) et passe depense ET quota en
   `incertaine` — jamais `liberee` : rien ne prouve que l'appel n'a pas ete
   facture. `depenseReconciliee` evite de le refaire ; base injoignable = retente.
-- Reussie apres interruption : media jete (jamais livre « gratuit »), depense et
-  quota reclasses `confirmee` (facture). Echec prouve non facture apres
+- Reussie apres interruption (executeur vivant, bail perdu) : depense et quota
+  reclasses `confirmee` (facture). Le media est LIVRE (`livrerApresInterruption`)
+  seulement si la generation n'a pris AUCUN credit (abonnement, administrateur)
+  et que le plan n'a pas change depuis le depart — ecriture gardee, une seule
+  livraison. Sinon (credits rendus, ou plan modifie) il est jete et la
+  generation le DIT a l'utilisateur. Echec prouve non facture apres
   interruption : `incertaine` → `liberee`. Une issue definitive n'est jamais
   ecrasee (`deja_finalisee`).
+- ⚠️ BLOQUANT AVANT ACTIVATION : si le PROCESSUS meurt pendant l'appel, le
+  fournisseur peut terminer et facturer, mais l'identifiant de sa demande n'est
+  pas conserve sur la generation : le media ne peut pas etre recupere, la depense
+  reste `incertaine`. A construire : persister l'identifiant fournisseur avant
+  l'attente, puis une lecture de statut (gratuite) pour reconcilier et
+  rapatrier.
 
 ### 16.3 Devis global et budget du projet
 

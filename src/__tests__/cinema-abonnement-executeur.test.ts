@@ -300,38 +300,79 @@ describe('RECONCILIATION des generations interrompues', () => {
     expect((await lire()).depenseReconciliee).toBe(true);
   });
 
-  it('REUSSIE APRES INTERRUPTION : media jete, mais depense et quota CONFIRMES (facture), aucun credit', async () => {
-    e.regime = ABONNEMENT;
+  /**
+   * Un resultat qui arrive APRES que la reconciliation a declare la generation interrompue.
+   * `remplacer` : un autre media a ete pose sur le plan entre-temps.
+   */
+  async function resultatTardif(o: { remplacer?: boolean } = {}) {
     let depotRef: ReturnType<typeof depotFilmsMemoire> | null = null;
     e.pendantAppel = async () => {
-      // Pendant l'appel, une reconciliation declare la generation interrompue.
       const d = depotRef!;
-      const f = (await d.lire('film-abo', U))!.film;
-      await modifierFilm(d, 'film-abo', U, (x) => ({ ...x, generations: x.generations!.map((g) => ({ ...g, bailJusqua: '2020-01-01T00:00:00Z' })) }));
-      await solderGenerationsInterrompues({ films: d } as never, 'film-abo', U, f);
+      await modifierFilm(d, 'film-abo', U, (x) => ({
+        ...x,
+        generations: x.generations!.map((g) => ({ ...g, bailJusqua: '2020-01-01T00:00:00Z' })),
+        scenes: !o.remplacer ? x.scenes : x.scenes.map((sc, i) => (i !== 0 ? sc : { ...sc, plans: sc.plans.map((pl, j) => (j !== 0 ? pl : {
+          ...pl, media: { url: '/cinema/film-abo/medias/importe.png', genre: 'image' as const, largeur: 10, hauteur: 10, dureeS: null, octets: 10, origine: 'import' as const },
+        })) })),
+      }));
       await solderGenerationsInterrompues({ films: d } as never, 'film-abo', U, (await d.lire('film-abo', U))!.film);
     };
-    const lancerAvecCapture = async () => {
-      const depot = depotFilmsMemoire();
-      depotRef = depot;
-      const film = { ...preparerFilm({ histoire: 'Nina entre. Marco la regarde.', personnages: [], idFilm: 'film-abo', titre: 't' }), proprietaire: U,
-        budgetApprouve: { usd: 1, perimetre: 'images' as const, devisUsd: 1, approuveLe: 'x' } };
-      await depot.creer(film, U);
-      const r = await reserverGeneration(depot, film.id, U, { planId: film.scenes[0].plans[0].id, operation: 'image', mode: 'reelle' });
-      if (!r.ok) throw new Error('reservation');
-      const ctx = { films: depot, dossierTravail: mkdtempSync(join(tmpdir(), 'cinema-abo-')),
-        objets: { telechargerVers: async () => true, deposerFichier: async () => {}, supprimer: async () => {} } } as never;
-      const statut = await executerGeneration({ ctx, userId: U, filmId: film.id, generation: r.generation, fournisseurId: ID_REPLICATE_IMAGE, plafondUsd: 2 });
-      return { statut, g: (await depot.lire(film.id, U))!.film, ref: `cinema-quota:${r.generation.id}` };
-    };
-    const { statut, g, ref } = await lancerAvecCapture();
-    expect(statut).toBe('interrompue');
-    expect(g.scenes[0].plans[0].media).toBeNull(); // jamais livre « gratuit »
+    const depot = depotFilmsMemoire();
+    depotRef = depot;
+    const film = { ...preparerFilm({ histoire: 'Nina entre. Marco la regarde.', personnages: [], idFilm: 'film-abo', titre: 't' }), proprietaire: U,
+      budgetApprouve: { usd: 1, perimetre: 'images' as const, devisUsd: 1, approuveLe: 'x' } };
+    await depot.creer(film, U);
+    const r = await reserverGeneration(depot, film.id, U, { planId: film.scenes[0].plans[0].id, operation: 'image', mode: 'reelle' });
+    if (!r.ok) throw new Error('reservation');
+    const supprimes: string[] = [];
+    const ctx = { films: depot, dossierTravail: mkdtempSync(join(tmpdir(), 'cinema-abo-')),
+      objets: { telechargerVers: async () => true, deposerFichier: async () => {}, supprimer: async (k: string) => { supprimes.push(k); } } } as never;
+    const statut = await executerGeneration({ ctx, userId: U, filmId: film.id, generation: r.generation, fournisseurId: ID_REPLICATE_IMAGE, plafondUsd: 2 });
+    const f = (await depot.lire(film.id, U))!.film;
+    return { statut, f, g: f.generations![0], ref: `cinema-quota:${r.generation.id}`, supprimes };
+  }
+
+  it('ARRIVE APRES INTERRUPTION, aucun credit pris (abonnement) : LIVRE, facture une seule fois', async () => {
+    e.regime = ABONNEMENT;
+    const { statut, f, g, ref, supprimes } = await resultatTardif();
+    expect(statut).toBe('reussie');
+    expect(g.statut).toBe('reussie');
+    expect(g.erreur).toMatch(/livre, sans nouveau cout/);
+    expect(f.scenes[0].plans[0].media?.url).toMatch(/-g\.png$/);
+    expect(supprimes).toEqual([]);
     // Reconciliation : incertaine ; executeur : confirmee (l'appel a bien ete facture).
     expect(e.confirmerQuota.mock.calls.map((c) => c[2])).toEqual(['incertaine', 'confirmee']);
     expect(e.confirmerDepense.mock.calls.map((c) => c[2])).toEqual(['incertaine', 'confirmee']);
     expect(e.confirmerQuota.mock.calls[0][1]).toBe(ref);
     expect(e.reserverCredits).not.toHaveBeenCalled();
     expect(e.rembourserCredits).not.toHaveBeenCalled();
+    // Livre une fois : une nouvelle reconciliation ne la reprend plus.
+    await solderGenerationsInterrompues({ films: { lire: async () => ({ film: f, version: 1 }) } } as never, 'film-abo', U, f);
+    expect(e.confirmerQuota).toHaveBeenCalledTimes(2);
+  });
+
+  it('administrateur : meme livraison, toujours sans credit', async () => {
+    e.regime = { type: 'cout_reel' };
+    const { statut, f } = await resultatTardif();
+    expect(statut).toBe('reussie');
+    expect(f.scenes[0].plans[0].media?.url).toMatch(/-g\.png$/);
+  });
+
+  it('CREDITS rendus par la reconciliation : JAMAIS livre (pas de media gratuit), et l’utilisateur est prevenu', async () => {
+    const { statut, f, g, supprimes } = await resultatTardif();
+    expect(statut).toBe('interrompue');
+    expect(e.rembourserCredits).toHaveBeenCalledTimes(1);
+    expect(f.scenes[0].plans[0].media).toBeNull();
+    expect(supprimes).toHaveLength(1);
+    expect(g.erreur).toMatch(/credits ont ete rendus/);
+  });
+
+  it('plan modifie entre-temps : le media plus recent n’est jamais ecrase', async () => {
+    e.regime = ABONNEMENT;
+    const { statut, f, g, supprimes } = await resultatTardif({ remplacer: true });
+    expect(statut).toBe('interrompue');
+    expect(f.scenes[0].plans[0].media?.url).toBe('/cinema/film-abo/medias/importe.png');
+    expect(supprimes).toHaveLength(1);
+    expect(g.erreur).toMatch(/deja ete modifie/);
   });
 });
