@@ -343,15 +343,25 @@ export default function CinemaPage() {
   /** Suppression en deux gestes : l'icone arme, la coche confirme. */
   const [suppressionArmee, setSuppressionArmee] = useState(false);
   /**
-   * Etat des panneaux 1/2/4 remonte ici : le rail d'etapes doit pouvoir en OUVRIR un
-   * depuis l'exterieur (clic sur « Personnages ») sans perdre la saisie en cours —
+   * Etat des panneaux 1/2/3/4 remonte ici : le rail d'etapes doit pouvoir en OUVRIR un
+   * (et REFERMER les autres) depuis l'exterieur sans perdre la saisie en cours —
    * c'est un simple affichage, aucune donnee de formulaire ne vit dans cet etat.
+   * Un clic DIRECT sur l'en-tete d'un panneau (via `basculer` dans `CollapsiblePanel`)
+   * reste independant de cette exclusivite : il ne touche qu'a sa propre cle.
    */
-  const [panneauxOuverts, setPanneauxOuverts] = useState<Record<number, boolean>>({ 1: true, 2: true, 4: true });
+  const [panneauxOuverts, setPanneauxOuverts] = useState<Record<number, boolean>>({ 1: true, 2: true, 3: true, 4: true });
+  /**
+   * Panneaux ouverts par etape du rail (les autres se referment) : « une seule
+   * configuration principale a la fois ». Le panneau 3 (« Composer le scenario »)
+   * n'a pas d'etape dediee dans le rail a 5 entrees — c'est l'action-pont entre
+   * Histoire et Personnages (il faut l'un ou l'autre avant de composer), donc il
+   * reste visible pendant ces deux etapes et se referme des que des scenes existent.
+   */
+  const PANNEAUX_PAR_ETAPE: number[][] = [[1, 3], [2, 3], [4], [], []];
   /** Cible DOM de chaque etape du rail, dans l'ordre Histoire/Personnages/Scenes/Apercu/Export. */
   const allerAEtape = (index: number) => {
-    const panneauCible = [1, 2, 4][index];
-    if (panneauCible) setPanneauxOuverts((p) => ({ ...p, [panneauCible]: true }));
+    const ouverts = new Set(PANNEAUX_PAR_ETAPE[index] ?? []);
+    setPanneauxOuverts({ 1: ouverts.has(1), 2: ouverts.has(2), 3: ouverts.has(3), 4: ouverts.has(4) });
     const idCible = ['panneau-cinema-1', 'panneau-cinema-2', 'panneau-cinema-4', 'cinema-apercu', 'cinema-export'][index];
     // Le panneau peut venir de s'ouvrir dans ce meme rendu : laisser le DOM se poser avant de defiler.
     requestAnimationFrame(() => document.getElementById(idCible)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
@@ -838,7 +848,7 @@ export default function CinemaPage() {
                 </div>
               ))}
             </div>
-            <div className="mt-3 flex gap-2">
+            <div className="mt-3 flex flex-wrap gap-2">
               <button onClick={() => setCasting([...casting, { nom: '', role: '', description: '', urlImage: '' }])} className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm hover:border-violet-500/50">
                 <Plus className="w-4 h-4" /> Ajouter un personnage
               </button>
@@ -850,7 +860,10 @@ export default function CinemaPage() {
             </div>
           </CollapsiblePanel>
 
-          <CollapsiblePanel numero={3} titre="Scenario" icone={Wand2}>
+          <CollapsiblePanel
+            numero={3} titre="Scenario" icone={Wand2}
+            ouvertControle={panneauxOuverts[3]} onChangerOuvert={(v) => setPanneauxOuverts((p) => ({ ...p, 3: v }))}
+          >
             <button onClick={composer} disabled={enCours !== null} className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium hover:bg-violet-500 disabled:opacity-50">
               {enCours === 'scenario' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
               Composer le scenario
@@ -1311,11 +1324,19 @@ function Apercu({ montage, surPreparerVoix, voixEnCours }: { montage: MontageApi
         <Detail texte="Meme chronologie que le MP4 : les debuts, durees et couleurs viennent du montage renvoye par l'API, pas d'un calcul propre a la page." />
       </h2>
 
+      {/* Largeur responsive : une largeur fixe en pixels debordait sur tout viewport plus
+          etroit que 640px (mobile, colonne de droite en 380px) — `max-width` + `aspect-ratio`
+          gardent les memes proportions 16:9/9:16 tout en retrecissant avec le conteneur.
+          `minHeight` : le texte superpose (titre scene + dialogue centre) est en taille FIXE,
+          pas proportionnelle a la largeur — en dessous de cette hauteur les deux blocs se
+          chevauchent. Une boite plus "carree" qu'un 16:9 strict sur les tres petits ecrans
+          reste lisible ; un chevauchement de texte ne l'est pas. */}
       <div
-        className="relative mx-auto overflow-hidden rounded-xl border border-slate-800"
+        className="relative mx-auto w-full overflow-hidden rounded-xl border border-slate-800"
         style={{
-          width: portrait ? 270 : 640,
-          height: portrait ? 480 : 360,
+          maxWidth: portrait ? 270 : 640,
+          aspectRatio: portrait ? '9 / 16' : '16 / 9',
+          minHeight: portrait ? 320 : 200,
           background: `radial-gradient(130% 110% at 25% 15%, ${segment.couleurs[0]} 0%, ${segment.couleurs[1]} 55%, #0A0A0F 100%)`,
         }}
       >
@@ -1355,7 +1376,7 @@ function Apercu({ montage, surPreparerVoix, voixEnCours }: { montage: MontageApi
         </div>
       </div>
 
-      <div className="mt-4 flex items-center gap-3">
+      <div className="mt-4 flex flex-wrap items-center gap-3">
         <button onClick={() => setJoue((v) => !v)} className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm hover:border-violet-500/50">
           {joue ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
           {joue ? 'Pause' : 'Lire le montage'}
@@ -1363,7 +1384,7 @@ function Apercu({ montage, surPreparerVoix, voixEnCours }: { montage: MontageApi
         <input
           type="range" min={0} max={montage.dureeS} step={0.1} value={tempsS}
           onChange={(e) => setTempsS(Number(e.target.value))}
-          className="flex-1 accent-violet-500"
+          className="flex-1 min-w-[120px] accent-violet-500"
         />
         {!montage.segments.some((s) => s.voixUrl) && (
           <button onClick={surPreparerVoix} disabled={voixEnCours} className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm hover:border-violet-500/50 disabled:opacity-50">
