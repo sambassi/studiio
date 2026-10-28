@@ -401,6 +401,90 @@ describe('issues terminales : ce que le fournisseur s’engage a ne pas facturer
   });
 });
 
+describe('expiration de l’attente : annulation officielle, et rapatriement borne', () => {
+  beforeEach(() => { process.env = { ...ENV0, ...CLES } as NodeJS.ProcessEnv; });
+  afterEach(() => { vi.useRealTimers(); });
+
+  const demandeImage = {
+    promptPlan: 'p', promptConstruit: 'a shot', personnages: [], format: '16:9' as const, graine: 1,
+  };
+
+  /** Une demande qui reste `queued` jusqu'a l'echeance ; l'annulation rend `statutAnnulation`. */
+  const enFileSansFin = (statutAnnulation: number, requestId = 'r1') => vi.fn(async (url: string, init?: RequestInit) => {
+    if (url.includes('/estimate/')) return reponse(200, { usd: '0.002' });
+    if (url.endsWith(MODELE_IMAGE_HF)) {
+      return reponse(200, { status: 'queued', request_id: requestId, status_url: `${BASE_HIGGSFIELD}/requests/r1/status` });
+    }
+    if (url.endsWith('/cancel')) {
+      expect(init?.method).toBe('POST');
+      return reponse(statutAnnulation, null);
+    }
+    return reponse(200, { status: 'queued' });
+  });
+
+  async function genererJusquAEcheance() {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+    const p = FOURNISSEUR_HIGGSFIELD_IMAGE.genererImage(demandeImage);
+    await vi.advanceTimersByTimeAsync(200_000);
+    return p;
+  }
+
+  it('encore en file : annulee (202), donc NON facturee', async () => {
+    const f = enFileSansFin(202);
+    vi.stubGlobal('fetch', f);
+    const r = await genererJusquAEcheance();
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.nonFacture).toBe(true);
+      expect(r.incertain).toBeFalsy();
+    }
+    const annulations = f.mock.calls.filter(([u]) => String(u).endsWith('/cancel'));
+    expect(annulations).toHaveLength(1);
+    expect(annulations[0][0]).toBe(`${BASE_HIGGSFIELD}/requests/r1/cancel`);
+  });
+
+  it('deja demarree (400) : la depense reste INCERTAINE, jamais liberee', async () => {
+    vi.stubGlobal('fetch', enFileSansFin(400));
+    const r = await genererJusquAEcheance();
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.incertain).toBe(true);
+      expect(r.nonFacture).toBeFalsy();
+    }
+  });
+
+  it('un request_id hors forme n’est jamais injecte dans un chemin', async () => {
+    const f = enFileSansFin(202, '../../estimate/x');
+    vi.stubGlobal('fetch', f);
+    const r = await genererJusquAEcheance();
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.incertain).toBe(true);
+    expect(f.mock.calls.some(([u]) => String(u).endsWith('/cancel'))).toBe(false);
+  });
+
+  it('un media annonce trop volumineux est refuse sans etre lu', async () => {
+    const lu = vi.fn(async () => new ArrayBuffer(4096));
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/estimate/')) return reponse(200, { usd: '0.002' });
+      if (url.endsWith(MODELE_IMAGE_HF)) {
+        return reponse(200, { status: 'queued', request_id: 'r1', status_url: `${BASE_HIGGSFIELD}/requests/r1/status` });
+      }
+      if (url.startsWith(`${BASE_HIGGSFIELD}/requests/`)) {
+        return reponse(200, { status: 'completed', images: [{ url: 'https://cdn.example/i.jpg' }] });
+      }
+      return {
+        ok: true, status: 200,
+        headers: new Headers({ 'content-length': String(500 * 1024 * 1024) }),
+        arrayBuffer: lu,
+      } as unknown as Response;
+    }));
+    const r = await FOURNISSEUR_HIGGSFIELD_IMAGE.genererImage(demandeImage);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.erreur).toContain('trop volumineux');
+    expect(lu).not.toHaveBeenCalled();
+  });
+});
+
 describe('video : l’image source est verifiee AVANT tout appel', () => {
   let dossier: string;
   beforeEach(() => {

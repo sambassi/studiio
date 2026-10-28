@@ -90,9 +90,13 @@
  *   - les fichiers Higgsfield vivent 7 jours : le resultat est rapatrie en
  *     LOCAL immediatement, puis passe par les MEMES controles qu'un import
  *     manuel (`atelier.ts` → `medias.importerMedia`).
- *   - `status_url` et `cancel_url` viennent de la REPONSE du fournisseur :
- *     ils ne sont suivis que s'ils pointent sur `api.higgsfield.ai` (sinon
- *     une reponse alteree nous ferait interroger n'importe quel hote).
+ *   - `status_url` vient de la REPONSE du fournisseur : il n'est suivi que
+ *     s'il pointe sur `api.higgsfield.ai` (sinon une reponse alteree nous
+ *     ferait interroger n'importe quel hote). L'annulation n'utilise PAS le
+ *     `cancel_url` rendu : son chemin est reconstruit depuis un `request_id`
+ *     valide, sur l'hote officiel.
+ *   - a l'expiration de l'attente, la demande est annulee si elle est encore
+ *     en file (202 = non facturee) ; sinon la depense reste `incertain`.
  */
 import os from 'os';
 import path from 'path';
@@ -130,6 +134,12 @@ const DELAI_ESTIMATION_MS = 20_000;
 /** Attente entre deux lectures de statut : courte au debut, puis plus espacee. */
 const ATTENTE_MIN_MS = 2_000;
 const ATTENTE_MAX_MS = 10_000;
+/** Un telechargement bloque ne doit pas geler le travail du film indefiniment. */
+const DELAI_RAPATRIEMENT_MS = 120_000;
+/** Un plan anime de 10 s pese quelques Mo : au-dela, la reponse n'est pas un media attendu. */
+export const TAILLE_MAX_RAPATRIEMENT = 200 * 1024 * 1024;
+/** `request_id` est un UUID : tout autre caractere rendrait le chemin d'annulation ambigu. */
+const ID_REQUETE_SUR = /^[A-Za-z0-9-]{1,64}$/;
 
 /** Les cles sont-elles presentes ? (condition 3 sur 3) */
 export function higgsfieldConfigure(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -384,8 +394,22 @@ type Issue =
  * `failed`, `nsfw`, `canceled` (terminaux). Les deux issues que Higgsfield
  * declare NON FACTUREES (`failed`, `nsfw`) portent `nonFacture: true`.
  */
+/**
+ * ANNULATION OFFICIELLE — `POST /requests/{id}/cancel` (lu le 2026-10-28) :
+ * `202` = annulee avant traitement, donc non facturee ; `400` = deja demarree,
+ * plus annulable. Seul un 202 libere la depense : tout autre cas la laisse
+ * comptee, jamais sous-estimee.
+ */
+async function annuler(requestId: string, env: NodeJS.ProcessEnv = process.env): Promise<boolean> {
+  if (!ID_REQUETE_SUR.test(requestId)) return false;
+  const r = await appelJson(`${BASE_HIGGSFIELD}/requests/${requestId}/cancel`, {
+    method: 'POST', headers: enTetes(env),
+  }, DELAI_ESTIMATION_MS);
+  return r.ok && r.statut === 202;
+}
+
 async function attendre(
-  statusUrl: string, genre: 'image' | 'video', delaiMs: number, env: NodeJS.ProcessEnv = process.env,
+  statusUrl: string, requestId: string, genre: 'image' | 'video', delaiMs: number, env: NodeJS.ProcessEnv = process.env,
 ): Promise<Issue> {
   const echeance = Date.now() + delaiMs;
   let attente = ATTENTE_MIN_MS;
@@ -417,8 +441,13 @@ async function attendre(
     await new Promise((r2) => setTimeout(r2, attente));
     attente = Math.min(ATTENTE_MAX_MS, Math.round(attente * 1.5));
   }
-  // L'echeance a expire : la generation peut continuer et etre facturee sans nous.
-  return { ok: false, erreur: `Higgsfield : delai depasse (${Math.round(delaiMs / 1000)} s) sans resultat`, incertain: true };
+  // L'echeance a expire : on tente d'arreter la demande encore en file. Si elle a deja
+  // demarre, elle peut continuer et etre facturee sans nous — d'ou `incertain`.
+  const s = Math.round(delaiMs / 1000);
+  if (await annuler(requestId, env)) {
+    return { ok: false, erreur: `Higgsfield : delai depasse (${s} s), demande annulee avant traitement`, nonFacture: true };
+  }
+  return { ok: false, erreur: `Higgsfield : delai depasse (${s} s) sans resultat`, incertain: true };
 }
 
 /**
@@ -429,13 +458,24 @@ async function attendre(
  */
 async function rapatrier(url: string, extension: string): Promise<{ ok: true; fichier: string } | { ok: false; erreur: string }> {
   let octets: Buffer;
+  const ctrl = new AbortController();
+  const minuteur = setTimeout(() => ctrl.abort(), DELAI_RAPATRIEMENT_MS);
   try {
-    const r = await fetch(url);
+    const r = await fetch(url, { signal: ctrl.signal });
     if (!r.ok) return { ok: false, erreur: `rapatriement impossible (HTTP ${r.status})` };
+    const annonce = Number(r.headers?.get?.('content-length'));
+    if (Number.isFinite(annonce) && annonce > TAILLE_MAX_RAPATRIEMENT) {
+      ctrl.abort();
+      return { ok: false, erreur: 'media rapatrie trop volumineux' };
+    }
     octets = Buffer.from(await r.arrayBuffer());
   } catch (e) {
+    if (ctrl.signal.aborted) return { ok: false, erreur: `rapatriement : delai depasse (${DELAI_RAPATRIEMENT_MS / 1000} s)` };
     return { ok: false, erreur: e instanceof Error ? e.message.slice(0, 140) : 'rapatriement impossible' };
+  } finally {
+    clearTimeout(minuteur);
   }
+  if (octets.length > TAILLE_MAX_RAPATRIEMENT) return { ok: false, erreur: 'media rapatrie trop volumineux' };
   if (octets.length < 1024) return { ok: false, erreur: 'media rapatrie trop petit pour etre valide' };
   const fichier = path.join(os.tmpdir(), `cinema-higgsfield-${randomBytes(6).toString('hex')}.${extension}`);
   await writeFile(fichier, octets);
@@ -455,7 +495,7 @@ async function genererImage(demande: DemandeImageGeneration): Promise<ResultatGe
   const envoi = await soumettre(MODELE_IMAGE_HF, corps);
   if (!envoi.ok) return envoi;
 
-  const issue = await attendre(envoi.statusUrl, 'image', DELAI_IMAGE_MS);
+  const issue = await attendre(envoi.statusUrl, envoi.requestId, 'image', DELAI_IMAGE_MS);
   if (!issue.ok) return issue;
 
   const f = await rapatrier(issue.url, 'jpg');
@@ -500,7 +540,7 @@ async function genererVideo(demande: DemandeVideoGeneration): Promise<ResultatGe
   const envoi = await soumettre(MODELE_VIDEO_HF, corps);
   if (!envoi.ok) return envoi;
 
-  const issue = await attendre(envoi.statusUrl, 'video', DELAI_VIDEO_MS);
+  const issue = await attendre(envoi.statusUrl, envoi.requestId, 'video', DELAI_VIDEO_MS);
   if (!issue.ok) return issue;
 
   const f = await rapatrier(issue.url, 'mp4');
