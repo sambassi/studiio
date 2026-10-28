@@ -31,7 +31,9 @@ import {
   renouvelerBailGeneration, statutEffectif, BAIL_GENERATION_S,
   livrerApresInterruption, noterNonLivraison, MESSAGE_NON_LIVRE_CREDITS, MESSAGE_NON_LIVRE_REMPLACE,
 } from '@/lib/cinema/generation/suivi';
-import type { Film, GenerationSuivie, StatutGeneration } from '@/lib/cinema/types';
+import type { Film, GenerationSuivie, SoumissionExterne, StatutGeneration } from '@/lib/cinema/types';
+import type { SuiviSoumission } from '@/lib/cinema/generation/fournisseur';
+import { randomUUID } from 'crypto';
 import { regimeCinema, evaluerQuota } from '@/lib/cinema/abonnement/regime';
 import { reserverQuota, confirmerQuota } from '@/lib/cinema/abonnement/depot';
 import { messageRefus } from '@/lib/cinema/abonnement/quotas';
@@ -65,6 +67,14 @@ export async function executerGeneration(p: ParametresGeneration): Promise<Statu
   /** Quota d'abonnement reserve pour CETTE generation (regime `abonnement` seulement). */
   let quotaReserve: string | null = null;
   let filmLu: Film | null = null;
+  /**
+   * La soumission chez le fournisseur, ECRITE sur la generation AVANT l'appel payant (cle
+   * d'idempotence, cout estime, media de depart), puis completee de l'identifiant externe
+   * des l'acceptation : c'est ce qui permet a `reprise.ts` de retrouver un film facture
+   * apres un arret du serveur, sans jamais resoumettre.
+   */
+  const cleIdempotence = randomUUID();
+  let externe: SoumissionExterne | null = null;
 
   const payer = mode !== 'reelle' ? undefined : async () => {
     // Le regime est decide ICI, cote serveur, au dernier moment (`abonnement/regime.ts`).
@@ -95,13 +105,20 @@ export async function executerGeneration(p: ParametresGeneration): Promise<Statu
       const d = depenseReservee as { reference: string } | null;
       if (d) await confirmerDepenseReplicate(userId, d.reference, 'liberee').catch(() => null);
     };
+    const filmCourant = filmLu as Film | null;
+    externe = {
+      fournisseurId, cleIdempotence, coutEstimeUsd: estimable ? (usd as number) : 0,
+      mediaAvantUrl: filmCourant?.scenes.flatMap((x) => x.plans).find((pl) => pl.id === planId)?.media?.url ?? null,
+      soumisLe: new Date().toISOString(),
+    };
     // ⚠️ ECRIT AVANT L'APPEL PAYANT : une interruption doit pouvoir passer la depense et le
-    // quota en `incertaine` (`solderGenerationsInterrompues`) — jamais les rendre.
+    // quota en `incertaine` (`solderGenerationsInterrompues`) — jamais les rendre — et
+    // relire la demande chez le fournisseur (`reprise.ts`).
     const noterReferences = async (referenceQuota?: string) => {
       const d = depenseReservee as { reference: string } | null;
-      if (!d && !referenceQuota) return;
       await noterGeneration(ctx.films, filmId, userId, generation.id, {
         ...(d ? { referenceDepense: d.reference } : null), ...(referenceQuota ? { referenceQuota } : null),
+        ...(externe ? { externe } : null),
       });
     };
 
@@ -141,11 +158,22 @@ export async function executerGeneration(p: ParametresGeneration): Promise<Statu
       await noterGeneration(ctx.films, filmId, userId, generation.id, {
         creditsPris: prise.reservation.cout, referenceCredits: prise.reservation.reference,
         ...(d ? { referenceDepense: d.reference } : null),
+        ...(externe ? { externe } : null),
       });
     } else {
       await noterReferences();
     }
     return { ok: true as const };
+  };
+
+  // L'identifiant de la demande, ECRIT des que le fournisseur l'a rendu — avant l'attente.
+  const suivi: SuiviSoumission | undefined = mode !== 'reelle' ? undefined : {
+    cleIdempotence,
+    surAcceptation: async (idExterne: string) => {
+      if (!externe) return;
+      externe = { ...externe, idExterne, accepteLe: new Date().toISOString() };
+      await noterGeneration(ctx.films, filmId, userId, generation.id, { externe });
+    },
   };
 
   // ⚠️ BATTEMENT DE COEUR — CORRECTIF SECURITE (voir `suivi.ts`, `statutEffectif`).
@@ -176,7 +204,7 @@ export async function executerGeneration(p: ParametresGeneration): Promise<Statu
         const c = cleMedia(userId, film.id, source.url);
         if (c) await ctx.objets.telechargerVers(c, fichierDuMedia(racinePublique, source.url));
       }
-      const r = await genererMediaPlan(film, planId, { fournisseurId, operation, racinePublique, plafondUsd, payer });
+      const r = await genererMediaPlan(film, planId, { suivi, fournisseurId, operation, racinePublique, plafondUsd, payer });
       if (!r.ok) return r;
       const cle = cleMedia(userId, film.id, r.media.url);
       if (!cle) return { ok: false as const, erreur: 'chemin de media refuse' };

@@ -83,6 +83,26 @@ export function generationsDuFilm(film: Pick<Film, 'generations'>, maintenant = 
   });
 }
 
+/**
+ * Ce que le NAVIGATEUR recoit d'une generation : jamais l'identifiant de la demande chez
+ * le fournisseur, ni la cle d'idempotence, ni le bail de reprise. Seul l'etat de la
+ * reprise est utile a l'ecran.
+ */
+export function generationPublique(g: GenerationSuivie): GenerationSuivie {
+  const { externe: _externe, reprise, ...reste } = g;
+  return reprise ? { ...reste, reprise: { etat: reprise.etat, tentatives: reprise.tentatives } } : reste;
+}
+
+/** Les generations du film, statut effectif applique, presentees pour le navigateur. */
+export function generationsPubliques(film: Pick<Film, 'generations'>, maintenant = Date.now()): GenerationSuivie[] {
+  return generationsDuFilm(film, maintenant).map(generationPublique);
+}
+
+/** Un film tel que le navigateur le recoit : generations presentees, rien d'interne. */
+export function filmPublic<F extends Pick<Film, 'generations'>>(film: F, maintenant = Date.now()): F {
+  return film.generations ? { ...film, generations: generationsPubliques(film, maintenant) } : film;
+}
+
 /** La generation active du film, s'il y en a une. */
 export function generationActive(film: Pick<Film, 'generations'>, maintenant = Date.now()): GenerationSuivie | null {
   return generationsDuFilm(film, maintenant).find((g) => g.statut === 'en_cours') ?? null;
@@ -143,7 +163,7 @@ export async function reserverGeneration(
 /** Champs qu'une generation peut recevoir en cours de route ou a sa fin. */
 export type PatchGeneration = Partial<Pick<GenerationSuivie,
   'statut' | 'erreur' | 'creditsPris' | 'referenceCredits' | 'creditsRembourses' | 'bailJusqua'
-  | 'referenceDepense' | 'referenceQuota' | 'depenseReconciliee'>>;
+  | 'referenceDepense' | 'referenceQuota' | 'depenseReconciliee' | 'externe' | 'reprise'>>;
 
 /** Applique un patch a UNE generation d'un film (pure, rejouable). */
 export function appliquerPatchGeneration(f: Film, id: string, patch: PatchGeneration, maintenant = Date.now()): Film {

@@ -452,4 +452,56 @@ describeSiBinaire('Cinema IA — PostgreSQL + PostgREST reels', () => {
       }
     }, 60_000);
   });
+
+  describe('reprise apres arret du serveur — sur le VRAI depot de films', () => {
+    it('6 reprises SIMULTANEES d’une meme generation interrompue : une seule consultation, une seule livraison', async () => {
+      const { reprendreGenerationsInterrompues } = await import('../src/lib/cinema/generation/reprise');
+      const { reserverGeneration } = await import('../src/lib/cinema/generation/suivi');
+      const { executer } = await import('../src/lib/cinema/rendu-local');
+      const { cheminFfmpeg } = await import('../src/lib/ffmpeg/binaires');
+      const racine = await mkdtemp(join(tmpdir(), 'cinema-reprise-pg-'));
+      try {
+        const f = unFilm('film-pg-reprise');
+        await films.creer(f, A);
+        const planId = f.scenes[0].plans[0].id;
+        const r = await reserverGeneration(films, f.id, A, { planId, operation: 'image', mode: 'reelle' });
+        if (!r.ok) throw new Error('reservation');
+        // Le serveur est mort pendant l'appel : bail expire, soumission connue.
+        await modifierFilm(films, f.id, A, (x) => ({
+          ...x,
+          generations: x.generations!.map((g) => ({
+            ...g, statut: 'interrompue' as const, bailJusqua: null,
+            externe: { fournisseurId: 'fournisseur-test', cleIdempotence: 'c', idExterne: '3f2b8c1e-9a4d-4e7f-b6a1-0c5d2e8f9a71', coutEstimeUsd: 0.04, mediaAvantUrl: null, soumisLe: new Date().toISOString() },
+          })),
+        }));
+        let consultations = 0;
+        const deposes: string[] = [];
+        const consulter = async () => {
+          consultations++;
+          const image = join(racine, `resultat-${consultations}.png`);
+          await executer(cheminFfmpeg(), ['-f', 'lavfi', '-i', 'color=c=red:s=32x32', '-frames:v', '1', '-y', image], { timeoutMs: 20_000 });
+          return { etat: 'termine' as const, fichier: image, nomSuggere: 'resultat.png' };
+        };
+        const ctx = {
+          films, dossierTravail: join(racine, 'travail'),
+          objets: { deposerFichier: async (k: string) => { deposes.push(k); }, supprimer: async () => {}, telechargerVers: async () => true },
+        } as never;
+        const dep = {
+          fournisseur: () => ({ id: 'fournisseur-test', libelle: 't', actif: true, genererImage: async () => ({ ok: false as const, erreur: 'x' }), genererVideo: async () => ({ ok: false as const, erreur: 'x' }), consulter }),
+          confirmerDepense: async () => ({ ok: true, motif: null }), confirmerQuota: async () => ({ ok: true, motif: null }),
+        };
+        const issues = (await enConcurrence(6, () => reprendreGenerationsInterrompues(ctx, f.id, A, dep))).flat();
+        expect(issues.filter((i) => i.etat === 'livree')).toHaveLength(1);
+        expect(consultations).toBe(1);
+        expect(deposes).toHaveLength(1);
+        const fin = (await films.lire(f.id, A))!.film;
+        expect(fin.generations![0]).toMatchObject({ statut: 'reussie', reprise: { etat: 'livree' } });
+        expect(fin.scenes[0].plans[0].media?.url).toBeTruthy();
+        // Rejouee : plus rien a reprendre.
+        expect(await reprendreGenerationsInterrompues(ctx, f.id, A, dep)).toEqual([]);
+      } finally {
+        await rm(racine, { recursive: true, force: true });
+      }
+    }, 60_000);
+  });
 });

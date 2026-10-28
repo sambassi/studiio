@@ -201,6 +201,41 @@ export interface BudgetApprouve {
 
 export type StatutGeneration = 'en_cours' | 'reussie' | 'echouee' | 'interrompue';
 
+/**
+ * Soumission payante chez le fournisseur. INTERNE au serveur : jamais renvoyee au
+ * navigateur (`suivi.ts`, `generationPublique`).
+ */
+export interface SoumissionExterne {
+  fournisseurId: string;
+  /** Ecrite AVANT la soumission (Higgsfield : `Idempotency-Key`). */
+  cleIdempotence: string;
+  /** Identifiant de la demande chez le fournisseur — ecrit des l'acceptation. */
+  idExterne?: string;
+  coutEstimeUsd: number;
+  /** Media du plan au depart : une livraison tardive n'ecrase jamais plus recent. */
+  mediaAvantUrl: string | null;
+  soumisLe: string;
+  accepteLe?: string;
+}
+
+/**
+ * `a_verifier` / `en_cours` : rien de conclu, a retenter. Les autres sont DEFINITIFS :
+ * `livree`, `non_livree` (facture, media jete pour une raison dite), `echec_non_facture`,
+ * `echec_facture`, `introuvable`, `expiree`.
+ */
+export type EtatReprise =
+  | 'a_verifier' | 'en_cours' | 'livree' | 'non_livree'
+  | 'echec_non_facture' | 'echec_facture' | 'introuvable' | 'expiree';
+
+export interface RepriseGeneration {
+  etat: EtatReprise;
+  tentatives: number;
+  derniereLe?: string;
+  /** Bail de la reprise en cours : deux reprises simultanees ne consultent pas deux fois. */
+  jeton?: string | null;
+  bailJusqua?: string | null;
+}
+
 /** Une generation IA suivie : jamais un secret, jamais une URL de fournisseur. */
 export interface GenerationSuivie {
   id: string;
@@ -223,6 +258,10 @@ export interface GenerationSuivie {
    */
   referenceDepense?: string;
   referenceQuota?: string;
+  /** Soumission payante — INTERNE, jamais renvoyee au navigateur. */
+  externe?: SoumissionExterne;
+  /** Reprise apres interruption (`generation/reprise.ts`). */
+  reprise?: RepriseGeneration;
   /** La depense et le quota d'une generation interrompue ont ete marques `incertaine`. */
   depenseReconciliee?: boolean;
   /**

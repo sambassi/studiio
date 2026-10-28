@@ -104,6 +104,7 @@ import { randomBytes, randomUUID } from 'crypto';
 import { writeFile } from 'fs/promises';
 import {
   enregistrerFournisseur, type DemandeImageGeneration, type DemandeVideoGeneration,
+  type EtatExterne, type SuiviSoumission,
   type FournisseurGenerationIA, type ResultatGenerationIA,
 } from '@/lib/cinema/generation/fournisseur';
 import { coutUniteGeneration } from '@/lib/cinema/generation/couts';
@@ -343,9 +344,11 @@ type Soumission = { ok: true; statusUrl: string; requestId: string } | Echec;
  * reconciliation, jamais sous-estimee.
  */
 async function soumettre(
-  modele: string, corps: Record<string, unknown>, env: NodeJS.ProcessEnv = process.env,
+  modele: string, corps: Record<string, unknown>, cleFournie?: string, env: NodeJS.ProcessEnv = process.env,
 ): Promise<Soumission> {
-  const cle = randomUUID();
+  // La cle ECRITE par l'appelant avant la soumission (`SuiviSoumission`) : la meme valeur
+  // est conservee sur la generation, et sert au seul rejeu autorise ci-dessous.
+  const cle = cleFournie && cleFournie.trim() ? cleFournie : randomUUID();
   const init: RequestInit = {
     method: 'POST',
     headers: { ...enTetes(env), 'Idempotency-Key': cle },
@@ -508,8 +511,11 @@ async function genererImage(demande: DemandeImageGeneration): Promise<ResultatGe
   const autorise = await autoriserParEstimation(ID_HIGGSFIELD_IMAGE, 'image', MODELE_IMAGE_HF, corps);
   if (!autorise.ok) return autorise;
 
-  const envoi = await soumettre(MODELE_IMAGE_HF, corps);
+  const envoi = await soumettre(MODELE_IMAGE_HF, corps, demande.suivi?.cleIdempotence);
   if (!envoi.ok) return envoi;
+  // L'identifiant est ECRIT avant la moindre attente : un arret du serveur pendant la
+  // generation laisse de quoi relire son statut au redemarrage (`consulter`).
+  await enregistrerAcceptation(demande.suivi, envoi.requestId);
 
   const issue = await attendre(envoi.statusUrl, envoi.requestId, 'image', DELAI_IMAGE_MS);
   if (!issue.ok) return issue;
@@ -553,8 +559,11 @@ async function genererVideo(demande: DemandeVideoGeneration): Promise<ResultatGe
   const autorise = await autoriserParEstimation(ID_HIGGSFIELD_VIDEO, 'video', MODELE_VIDEO_HF, corps);
   if (!autorise.ok) return autorise;
 
-  const envoi = await soumettre(MODELE_VIDEO_HF, corps);
+  const envoi = await soumettre(MODELE_VIDEO_HF, corps, demande.suivi?.cleIdempotence);
   if (!envoi.ok) return envoi;
+  // L'identifiant est ECRIT avant la moindre attente : un arret du serveur pendant la
+  // generation laisse de quoi relire son statut au redemarrage (`consulter`).
+  await enregistrerAcceptation(demande.suivi, envoi.requestId);
 
   const issue = await attendre(envoi.statusUrl, envoi.requestId, 'video', DELAI_VIDEO_MS);
   if (!issue.ok) return issue;
@@ -564,6 +573,45 @@ async function genererVideo(demande: DemandeVideoGeneration): Promise<ResultatGe
   return { ok: true, fichier: f.fichier, nomSuggere: `higgsfield-${demande.graine}.mp4` };
 }
 
+async function enregistrerAcceptation(suivi: SuiviSoumission | undefined, requestId: string): Promise<void> {
+  if (!suivi) return;
+  // Best-effort : la generation est partie et payee, elle continue meme si l'ecriture echoue.
+  await suivi.surAcceptation(requestId).catch(() => {});
+}
+
+/**
+ * RELIRE UNE DEMANDE DEJA SOUMISE — `GET /requests/{id}/status`, la forme du `status_url`
+ * rendu a la soumission. Lecture SEULE : rien n'est soumis, rien n'est facture. Seuls les
+ * statuts que Higgsfield s'engage a ne pas facturer (`failed`, `nsfw`, `canceled`) rendent
+ * `nonFacture` ; une lecture impossible est `injoignable`, jamais une conclusion.
+ */
+export async function consulterHiggsfield(
+  requestId: string, operation: 'image' | 'video', env: NodeJS.ProcessEnv = process.env,
+): Promise<EtatExterne> {
+  if (!ID_REQUETE_SUR.test(requestId)) return { etat: 'introuvable', erreur: 'identifiant de demande invalide' };
+  if (!higgsfieldConfigure(env)) return { etat: 'injoignable', erreur: 'cles du fournisseur absentes' };
+  const r = await appelJson(`${BASE_HIGGSFIELD}/requests/${requestId}/status`, { method: 'GET', headers: enTetes(env) }, DELAI_ESTIMATION_MS);
+  if (!r.ok) return { etat: 'injoignable', erreur: r.erreur };
+  if (r.statut === 404) return { etat: 'introuvable', erreur: 'demande inconnue du fournisseur' };
+  if (r.statut < 200 || r.statut >= 300) return { etat: 'injoignable', erreur: detail(r.corps, r.statut) };
+  const corps = (r.corps ?? {}) as Record<string, unknown>;
+  const statut = typeof corps.status === 'string' ? corps.status : '';
+  if (statut === 'queued' || statut === 'in_progress') return { etat: 'en_cours' };
+  if (statut === 'failed' || statut === 'nsfw' || statut === 'canceled') {
+    return { etat: 'echec', nonFacture: true, erreur: `generation ${statut}` };
+  }
+  if (statut !== 'completed') return { etat: 'injoignable', erreur: `statut inattendu « ${statut.slice(0, 40)} »` };
+  const url = operation === 'image'
+    ? urlHttpsSure((Array.isArray(corps.images) ? (corps.images[0] as { url?: unknown } | undefined)?.url : null))
+    : urlHttpsSure((corps.video as { url?: unknown } | null | undefined)?.url);
+  // Termine et facture, mais sans media : rien a recuperer — c'est un echec FACTURE.
+  if (!url) return { etat: 'echec', nonFacture: false, erreur: 'generation terminee sans media exploitable' };
+  const f = await rapatrier(url, operation === 'image' ? 'jpg' : 'mp4');
+  // Le media existe mais n'a pas pu etre lu maintenant : on retentera.
+  if (!f.ok) return { etat: 'injoignable', erreur: f.erreur };
+  return { etat: 'termine', fichier: f.fichier, nomSuggere: `higgsfield-reprise.${operation === 'image' ? 'jpg' : 'mp4'}` };
+}
+
 /** Image reelle. `actif` lu a CHAQUE usage : les trois conditions sont relues. */
 export const FOURNISSEUR_HIGGSFIELD_IMAGE: FournisseurGenerationIA = {
   id: ID_HIGGSFIELD_IMAGE,
@@ -571,6 +619,7 @@ export const FOURNISSEUR_HIGGSFIELD_IMAGE: FournisseurGenerationIA = {
   get actif(): boolean { return higgsfieldActif(); },
   genererImage,
   async genererVideo() { return { ok: false, erreur: 'ce fournisseur ne fait que des images' }; },
+  consulter: (id, operation) => consulterHiggsfield(id, operation),
 };
 
 /** Image-vers-video reelle. */
@@ -580,6 +629,7 @@ export const FOURNISSEUR_HIGGSFIELD_VIDEO: FournisseurGenerationIA = {
   get actif(): boolean { return higgsfieldActif(); },
   async genererImage() { return { ok: false, erreur: 'ce fournisseur ne fait que des videos' }; },
   genererVideo,
+  consulter: (id, operation) => consulterHiggsfield(id, operation),
 };
 
 enregistrerFournisseur(FOURNISSEUR_HIGGSFIELD_IMAGE);

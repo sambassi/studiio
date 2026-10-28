@@ -19,6 +19,10 @@ const e = vi.hoisted(() => ({
   appelsFournisseur: 0,
   /** Simule ce qui se passe AILLEURS pendant l'appel fournisseur (ex. reconciliation). */
   pendantAppel: null as null | (() => Promise<void>),
+  /** Ce que le fournisseur recoit / voit AVANT d'accepter la demande. */
+  avantAcceptation: null as null | (() => Promise<void>),
+  cleRecue: null as string | null,
+  depotCourant: null as null | { lire(id: string, u: string): Promise<{ film: { generations?: Array<{ externe?: unknown }> } } | null> },
   reserverDepense: vi.fn(),
   confirmerDepense: vi.fn(),
   reserverCredits: vi.fn(),
@@ -50,12 +54,18 @@ vi.mock('@/lib/cinema/abonnement/depot', () => ({
 }));
 vi.mock('@/lib/cinema/generation/atelier', () => ({
   // Le contrat reel de l'atelier : le paiement d'abord, l'appel fournisseur ensuite.
-  genererMediaPlan: async (film: { coutGenerationUsd?: number }, planId: string, o: { payer?: () => Promise<{ ok: boolean; motif?: string; message?: string }> }) => {
+  genererMediaPlan: async (film: { coutGenerationUsd?: number }, planId: string, o: {
+    payer?: () => Promise<{ ok: boolean; motif?: string; message?: string }>;
+    suivi?: { cleIdempotence: string; surAcceptation(id: string): Promise<void> };
+  }) => {
     if (o.payer) {
       const p = await o.payer();
       if (!p.ok) return { ok: false, erreur: p.message, refusPaiement: p.motif };
     }
     e.appelsFournisseur++;
+    e.cleRecue = o.suivi?.cleIdempotence ?? null;
+    if (e.avantAcceptation) await e.avantAcceptation();
+    if (o.suivi) await o.suivi.surAcceptation('ext-123');
     if (e.pendantAppel) await e.pendantAppel();
     if (e.issue === 'jamaisEnvoye') return { ok: false, erreur: 'refuse localement', depenseUsd: 0, jamaisEnvoye: true };
     if (e.issue === 'incertain') return { ok: false, erreur: 'delai depasse', depenseUsd: 0.04, incertain: true };
@@ -89,6 +99,7 @@ async function lancer(fournisseurId = ID_REPLICATE_IMAGE, o: { budget?: number |
     ...(budget === null ? null : { budgetApprouve: { usd: budget, perimetre: 'images' as const, devisUsd: budget, approuveLe: 'x' } }),
   };
   await depot.creer(film, U);
+  e.depotCourant = depot as never;
   const planId = film.scenes[0].plans[0].id;
   const r = await reserverGeneration(depot, film.id, U, { planId, operation: 'image', mode: 'reelle' });
   if (!r.ok) throw new Error('reservation');
@@ -102,7 +113,7 @@ async function lancer(fournisseurId = ID_REPLICATE_IMAGE, o: { budget?: number |
 }
 
 beforeEach(() => {
-  e.regime = { type: 'credits' }; e.evaluation = EVALUATION_OK; e.quotaOk = true; e.issue = 'succes'; e.appelsFournisseur = 0; e.pendantAppel = null;
+  e.regime = { type: 'credits' }; e.evaluation = EVALUATION_OK; e.quotaOk = true; e.issue = 'succes'; e.appelsFournisseur = 0; e.pendantAppel = null; e.avantAcceptation = null; e.cleRecue = null;
   e.reserverDepense.mockReset().mockResolvedValue({ ok: true, reference: 'dep-1', montantUsd: 0.003 });
   e.confirmerDepense.mockReset().mockResolvedValue({ ok: true });
   e.reserverCredits.mockReset().mockResolvedValue({ ok: true, reservation: { cout: 5, reference: 'cr-1' } });
@@ -374,5 +385,36 @@ describe('RECONCILIATION des generations interrompues', () => {
     expect(f.scenes[0].plans[0].media?.url).toBe('/cinema/film-abo/medias/importe.png');
     expect(supprimes).toHaveLength(1);
     expect(g.erreur).toMatch(/deja ete modifie/);
+  });
+});
+
+describe('SOUMISSION SUIVIE : ecrite avant l’appel, completee a l’acceptation', () => {
+  it.each([['credits'], ['cout_reel'], ['abonnement']] as const)('%s : cle, cout estime et media de depart ecrits AVANT, identifiant APRES', async (type) => {
+    e.regime = type === 'credits' ? { type } : type === 'cout_reel' ? { type } : ABONNEMENT;
+    let avant: Record<string, unknown> | undefined;
+    e.avantAcceptation = async () => {
+      // Ce qu'un redemarrage a CET instant (appel parti, pas encore accepte) retrouverait.
+      avant = (await e.depotCourant!.lire('film-abo', U))!.film.generations![0].externe as never;
+    };
+    const { g } = await lancer();
+    expect(avant).toMatchObject({ fournisseurId: ID_REPLICATE_IMAGE, mediaAvantUrl: null });
+    expect(avant!.cleIdempotence).toBe(e.cleRecue);
+    expect(avant!.idExterne).toBeUndefined();
+    expect(g.externe).toMatchObject({ idExterne: 'ext-123', cleIdempotence: e.cleRecue });
+    expect(g.externe!.coutEstimeUsd).toBeGreaterThan(0);
+    expect(typeof g.externe!.accepteLe).toBe('string');
+  });
+
+  it('generation simulee : aucune soumission suivie (rien n’est facturable)', async () => {
+    const depot = depotFilmsMemoire();
+    const film = { ...preparerFilm({ histoire: 'Nina entre.', personnages: [], idFilm: 'film-sim', titre: 't' }), proprietaire: U };
+    await depot.creer(film, U);
+    const r = await reserverGeneration(depot, film.id, U, { planId: film.scenes[0].plans[0].id, operation: 'image', mode: 'simulee' });
+    if (!r.ok) throw new Error('reservation');
+    const ctx = { films: depot, dossierTravail: mkdtempSync(join(tmpdir(), 'cinema-abo-')),
+      objets: { telechargerVers: async () => true, deposerFichier: async () => {}, supprimer: async () => {} } } as never;
+    await executerGeneration({ ctx, userId: U, filmId: film.id, generation: r.generation, fournisseurId: ID_REPLICATE_IMAGE, plafondUsd: 2 });
+    expect(e.cleRecue).toBeNull();
+    expect((await depot.lire(film.id, U))!.film.generations![0].externe).toBeUndefined();
   });
 });

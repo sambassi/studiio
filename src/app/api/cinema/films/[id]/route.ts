@@ -19,8 +19,9 @@ import { presenterMontage } from '@/lib/cinema/stockage/presentation';
 import { appliquerPatch, erreurPatch } from '@/lib/cinema/patch';
 import { reprendreOrphelins } from '@/lib/cinema/travaux/lanceur';
 import type { Film } from '@/lib/cinema/types';
-import { generationsDuFilm } from '@/lib/cinema/generation/suivi';
+import { filmPublic } from '@/lib/cinema/generation/suivi';
 import { solderGenerationsInterrompues } from '@/lib/cinema/generation/executeur-generation';
+import { reprendreGenerationsInterrompues } from '@/lib/cinema/generation/reprise';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -31,7 +32,8 @@ function reponse(film: Film) {
     ok: true,
     // Le statut des generations est celui de MAINTENANT : une generation sans executeur
     // vivant depuis trop longtemps est rendue `interrompue`, jamais « en cours » pour toujours.
-    film: film.generations ? { ...film, generations: generationsDuFilm(film) } : film,
+    // Presentees : jamais l'identifiant ni la cle de la demande chez le fournisseur.
+    film: filmPublic(film),
     montage: presenterMontage(monterFilm(film), film.id),
     scenesAProduire: aProduire,
     devis: devisFilm(film, aProduire),
@@ -47,8 +49,12 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   if (!lu) return filmInconnu();
   // Rouvrir un film est l'occasion de relancer ce qu'un redemarrage a laisse en plan.
   reprendreOrphelins(ctx.travaux, () => dependancesExecuteur(ctx)).catch(() => {});
-  // Une generation interrompue (serveur redemarre pendant l'appel) rend ses credits.
-  solderGenerationsInterrompues(ctx, params.id, s.userId, lu.film).catch(() => {});
+  // Une generation interrompue (serveur redemarre pendant l'appel) rend ses credits, puis
+  // sa demande est RELUE chez le fournisseur (sans nouvel appel payant) : un film facture
+  // et termine pendant l'arret est recupere au lieu d'etre perdu.
+  solderGenerationsInterrompues(ctx, params.id, s.userId, lu.film)
+    .then(() => reprendreGenerationsInterrompues(ctx, params.id, s.userId))
+    .catch(() => {});
   return reponse(lu.film);
 }
 

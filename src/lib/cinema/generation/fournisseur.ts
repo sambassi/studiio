@@ -53,7 +53,39 @@ export interface DemandeImageGeneration {
   format: FormatFilm;
   /** Graine de reproductibilite — deux appels avec la meme graine rendent le meme resultat. */
   graine: number;
+  suivi?: SuiviSoumission;
 }
+
+/**
+ * SUIVI DURABLE D'UNE SOUMISSION PAYANTE — pour qu'un arret du serveur ne fasse jamais
+ * perdre un film facture.
+ *
+ *   - `cleIdempotence` est ECRITE par l'appelant AVANT la soumission ; un fournisseur qui
+ *     sait l'utiliser l'envoie telle quelle (Higgsfield : en-tete `Idempotency-Key`).
+ *   - `surAcceptation` est appele DES que le fournisseur rend son identifiant de demande,
+ *     AVANT toute attente prolongee : c'est lui qui permet, apres un redemarrage, de
+ *     relire le statut au lieu de perdre le resultat. Un echec de cette ecriture
+ *     n'interrompt pas la generation en cours (best-effort, deja dans le bon ordre).
+ */
+export interface SuiviSoumission {
+  cleIdempotence: string;
+  surAcceptation(idExterne: string): Promise<void>;
+}
+
+/**
+ * L'etat d'une demande DEJA SOUMISE, relu chez le fournisseur. Lecture SEULE : consulter
+ * ne cree jamais de generation, ne coute rien, et ne resoumet rien.
+ *   - `termine` : le media est rapatrie en local (memes controles qu'a la generation) ;
+ *   - `echec`   : `nonFacture: true` seulement sur engagement ECRIT du fournisseur ;
+ *   - `introuvable` : le fournisseur ne connait pas (ou plus) cette demande ;
+ *   - `injoignable` : on ne sait pas — a retenter, jamais a conclure.
+ */
+export type EtatExterne =
+  | { etat: 'en_cours' }
+  | { etat: 'termine'; fichier: string; nomSuggere: string }
+  | { etat: 'echec'; nonFacture: boolean; erreur: string }
+  | { etat: 'introuvable'; erreur: string }
+  | { etat: 'injoignable'; erreur: string };
 
 export interface DemandeVideoGeneration {
   /** Image SOURCE, deja sur le disque (generee ou importee) — image-vers-video. */
@@ -68,6 +100,7 @@ export interface DemandeVideoGeneration {
   dureeS: number;
   format: FormatFilm;
   graine: number;
+  suivi?: SuiviSoumission;
 }
 
 export type ResultatGenerationIA =
@@ -114,6 +147,8 @@ export interface FournisseurGenerationIA {
   actif: boolean;
   genererImage(demande: DemandeImageGeneration): Promise<ResultatGenerationIA>;
   genererVideo(demande: DemandeVideoGeneration): Promise<ResultatGenerationIA>;
+  /** Relire une demande deja soumise, SANS en creer de nouvelle. Absent = non relisible. */
+  consulter?(idExterne: string, operation: OperationGenerationIA): Promise<EtatExterne>;
 }
 
 const REGISTRE = new Map<string, FournisseurGenerationIA>();

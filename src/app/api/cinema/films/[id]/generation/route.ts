@@ -23,8 +23,9 @@ import { contexteCinema } from '@/lib/cinema/contexte';
 import { filmInconnu, sessionCinema } from '@/lib/cinema/routes-aide';
 import { idPlanValide } from '@/lib/cinema/acces';
 import { fournisseurServeur } from '@/lib/cinema/garde';
-import { reserverGeneration, generationsDuFilm } from '@/lib/cinema/generation/suivi';
+import { reserverGeneration, generationsPubliques, generationPublique } from '@/lib/cinema/generation/suivi';
 import { lancerGeneration, solderGenerationsInterrompues } from '@/lib/cinema/generation/executeur-generation';
+import { reprendreGenerationsInterrompues } from '@/lib/cinema/generation/reprise';
 import { devisGeneration } from '@/lib/cinema/generation/couts';
 import { regimeCinema, evaluerQuota } from '@/lib/cinema/abonnement/regime';
 import { messageRefus } from '@/lib/cinema/abonnement/quotas';
@@ -97,6 +98,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   // Ce qu'une interruption du serveur aurait laisse pris : rendu avant tout nouveau geste.
   await solderGenerationsInterrompues(ctx, film.id, s.userId, film).catch(() => {});
+  // Puis relecture, chez le fournisseur, de ce qu'un arret a laisse en suspens — en arriere-
+  // plan : jamais un nouvel appel payant, et la reponse n'attend pas un rapatriement.
+  void reprendreGenerationsInterrompues(ctx, film.id, s.userId).catch(() => {});
 
   const reserve = await reserverGeneration(ctx.films, film.id, s.userId, {
     planId, operation: operation as 'image' | 'video', mode: choix.mode,
@@ -104,7 +108,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (!reserve.ok) {
     if (reserve.raison === 'en_cours') {
       return NextResponse.json({
-        ok: false, enCours: true, generation: reserve.generation,
+        ok: false, enCours: true, generation: generationPublique(reserve.generation),
         erreur: 'une generation est deja en cours pour ce film — rien de nouveau n’a ete lance ni debite',
       }, { status: 409 });
     }
@@ -119,7 +123,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const apres = await ctx.films.lire(film.id, s.userId);
   return NextResponse.json({
     ok: true,
-    generation: reserve.generation,
-    generations: apres ? generationsDuFilm(apres.film) : [reserve.generation],
+    generation: generationPublique(reserve.generation),
+    generations: apres ? generationsPubliques(apres.film) : [generationPublique(reserve.generation)],
   }, { status: 202 });
 }

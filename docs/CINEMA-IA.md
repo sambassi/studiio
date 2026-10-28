@@ -594,12 +594,28 @@ pouvait rien.
   generation le DIT a l'utilisateur. Echec prouve non facture apres
   interruption : `incertaine` → `liberee`. Une issue definitive n'est jamais
   ecrasee (`deja_finalisee`).
-- ⚠️ BLOQUANT AVANT ACTIVATION : si le PROCESSUS meurt pendant l'appel, le
-  fournisseur peut terminer et facturer, mais l'identifiant de sa demande n'est
-  pas conserve sur la generation : le media ne peut pas etre recupere, la depense
-  reste `incertaine`. A construire : persister l'identifiant fournisseur avant
-  l'attente, puis une lecture de statut (gratuite) pour reconcilier et
-  rapatrier.
+- Processus MORT pendant l'appel (`generation/reprise.ts`) :
+  - AVANT l'appel payant, la generation porte `externe` : fournisseur, cle
+    d'idempotence (envoyee telle quelle a Higgsfield ; Replicate n'en propose
+    pas), cout estime, media du plan au depart, date de soumission ;
+  - DES l'acceptation, avant toute attente, l'identifiant de la demande y est
+    ajoute (Higgsfield : apres la reponse de soumission ; Replicate : rappel
+    `progress` du SDK, a la creation de la prediction) ;
+  - a la relecture du film (GET) et avant une nouvelle generation, chaque
+    generation interrompue est REPRISE : bail exclusif sur la generation, puis
+    LECTURE SEULE du statut chez le fournisseur — jamais de resoumission ;
+  - termine → media controle comme a la generation, livre si aucun credit pris
+    et plan inchange, depense et quota `confirmee` ; echec non facture (engagement
+    ecrit) → `liberee` ; echec sinon → `confirmee` ; en cours ou injoignable →
+    retente plus tard ; sans identifiant, introuvable, ou au-dela de 7 jours →
+    depense `incertaine` conservee et expliquee, jamais annoncee remboursee.
+- Limite assumee : un arret ENTRE l'acceptation par le fournisseur et l'ecriture
+  de son identifiant laisse une demande non relisible (`introuvable`). Elle n'est
+  JAMAIS resoumise automatiquement (la resoumission avec la meme cle n'est pas un
+  « nouvel appel » chez Higgsfield, mais la regle est : aucun appel payant pendant
+  une reprise). Fenetre de quelques millisecondes, comptee en `incertaine`.
+- Les champs `externe` et le bail de reprise ne sortent jamais vers le
+  navigateur (`filmPublic`, `generationPublique`).
 
 ### 16.3 Devis global et budget du projet
 
