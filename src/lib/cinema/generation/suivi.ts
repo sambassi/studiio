@@ -142,7 +142,8 @@ export async function reserverGeneration(
 
 /** Champs qu'une generation peut recevoir en cours de route ou a sa fin. */
 export type PatchGeneration = Partial<Pick<GenerationSuivie,
-  'statut' | 'erreur' | 'creditsPris' | 'referenceCredits' | 'creditsRembourses' | 'bailJusqua'>>;
+  'statut' | 'erreur' | 'creditsPris' | 'referenceCredits' | 'creditsRembourses' | 'bailJusqua'
+  | 'referenceDepense' | 'referenceQuota' | 'depenseReconciliee'>>;
 
 /** Applique un patch a UNE generation d'un film (pure, rejouable). */
 export function appliquerPatchGeneration(f: Film, id: string, patch: PatchGeneration, maintenant = Date.now()): Film {
@@ -214,4 +215,14 @@ export async function appliquerPatchTerminal(
 export function aRembourser(film: Pick<Film, 'generations'>, maintenant = Date.now()): GenerationSuivie[] {
   return generationsDuFilm(film, maintenant).filter((g) =>
     g.statut === 'interrompue' && (g.creditsPris ?? 0) > 0 && !!g.referenceCredits && g.creditsRembourses !== true);
+}
+
+/** Une generation interrompue dont la depense ou le quota n'a pas encore ete marque `incertaine`. */
+export const depenseAReconcilier = (g: GenerationSuivie): boolean =>
+  (!!g.referenceDepense || !!g.referenceQuota) && g.depenseReconciliee !== true;
+
+/** Les generations interrompues qui laissent QUELQUE CHOSE a solder : credits ou depense. */
+export function aReconcilier(film: Pick<Film, 'generations'>, maintenant = Date.now()): GenerationSuivie[] {
+  return generationsDuFilm(film, maintenant).filter((g) => g.statut === 'interrompue' && (
+    ((g.creditsPris ?? 0) > 0 && !!g.referenceCredits && g.creditsRembourses !== true) || depenseAReconcilier(g)));
 }

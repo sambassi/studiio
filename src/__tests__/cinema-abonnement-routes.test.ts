@@ -67,6 +67,13 @@ const poster = () => generation.POST(
   new NextRequest('https://studiio.pro/api/cinema/films/film-r/generation', { method: 'POST', body: JSON.stringify({ planId, operation: 'image' }) }),
   { params: { id: 'film-r' } },
 );
+/** Un budget deja approuve (et eventuellement deja consomme) sur le film. */
+async function poserBudget(usd: number, coutGenerationUsd = 0) {
+  const { modifierFilm } = await import('@/lib/cinema/stockage/depot-films');
+  await modifierFilm(e.depot as ReturnType<typeof depotFilmsMemoire>, 'film-r', U, (f) => ({
+    ...f, coutGenerationUsd, budgetApprouve: { usd, perimetre: 'images', devisUsd: usd, approuveLe: '2026-11-10T00:00:00Z' },
+  }));
+}
 const generationsEnBase = async () => ((await (e.depot as ReturnType<typeof depotFilmsMemoire>).lire('film-r', U))!.film.generations ?? []);
 
 describe('POST generation : refus IMMEDIAT et clair hors quota', () => {
@@ -92,10 +99,65 @@ describe('POST generation : refus IMMEDIAT et clair hors quota', () => {
     expect(e.lancer).toHaveBeenCalledTimes(1);
   });
 
-  it('dans le quota : 202 — la reservation atomique est faite par l’executeur, pas ici', async () => {
+  it('dans le quota MAIS budget du projet non confirme : 409, rien de lance', async () => {
     e.regime = { type: 'abonnement', planKey: 'pro', formule: FORMULE, periode: { debut: 'a', fin: 'b' } };
+    const res = await poster();
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ budgetRequis: true, erreur: expect.stringMatching(/budget/) });
+    expect(e.lancer).not.toHaveBeenCalled();
+  });
+
+  it('dans le quota, budget confirme : 202 — la reservation atomique est faite par l’executeur, pas ici', async () => {
+    e.regime = { type: 'abonnement', planKey: 'pro', formule: FORMULE, periode: { debut: 'a', fin: 'b' } };
+    await poserBudget(1);
     expect((await poster()).status).toBe(202);
     expect(e.lancer).toHaveBeenCalledTimes(1);
+  });
+
+  it('budget confirme mais deja consomme : 409, rien de lance', async () => {
+    e.regime = { type: 'cout_reel' };
+    await poserBudget(0.5, 0.4999);
+    expect((await poster()).status).toBe(409);
+    expect(e.lancer).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST quota : confirmer le budget du projet', () => {
+  const approuver = async (perimetre: unknown) => quota.POST(
+    new NextRequest('https://studiio.pro/api/cinema/films/film-r/quota', { method: 'POST', body: JSON.stringify({ perimetre }) }),
+    { params: { id: 'film-r' } },
+  );
+  const filmEnBase = async () => (await (e.depot as ReturnType<typeof depotFilmsMemoire>).lire('film-r', U))!.film;
+
+  it('admin : le devis est RECALCULE par le serveur, le montant approuve est enregistre', async () => {
+    e.regime = { type: 'cout_reel' };
+    const r = await approuver('images');
+    expect(r.status).toBe(200);
+    const b = (await filmEnBase()).budgetApprouve!;
+    expect(b).toMatchObject({ perimetre: 'images' });
+    expect(b.usd).toBeGreaterThan(0);
+    expect((await r.json()).budgetApprouve.usd).toBe(b.usd);
+  });
+
+  it('abonne : enregistre, mais le montant ne lui est pas renvoye', async () => {
+    e.regime = { type: 'abonnement', planKey: 'pro', formule: FORMULE, periode: { debut: '2026-11-03T08:00:00.000Z', fin: '2026-12-03T08:00:00.000Z' } };
+    const r = await approuver('images');
+    expect(r.status).toBe(200);
+    expect(JSON.stringify(await r.json())).not.toMatch(/usd/i);
+    expect((await filmEnBase()).budgetApprouve?.perimetre).toBe('images');
+  });
+
+  it('abonne sans budget restant : refuse, rien n’est enregistre', async () => {
+    e.regime = { type: 'abonnement', planKey: 'pro', formule: FORMULE, periode: { debut: '2026-11-03T08:00:00.000Z', fin: '2026-12-03T08:00:00.000Z' } };
+    e.conso = { films: 3, secondes: 240, usdEngages: 10, tentatives: 7, film: { compte: false, secondes: 0 } };
+    expect((await approuver('images')).status).toBe(409);
+    expect((await filmEnBase()).budgetApprouve).toBeUndefined();
+  });
+
+  it('regime credits : rien a approuver ici ; perimetre invalide : 400', async () => {
+    expect((await approuver('images')).status).toBe(409);
+    e.regime = { type: 'cout_reel' };
+    expect((await approuver('tout')).status).toBe(400);
   });
 });
 

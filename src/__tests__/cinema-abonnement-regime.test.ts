@@ -173,10 +173,71 @@ describe('devis du projet', () => {
       formule: formule('pro'), film: { ...film, qualite: 'standard' }, devis: d, usdPremiereImage: prixImage,
       consommation: { films: 29, secondes: 1790, usdEngages: 9.999, tentatives: 50, film: { compte: false, secondes: 0 } },
     });
-    expect(q).toMatchObject({ filmsUtilises: 29, filmsInclus: 30, secondesIncluses: 1800, supplement: null, projetCouvert: false });
+    expect(q).toMatchObject({ filmsUtilises: 29, filmsInclus: 30, secondesIncluses: 1800, supplement: null, budgetApprouve: null });
+    // Budget restant 0,001 $ : les images du projet le depassent de loin — signale (> 1), sans dollars.
+    expect(q.partBudgetProjet.images).toBeGreaterThan(1);
     // 10 s restantes : un nouveau film plus long est refuse, avec la raison.
     expect(q.disponible).toBe(false);
     expect(q.message).toMatch(/minutes incluses|budget/);
     expect(JSON.stringify(q)).not.toMatch(/Usd|usd/);
+  });
+});
+
+describe('devis GLOBAL et approbation du budget du projet', async () => {
+  const { approuverBudget, refusBudgetProjet, MESSAGE_BUDGET_NON_APPROUVE, MESSAGE_BUDGET_ATTEINT } = await import('@/lib/cinema/abonnement/devis');
+  const film = { ...preparerFilm({ histoire: 'Nina entre. Marco la regarde. Le jour se leve. Nina sourit.', personnages: [], idFilm: 'f3', titre: 't' }), qualite: 'standard' as const };
+  const plans = film.scenes.flatMap((s) => s.plans);
+  const devis = devisProjet(film, ID_REPLICATE_IMAGE, ID_REPLICATE_VIDEO);
+  const conso = { films: 0, secondes: 0, usdEngages: 0, tentatives: 0, film: { compte: false, secondes: 0 } };
+  const abonnement = { formule: formule('pro'), consommation: conso, usdPremiereImage: tarifGeneration(ID_REPLICATE_IMAGE, 'image')!.usdParUnite };
+
+  it('le devis porte scenes, plans, duree, qualite, modeles et prix unitaires', () => {
+    expect(devis).toMatchObject({ scenes: film.scenes.length, plans: plans.length, qualite: 'standard', dejaEngageUsd: 0 });
+    expect(devis.dureeProjetS).toBe(dureeProjetS(film));
+    expect(devis.modeles).toEqual([
+      { operation: 'image', fournisseurId: ID_REPLICATE_IMAGE, usdParUnite: tarifGeneration(ID_REPLICATE_IMAGE, 'image')!.usdParUnite },
+      { operation: 'video', fournisseurId: ID_REPLICATE_VIDEO, usdParUnite: tarifGeneration(ID_REPLICATE_VIDEO, 'video')!.usdParUnite },
+    ]);
+    expect(devis.perimetres).toEqual({ images: devis.imagesUsd, complet: devis.totalUsd });
+  });
+
+  it('tarif inconnu : approbation REFUSEE, jamais un total partiel', () => {
+    const d = devisProjet(film, ID_REPLICATE_IMAGE, 'fournisseur-sans-tarif');
+    expect(approuverBudget({ regime: 'cout_reel', film, perimetre: 'complet', devis: d, plafondFilmUsd: 100 }))
+      .toMatchObject({ ok: false, message: expect.stringMatching(/tarif inconnu/) });
+  });
+
+  it('le cumul (deja engage + devis) ne depasse jamais le plafond par film', () => {
+    const r = approuverBudget({ regime: 'cout_reel', film, perimetre: 'complet', devis, plafondFilmUsd: (devis.totalUsd as number) - 0.01 });
+    expect(r.ok).toBe(false);
+    const avecPasse = devisProjet({ ...film, coutGenerationUsd: 0.5 }, ID_REPLICATE_IMAGE, ID_REPLICATE_VIDEO);
+    const ok = approuverBudget({ regime: 'cout_reel', film, perimetre: 'images', devis: avecPasse, plafondFilmUsd: 2 });
+    expect(ok).toMatchObject({ ok: true, budget: { perimetre: 'images', devisUsd: avecPasse.imagesUsd } });
+    if (ok.ok) expect(ok.budget.usd).toBeCloseTo(0.5 + (avecPasse.imagesUsd as number), 4);
+  });
+
+  it('abonne : refuse au-dela du budget restant de la formule, accepte en dessous', () => {
+    const plein = { ...abonnement, consommation: { ...conso, usdEngages: 9.9999 } };
+    expect(approuverBudget({ regime: 'abonnement', film, perimetre: 'images', devis, plafondFilmUsd: 2, abonnement: plein }))
+      .toMatchObject({ ok: false, message: expect.stringMatching(/budget de generation restant/) });
+    expect(approuverBudget({ regime: 'abonnement', film, perimetre: 'images', devis, plafondFilmUsd: 2, abonnement }).ok).toBe(true);
+  });
+
+  it('abonne : refuse si le film ou les minutes ne sont plus disponibles', () => {
+    const epuise = { ...abonnement, consommation: { ...conso, films: 30 } };
+    expect(approuverBudget({ regime: 'abonnement', film, perimetre: 'images', devis, plafondFilmUsd: 2, abonnement: epuise }))
+      .toMatchObject({ ok: false, message: expect.stringMatching(/films inclus/) });
+  });
+
+  it('rien a generer : refuse', () => {
+    const sansRien = { ...devis, perimetres: { images: 0, complet: 0 } };
+    expect(approuverBudget({ regime: 'cout_reel', film, perimetre: 'images', devis: sansRien, plafondFilmUsd: 2 }).ok).toBe(false);
+  });
+
+  it('pendant la production : le budget approuve borne la depense CUMULEE', () => {
+    const budget = { usd: 0.1, perimetre: 'images' as const, devisUsd: 0.1, approuveLe: 'x' };
+    expect(refusBudgetProjet({ coutGenerationUsd: 0 }, 0.003)).toBe(MESSAGE_BUDGET_NON_APPROUVE);
+    expect(refusBudgetProjet({ budgetApprouve: budget, coutGenerationUsd: 0.09 }, 0.003)).toBeNull();
+    expect(refusBudgetProjet({ budgetApprouve: budget, coutGenerationUsd: 0.099 }, 0.003)).toBe(MESSAGE_BUDGET_ATTEINT);
   });
 });

@@ -181,6 +181,22 @@ export interface Film {
    * aucune generation suivie (tous les films anterieurs restent valides).
    */
   generations?: GenerationSuivie[];
+  /**
+   * Budget de GENERATION approuve explicitement pour ce film (regimes abonnement et
+   * administrateur) : plafond de `coutGenerationUsd` cumule. Ecrit UNIQUEMENT par le
+   * serveur (`POST …/quota`), jamais par le PATCH du film. Absent = aucune generation
+   * payante hors regime credits.
+   */
+  budgetApprouve?: BudgetApprouve;
+}
+
+export interface BudgetApprouve {
+  /** Depense CUMULEE maximale du film, en USD (deja engage + devis approuve). */
+  usd: number;
+  perimetre: 'images' | 'complet';
+  /** Le devis restant au moment de l'approbation, en USD. */
+  devisUsd: number;
+  approuveLe: string;
 }
 
 export type StatutGeneration = 'en_cours' | 'reussie' | 'echouee' | 'interrompue';
@@ -200,6 +216,15 @@ export interface GenerationSuivie {
   /** Reference du debit — permet un remboursement IDEMPOTENT apres interruption. */
   referenceCredits?: string;
   creditsRembourses?: boolean;
+  /**
+   * References de la depense fournisseur (plafond par compte) et du quota d'abonnement
+   * reserves pour cette generation — ecrites AVANT l'appel payant, pour qu'une
+   * interruption puisse les reconcilier (passage en `incertaine`, jamais en `liberee`).
+   */
+  referenceDepense?: string;
+  referenceQuota?: string;
+  /** La depense et le quota d'une generation interrompue ont ete marques `incertaine`. */
+  depenseReconciliee?: boolean;
   /**
    * Echeance du BAIL (meme principe que `travaux/types.ts`, `bailJusqua`) : tant que
    * l'executeur vivant le renouvelle, une generation longue (video lente) n'est JAMAIS

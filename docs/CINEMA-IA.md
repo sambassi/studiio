@@ -463,9 +463,43 @@ n'est branche sur la voix de Cinema.
   (films, minutes, duree du projet, disponibilite ; dollars pour l'admin
   seulement). Regime credits : rien n'est affiche.
 
-### 16.2 Reste a faire avant activation
+### 16.2 Reconciliation
+
+- La generation note `referenceDepense` et `referenceQuota` AVANT l'appel payant.
+- Interrompue (serveur mort, bail expire) : `solderGenerationsInterrompues`
+  rend les credits (regime credits, idempotent) et passe depense ET quota en
+  `incertaine` — jamais `liberee` : rien ne prouve que l'appel n'a pas ete
+  facture. `depenseReconciliee` evite de le refaire ; base injoignable = retente.
+- Reussie apres interruption : media jete (jamais livre « gratuit »), depense et
+  quota reclasses `confirmee` (facture). Echec prouve non facture apres
+  interruption : `incertaine` → `liberee`. Une issue definitive n'est jamais
+  ecrasee (`deja_finalisee`).
+
+### 16.3 Devis global et budget du projet
+
+- `devisProjet` : scenes, plans, duree, qualite, modeles et prix unitaires,
+  images manquantes, animations possibles, deja engage ; deux perimetres
+  approuvables (`images`, `complet`). Tarif inconnu = `null`, jamais partiel.
+- Hors regime credits, AUCUNE generation payante sans `film.budgetApprouve`
+  (POST `…/quota`, devis RECALCULE par le serveur, borne par le plafond par film
+  et, pour l'abonne, par le budget restant de la formule). Le budget approuve
+  borne la depense CUMULEE du film a chaque generation (route et executeur).
+  Le regime credits garde sa confirmation par generation, inchangee.
+
+### 16.4 Minutes reellement produites
+
+- Les generations reservent des minutes PREVUES ; le rendu final les regle :
+  `reserver_production_cinema` avant de rendre (ajustement signe, refus si les
+  minutes manquent), `finaliser_production_cinema` sur la duree mesuree (jamais
+  au-dela de la reserve), liberation si le rendu n'aboutit pas.
+- Un film deja livre ne rend pas ses minutes en etant raccourci ; un film sans
+  generation payante dans la periode n'est pas concerne (rendu libre).
+- Budget fournisseur (USD) et minutes sont deux compteurs separes : un film plus
+  court rend des minutes, jamais du budget consomme.
+
+### 16.5 Reste a faire avant activation
 
 Valeurs par formule ; application de la migration (puis SIGUSR1 PostgREST) ;
-reconciliation des reservations `incertaine` et des generations `interrompue`
-(le quota reste compte, jamais rendu a tort) ; verification en staging avec un
-abonnement Stripe de test.
+reconciliation des depenses `incertaine` contre l'etat reel chez le fournisseur
+(lecture de statut, a construire sans appel payant) ; verification en staging
+avec un abonnement Stripe de test.

@@ -28,6 +28,7 @@ import { lancerGeneration, solderGenerationsInterrompues } from '@/lib/cinema/ge
 import { devisGeneration } from '@/lib/cinema/generation/couts';
 import { regimeCinema, evaluerQuota } from '@/lib/cinema/abonnement/regime';
 import { messageRefus } from '@/lib/cinema/abonnement/quotas';
+import { refusBudgetProjet } from '@/lib/cinema/abonnement/devis';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -88,6 +89,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         // 402 : la limite de l'abonnement est atteinte. Aucune bascule vers les credits.
         if (!e.ok) return NextResponse.json({ ok: false, quota: true, erreur: e.message }, { status: 402 });
       }
+      // Aucune generation payante sans budget de projet confirme, ni au-dela de lui.
+      const refusBudget = refusBudgetProjet(film, usd);
+      if (refusBudget) return NextResponse.json({ ok: false, quota: true, budgetRequis: true, erreur: refusBudget }, { status: 409 });
     }
   }
 

@@ -92,10 +92,40 @@ export async function reserverQuota(p: {
 
 export type StatutQuota = 'confirmee' | 'incertaine' | 'liberee';
 
-/** Best-effort pour l'appelant, mais l'echec est DIT : une reservation non soldee reste comptee. */
-export async function confirmerQuota(userId: string, reference: string, statut: StatutQuota): Promise<boolean> {
+/**
+ * Best-effort pour l'appelant, mais l'issue est DITE : une reservation non soldee reste
+ * comptee. `motif: 'transport'` = la base n'a pas repondu (a retenter) ; `deja_finalisee`
+ * = une issue definitive existe deja (rien a refaire).
+ */
+export async function confirmerQuota(
+  userId: string, reference: string, statut: StatutQuota,
+): Promise<{ ok: boolean; motif: string | null }> {
   const { data, error } = await supabaseAdmin.rpc('confirmer_quota_cinema', {
     p_user_id: userId, p_reference: reference, p_statut: statut,
+  });
+  if (error) return { ok: false, motif: 'transport' };
+  const r = (Array.isArray(data) ? data[0] : data) as { ok?: boolean; motif?: string | null } | null;
+  return { ok: r?.ok === true, motif: r?.motif ?? (r ? null : 'transport') };
+}
+
+/** Reserve avant le rendu final l'ajustement des minutes sur la duree du film. */
+export async function reserverProduction(p: {
+  userId: string; periodeDebut: string; reference: string; filmId: string; dureeS: number; maxSecondes: number;
+}): Promise<{ ok: true; concerne: boolean } | { ok: false; motif: string }> {
+  const { data, error } = await supabaseAdmin.rpc('reserver_production_cinema', {
+    p_user_id: p.userId, p_periode_debut: p.periodeDebut, p_reference: p.reference,
+    p_film_id: p.filmId, p_duree_s: p.dureeS, p_max_secondes: p.maxSecondes,
+  });
+  if (error) return { ok: false, motif: socleAbsent(error) ? 'socle_absent' : 'erreur' };
+  const r = (Array.isArray(data) ? data[0] : data) as { ok?: boolean; motif?: string | null; concerne?: boolean } | null;
+  if (!r || typeof r.ok !== 'boolean') return { ok: false, motif: 'erreur' };
+  return r.ok ? { ok: true, concerne: r.concerne === true } : { ok: false, motif: r.motif ?? 'erreur' };
+}
+
+/** Regle les minutes sur la duree REELLEMENT produite (jamais au-dela de la reserve). */
+export async function finaliserProduction(userId: string, reference: string, dureeReelleS: number): Promise<boolean> {
+  const { data, error } = await supabaseAdmin.rpc('finaliser_production_cinema', {
+    p_user_id: userId, p_reference: reference, p_duree_reelle: dureeReelleS,
   });
   if (error) return false;
   const r = (Array.isArray(data) ? data[0] : data) as { ok?: boolean } | null;

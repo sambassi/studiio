@@ -210,3 +210,107 @@ describe('4. Confirmer, liberer, reconcilier', () => {
     expect((await conso(u))!.films).toBe(0);
   });
 });
+
+async function produire(c: Client, u: string, ref: string, film: string, duree: number, max = LIMITES.secondes) {
+  const { rows } = await c.query<{ ok: boolean; motif: string | null; concerne: boolean; ajustement: number }>(
+    'select * from public.reserver_production_cinema($1,$2,$3,$4,$5,$6)', [u, DEBUT, ref, film, duree, max]);
+  return rows[0];
+}
+async function finaliser(c: Client, u: string, ref: string, duree: number) {
+  const { rows } = await c.query<{ ok: boolean; motif: string | null; ajustement: number }>(
+    'select * from public.finaliser_production_cinema($1,$2,$3)', [u, ref, duree]);
+  return rows[0];
+}
+
+describe('5. Production : les minutes REELLEMENT produites', () => {
+  it('film plus court que prevu : l’excedent prevu est rendu, le budget reste consomme', async () => {
+    const u = await creerUtilisateur(db, 0);
+    await reserver(db, u, 'g1', 'film', 180, 0.4);
+    await confirmer(db, u, 'g1', 'confirmee');
+    expect(await produire(db, u, 'p1', 'film', 100)).toMatchObject({ ok: true, concerne: true, ajustement: -80 });
+    expect((await finaliser(db, u, 'p1', 95)).ajustement).toBe(-85);
+    expect(await conso(u)).toMatchObject({ films: 1, secondes: 95 });
+    expect((await conso(u))!.usd).toBeCloseTo(0.4, 4); // budget fournisseur : inchange
+  });
+
+  it('film plus long que reserve : la difference est reservee AVANT le rendu, refusee si elle depasse', async () => {
+    const u = await creerUtilisateur(db, 0);
+    const max = 200;
+    await reserver(db, u, 'g1', 'film', 120, 0.1, { ...LIMITES, secondes: max });
+    expect(await produire(db, u, 'p-trop', 'film', 260, max)).toMatchObject({ ok: false, motif: 'minutes_epuisees' });
+    expect((await conso(u))!.secondes).toBe(120);
+    expect(await produire(db, u, 'p-ok', 'film', 190, max)).toMatchObject({ ok: true, ajustement: 70 });
+    expect((await conso(u))!.secondes).toBe(190);
+  });
+
+  it('la finalisation ne prend JAMAIS plus que reserve, meme si la mesure reelle est plus longue', async () => {
+    const u = await creerUtilisateur(db, 0);
+    await reserver(db, u, 'g1', 'film', 100, 0.1);
+    await produire(db, u, 'p1', 'film', 100);
+    expect((await finaliser(db, u, 'p1', 130)).ajustement).toBe(0);
+    expect((await conso(u))!.secondes).toBe(100);
+  });
+
+  it('rendu non abouti : la production est liberee, les minutes prevues reviennent', async () => {
+    const u = await creerUtilisateur(db, 0);
+    await reserver(db, u, 'g1', 'film', 180, 0.1);
+    await produire(db, u, 'p1', 'film', 60);
+    expect((await conso(u))!.secondes).toBe(60);
+    expect((await confirmer(db, u, 'p1', 'liberee')).ok).toBe(true);
+    expect((await conso(u))!.secondes).toBe(180);
+  });
+
+  it('un film deja livre ne rend pas ses minutes en etant raccourci ensuite', async () => {
+    const u = await creerUtilisateur(db, 0);
+    await reserver(db, u, 'g1', 'film', 120, 0.1);
+    await produire(db, u, 'p1', 'film', 120);
+    await finaliser(db, u, 'p1', 120);
+    await produire(db, u, 'p2', 'film', 30);
+    await finaliser(db, u, 'p2', 30);
+    expect((await conso(u))!.secondes).toBe(120);
+  });
+
+  it('regeneration apres production raccourcie : seules les minutes en plus sont reprises', async () => {
+    const u = await creerUtilisateur(db, 0);
+    await reserver(db, u, 'g1', 'film', 180, 0.1);
+    await produire(db, u, 'p1', 'film', 60);
+    await finaliser(db, u, 'p1', 60);
+    // Scene remplacee : regeneration, le projet fait maintenant 90 s.
+    await reserver(db, u, 'g2', 'film', 90, 0.1);
+    expect(await conso(u)).toMatchObject({ films: 1, secondes: 90, tentatives: 2 });
+  });
+
+  it('film sans aucune generation dans la periode : non concerne, le rendu reste libre', async () => {
+    const u = await creerUtilisateur(db, 0);
+    expect(await produire(db, u, 'p0', 'film-libre', 300)).toMatchObject({ ok: true, concerne: false });
+    await reserver(db, u, 'g1', 'autre', 60, 0.1);
+    expect(await produire(db, u, 'p1', 'film-libre', 300)).toMatchObject({ ok: true, concerne: false });
+    expect((await conso(u))!.secondes).toBe(60);
+  });
+
+  it('finalisations et liberations concurrentes de la meme production : un seul effet', async () => {
+    const u = await creerUtilisateur(db, 0);
+    await reserver(db, u, 'g1', 'film', 180, 0.1);
+    await produire(db, u, 'p1', 'film', 100);
+    await enConcurrence(6, (c, i) => (i % 2 ? finaliser(c, u, 'p1', 90) : confirmer(c, u, 'p1', 'liberee')));
+    const s = (await conso(u))!.secondes;
+    expect([90, 180]).toContain(s); // finalisee (90) OU liberee (180) — jamais un melange
+  });
+
+  it('reussie apres interruption : incertaine, puis reclassee confirmee — une seule fois', async () => {
+    const u = await creerUtilisateur(db, 0);
+    await reserver(db, u, 'g1', 'film', 60, 0.4);
+    await confirmer(db, u, 'g1', 'incertaine'); // la reconciliation a vu le bail expirer
+    expect((await confirmer(db, u, 'g1', 'confirmee')).ok).toBe(true); // l'executeur conclut
+    expect((await confirmer(db, u, 'g1', 'incertaine')).motif).toBe('deja_finalisee');
+    expect((await conso(u))!.usd).toBeCloseTo(0.4, 4);
+  });
+
+  it('interrompue puis echec PROUVE non facture : incertaine → liberee, tout est rendu', async () => {
+    const u = await creerUtilisateur(db, 0);
+    await reserver(db, u, 'g1', 'film', 60, 0.4);
+    await confirmer(db, u, 'g1', 'incertaine');
+    expect((await confirmer(db, u, 'g1', 'liberee')).ok).toBe(true);
+    expect(await conso(u)).toMatchObject({ films: 0, secondes: 0, tentatives: 0 });
+  });
+});

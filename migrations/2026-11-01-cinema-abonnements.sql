@@ -77,12 +77,20 @@ create table if not exists public.cinema_quota_journal (
   reference     text not null,
   periode_debut timestamptz not null,
   film_id       text not null,
+  -- 'generation' : un appel fournisseur payant (budget USD, eventuellement un film et
+  --                des minutes PREVUES) ;
+  -- 'production' : le rendu du film final, gratuit, qui REGLE les minutes sur la duree
+  --                reellement produite (ajustement signe : negatif si plus court).
+  type          text not null default 'generation' check (type in ('generation','production')),
   nouveau_film  boolean not null,
-  secondes      integer not null check (secondes >= 0),
-  usd           numeric(10,4) not null check (usd > 0),
+  secondes      integer not null,
+  usd           numeric(10,4) not null,
+  duree_produite integer check (duree_produite is null or duree_produite >= 0),
   statut        text not null check (statut in ('engagee','confirmee','incertaine','liberee')),
   cree_le       timestamptz not null default now(),
-  maj_le        timestamptz not null default now()
+  maj_le        timestamptz not null default now(),
+  check ((type = 'generation' and usd > 0 and secondes >= 0)
+      or (type = 'production' and usd = 0 and not nouveau_film))
 );
 
 create unique index if not exists cinema_quota_journal_reference_unique
@@ -166,11 +174,12 @@ begin
   -- Un film est « compte » tant qu'une de ses reservations non liberees le porte.
   v_nouveau := not exists (
     select 1 from public.cinema_quota_journal j
-     where j.user_id = p_user_id and j.periode_debut = p_periode_debut
+     where j.user_id = p_user_id and j.periode_debut = p_periode_debut and j.type = 'generation'
        and j.film_id = p_film_id and j.nouveau_film and j.statut <> 'liberee');
 
-  -- Secondes deja reservees pour CE film dans la periode : seule la difference compte.
-  -- Un film raccourci ne rend rien ici (les minutes engagees le restent).
+  -- Secondes deja comptees pour CE film dans la periode (generations ET ajustements de
+  -- production) : seule la difference compte. Un film raccourci ne rend rien ICI — c'est
+  -- la production, sur la duree reellement produite, qui rend l'excedent.
   v_secondes := greatest(0, p_duree_film_s - coalesce((
     select sum(j.secondes) from public.cinema_quota_journal j
      where j.user_id = p_user_id and j.periode_debut = p_periode_debut
@@ -249,14 +258,24 @@ begin
     return query select true, null::text; return;
   end if;
 
-  -- LIBERATION : on rend ce que CETTE reservation a ajoute. Si elle portait le film
-  -- (nouveau_film) et qu'une autre reservation active du meme film existe, le film et
-  -- ses secondes lui sont TRANSMIS : le film reste compte tant qu'il est utilise.
+  -- LIBERATION D'UNE PRODUCTION (rendu non abouti, gratuit) : l'ajustement signe est
+  -- annule, rien d'autre.
+  if j.type = 'production' then
+    update public.cinema_quota_consommation q
+       set secondes = greatest(0, q.secondes - j.secondes), maj_le = now()
+     where q.user_id = p_user_id and q.periode_debut = j.periode_debut;
+    update public.cinema_quota_journal set statut = 'liberee', secondes = 0, maj_le = now() where id = j.id;
+    return query select true, null::text; return;
+  end if;
+
+  -- LIBERATION D'UNE GENERATION : on rend ce que CETTE reservation a ajoute. Si elle
+  -- portait le film (nouveau_film) et qu'une autre generation active du meme film existe,
+  -- le film et ses secondes lui sont TRANSMIS : le film reste compte tant qu'il est utilise.
   v_heir := null;
   if j.nouveau_film then
     select id into v_heir from public.cinema_quota_journal
      where user_id = p_user_id and periode_debut = j.periode_debut and film_id = j.film_id
-       and id <> j.id and statut <> 'liberee'
+       and id <> j.id and statut <> 'liberee' and type = 'generation'
      order by cree_le, id limit 1;
   end if;
 
@@ -288,8 +307,144 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
+-- 3 bis. PRODUCTION — les minutes REELLEMENT produites
+--
+-- Les generations reservent des minutes PREVUES (duree du projet au moment de
+-- l'appel). Le rendu du film final, lui, connait la duree REELLE. Il :
+--   1. RESERVE avant de rendre : la cible est max(duree prevue du rendu, plus longue
+--      duree deja produite de ce film dans la periode) — un film deja livre ne
+--      « rend » jamais des minutes en etant raccourci. L'ajustement est SIGNE :
+--      positif (refuse s'il depasse le quota), negatif (excedent prevu rendu) ;
+--   2. FINALISE a la duree reellement mesuree, SANS jamais depasser ce qu'il a
+--      reserve ;
+--   3. est LIBERE si le rendu n'aboutit pas (rien n'a ete produit ni facture).
+-- Un film qui n'a consomme AUCUNE generation dans la periode n'est pas concerne :
+-- le rendu local reste libre, comme hors abonnement.
+-- ---------------------------------------------------------------------------
+create or replace function public.reserver_production_cinema(
+  p_user_id       uuid,
+  p_periode_debut timestamptz,
+  p_reference     text,
+  p_film_id       text,
+  p_duree_s       integer,
+  p_max_secondes  integer
+)
+returns table (ok boolean, motif text, concerne boolean, ajustement integer)
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  c         public.cinema_quota_consommation%rowtype;
+  v_base    integer;
+  v_max     integer;
+  v_cible   integer;
+  v_delta   integer;
+  v_exist   public.cinema_quota_journal%rowtype;
+begin
+  if p_reference is null or length(btrim(p_reference)) = 0 or p_film_id is null
+     or p_duree_s is null or p_duree_s < 0 or p_max_secondes is null or p_max_secondes < 0 then
+    return query select false, 'demande_invalide'::text, false, 0; return;
+  end if;
+
+  select * into c from public.cinema_quota_consommation
+   where user_id = p_user_id and periode_debut = p_periode_debut for update;
+  if not found then
+    -- Aucune generation dans la periode : rien a regler.
+    return query select true, null::text, false, 0; return;
+  end if;
+
+  select * into v_exist from public.cinema_quota_journal
+   where user_id = p_user_id and reference = p_reference;
+  if found then
+    if v_exist.statut = 'liberee' then return query select false, 'reference_liberee'::text, true, 0; return; end if;
+    return query select true, null::text, true, v_exist.secondes; return;
+  end if;
+
+  if not exists (select 1 from public.cinema_quota_journal j
+                  where j.user_id = p_user_id and j.periode_debut = p_periode_debut
+                    and j.film_id = p_film_id and j.type = 'generation' and j.statut <> 'liberee') then
+    return query select true, null::text, false, 0; return;
+  end if;
+
+  select coalesce(sum(j.secondes), 0) into v_base from public.cinema_quota_journal j
+   where j.user_id = p_user_id and j.periode_debut = p_periode_debut
+     and j.film_id = p_film_id and j.statut <> 'liberee';
+  select coalesce(max(j.duree_produite), 0) into v_max from public.cinema_quota_journal j
+   where j.user_id = p_user_id and j.periode_debut = p_periode_debut
+     and j.film_id = p_film_id and j.type = 'production' and j.statut = 'confirmee';
+
+  v_cible := greatest(p_duree_s, v_max);
+  v_delta := v_cible - v_base;
+  if v_delta > 0 and c.secondes + v_delta > p_max_secondes then
+    return query select false, 'minutes_epuisees'::text, true, 0; return;
+  end if;
+
+  insert into public.cinema_quota_journal
+    (user_id, reference, periode_debut, film_id, type, nouveau_film, secondes, usd, statut)
+    values (p_user_id, p_reference, p_periode_debut, p_film_id, 'production', false, v_delta, 0, 'engagee');
+  update public.cinema_quota_consommation q
+     set secondes = greatest(0, q.secondes + v_delta), maj_le = now()
+   where q.user_id = p_user_id and q.periode_debut = p_periode_debut;
+
+  return query select true, null::text, true, v_delta;
+end;
+$$;
+
+create or replace function public.finaliser_production_cinema(
+  p_user_id       uuid,
+  p_reference     text,
+  p_duree_reelle  integer
+)
+returns table (ok boolean, motif text, ajustement integer)
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  j        public.cinema_quota_journal%rowtype;
+  v_base   integer;
+  v_max    integer;
+  v_delta  integer;
+begin
+  if p_duree_reelle is null or p_duree_reelle < 0 then
+    return query select false, 'demande_invalide'::text, 0; return;
+  end if;
+  select * into j from public.cinema_quota_journal where user_id = p_user_id and reference = p_reference;
+  if not found or j.type <> 'production' then
+    return query select false, 'reference_absente'::text, 0; return;
+  end if;
+  perform 1 from public.cinema_quota_consommation
+   where user_id = p_user_id and periode_debut = j.periode_debut for update;
+  select * into j from public.cinema_quota_journal where id = j.id;
+  if j.statut = 'confirmee' then return query select true, null::text, j.secondes; return; end if;
+  if j.statut = 'liberee' then return query select false, 'deja_finalisee'::text, 0; return; end if;
+
+  select coalesce(sum(x.secondes), 0) into v_base from public.cinema_quota_journal x
+   where x.user_id = p_user_id and x.periode_debut = j.periode_debut
+     and x.film_id = j.film_id and x.statut <> 'liberee' and x.id <> j.id;
+  select coalesce(max(x.duree_produite), 0) into v_max from public.cinema_quota_journal x
+   where x.user_id = p_user_id and x.periode_debut = j.periode_debut and x.film_id = j.film_id
+     and x.type = 'production' and x.statut = 'confirmee' and x.id <> j.id;
+
+  -- Jamais plus que reserve avant le rendu : la finalisation ne peut que RENDRE.
+  v_delta := least(j.secondes, greatest(p_duree_reelle, v_max) - v_base);
+
+  update public.cinema_quota_consommation q
+     set secondes = greatest(0, q.secondes + (v_delta - j.secondes)), maj_le = now()
+   where q.user_id = p_user_id and q.periode_debut = j.periode_debut;
+  update public.cinema_quota_journal
+     set secondes = v_delta, duree_produite = p_duree_reelle, statut = 'confirmee', maj_le = now()
+   where id = j.id;
+  return query select true, null::text, v_delta;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
 -- 4. DROITS
 -- ---------------------------------------------------------------------------
+revoke all on function public.reserver_production_cinema(uuid, timestamptz, text, text, integer, integer) from public;
+revoke all on function public.finaliser_production_cinema(uuid, text, integer) from public;
 revoke all on function public.reserver_quota_cinema(
   uuid, timestamptz, timestamptz, text, text, integer, numeric, integer, integer, numeric) from public;
 revoke all on function public.confirmer_quota_cinema(uuid, text, text) from public;

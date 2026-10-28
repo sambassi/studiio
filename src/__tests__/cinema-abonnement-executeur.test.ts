@@ -17,6 +17,8 @@ const e = vi.hoisted(() => ({
   quotaOk: true as boolean,
   issue: 'succes' as 'succes' | 'jamaisEnvoye' | 'incertain' | 'echec',
   appelsFournisseur: 0,
+  /** Simule ce qui se passe AILLEURS pendant l'appel fournisseur (ex. reconciliation). */
+  pendantAppel: null as null | (() => Promise<void>),
   reserverDepense: vi.fn(),
   confirmerDepense: vi.fn(),
   reserverCredits: vi.fn(),
@@ -54,6 +56,7 @@ vi.mock('@/lib/cinema/generation/atelier', () => ({
       if (!p.ok) return { ok: false, erreur: p.message, refusPaiement: p.motif };
     }
     e.appelsFournisseur++;
+    if (e.pendantAppel) await e.pendantAppel();
     if (e.issue === 'jamaisEnvoye') return { ok: false, erreur: 'refuse localement', depenseUsd: 0, jamaisEnvoye: true };
     if (e.issue === 'incertain') return { ok: false, erreur: 'delai depasse', depenseUsd: 0.04, incertain: true };
     if (e.issue === 'echec') return { ok: false, erreur: 'refus fournisseur', depenseUsd: 0.04 };
@@ -62,9 +65,9 @@ vi.mock('@/lib/cinema/generation/atelier', () => ({
   },
 }));
 
-const { executerGeneration } = await import('@/lib/cinema/generation/executeur-generation');
+const { executerGeneration, solderGenerationsInterrompues } = await import('@/lib/cinema/generation/executeur-generation');
 const { preparerFilm } = await import('@/lib/cinema/atelier');
-const { depotFilmsMemoire } = await import('@/lib/cinema/stockage/depot-films');
+const { depotFilmsMemoire, modifierFilm } = await import('@/lib/cinema/stockage/depot-films');
 const { reserverGeneration } = await import('@/lib/cinema/generation/suivi');
 const { ID_REPLICATE_IMAGE } = await import('@/lib/cinema/generation/replicate');
 
@@ -76,9 +79,15 @@ const EVALUATION_OK = {
   decision: { ok: true, regime: 'abonnement', limites: { maxFilms: 30, maxSecondes: 1800, maxUsd: 10 } },
 };
 
-async function lancer(fournisseurId = ID_REPLICATE_IMAGE) {
+/** Budget de projet confirme par defaut (1 $), sauf `budget: null`. */
+async function lancer(fournisseurId = ID_REPLICATE_IMAGE, o: { budget?: number | null; dejaEngage?: number } = {}) {
   const depot = depotFilmsMemoire();
-  const film = { ...preparerFilm({ histoire: 'Nina entre. Marco la regarde.', personnages: [{ nom: 'Nina', description: 'x' }], idFilm: 'film-abo', titre: 't' }), proprietaire: U };
+  const base = { ...preparerFilm({ histoire: 'Nina entre. Marco la regarde.', personnages: [{ nom: 'Nina', description: 'x' }], idFilm: 'film-abo', titre: 't' }), proprietaire: U };
+  const budget = o.budget === undefined ? 1 : o.budget;
+  const film = {
+    ...base, coutGenerationUsd: o.dejaEngage ?? 0,
+    ...(budget === null ? null : { budgetApprouve: { usd: budget, perimetre: 'images' as const, devisUsd: budget, approuveLe: 'x' } }),
+  };
   await depot.creer(film, U);
   const planId = film.scenes[0].plans[0].id;
   const r = await reserverGeneration(depot, film.id, U, { planId, operation: 'image', mode: 'reelle' });
@@ -89,17 +98,17 @@ async function lancer(fournisseurId = ID_REPLICATE_IMAGE) {
   } as never;
   const statut = await executerGeneration({ ctx, userId: U, filmId: film.id, generation: r.generation, fournisseurId, plafondUsd: 2 });
   const g = (await depot.lire(film.id, U))!.film.generations!.find((x) => x.id === r.generation.id)!;
-  return { statut, g, generationId: r.generation.id };
+  return { statut, g, generationId: r.generation.id, depot, filmId: film.id };
 }
 
 beforeEach(() => {
-  e.regime = { type: 'credits' }; e.evaluation = EVALUATION_OK; e.quotaOk = true; e.issue = 'succes'; e.appelsFournisseur = 0;
+  e.regime = { type: 'credits' }; e.evaluation = EVALUATION_OK; e.quotaOk = true; e.issue = 'succes'; e.appelsFournisseur = 0; e.pendantAppel = null;
   e.reserverDepense.mockReset().mockResolvedValue({ ok: true, reference: 'dep-1', montantUsd: 0.003 });
   e.confirmerDepense.mockReset().mockResolvedValue({ ok: true });
   e.reserverCredits.mockReset().mockResolvedValue({ ok: true, reservation: { cout: 5, reference: 'cr-1' } });
   e.rembourserCredits.mockReset().mockResolvedValue({ ok: true });
   e.reserverQuota.mockReset().mockImplementation(async () => (e.quotaOk ? { ok: true, dejaReservee: false } : { ok: false, motif: 'minutes_epuisees' }));
-  e.confirmerQuota.mockReset().mockResolvedValue(true);
+  e.confirmerQuota.mockReset().mockResolvedValue({ ok: true, motif: null });
 });
 
 describe('regime CREDITS (interrupteur ferme, ou formule sans Cinema) : rien ne change', () => {
@@ -195,5 +204,134 @@ describe('regime ABONNEMENT : couvert ou refuse, jamais facture en credits en pl
     expect(statut).toBe('echouee');
     expect(g.erreur).toMatch(/pas pu etre verifie/);
     for (const f of [e.reserverDepense, e.reserverCredits, e.reserverQuota]) expect(f).not.toHaveBeenCalled();
+  });
+});
+
+describe('BUDGET DU PROJET : confirme avant, controle pendant', () => {
+  it.each([['cout_reel'], ['abonnement']] as const)('%s sans budget confirme : refuse AVANT toute reservation', async (type) => {
+    e.regime = type === 'cout_reel' ? { type } : ABONNEMENT;
+    const { statut, g } = await lancer(ID_REPLICATE_IMAGE, { budget: null });
+    expect(statut).toBe('echouee');
+    expect(g.erreur).toMatch(/budget de ce projet/);
+    for (const f of [e.reserverDepense, e.reserverQuota, e.reserverCredits]) expect(f).not.toHaveBeenCalled();
+    expect(e.appelsFournisseur).toBe(0);
+  });
+
+  it('budget confirme mais deja consomme : refuse, rien n’est reserve', async () => {
+    e.regime = { type: 'cout_reel' };
+    const { statut, g } = await lancer(ID_REPLICATE_IMAGE, { budget: 0.1, dejaEngage: 0.0999 });
+    expect(statut).toBe('echouee');
+    expect(g.erreur).toMatch(/budget approuve/);
+    expect(e.reserverDepense).not.toHaveBeenCalled();
+  });
+
+  it('regime credits : aucun budget de projet exige — comportement d’avant', async () => {
+    expect((await lancer(ID_REPLICATE_IMAGE, { budget: null })).statut).toBe('reussie');
+  });
+});
+
+describe('REFERENCES ecrites AVANT l’appel payant', () => {
+  it('abonnement : depense et quota notes sur la generation', async () => {
+    e.regime = ABONNEMENT;
+    let vues: unknown = null;
+    e.pendantAppel = async () => { vues = 'appel'; };
+    const { g, generationId } = await lancer();
+    expect(vues).toBe('appel');
+    expect(g).toMatchObject({ referenceDepense: 'dep-1', referenceQuota: `cinema-quota:${generationId}` });
+  });
+
+  it('credits : la reference de depense est notee avec les credits', async () => {
+    const { g } = await lancer();
+    expect(g).toMatchObject({ referenceDepense: 'dep-1', referenceCredits: 'cr-1', creditsPris: 5 });
+  });
+});
+
+describe('RECONCILIATION des generations interrompues', () => {
+  /** Une generation laissee `en_cours` avec un bail expire : le serveur est mort pendant l'appel. */
+  async function interrompue(patch: Record<string, unknown>) {
+    const depot = depotFilmsMemoire();
+    const film = { ...preparerFilm({ histoire: 'Nina entre.', personnages: [], idFilm: 'film-int', titre: 't' }), proprietaire: U };
+    await depot.creer(film, U);
+    const r = await reserverGeneration(depot, film.id, U, { planId: film.scenes[0].plans[0].id, operation: 'image', mode: 'reelle' });
+    if (!r.ok) throw new Error('reservation');
+    await modifierFilm(depot, film.id, U, (f) => ({
+      ...f, generations: f.generations!.map((g) => ({ ...g, ...patch, bailJusqua: '2020-01-01T00:00:00Z' })),
+    }));
+    const solder = async () => solderGenerationsInterrompues({ films: depot } as never, film.id, U, (await depot.lire(film.id, U))!.film);
+    const lire = async () => (await depot.lire(film.id, U))!.film.generations![0];
+    return { solder, lire };
+  }
+
+  it('abonnement : depense ET quota passent en INCERTAINE (jamais liberee), une seule fois', async () => {
+    const { solder, lire } = await interrompue({ referenceDepense: 'dep-9', referenceQuota: 'cinema-quota:g9' });
+    await solder();
+    expect(e.confirmerDepense).toHaveBeenCalledWith(U, 'dep-9', 'incertaine');
+    expect(e.confirmerQuota).toHaveBeenCalledWith(U, 'cinema-quota:g9', 'incertaine');
+    for (const [, , statut] of [...e.confirmerDepense.mock.calls, ...e.confirmerQuota.mock.calls]) expect(statut).not.toBe('liberee');
+    expect(e.rembourserCredits).not.toHaveBeenCalled();
+    expect(await lire()).toMatchObject({ statut: 'interrompue', depenseReconciliee: true });
+    await solder();
+    expect(e.confirmerDepense).toHaveBeenCalledTimes(1);
+    expect(e.confirmerQuota).toHaveBeenCalledTimes(1);
+  });
+
+  it('credits : rembourses UNE fois, et la depense marquee incertaine', async () => {
+    const { solder, lire } = await interrompue({ referenceDepense: 'dep-9', creditsPris: 5, referenceCredits: 'cr-9' });
+    await solder(); await solder();
+    expect(e.rembourserCredits).toHaveBeenCalledTimes(1);
+    expect(e.confirmerDepense).toHaveBeenCalledTimes(1);
+    expect(await lire()).toMatchObject({ creditsRembourses: true, depenseReconciliee: true });
+  });
+
+  it('base injoignable : rien n’est marque, on retente au passage suivant', async () => {
+    const { solder, lire } = await interrompue({ referenceQuota: 'cinema-quota:g9' });
+    e.confirmerQuota.mockResolvedValueOnce({ ok: false, motif: 'transport' });
+    await solder();
+    expect((await lire()).depenseReconciliee).not.toBe(true);
+    await solder();
+    expect(e.confirmerQuota).toHaveBeenCalledTimes(2);
+    expect((await lire()).depenseReconciliee).toBe(true);
+  });
+
+  it('issue deja definitive (l’executeur a conclu) : jamais ecrasee, consideree soldee', async () => {
+    const { solder, lire } = await interrompue({ referenceQuota: 'cinema-quota:g9' });
+    e.confirmerQuota.mockResolvedValueOnce({ ok: false, motif: 'deja_finalisee' });
+    await solder();
+    expect((await lire()).depenseReconciliee).toBe(true);
+  });
+
+  it('REUSSIE APRES INTERRUPTION : media jete, mais depense et quota CONFIRMES (facture), aucun credit', async () => {
+    e.regime = ABONNEMENT;
+    let depotRef: ReturnType<typeof depotFilmsMemoire> | null = null;
+    e.pendantAppel = async () => {
+      // Pendant l'appel, une reconciliation declare la generation interrompue.
+      const d = depotRef!;
+      const f = (await d.lire('film-abo', U))!.film;
+      await modifierFilm(d, 'film-abo', U, (x) => ({ ...x, generations: x.generations!.map((g) => ({ ...g, bailJusqua: '2020-01-01T00:00:00Z' })) }));
+      await solderGenerationsInterrompues({ films: d } as never, 'film-abo', U, f);
+      await solderGenerationsInterrompues({ films: d } as never, 'film-abo', U, (await d.lire('film-abo', U))!.film);
+    };
+    const lancerAvecCapture = async () => {
+      const depot = depotFilmsMemoire();
+      depotRef = depot;
+      const film = { ...preparerFilm({ histoire: 'Nina entre. Marco la regarde.', personnages: [], idFilm: 'film-abo', titre: 't' }), proprietaire: U,
+        budgetApprouve: { usd: 1, perimetre: 'images' as const, devisUsd: 1, approuveLe: 'x' } };
+      await depot.creer(film, U);
+      const r = await reserverGeneration(depot, film.id, U, { planId: film.scenes[0].plans[0].id, operation: 'image', mode: 'reelle' });
+      if (!r.ok) throw new Error('reservation');
+      const ctx = { films: depot, dossierTravail: mkdtempSync(join(tmpdir(), 'cinema-abo-')),
+        objets: { telechargerVers: async () => true, deposerFichier: async () => {}, supprimer: async () => {} } } as never;
+      const statut = await executerGeneration({ ctx, userId: U, filmId: film.id, generation: r.generation, fournisseurId: ID_REPLICATE_IMAGE, plafondUsd: 2 });
+      return { statut, g: (await depot.lire(film.id, U))!.film, ref: `cinema-quota:${r.generation.id}` };
+    };
+    const { statut, g, ref } = await lancerAvecCapture();
+    expect(statut).toBe('interrompue');
+    expect(g.scenes[0].plans[0].media).toBeNull(); // jamais livre « gratuit »
+    // Reconciliation : incertaine ; executeur : confirmee (l'appel a bien ete facture).
+    expect(e.confirmerQuota.mock.calls.map((c) => c[2])).toEqual(['incertaine', 'confirmee']);
+    expect(e.confirmerDepense.mock.calls.map((c) => c[2])).toEqual(['incertaine', 'confirmee']);
+    expect(e.confirmerQuota.mock.calls[0][1]).toBe(ref);
+    expect(e.reserverCredits).not.toHaveBeenCalled();
+    expect(e.rembourserCredits).not.toHaveBeenCalled();
   });
 });

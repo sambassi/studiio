@@ -107,9 +107,10 @@ describe('interrupteur — TOUTES les routes API', () => {
     ['reference GET', () => refPersoRoute.GET(req(), P)],
     ['generation POST', () => generationRoute.POST(req('POST'), P)],
     ['quota GET', () => quotaRoute.GET(req(), P)],
+    ['quota POST', () => quotaRoute.POST(req('POST'), P)],
   ];
 
-  it('le balayage couvre chaque route.ts : 14 fichiers, 17 handlers, tous derriere sessionCinema', () => {
+  it('le balayage couvre chaque route.ts : 14 fichiers, 18 handlers, tous derriere sessionCinema', () => {
     const trouves: string[] = [];
     const marche = (d: string) => { for (const n of readdirSync(d)) { const c = path.join(d, n); statSync(c).isDirectory() ? marche(c) : n === 'route.ts' && trouves.push(c); } };
     marche('src/app/api/cinema');
