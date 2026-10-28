@@ -36,6 +36,15 @@ describe('les exemples sont exploitables par le decoupage existant', () => {
     }
   });
 
+  it('trois vignettes au CONTENU distinct, sans texte incruste qui serait rogne', () => {
+    const contenus = MODELES_FILM.map((m) => src(join('public', m.vignette.replace(/^\//, ''))));
+    expect(new Set(contenus).size).toBe(3);
+    for (const c of contenus) {
+      expect(c).toMatch(/^<svg[^>]*\swidth="\d+"[^>]*\sheight="\d+"/);
+      expect(c).not.toMatch(/<text\b/);
+    }
+  });
+
   it('chaque histoire donne assez de phrases pour le nombre de scenes demande', () => {
     for (const m of MODELES_FILM) {
       const p = phrases(m.valeurs.histoire);

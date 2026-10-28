@@ -19,9 +19,10 @@
  *   2. CHOISIR UN MODELE NE GENERE RIEN. Cela remplit des champs, et s'arrete la : aucun
  *      appel, aucun credit, aucune composition de scenario declenchee.
  *
- * Les vignettes sont les images STATIQUES deja presentes dans `public/styles-video/`
- * (utilisees ailleurs par l'Autopilote) : aucune image generee, aucun media ajoute au
- * depot pour cet ecran.
+ * Les vignettes sont des illustrations SVG STATIQUES (`public/cinema-exemples/`), une
+ * par genre, sans texte incruste : aucune image generee. Les miniatures de l'Autopilote
+ * (`public/styles-video/`) etaient la meme video de danse avec un titre incruste, donc
+ * indiscernables entre elles et rognees en 16:9.
  */
 import { useState } from 'react';
 import { Info, Sparkles, FilePlus2, Check, X } from 'lucide-react';
@@ -64,7 +65,7 @@ export const MODELES_FILM: readonly ModeleFilm[] = [
     id: 'aventure',
     nom: 'L’ascension',
     theme: 'Aventure',
-    vignette: '/styles-video/cinematique.jpg',
+    vignette: '/cinema-exemples/aventure.svg',
     ambiance: 'Lumiere froide d’avant l’aube, contre-jour, grain de pellicule.',
     scenes: [
       'Le camp de base dans la brume, sacs prets',
@@ -94,7 +95,7 @@ export const MODELES_FILM: readonly ModeleFilm[] = [
     id: 'romance',
     nom: 'Deux cafes',
     theme: 'Romance',
-    vignette: '/styles-video/minimaliste.jpg',
+    vignette: '/cinema-exemples/romance.svg',
     ambiance: 'Lumiere douce de fin de journee, tons chauds, cadres epures.',
     scenes: [
       'Le comptoir presque vide, pluie derriere la vitre',
@@ -124,7 +125,7 @@ export const MODELES_FILM: readonly ModeleFilm[] = [
     id: 'publicite',
     nom: 'Trente secondes',
     theme: 'Publicite cinematique',
-    vignette: '/styles-video/sport.jpg',
+    vignette: '/cinema-exemples/publicite.svg',
     ambiance: 'Contrastes nets, fond sombre, un seul objet eclaire au centre.',
     scenes: [
       'Salle vide avant l’ouverture, lumiere rasante',
@@ -224,7 +225,7 @@ export default function ModelesFilm({ aDesSaisies, surAppliquer, surPartirDeZero
                 aria-label={`Utiliser l’exemple ${m.nom} (${m.theme})`}
                 className="block w-full text-left"
               >
-                <span className="relative block aspect-[16/9] overflow-hidden bg-slate-950">
+                <span className="relative block overflow-hidden bg-slate-950" style={{ aspectRatio: '16 / 9' }}>
                   {/* Image STATIQUE du depot. eslint-disable : meme choix que le reste de
                       cet ecran, qui n'utilise pas `next/image` pour des visuels decoratifs. */}
                   {/* eslint-disable-next-line @next/next/no-img-element */}
