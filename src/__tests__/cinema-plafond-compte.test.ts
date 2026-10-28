@@ -105,6 +105,36 @@ describe('reserverDepenseReplicate — ne depense jamais a l’aveugle', () => {
     expect(etat.compte).toBe(4.8);
   });
 
+  /**
+   * CORRECTIF (confusion plafond PAR GENERATION vs CUMULE DU COMPTE, diagnostic 2026-10-28) :
+   * le message de refus ne disait QUE le plafond, jamais ce que le COMPTE avait deja engage.
+   * Un refus a « 2,00 $ de plafond » etait IDENTIQUE a l'ecran, que le compte soit a 0,10 $ ou
+   * a 1,95 $ deja engages — sans ce chiffre, un refus sur une generation a 0,45 $ se lisait, a
+   * tort, comme si ces 0,45 $ etaient eux-memes traites comme le plafond du film.
+   */
+  it('le message DISTINGUE desormais le total DEJA ENGAGE sur le compte du plafond lui-meme', async () => {
+    // Exactement le cas rapporte : le COMPTE est deja a 1,95 $ (generations anterieures,
+    // peut-etre sur un AUTRE film) — information invisible si seul le plafond est montre.
+    const etat = { compte: 1.95, global: 1.95 };
+    const reserver = reserveur(etat);
+    const r = await reserverDepenseReplicate('u1', 0.45, 'video', { reserver, plafondCompte: 2, plafondGlobal: 100 });
+    expect(r).toMatchObject({ ok: false, motif: 'plafond_compte_depasse' });
+    if (!r.ok) {
+      expect(r.message).toContain('1.9500'); // ce que le COMPTE avait deja engage
+      expect(r.message).toContain('0.4500'); // ce que CETTE generation propose
+      expect(r.message).toContain('2.00');   // le plafond lui-meme
+      expect(r.message.toUpperCase()).toContain('COMPTE'); // jamais confondu avec « film »
+    }
+  });
+
+  it('a l’inverse : un compte PEU engage (0,903 $, le cas rapporte) sous un plafond de 2 $ AUTORISE une generation a 0,45 $', async () => {
+    const etat = { compte: 0.903, global: 0.903 };
+    const reserver = reserveur(etat);
+    const r = await reserverDepenseReplicate('u1', 0.45, 'video', { reserver, plafondCompte: 2, plafondGlobal: 100 });
+    expect(r.ok).toBe(true);
+    expect(etat.compte).toBeCloseTo(1.353, 5);
+  });
+
   it('plafond global depasse : refus chiffre, meme si le compte a de la marge', async () => {
     const etat = { compte: 0, global: 99.6 };
     const reserver = reserveur(etat);

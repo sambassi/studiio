@@ -181,13 +181,22 @@ export async function reserverDepenseReplicate(
 
   if (!issue.ok) {
     const motif = issue.motif ?? 'plafond_compte_depasse';
+    // ⚠️ CORRECTIF (confusion plafond PAR GENERATION vs CUMULE DU COMPTE, diagnostic 2026-10-28) :
+    // le message ne disait QUE le plafond, jamais ce que le COMPTE a deja engage — un refus a
+    // 2,00 $ de plafond ETAIT IDENTIQUE, a l'ecran, que le compte soit a 0,10 $ ou a 1,95 $
+    // deja engages. Sans ce chiffre, un refus sur une generation a 0,45 $ pouvait se lire,
+    // a tort, comme « 0,45 $ est traite comme le plafond du film » — alors que le plafond DU
+    // COMPTE (independant du film, DURABLE, voir l'en-tete du fichier) etait simplement deja
+    // presque atteint par d'AUTRES engagements (generations anterieures, y compris celles dont
+    // la facturation reste incertaine). `issue.totalCompteUsd`/`totalGlobalUsd` existaient deja
+    // dans la reponse SQL : ils etaient seulement jetes au lieu d'etre montres.
     const messages: Record<MotifRefusDepense, string> = {
       reference_absente: 'reference de reservation invalide',
       montant_invalide: 'cout de generation inconnu ou nul : aucune reservation',
       operation_invalide: 'operation invalide',
       plafond_invalide: 'plafond de depense invalide sur ce serveur',
-      plafond_compte_depasse: `plafond de depense du compte atteint (${plafondCompte.toFixed(2)} $) — generation refusee avant tout appel`,
-      plafond_global_depasse: `plafond de depense global de Studiio atteint (${plafondGlobal.toFixed(2)} $) — generation refusee avant tout appel`,
+      plafond_compte_depasse: `plafond de depense DU COMPTE atteint : ${issue.totalCompteUsd.toFixed(4)} $ deja engages (toutes generations, meme sur d'autres films) + ${montantUsd.toFixed(4)} $ proposes > ${plafondCompte.toFixed(2)} $ de plafond compte — generation refusee avant tout appel`,
+      plafond_global_depasse: `plafond de depense GLOBAL de Studiio atteint : ${issue.totalGlobalUsd.toFixed(4)} $ deja engages (tous comptes) + ${montantUsd.toFixed(4)} $ proposes > ${plafondGlobal.toFixed(2)} $ de plafond global — generation refusee avant tout appel`,
       socle_absent: 'le plafond de depense ne peut pas etre verifie sur ce serveur',
     };
     return { ok: false, motif, message: messages[motif] };
