@@ -192,10 +192,36 @@ export function urlHiggsfieldSure(url: unknown): string | null {
   } catch { return null; }
 }
 
-/** Une URL de telechargement (stockage du fournisseur) : https obligatoire, hote libre. */
+/**
+ * Un hote qui n'est PAS un nom de domaine public : adresse IP numerique (IPv4 ou IPv6, y
+ * compris les formes decimale/hexadecimale que `URL` normalise), `localhost`, nom a un seul
+ * libelle, ou suffixe interne. Pas de resolution DNS ici : ce filtre ecarte les cibles
+ * evidentes (metadonnees cloud, services locaux) sans rien deviner du reseau.
+ */
+export function hoteNonPublic(hote: string): boolean {
+  const h = hote.toLowerCase().replace(/\.$/, '');
+  if (!h || h.includes(':') || h.startsWith('[')) return true;      // IPv6 litterale
+  if (/^[0-9.]+$/.test(h)) return true;                              // IPv4 litterale
+  if (!h.includes('.')) return true;                                 // un seul libelle
+  return /\.(local|localhost|internal|lan|home|corp|intranet)$/.test(h) || h === 'localhost';
+}
+
+/**
+ * Une URL rendue par le fournisseur et qu'on va TELECHARGER (ou ou l'on va deposer un
+ * fichier) : https obligatoire, nom de domaine public, sans identifiants, port 443 seul.
+ * Le fournisseur n'est pas une source de confiance pour designer une cible reseau : une
+ * reponse alteree ne doit pas nous faire contacter un service interne.
+ */
 function urlHttpsSure(url: unknown): string | null {
   if (typeof url !== 'string' || !url) return null;
-  try { const u = new URL(url); return u.protocol === 'https:' ? u.toString() : null; } catch { return null; }
+  try {
+    const u = new URL(url);
+    if (u.protocol !== 'https:') return null;
+    if (u.username || u.password) return null;
+    if (u.port && u.port !== '443') return null;
+    if (hoteNonPublic(u.hostname)) return null;
+    return u.toString();
+  } catch { return null; }
 }
 
 type Echec = { ok: false; erreur: string; jamaisEnvoye?: boolean; incertain?: boolean; nonFacture?: boolean };

@@ -224,6 +224,72 @@ describe('URL rendues par le fournisseur : jamais suivies a l’aveugle', () => 
   });
 });
 
+describe('URL de media rendues par le fournisseur : jamais une cible interne', () => {
+  const UUID = '3f2b8c1e-9a4d-4e7f-b6a1-0c5d2e8f9a71';
+  const CIBLES_INTERDITES = [
+    'https://169.254.169.254/latest/meta-data/',        // metadonnees cloud
+    'https://127.0.0.1/admin', 'https://localhost/x', 'https://[::1]/x', 'https://[::ffff:10.0.0.1]/x',
+    'https://10.0.0.5/x', 'https://192.168.1.10/x', 'https://2130706433/x',   // IPv4 decimale
+    'https://0x7f.0.0.1/x', 'https://studiio-minio/x', 'https://base.internal/x', 'https://nas.local/x',
+    'https://user:pass@cdn.example/x', 'https://cdn.example:8443/x', 'http://cdn.example/x',
+  ];
+
+  it.each(CIBLES_INTERDITES)('%s : jamais telechargee, AUCUNE requete vers elle', async (cible) => {
+    process.env = { ...ENV0, ...CLES } as NodeJS.ProcessEnv;
+    const appelsMedia: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/estimate/')) return reponse(200, { usd: '0.002' });
+      if (url.endsWith(MODELE_IMAGE_HF)) return reponse(200, { status: 'queued', request_id: UUID, status_url: `${BASE_HIGGSFIELD}/requests/${UUID}/status` });
+      if (url.startsWith(`${BASE_HIGGSFIELD}/requests/`)) return reponse(200, { status: 'completed', images: [{ url: cible }] });
+      appelsMedia.push(url);
+      return reponseMedia();
+    }));
+    const r = await FOURNISSEUR_HIGGSFIELD_IMAGE.genererImage({ promptPlan: 'p', promptConstruit: 'a', personnages: [], format: '16:9', graine: 1 });
+    expect(r.ok).toBe(false);
+    expect(appelsMedia).toEqual([]);
+    // Le fournisseur a repondu « termine » : la depense est comptee, jamais liberee.
+    if (!r.ok) { expect(r.nonFacture).toBeFalsy(); expect(r.jamaisEnvoye).toBeFalsy(); }
+  });
+
+  it('un hote public ordinaire (stockage du fournisseur, CDN) reste accepte', async () => {
+    process.env = { ...ENV0, ...CLES } as NodeJS.ProcessEnv;
+    const appelsMedia: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/estimate/')) return reponse(200, { usd: '0.002' });
+      if (url.endsWith(MODELE_IMAGE_HF)) return reponse(200, { status: 'queued', request_id: UUID, status_url: `${BASE_HIGGSFIELD}/requests/${UUID}/status` });
+      if (url.startsWith(`${BASE_HIGGSFIELD}/requests/`)) return reponse(200, { status: 'completed', images: [{ url: 'https://d3abc.cloudfront.net/i.jpg' }] });
+      appelsMedia.push(url);
+      return reponseMedia();
+    }));
+    const r = await FOURNISSEUR_HIGGSFIELD_IMAGE.genererImage({ promptPlan: 'p', promptConstruit: 'a', personnages: [], format: '16:9', graine: 1 });
+    expect(r.ok).toBe(true);
+    expect(appelsMedia).toEqual(['https://d3abc.cloudfront.net/i.jpg']);
+    if (r.ok) rmSync(r.fichier, { force: true });
+  });
+
+  it('la reprise (consulter) applique la meme regle : cible interne = aucune requete', async () => {
+    process.env = { ...ENV0, ...CLES } as NodeJS.ProcessEnv;
+    const appelsMedia: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.startsWith(`${BASE_HIGGSFIELD}/requests/`)) return reponse(200, { status: 'completed', images: [{ url: 'https://169.254.169.254/x' }] });
+      appelsMedia.push(url);
+      return reponseMedia();
+    }));
+    const { consulterHiggsfield } = await import('@/lib/cinema/generation/higgsfield');
+    const e = await consulterHiggsfield(UUID, 'image');
+    expect(e.etat).toBe('echec');            // termine mais sans media exploitable : facture
+    expect(appelsMedia).toEqual([]);
+  });
+
+  it('le filtre d’hote : refuse les cibles internes, accepte les noms de domaine publics', async () => {
+    const { hoteNonPublic } = await import('@/lib/cinema/generation/higgsfield');
+    expect(hoteNonPublic('10.0.0.5')).toBe(true);
+    expect(hoteNonPublic('cdn.example')).toBe(false);
+    expect(hoteNonPublic('d3abc.cloudfront.net')).toBe(false);
+    expect(hoteNonPublic('stockage.higgsfield.ai')).toBe(false);
+  });
+});
+
 describe('estimation du prix : lue, ou refusee — jamais supposee', () => {
   beforeEach(() => { process.env = { ...ENV0, ...CLES } as NodeJS.ProcessEnv; });
 
