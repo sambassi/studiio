@@ -30,7 +30,8 @@
 import path from 'path';
 import { lstat, mkdir, readdir, rm } from 'fs/promises';
 import type { SceneCinema } from '@/lib/cinema/types';
-import { dureeScene } from '@/lib/cinema/types';
+import { dureeFilm, dureeScene } from '@/lib/cinema/types';
+import { QUOTA_PRODUCTION_BASE, referenceProduction, type QuotaProduction } from '@/lib/cinema/abonnement/production';
 import { empreinteScene, hash, scelleScene } from '@/lib/cinema/empreinte';
 import { inscrireCout } from '@/lib/cinema/couts';
 import { evaluerProduction } from '@/lib/cinema/travaux/plafond';
@@ -83,7 +84,12 @@ export interface DependancesExecuteur {
   ressources?: DependancesAttente;
   /** Concurrence Chromium (defaut : `concurrenceRendu()`). */
   concurrence?: number;
+  /** Minutes d'abonnement reglees sur le film reellement produit (substituable en test). */
+  quota?: QuotaProduction;
 }
+
+/** Les minutes incluses ne suffisent pas pour la duree de ce film : rien n'est rendu. */
+export class QuotaProductionRefuse extends Error { constructor(m: string) { super(m); this.name = 'QuotaProductionRefuse'; } }
 
 /** Le bail a ete repris : cet executeur n'a plus le droit d'ecrire. */
 export class BailPerdu extends Error { constructor() { super('bail perdu'); this.name = 'BailPerdu'; } }
@@ -178,6 +184,10 @@ export async function executerTravail(travailId: string, proprietaire: string, d
     balayerDossiersAbandonnes(dep.dossierTravail).catch(() => { /* le balayage est un confort */ });
   }
   let progression: ProgressionTravail = { ...pris.progression, scenes: { ...pris.progression.scenes } };
+  const quota = dep.quota ?? QUOTA_PRODUCTION_BASE;
+  const refProduction = referenceProduction(pris.id, jeton);
+  /** Ajustement de minutes reserve et pas encore solde : libere si le rendu n'aboutit pas. */
+  let productionAReglee = false;
   let perdu = false;
   let arret = false;
   let sortirDuRendu: (() => void) | null = null;
@@ -273,6 +283,13 @@ export async function executerTravail(travailId: string, proprietaire: string, d
     }
     verifier();
 
+    // Minutes d'abonnement : la duree FINALE (voix mesurees) est connue, le rendu n'a pas
+    // commence. Reserver ici l'ajustement, c'est refuser AVANT de rendre un film que le
+    // quota ne couvre pas — et rendre l'excedent prevu d'un film plus court.
+    const q = await quota.reserver(proprietaire, filmInitial.id, dureeFilm(film), refProduction);
+    if (!q.ok) throw new QuotaProductionRefuse(q.message);
+    productionAReglee = q.reserve;
+
     // ── Rendu scene par scene ────────────────────────────────────────────
     const montage = monterFilm(film, voix);
     const rendues: string[] = [];
@@ -340,6 +357,11 @@ export async function executerTravail(travailId: string, proprietaire: string, d
     const cleMp4 = cleFilmMp4(proprietaire, filmInitial.id, empreinteFilm);
     if (!cleMp4) throw new Error('cle de film refusee');
     await dep.objets.deposerFichier(cleMp4, filmLocal, 'video/mp4');
+    // Le film est durable : les minutes se reglent sur sa duree MESUREE.
+    if (productionAReglee) {
+      await quota.finaliser(proprietaire, refProduction, controle.dureeS ?? dureeFilm(film));
+      productionAReglee = false;
+    }
     verifier();
 
     // ── Scellage : seulement ce qui n'a pas bouge pendant le travail ────
@@ -387,13 +409,16 @@ export async function executerTravail(travailId: string, proprietaire: string, d
     console.error(`[cinema/travail] ${reference} —`, e instanceof Error ? (e.stack ?? e.message) : e);
     let message: string;
     if (e instanceof ErreurMediasManquants) message = `media introuvable pour ${e.manquants.length} plan(s) : ${e.manquants.map((m) => m.planId).join(', ')}`;
-    else if (e instanceof PlafondDepasse || e instanceof ServeurOccupe || e instanceof VoixIndisponible) message = e.message;
+    else if (e instanceof PlafondDepasse || e instanceof ServeurOccupe || e instanceof VoixIndisponible || e instanceof QuotaProductionRefuse) message = e.message;
     else message = `echec de production (reference ${reference})`;
     // Ecriture refusee (jeton perime) = un autre executeur a repris : ce n'est pas un echec du travail.
     const ecrit = await dep.travaux.echouer(pris.id, jeton, message, reference).catch(() => false);
     return ecrit ? 'echec' : 'bail_perdu';
   } finally {
     clearInterval(battement);
+    // Rendu non abouti (echec, arret, bail perdu) : rien n'a ete livre — l'ajustement
+    // reserve est libere. Le rendu est local et gratuit : aucune depense n'est en jeu.
+    if (productionAReglee) await quota.liberer(proprietaire, refProduction).catch(() => {});
     sortirDuRendu?.();
     dossiersActifs.delete(path.resolve(dossier));
     await effacerDossier(dep.dossierTravail, dossier);

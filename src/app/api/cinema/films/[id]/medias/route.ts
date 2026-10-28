@@ -16,6 +16,7 @@ import { contexteCinema } from '@/lib/cinema/contexte';
 import { avecDossierTemporaire, filmInconnu, sessionCinema } from '@/lib/cinema/routes-aide';
 import { cleMedia } from '@/lib/cinema/stockage/cles';
 import { modifierFilm } from '@/lib/cinema/stockage/depot-films';
+import { filmPublic } from '@/lib/cinema/generation/suivi';
 import { presenterMontage } from '@/lib/cinema/stockage/presentation';
 import { typeContenuDepuisCle } from '@/lib/storage/acces-objet';
 import type { Film } from '@/lib/cinema/types';
@@ -94,7 +95,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   return NextResponse.json({
     ok: true,
     media: { ...resultat.media, url: undefined },
-    film,
+    film: filmPublic(film),
     montage: presenterMontage(monterFilm(film), film.id),
     scenesAProduire: aProduire,
     devis: devisFilm(film, aProduire),

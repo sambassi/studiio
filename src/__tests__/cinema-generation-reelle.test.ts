@@ -222,7 +222,21 @@ describe('une dépense engagée est TOUJOURS comptée, même quand l’appel éc
   it('l’atelier rend `depenseUsd` sur chaque échec survenu APRÈS l’appel au fournisseur', () => {
     const a = src('src/lib/cinema/generation/atelier.ts');
     // Les quatre échecs possibles après l'appel : image, vidéo, fichier illisible, import refusé.
-    expect(a.match(/depenseUsd: devis\.totalUsd \?\? 0/g)?.length).toBe(4);
+    // Les DEUX premiers viennent du fournisseur, qui peut déclarer l'issue non facturée
+    // (`nonFacture`, cf. `generation/fournisseur.ts`) : eux seuls portent cette condition.
+    expect(a.match(/depenseUsd: resultat\.nonFacture \? 0 : \(devis\.totalUsd \?\? 0\)/g)?.length).toBe(2);
+    // Les DEUX autres surviennent APRÈS un appel réussi (fichier illisible, import refusé) :
+    // rien n'y excuse la dépense, elle est comptée sans condition. Depuis la reprise après
+    // interruption, ces deux contrôles vivent dans UNE fonction partagée
+    // (`importerResultatFournisseur`, aussi utilisée par `reprise.ts`) : un seul retour,
+    // inconditionnel, couvre les deux cas.
+    expect(a.match(/depenseUsd: devis\.totalUsd \?\? 0/g)?.length).toBe(1);
+    const iImport = a.indexOf('const r = await importerResultatFournisseur(');
+    expect(iImport).toBeGreaterThan(0);
+    expect(a.slice(iImport, iImport + 400)).toContain("if (!r.ok) return { ok: false, erreur: r.erreur, depenseUsd: devis.totalUsd ?? 0 };");
+    const helper = a.slice(a.indexOf('export async function importerResultatFournisseur('));
+    expect(helper).toContain("erreur: 'le fournisseur n’a pas produit de fichier lisible'");
+    expect(helper).toContain('if (!importe.ok) return { ok: false, erreur: importe.erreur };');
     // Et le refus de plafond, lui, n'engage rien : il est AVANT l'appel.
     expect(a.indexOf('if (!verification.autorise)')).toBeLessThan(a.indexOf('fournisseur.genererImage'));
   });

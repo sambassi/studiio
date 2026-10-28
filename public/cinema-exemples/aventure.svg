@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
+  <defs>
+    <linearGradient id="ciel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0b1426"/>
+      <stop offset="0.55" stop-color="#1d3550"/>
+      <stop offset="1" stop-color="#e9a86b"/>
+    </linearGradient>
+    <radialGradient id="soleil" cx="0.62" cy="0.44" r="0.36">
+      <stop offset="0" stop-color="#ffd9a3" stop-opacity="0.95"/>
+      <stop offset="0.35" stop-color="#f3a35f" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#f3a35f" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="brume" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#c7d6e6" stop-opacity="0"/>
+      <stop offset="1" stop-color="#c7d6e6" stop-opacity="0.35"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="360" fill="url(#ciel)"/>
+  <rect width="640" height="360" fill="url(#soleil)"/>
+  <circle cx="400" cy="158" r="18" fill="#ffe2b8"/>
+  <path d="M0 250 L90 190 L150 222 L240 150 L300 196 L360 120 L398 168 L430 140 L520 214 L640 170 L640 360 L0 360 Z" fill="#273c57"/>
+  <path d="M360 120 L374 138 L366 140 L380 156 L398 168 L382 150 L388 146 Z" fill="#e7eef7" opacity="0.8"/>
+  <rect y="210" width="640" height="70" fill="url(#brume)"/>
+  <path d="M0 300 L120 236 L200 268 L300 214 L420 282 L520 240 L640 286 L640 360 L0 360 Z" fill="#14233a"/>
+  <path d="M0 340 L160 290 L280 322 L420 300 L540 330 L640 312 L640 360 L0 360 Z" fill="#0a1322"/>
+  <g fill="#0a1322">
+    <circle cx="358" cy="112" r="3.2"/>
+    <path d="M356 115 L360 115 L362 126 L354 126 Z"/>
+  </g>
+</svg>

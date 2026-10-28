@@ -86,7 +86,7 @@ import { randomBytes } from 'crypto';
 import { writeFile } from 'fs/promises';
 import {
   enregistrerFournisseur, type DemandeImageGeneration, type DemandeVideoGeneration,
-  type FournisseurGenerationIA, type ResultatGenerationIA,
+  type FournisseurGenerationIA, type ResultatGenerationIA, type EtatExterne, type SuiviSoumission,
 } from '@/lib/cinema/generation/fournisseur';
 import type { FormatFilm } from '@/lib/cinema/types';
 
@@ -148,8 +148,8 @@ type ResultatAppel = { ok: true; url: string } | { ok: false; erreur: string; ja
  * reponse HTTP d'erreur, media illisible) est un echec COMPREHENSIBLE, pas un echec
  * EN SUSPENS.
  */
-async function appeler(
-  modele: string, entree: Record<string, unknown>, delaiMs: number,
+async function appelerFournisseur(
+  modele: string, entree: Record<string, unknown>, delaiMs: number, suivi?: SuiviSoumission,
 ): Promise<ResultatAppel> {
   const cle = process.env.REPLICATE_API_TOKEN?.trim();
   // Jamais envoye : le client Replicate n'a meme pas ete construit.
@@ -159,6 +159,15 @@ async function appeler(
   const ctrl = new AbortController();
   const minuteur = setTimeout(() => ctrl.abort(), delaiMs);
   let sortie: unknown;
+  // SUIVI DURABLE : le SDK appelle `progress` des que la prediction est CREEE, avant toute
+  // attente — c'est la que son identifiant est ecrit (`SuiviSoumission`). L'ecriture est
+  // lancee aussitot et attendue avant de rendre la main : jamais perdue, jamais bloquante.
+  // Replicate ne propose pas d'Idempotency-Key : la cle de l'appelant n'est pas envoyee.
+  let enregistrement: Promise<void> | null = null;
+  const progression = suivi ? (prediction: { id?: unknown }) => {
+    if (enregistrement || typeof prediction?.id !== 'string') return;
+    enregistrement = suivi.surAcceptation(prediction.id).catch(() => {});
+  } : undefined;
   try {
     sortie = await replicate.run(modele as `${string}/${string}`, {
       input: entree,
@@ -166,8 +175,9 @@ async function appeler(
       // le SDK rend `null` au bout de ~60 s sur une prediction encore vivante.
       wait: { mode: 'poll' },
       signal: ctrl.signal,
-    });
+    }, progression);
   } catch (e) {
+    if (enregistrement) await enregistrement;
     if (ctrl.signal.aborted) {
       return { ok: false, erreur: `delai depasse (${Math.round(delaiMs / 1000)} s) — prediction annulee`, incertain: true };
     }
@@ -175,6 +185,7 @@ async function appeler(
   } finally {
     clearTimeout(minuteur);
   }
+  if (enregistrement) await enregistrement;
 
   const url = extraireUrl(sortie);
   if (!url && ctrl.signal.aborted) return { ok: false, erreur: 'delai depasse — prediction annulee', incertain: true };
@@ -212,6 +223,8 @@ function seedSur(graine: number): number {
 }
 
 async function genererImage(demande: DemandeImageGeneration): Promise<ResultatGenerationIA> {
+  // Le suivi de CETTE demande accompagne chaque appel (identifiant ecrit des la creation).
+  const appeler = (m: string, e: Record<string, unknown>, d: number) => appelerFournisseur(m, e, d, demande.suivi);
   const r = await appeler(MODELE_IMAGE, {
     // Le prompt ANGLAIS deja construit par le systeme existant : rien a reconstruire ici.
     prompt: demande.promptConstruit || demande.promptPlan,
@@ -228,6 +241,8 @@ async function genererImage(demande: DemandeImageGeneration): Promise<ResultatGe
 }
 
 async function genererVideo(demande: DemandeVideoGeneration): Promise<ResultatGenerationIA> {
+  // Le suivi de CETTE demande accompagne chaque appel (identifiant ecrit des la creation).
+  const appeler = (m: string, e: Record<string, unknown>, d: number) => appelerFournisseur(m, e, d, demande.suivi);
   // ⚠️ ACCESSIBILITE VERIFIEE AVANT TOUT APPEL (diagnostic E002, 2026-10-28) : `sonderMedia`
   // (ffprobe local, deja utilise par `medias.ts` pour l'import manuel) confirme que le
   // fichier est REELLEMENT une image decodable, et donne ses dimensions reelles — jamais
@@ -313,6 +328,40 @@ async function genererVideo(demande: DemandeVideoGeneration): Promise<ResultatGe
   return { ok: true, fichier: f.fichier, nomSuggere: `replicate-${demande.graine}.mp4` };
 }
 
+/** Identifiant de prediction Replicate : jamais place tel quel dans une requete sans controle. */
+const ID_PREDICTION_SUR = /^[a-z0-9]{10,64}$/;
+
+/**
+ * RELIRE UNE PREDICTION DEJA CREEE — `GET /v1/predictions/{id}` (SDK `predictions.get`).
+ * Lecture SEULE, gratuite : rien n'est soumis. Replicate ne s'engage par ecrit sur aucune
+ * issue non facturee : un echec (`failed`, `canceled`) reste suppose FACTURE.
+ */
+export async function consulterReplicate(
+  id: string, operation: 'image' | 'video', o: { client?: Pick<Replicate, 'predictions'> } = {},
+): Promise<EtatExterne> {
+  if (!ID_PREDICTION_SUR.test(id)) return { etat: 'introuvable', erreur: 'identifiant de prediction invalide' };
+  const cle = process.env.REPLICATE_API_TOKEN?.trim();
+  if (!o.client && !cle) return { etat: 'injoignable', erreur: 'REPLICATE_API_TOKEN absent' };
+  const client = o.client ?? new Replicate({ auth: cle });
+  let p: { status?: unknown; output?: unknown };
+  try {
+    p = await client.predictions.get(id) as { status?: unknown; output?: unknown };
+  } catch (e) {
+    const statut = (e as { response?: { status?: number } })?.response?.status;
+    if (statut === 404) return { etat: 'introuvable', erreur: 'prediction inconnue du fournisseur' };
+    return { etat: 'injoignable', erreur: e instanceof Error ? e.message.slice(0, 120) : 'lecture impossible' };
+  }
+  const statut = typeof p?.status === 'string' ? p.status : '';
+  if (statut === 'starting' || statut === 'processing') return { etat: 'en_cours' };
+  if (statut === 'failed' || statut === 'canceled') return { etat: 'echec', nonFacture: false, erreur: `prediction ${statut}` };
+  if (statut !== 'succeeded') return { etat: 'injoignable', erreur: `statut inattendu « ${statut.slice(0, 40)} »` };
+  const url = extraireUrl(p.output);
+  if (!url) return { etat: 'echec', nonFacture: false, erreur: 'prediction terminee sans media exploitable' };
+  const f = await rapatrier(url, operation === 'image' ? 'webp' : 'mp4');
+  if (!f.ok) return { etat: 'injoignable', erreur: f.erreur };
+  return { etat: 'termine', fichier: f.fichier, nomSuggere: `replicate-reprise.${operation === 'image' ? 'webp' : 'mp4'}` };
+}
+
 /** Image reelle. `actif` lu a CHAQUE usage : l'interrupteur agit sans redemarrage. */
 export const FOURNISSEUR_REPLICATE_IMAGE: FournisseurGenerationIA = {
   id: ID_REPLICATE_IMAGE,
@@ -320,6 +369,7 @@ export const FOURNISSEUR_REPLICATE_IMAGE: FournisseurGenerationIA = {
   get actif(): boolean { return generationReelleActive(); },
   genererImage,
   async genererVideo() { return { ok: false, erreur: 'ce fournisseur ne fait que des images' }; },
+  consulter: (id, operation) => consulterReplicate(id, operation),
 };
 
 /** Image-vers-video reelle. */
@@ -329,6 +379,7 @@ export const FOURNISSEUR_REPLICATE_VIDEO: FournisseurGenerationIA = {
   get actif(): boolean { return generationReelleActive(); },
   async genererImage() { return { ok: false, erreur: 'ce fournisseur ne fait que des videos' }; },
   genererVideo,
+  consulter: (id, operation) => consulterReplicate(id, operation),
 };
 
 enregistrerFournisseur(FOURNISSEUR_REPLICATE_IMAGE);

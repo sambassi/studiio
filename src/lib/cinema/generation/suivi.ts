@@ -83,6 +83,26 @@ export function generationsDuFilm(film: Pick<Film, 'generations'>, maintenant = 
   });
 }
 
+/**
+ * Ce que le NAVIGATEUR recoit d'une generation : jamais l'identifiant de la demande chez
+ * le fournisseur, ni la cle d'idempotence, ni le bail de reprise. Seul l'etat de la
+ * reprise est utile a l'ecran.
+ */
+export function generationPublique(g: GenerationSuivie): GenerationSuivie {
+  const { externe: _externe, reprise, ...reste } = g;
+  return reprise ? { ...reste, reprise: { etat: reprise.etat, tentatives: reprise.tentatives } } : reste;
+}
+
+/** Les generations du film, statut effectif applique, presentees pour le navigateur. */
+export function generationsPubliques(film: Pick<Film, 'generations'>, maintenant = Date.now()): GenerationSuivie[] {
+  return generationsDuFilm(film, maintenant).map(generationPublique);
+}
+
+/** Un film tel que le navigateur le recoit : generations presentees, rien d'interne. */
+export function filmPublic<F extends Pick<Film, 'generations'>>(film: F, maintenant = Date.now()): F {
+  return film.generations ? { ...film, generations: generationsPubliques(film, maintenant) } : film;
+}
+
 /** La generation active du film, s'il y en a une. */
 export function generationActive(film: Pick<Film, 'generations'>, maintenant = Date.now()): GenerationSuivie | null {
   return generationsDuFilm(film, maintenant).find((g) => g.statut === 'en_cours') ?? null;
@@ -142,7 +162,8 @@ export async function reserverGeneration(
 
 /** Champs qu'une generation peut recevoir en cours de route ou a sa fin. */
 export type PatchGeneration = Partial<Pick<GenerationSuivie,
-  'statut' | 'erreur' | 'creditsPris' | 'referenceCredits' | 'creditsRembourses' | 'bailJusqua'>>;
+  'statut' | 'erreur' | 'creditsPris' | 'referenceCredits' | 'creditsRembourses' | 'bailJusqua'
+  | 'referenceDepense' | 'referenceQuota' | 'depenseReconciliee' | 'externe' | 'reprise'>>;
 
 /** Applique un patch a UNE generation d'un film (pure, rejouable). */
 export function appliquerPatchGeneration(f: Film, id: string, patch: PatchGeneration, maintenant = Date.now()): Film {
@@ -207,6 +228,51 @@ export async function appliquerPatchTerminal(
   });
 }
 
+export const MESSAGE_LIVRE_APRES_INTERRUPTION =
+  'Le resultat est arrive apres une interruption : il a ete livre, sans nouveau cout.';
+export const MESSAGE_NON_LIVRE_CREDITS =
+  'Le resultat est arrive apres une interruption : vos credits ont ete rendus, il n’a donc pas ete livre. Relancez la generation si besoin.';
+export const MESSAGE_NON_LIVRE_REMPLACE =
+  'Le resultat est arrive apres une interruption, mais ce plan avait deja ete modifie : il n’a pas ete livre.';
+
+/**
+ * LIVRAISON D'UN RESULTAT ARRIVE APRES UNE INTERRUPTION — seulement si c'est SANS RISQUE.
+ *
+ * Le fournisseur a FACTURE (le media existe) ; le jeter ferait perdre un film paye. Mais
+ * la regle de `appliquerPatchTerminal` reste vraie dans un cas : si des CREDITS ont ete
+ * pris, la reconciliation a pu les rendre — livrer donnerait le media ET le remboursement.
+ * La livraison n'a donc lieu que si, sous l'ecriture gardee :
+ *   - la generation est `interrompue` (jamais une autre issue ecrasee) ;
+ *   - elle n'a pris AUCUN credit (abonnement, administrateur, tarif nul) ;
+ *   - le media du plan est TOUJOURS celui du depart (rien ne l'a remplace entre-temps :
+ *     jamais ecraser un media plus recent, jamais livrer deux fois).
+ * Rend `null` sinon : l'appelant jette le media et le DIT (`noterNonLivraison`).
+ */
+export async function livrerApresInterruption(
+  depot: DepotFilms, filmId: string, proprietaire: string, id: string,
+  planId: string, mediaAvantUrl: string | null, surFilm: (f: Film) => Film,
+): Promise<Film | null> {
+  return modifierFilm(depot, filmId, proprietaire, (f) => {
+    const g = (f.generations ?? []).find((x) => x.id === id);
+    if (!g || g.statut !== 'interrompue') return null;
+    if ((g.creditsPris ?? 0) > 0) return null;
+    const plan = f.scenes.flatMap((s) => s.plans).find((p) => p.id === planId);
+    if (!plan || (plan.media?.url ?? null) !== mediaAvantUrl) return null;
+    return appliquerPatchGeneration(surFilm(f), id, { statut: 'reussie', erreur: MESSAGE_LIVRE_APRES_INTERRUPTION, bailJusqua: null });
+  }).catch(() => null);
+}
+
+/** Le media tardif n'a pas ete livre : la generation interrompue le dit, sans changer d'issue. */
+export async function noterNonLivraison(
+  depot: DepotFilms, filmId: string, proprietaire: string, id: string, message: string,
+): Promise<void> {
+  await modifierFilm(depot, filmId, proprietaire, (f) => {
+    const g = (f.generations ?? []).find((x) => x.id === id);
+    if (!g || g.statut !== 'interrompue') return null;
+    return appliquerPatchGeneration(f, id, { erreur: message });
+  }).catch(() => null);
+}
+
 /**
  * Les generations interrompues dont les credits ont ete pris mais jamais rendus.
  * Le remboursement est idempotent (reference derivee du debit) : le rejouer est sans risque.
@@ -214,4 +280,14 @@ export async function appliquerPatchTerminal(
 export function aRembourser(film: Pick<Film, 'generations'>, maintenant = Date.now()): GenerationSuivie[] {
   return generationsDuFilm(film, maintenant).filter((g) =>
     g.statut === 'interrompue' && (g.creditsPris ?? 0) > 0 && !!g.referenceCredits && g.creditsRembourses !== true);
+}
+
+/** Une generation interrompue dont la depense ou le quota n'a pas encore ete marque `incertaine`. */
+export const depenseAReconcilier = (g: GenerationSuivie): boolean =>
+  (!!g.referenceDepense || !!g.referenceQuota) && g.depenseReconciliee !== true;
+
+/** Les generations interrompues qui laissent QUELQUE CHOSE a solder : credits ou depense. */
+export function aReconcilier(film: Pick<Film, 'generations'>, maintenant = Date.now()): GenerationSuivie[] {
+  return generationsDuFilm(film, maintenant).filter((g) => g.statut === 'interrompue' && (
+    ((g.creditsPris ?? 0) > 0 && !!g.referenceCredits && g.creditsRembourses !== true) || depenseAReconcilier(g)));
 }

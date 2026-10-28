@@ -27,14 +27,24 @@ import { reserverCredits, rembourserCredits, type Reservation } from '@/lib/cine
 import { devisGeneration } from '@/lib/cinema/generation/couts';
 import { reserverDepenseReplicate, confirmerDepenseReplicate, type StatutDepense } from '@/lib/cinema/generation/plafond-compte';
 import {
-  aRembourser, appliquerPatchGeneration, appliquerPatchTerminal, noterGeneration,
+  aReconcilier, depenseAReconcilier, appliquerPatchGeneration, appliquerPatchTerminal, noterGeneration,
   renouvelerBailGeneration, statutEffectif, BAIL_GENERATION_S,
+  livrerApresInterruption, noterNonLivraison, MESSAGE_NON_LIVRE_CREDITS, MESSAGE_NON_LIVRE_REMPLACE,
 } from '@/lib/cinema/generation/suivi';
-import type { Film, GenerationSuivie, StatutGeneration } from '@/lib/cinema/types';
+import type { Film, GenerationSuivie, SoumissionExterne, StatutGeneration } from '@/lib/cinema/types';
+import type { SuiviSoumission } from '@/lib/cinema/generation/fournisseur';
+import { randomUUID } from 'crypto';
+import { regimeCinema, evaluerQuota } from '@/lib/cinema/abonnement/regime';
+import { reserverQuota, confirmerQuota } from '@/lib/cinema/abonnement/depot';
+import { messageRefus } from '@/lib/cinema/abonnement/quotas';
+import { refusBudgetProjet } from '@/lib/cinema/abonnement/devis';
 
 // Imports pour leur SEULE presence : ils enregistrent les fournisseurs dans le registre.
 import '@/lib/cinema/generation/simule';
 import '@/lib/cinema/generation/replicate';
+// Declare, et eteint par ses trois conditions (`higgsfieldActif`) : sa seule presence dans
+// le registre ne l'allume pas, et `garde.ts` ne le choisit que sur `CINEMA_FOURNISSEUR`.
+import '@/lib/cinema/generation/higgsfield';
 
 export interface ParametresGeneration {
   ctx: Pick<ContexteCinema, 'films' | 'objets' | 'dossierTravail'>;
@@ -54,14 +64,87 @@ export async function executerGeneration(p: ParametresGeneration): Promise<Statu
 
   let reservation: Reservation | null = null;
   let depenseReservee: { reference: string; montantUsd: number } | null = null;
+  /** Quota d'abonnement reserve pour CETTE generation (regime `abonnement` seulement). */
+  let quotaReserve: string | null = null;
+  let filmLu: Film | null = null;
+  /**
+   * La soumission chez le fournisseur, ECRITE sur la generation AVANT l'appel payant (cle
+   * d'idempotence, cout estime, media de depart), puis completee de l'identifiant externe
+   * des l'acceptation : c'est ce qui permet a `reprise.ts` de retrouver un film facture
+   * apres un arret du serveur, sans jamais resoumettre.
+   */
+  const cleIdempotence = randomUUID();
+  let externe: SoumissionExterne | null = null;
 
   const payer = mode !== 'reelle' ? undefined : async () => {
+    // Le regime est decide ICI, cote serveur, au dernier moment (`abonnement/regime.ts`).
+    // Interrupteur `CINEMA_ABONNEMENTS` ferme : toujours `credits`, le chemin d'avant.
+    const regime = await regimeCinema(userId);
+    if (regime.type === 'refus') return { ok: false as const, motif: 'abonnement_illisible', message: regime.message };
+
     const devisTentative = devisGeneration(fournisseurId, [{ planId, operations: [operation] }]);
-    if (devisTentative.totalUsd !== null && devisTentative.totalUsd > 0) {
-      const depense = await reserverDepenseReplicate(userId, devisTentative.totalUsd, operation);
+    const usd = devisTentative.totalUsd;
+    const estimable = usd !== null && Number.isFinite(usd) && usd > 0;
+    // Hors credits, aucun appel sans prix connu : ni l'admin ni l'abonne ne paient a l'aveugle.
+    if (regime.type !== 'credits' && !estimable) {
+      return { ok: false as const, motif: 'estimation_invalide', message: messageRefus('estimation_invalide') };
+    }
+    // Hors credits : aucune generation payante sans BUDGET DE PROJET approuve, et ce budget
+    // borne la depense CUMULEE du film pendant toute la production (`abonnement/devis.ts`).
+    if (regime.type !== 'credits') {
+      const refus = refusBudgetProjet(filmLu, usd as number);
+      if (refus) return { ok: false as const, motif: 'budget_projet', message: refus };
+    }
+    if (estimable) {
+      // Plafonds de depense par compte et global : pour TOUS les regimes, admin compris.
+      const depense = await reserverDepenseReplicate(userId, usd, operation);
       if (!depense.ok) return { ok: false as const, motif: depense.motif, message: depense.message };
       depenseReservee = { reference: depense.reference, montantUsd: depense.montantUsd };
     }
+    const libererDepense = async () => {
+      const d = depenseReservee as { reference: string } | null;
+      if (d) await confirmerDepenseReplicate(userId, d.reference, 'liberee').catch(() => null);
+    };
+    const filmCourant = filmLu as Film | null;
+    externe = {
+      fournisseurId, cleIdempotence, coutEstimeUsd: estimable ? (usd as number) : 0,
+      mediaAvantUrl: filmCourant?.scenes.flatMap((x) => x.plans).find((pl) => pl.id === planId)?.media?.url ?? null,
+      soumisLe: new Date().toISOString(),
+    };
+    // ⚠️ ECRIT AVANT L'APPEL PAYANT : une interruption doit pouvoir passer la depense et le
+    // quota en `incertaine` (`solderGenerationsInterrompues`) — jamais les rendre — et
+    // relire la demande chez le fournisseur (`reprise.ts`).
+    const noterReferences = async (referenceQuota?: string) => {
+      const d = depenseReservee as { reference: string } | null;
+      await noterGeneration(ctx.films, filmId, userId, generation.id, {
+        ...(d ? { referenceDepense: d.reference } : null), ...(referenceQuota ? { referenceQuota } : null),
+        ...(externe ? { externe } : null),
+      });
+    };
+
+    // Administrateur : le cout fournisseur reel, rien d'autre — ni credit, ni marge, ni quota.
+    if (regime.type === 'cout_reel') { await noterReferences(); return { ok: true as const }; }
+
+    if (regime.type === 'abonnement') {
+      const film = filmLu as Film | null;
+      if (!film) { await libererDepense(); return { ok: false as const, motif: 'film_absent', message: 'film introuvable' }; }
+      const e = await evaluerQuota({ regime, userId, film, operation, usdEstime: usd as number });
+      if (!e.ok) { await libererDepense(); return { ok: false as const, motif: 'quota', message: e.message }; }
+      const reference = `cinema-quota:${generation.id}`;
+      // L'AUTORITE : verrou en base, verification et increment dans la meme transaction.
+      // Deux generations simultanees (ou un double clic) ne peuvent pas depasser le quota.
+      const r = await reserverQuota({
+        userId, periodeDebut: e.periode.debut, periodeFin: e.periode.fin, reference, filmId: film.id,
+        dureeFilmS: e.dureeFilmS, usd: usd as number,
+        maxFilms: e.decision.limites.maxFilms, maxSecondes: e.decision.limites.maxSecondes, maxUsd: e.decision.limites.maxUsd,
+      });
+      if (!r.ok) { await libererDepense(); return { ok: false as const, motif: 'quota', message: messageRefus(r.motif) }; }
+      quotaReserve = reference;
+      await noterReferences(reference);
+      // Couverte par l'abonnement : AUCUN credit n'est pris en plus.
+      return { ok: true as const };
+    }
+
     const prise = await reserverCredits(userId, operation);
     if (!prise.ok) {
       if (depenseReservee) await confirmerDepenseReplicate(userId, depenseReservee.reference, 'liberee').catch(() => null);
@@ -71,11 +154,26 @@ export async function executerGeneration(p: ParametresGeneration): Promise<Statu
     // ⚠️ ECRIT AVANT L'APPEL PAYANT : si le processus meurt pendant l'appel, la generation
     // sera lue `interrompue` et ces credits seront rendus (reference = idempotence).
     if (prise.reservation.cout > 0) {
+      const d = depenseReservee as { reference: string } | null;
       await noterGeneration(ctx.films, filmId, userId, generation.id, {
         creditsPris: prise.reservation.cout, referenceCredits: prise.reservation.reference,
+        ...(d ? { referenceDepense: d.reference } : null),
+        ...(externe ? { externe } : null),
       });
+    } else {
+      await noterReferences();
     }
     return { ok: true as const };
+  };
+
+  // L'identifiant de la demande, ECRIT des que le fournisseur l'a rendu — avant l'attente.
+  const suivi: SuiviSoumission | undefined = mode !== 'reelle' ? undefined : {
+    cleIdempotence,
+    surAcceptation: async (idExterne: string) => {
+      if (!externe) return;
+      externe = { ...externe, idExterne, accepteLe: new Date().toISOString() };
+      await noterGeneration(ctx.films, filmId, userId, generation.id, { externe });
+    },
   };
 
   // ⚠️ BATTEMENT DE COEUR — CORRECTIF SECURITE (voir `suivi.ts`, `statutEffectif`).
@@ -96,6 +194,9 @@ export async function executerGeneration(p: ParametresGeneration): Promise<Statu
       return 'echouee';
     }
     const film = lu.film;
+    filmLu = film;
+    /** Le media du plan AU DEPART : une livraison tardive ne doit jamais ecraser plus recent. */
+    const mediaAvantUrl = film.scenes.flatMap((x) => x.plans).find((pl) => pl.id === planId)?.media?.url ?? null;
 
     const resultat = await avecDossierTemporaire(ctx, async (racinePublique) => {
       const source = film.scenes.flatMap((x) => x.plans).find((pl) => pl.id === planId)?.media;
@@ -103,7 +204,7 @@ export async function executerGeneration(p: ParametresGeneration): Promise<Statu
         const c = cleMedia(userId, film.id, source.url);
         if (c) await ctx.objets.telechargerVers(c, fichierDuMedia(racinePublique, source.url));
       }
-      const r = await genererMediaPlan(film, planId, { fournisseurId, operation, racinePublique, plafondUsd, payer });
+      const r = await genererMediaPlan(film, planId, { suivi, fournisseurId, operation, racinePublique, plafondUsd, payer });
       if (!r.ok) return r;
       const cle = cleMedia(userId, film.id, r.media.url);
       if (!cle) return { ok: false as const, erreur: 'chemin de media refuse' };
@@ -121,11 +222,19 @@ export async function executerGeneration(p: ParametresGeneration): Promise<Statu
         return await statutFinal(ctx, filmId, userId, generation.id, 'echouee');
       }
       const engageUsd = ('depenseUsd' in resultat ? resultat.depenseUsd : 0) ?? 0;
-      if (dep) {
-        const statutDepense: StatutDepense = ('jamaisEnvoye' in resultat && resultat.jamaisEnvoye) ? 'liberee'
-          : ('incertain' in resultat && resultat.incertain) ? 'incertaine' : 'confirmee';
-        await confirmerDepenseReplicate(userId, dep.reference, statutDepense).catch(() => null);
-      }
+      // `nonFacture` : issue que le fournisseur s'engage a ne pas facturer (`failed`,
+      // `nsfw`, annulation avant traitement chez Higgsfield) — meme effet financier que
+      // « jamais envoye », la reservation est liberee plutot que comptee. Un DELAI EXPIRE
+      // n'est jamais une preuve : il rend `incertain`, donc `incertaine`.
+      const statutDepense: StatutDepense = (('jamaisEnvoye' in resultat && resultat.jamaisEnvoye)
+        || ('nonFacture' in resultat && resultat.nonFacture)) ? 'liberee'
+        : ('incertain' in resultat && resultat.incertain) ? 'incertaine' : 'confirmee';
+      if (dep) await confirmerDepenseReplicate(userId, dep.reference, statutDepense).catch(() => null);
+      // Le quota suit EXACTEMENT la depense : libere seulement sur preuve de non-facturation,
+      // compte s'il y a doute. Un echec d'ecriture laisse la reservation engagee — comptee,
+      // jamais rendue a tort.
+      const refQuotaEchec = quotaReserve as string | null;
+      if (refQuotaEchec) await confirmerQuota(userId, refQuotaEchec, statutDepense).catch(() => false);
       // ⚠️ LE REMBOURSEMENT EST IDEMPOTENT (reference derivee du debit, `rembourserCredits`) :
       // le rejouer ici, meme si `solderGenerationsInterrompues` l'a deja fait entre-temps pour
       // la MEME generation, ne credite jamais deux fois.
@@ -150,6 +259,8 @@ export async function executerGeneration(p: ParametresGeneration): Promise<Statu
     }
 
     if (dep) await confirmerDepenseReplicate(userId, dep.reference, 'confirmee').catch(() => null);
+    const refQuota = quotaReserve as string | null;
+    if (refQuota) await confirmerQuota(userId, refQuota, 'confirmee').catch(() => false);
 
     const depense = arrondi((resultat.film.coutGenerationUsd ?? 0) - (film.coutGenerationUsd ?? 0));
     const refsUtilisees = new Map(resultat.film.scenes.flatMap((x) => x.plans).map((pl) => [pl.id, pl.referencesUtilisees] as const));
@@ -158,15 +269,26 @@ export async function executerGeneration(p: ParametresGeneration): Promise<Statu
     // rembourse les credits) ne doit JAMAIS etre attache au film — l'utilisateur recevrait
     // alors la video ET ses credits rembourses, pendant que le compte Replicate du
     // proprietaire a bien ete facture. Le media est jete dans ce cas, jamais livre « gratuit ».
-    const suivant = await appliquerPatchTerminal(ctx.films, filmId, userId, generation.id, { statut: 'reussie', erreur: null }, (f) => {
+    const avecResultat = (f: Film): Film => {
       const avecMedia = remplacerMedia(f, planId, resultat.media);
       return {
         ...avecMedia,
         coutGenerationUsd: arrondi((f.coutGenerationUsd ?? 0) + depense),
         scenes: avecMedia.scenes.map((x) => ({ ...x, plans: x.plans.map((pl) => pl.id !== planId ? pl : { ...pl, referencesUtilisees: refsUtilisees.get(pl.id) }) })),
       };
-    }).catch(() => null);
+    };
+    const suivant = await appliquerPatchTerminal(ctx.films, filmId, userId, generation.id, { statut: 'reussie', erreur: null }, avecResultat)
+      .catch(() => null);
     if (!suivant) {
+      // Arrive APRES une interruption : livre si c'est sans risque (aucun credit pris, plan
+      // inchange) — un film facture n'est pas perdu pour rien. Sinon, jete ET explique.
+      const livre = await livrerApresInterruption(ctx.films, filmId, userId, generation.id, planId, mediaAvantUrl, avecResultat);
+      if (livre) return 'reussie';
+      const g = (await ctx.films.lire(filmId, userId).catch(() => null))?.film.generations?.find((x) => x.id === generation.id);
+      if (g?.statut === 'interrompue') {
+        await noterNonLivraison(ctx.films, filmId, userId, generation.id,
+          (g.creditsPris ?? 0) > 0 ? MESSAGE_NON_LIVRE_CREDITS : MESSAGE_NON_LIVRE_REMPLACE);
+      }
       // Le media produit est jete dans TOUS les cas ou l'ecriture n'a pas ete appliquee :
       // film disparu, OU generation deja tranchee ailleurs (voir le commentaire ci-dessus).
       const cle = cleMedia(userId, filmId, resultat.media.url);
@@ -264,10 +386,11 @@ export async function attendreGenerations(): Promise<void> {
 export async function solderGenerationsInterrompues(
   ctx: Pick<ContexteCinema, 'films'>, filmId: string, userId: string, film: Pick<Film, 'generations'>,
 ): Promise<void> {
-  if (!aRembourser(film).length) return; // rien a faire sur cet instantane : pas la peine de relire
+  if (!aReconcilier(film).length) return; // rien a faire sur cet instantane : pas la peine de relire
   const frais = await ctx.films.lire(filmId, userId).catch(() => null);
   if (!frais) return;
-  for (const gen of aRembourser(frais.film)) {
+  const creditsDus = (g: GenerationSuivie) => (g.creditsPris ?? 0) > 0 && !!g.referenceCredits && g.creditsRembourses !== true;
+  for (const gen of aReconcilier(frais.film)) {
     // ⚠️ ORDRE CRITIQUE (CORRECTIF SECURITE) : on REVENDIQUE D'ABORD, de facon ATOMIQUE
     // (ecriture gardee, rejouee sur conflit par `modifierFilm`), le droit de conclure cette
     // generation comme interrompue — et seulement SI cette revendication reussit, on
@@ -282,7 +405,7 @@ export async function solderGenerationsInterrompues(
         // remboursement avait echoue) : pas de nouvelle ecriture ici, juste l'autorisation
         // de retenter le remboursement plus bas (la boucle `aRembourser` ne retient que
         // les generations pas encore `creditsRembourses === true`).
-        return g.creditsRembourses === true ? null : f;
+        return creditsDus(g) || depenseAReconcilier(g) ? f : null;
       }
       // Conclue ailleurs ENTRE la lecture fraiche ci-dessus et cette ecriture (l'executeur
       // a fini, ou a renouvele son bail) : cette reconciliation ne doit RIEN ecraser, et ne
@@ -294,12 +417,39 @@ export async function solderGenerationsInterrompues(
     }).catch(() => null);
     if (!revendique) continue; // deja remboursee, ou conclue ailleurs : ne JAMAIS rembourser dans ce cas
 
-    const issue = await rembourserCredits(userId, { cout: gen.creditsPris ?? 0, reference: gen.referenceCredits as string }, gen.operation)
-      .catch(() => ({ ok: false }));
-    await modifierFilm(ctx.films, filmId, userId, (f) => {
-      const g = (f.generations ?? []).find((x) => x.id === gen.id);
-      if (!g || g.statut !== 'interrompue') return null; // ecrit juste au-dessus : ne devrait pas arriver
-      return appliquerPatchGeneration(f, gen.id, { creditsRembourses: issue.ok });
-    }).catch(() => null);
+    if (creditsDus(gen)) {
+      const issue = await rembourserCredits(userId, { cout: gen.creditsPris ?? 0, reference: gen.referenceCredits as string }, gen.operation)
+        .catch(() => ({ ok: false }));
+      await modifierFilm(ctx.films, filmId, userId, (f) => {
+        const g = (f.generations ?? []).find((x) => x.id === gen.id);
+        if (!g || g.statut !== 'interrompue') return null; // ecrit juste au-dessus : ne devrait pas arriver
+        return appliquerPatchGeneration(f, gen.id, { creditsRembourses: issue.ok });
+      }).catch(() => null);
+    }
+
+    // ⚠️ DEPENSE ET QUOTA : `incertaine`, JAMAIS `liberee`. L'appel a pu partir et etre
+    // facture : rien ne prouve le contraire. La depense reste comptee (plafond du compte)
+    // et le quota aussi, jusqu'a une preuve — l'executeur qui conclurait plus tard les
+    // reclasse lui-meme (`confirmee`, ou `liberee` sur preuve de non-facturation). Une
+    // issue deja definitive (`deja_finalisee`) n'est jamais ecrasee.
+    if (depenseAReconcilier(gen)) {
+      const regles: boolean[] = [];
+      if (gen.referenceDepense) {
+        const r = await confirmerDepenseReplicate(userId, gen.referenceDepense, 'incertaine').catch(() => null);
+        regles.push(!!r && (r.ok || r.motif === 'deja_finalisee' || r.motif === 'reference_absente'));
+      }
+      if (gen.referenceQuota) {
+        const r = await confirmerQuota(userId, gen.referenceQuota, 'incertaine').catch(() => ({ ok: false, motif: 'transport' }));
+        regles.push(r.ok || r.motif === 'deja_finalisee' || r.motif === 'reference_absente');
+      }
+      // Base injoignable : on retentera au prochain passage, rien n'est marque a tort.
+      if (regles.every(Boolean)) {
+        await modifierFilm(ctx.films, filmId, userId, (f) => {
+          const g = (f.generations ?? []).find((x) => x.id === gen.id);
+          if (!g || g.statut !== 'interrompue') return null;
+          return appliquerPatchGeneration(f, gen.id, { depenseReconciliee: true });
+        }).catch(() => null);
+      }
+    }
   }
 }

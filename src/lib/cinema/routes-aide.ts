@@ -5,9 +5,6 @@
  * middleware : chacune verifie la session ELLE-MEME. Ces aides le rendent
  * court, donc difficile a oublier.
  */
-import path from 'path';
-import { randomBytes } from 'crypto';
-import { mkdir, rm } from 'fs/promises';
 import { NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { accesCinemaAutorise, cinemaActive , stockageCinemaUtilisable } from '@/lib/cinema/garde';
@@ -38,22 +35,9 @@ export async function sessionCinema(): Promise<SessionCinema> {
 
 export const filmInconnu = () => NextResponse.json({ ok: false, erreur: 'film inconnu' }, { status: 404 });
 
-/**
- * Un dossier de travail JETABLE sous `var/cinema/travail/`, efface a la fin
- * quoi qu'il arrive. Les medias PRIVES n'y passent que le temps d'une
- * operation (import mesure par ffprobe, apercu, generation) — jamais `public/`.
- */
-export async function avecDossierTemporaire<T>(ctx: Pick<ContexteCinema, 'dossierTravail'>, travail: (racinePublique: string) => Promise<T>): Promise<T> {
-  const dossier = path.join(ctx.dossierTravail, `tmp-${randomBytes(6).toString('hex')}`);
-  const racinePublique = path.join(dossier, 'public');
-  await mkdir(racinePublique, { recursive: true });
-  try {
-    return await travail(racinePublique);
-  } finally {
-    // Le chemin est celui que NOUS venons de fabriquer, sous la base : pas de joker.
-    await rm(dossier, { recursive: true, force: true }).catch(() => {});
-  }
-}
+// Deplace dans un module sans dependance a la session (utilisable hors requete), et
+// reexporte ici pour les appelants existants.
+export { avecDossierTemporaire } from '@/lib/cinema/dossier-temporaire';
 
 /** Copie les medias (et references) du film depuis le stockage vers `racinePublique`. Rend les manquants. */
 export async function materialiserMedias(

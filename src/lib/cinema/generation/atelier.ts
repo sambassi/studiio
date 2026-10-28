@@ -28,7 +28,7 @@ import {
   devisGeneration, PLAFOND_USD_PAR_FILM_DEFAUT, verifierPlafond, type VerificationPlafond,
 } from '@/lib/cinema/generation/couts';
 import {
-  fournisseurGeneration, type ApparencePersonnageGeneration, type OperationGenerationIA,
+  fournisseurGeneration, type ApparencePersonnageGeneration, type OperationGenerationIA, type SuiviSoumission,
 } from '@/lib/cinema/generation/fournisseur';
 import type { Film, MediaPlan, PlanCinema } from '@/lib/cinema/types';
 
@@ -56,6 +56,12 @@ export interface OptionsGenerationPlan {
    * Absente : rien n'est preleve (generation gratuite ou simulee).
    */
   payer?: () => Promise<{ ok: true } | { ok: false; motif: string; message: string }>;
+  /**
+   * Suivi durable de la soumission (`fournisseur.ts`, `SuiviSoumission`) : la cle
+   * d'idempotence et l'enregistrement de l'identifiant externe des l'acceptation.
+   * Transmis tel quel au fournisseur.
+   */
+  suivi?: SuiviSoumission;
 }
 
 export type ResultatGenerationPlan =
@@ -87,6 +93,13 @@ export type ResultatGenerationPlan =
      */
     jamaisEnvoye?: boolean;
     incertain?: boolean;
+    /**
+     * L'appel est parti et a echoue, mais le fournisseur DOCUMENTE que cette issue n'est
+     * pas facturee (voir `fournisseur.ts`). `depenseUsd` vaut alors 0 et la reservation
+     * est liberee, exactement comme si rien n'etait parti : la consequence financiere est
+     * la meme, et le compteur du film ne doit pas grossir d'une depense qui n'existe pas.
+     */
+    nonFacture?: boolean;
   };
 
 /** Les apparences des personnages PRESENTS dans un plan, dans la forme qu'un fournisseur recoit. */
@@ -179,12 +192,17 @@ export async function genererMediaPlan(film: Film, planId: string, options: Opti
       personnages,
       format: film.format,
       graine,
+      ...(options.suivi ? { suivi: options.suivi } : null),
     });
     // L'appel est parti : qu'il reussisse ou non, il peut avoir ete facture.
     if (!resultat.ok) {
       return {
-        ok: false, erreur: resultat.erreur, depenseUsd: devis.totalUsd ?? 0,
+        ok: false, erreur: resultat.erreur,
+        // `nonFacture` : le fournisseur s'engage par ecrit a ne pas facturer cette issue —
+        // rien n'est ajoute au compteur du film, et la reservation sera liberee.
+        depenseUsd: resultat.nonFacture ? 0 : (devis.totalUsd ?? 0),
         jamaisEnvoye: resultat.jamaisEnvoye, incertain: resultat.incertain,
+        nonFacture: resultat.nonFacture,
       };
     }
     fichierTemporaire = resultat.fichier;
@@ -202,11 +220,16 @@ export async function genererMediaPlan(film: Film, planId: string, options: Opti
       dureeS: plan.dureeS,
       format: film.format,
       graine,
+      ...(options.suivi ? { suivi: options.suivi } : null),
     });
     if (!resultat.ok) {
       return {
-        ok: false, erreur: resultat.erreur, depenseUsd: devis.totalUsd ?? 0,
+        ok: false, erreur: resultat.erreur,
+        // `nonFacture` : le fournisseur s'engage par ecrit a ne pas facturer cette issue —
+        // rien n'est ajoute au compteur du film, et la reservation sera liberee.
+        depenseUsd: resultat.nonFacture ? 0 : (devis.totalUsd ?? 0),
         jamaisEnvoye: resultat.jamaisEnvoye, incertain: resultat.incertain,
+        nonFacture: resultat.nonFacture,
       };
     }
     fichierTemporaire = resultat.fichier;
@@ -214,19 +237,45 @@ export async function genererMediaPlan(film: Film, planId: string, options: Opti
   }
 
   // ── 5. Le resultat passe par le MEME controle qu'un import manuel ──────
+  const r = await importerResultatFournisseur({
+    film, planId, fichier: fichierTemporaire, nomSuggere, racinePublique: options.racinePublique,
+    fournisseurId: fournisseur.id, coutUsd: devis.totalUsd ?? 0,
+  });
+  if (!r.ok) return { ok: false, erreur: r.erreur, depenseUsd: devis.totalUsd ?? 0 };
+  return r;
+}
+
+/**
+ * Le fichier rendu par un fournisseur devient le media du plan, par le MEME controle
+ * qu'un import manuel (signature, conteneur, mesure). Utilise par la generation ET par la
+ * reprise apres interruption (`reprise.ts`) : un media recupere tardivement n'echappe a
+ * aucun controle. Le fichier temporaire est toujours efface.
+ */
+export async function importerResultatFournisseur(args: {
+  film: Film; planId: string; fichier: string; nomSuggere: string; racinePublique: string;
+  fournisseurId: string; coutUsd: number;
+}): Promise<{ ok: true; film: Film; media: MediaPlan } | { ok: false; erreur: string }> {
+  const { film, planId } = args;
+  const plan = film.scenes.flatMap((s) => s.plans).find((p) => p.id === planId);
+  if (!plan) {
+    await rm(args.fichier, { force: true }).catch(() => {});
+    return { ok: false, erreur: 'plan inconnu' };
+  }
   let donnees: Buffer;
   try {
-    donnees = await readFile(fichierTemporaire);
+    donnees = await readFile(args.fichier);
   } catch {
-    return { ok: false, erreur: 'le fournisseur n’a pas produit de fichier lisible', depenseUsd: devis.totalUsd ?? 0 };
+    return { ok: false, erreur: 'le fournisseur n’a pas produit de fichier lisible' };
   }
 
   const importe = await importerMedia({
-    film, planId, nomOrigine: nomSuggere, donnees,
-    racinePublique: options.racinePublique, origine: 'genere',
+    film, planId, nomOrigine: args.nomSuggere, donnees,
+    racinePublique: args.racinePublique, origine: 'genere',
   });
-  await rm(fichierTemporaire, { force: true }).catch(() => {});
-  if (!importe.ok) return { ok: false, erreur: importe.erreur, depenseUsd: devis.totalUsd ?? 0 };
+  await rm(args.fichier, { force: true }).catch(() => {});
+  if (!importe.ok) return { ok: false, erreur: importe.erreur };
+  const fournisseur = { id: args.fournisseurId };
+  const devis = { totalUsd: args.coutUsd };
 
   // ── Tracabilite (mission 2) : QUEL fournisseur, QUELLES references ─────
   //

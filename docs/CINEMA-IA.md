@@ -415,3 +415,254 @@ Verifie depuis le serveur Hetzner (conteneur jetable, 2026-10-27) :
 service exige desormais le jeton `Sec-MS-GEC`, envoye a partir de la 2.1. La
 dependance passe a `^2.1.1` ; l'API est inchangee. Aucun fournisseur payant
 n'est branche sur la voix de Cinema.
+
+## 14. Connecteur Higgsfield (declare, ETEINT)
+
+Second fournisseur de generation reelle, ecrit le 2026-10-28. Il n'enleve rien :
+sans la variable `CINEMA_FOURNISSEUR`, le fournisseur reel reste **Replicate**,
+avec exactement le comportement d'avant.
+
+### 14.1 Les trois conditions d'allumage
+
+| Variable | Role |
+|---|---|
+| `CINEMA_FOURNISSEUR=higgsfield` | choix EXPLICITE du fournisseur reel (absent ⇒ Replicate) |
+| `CINEMA_GENERATION_REELLE=true` | le meme interrupteur que Replicate, inchange |
+| `HIGGSFIELD_API_KEY_ID` + `HIGGSFIELD_API_KEY_SECRET` | cles SERVEUR (jamais `NEXT_PUBLIC_*`) |
+
+Une seule qui manque, et `actif` vaut `false` : `atelier.ts` refuse avant de
+construire quoi que ce soit. S'y ajoutent, inchanges, l'autorisation du compte
+(`CINEMA_GENERATION_REELLE_COMPTES`), les credits, le plafond par film
+(`CINEMA_PLAFOND_USD`, **toujours 2 $ par defaut**) et le plafond par compte.
+
+### 14.2 L'estimation est obligatoire, et elle refuse
+
+`POST /estimate/<modele>` rend le prix du COMPTE pour le corps exact qui sera
+soumis (`{"usd": "0.094"}`, documente comme faisant foi). Le connecteur l'appelle
+avant chaque generation et refuse dans trois cas, tous **avant** la moindre
+soumission payante : budget par unite non verifie, estimation illisible,
+estimation superieure au budget autorise. Comme l'estimation prend le meme corps
+que la generation, une erreur de schema remonte en 422 **sur l'estimation** :
+c'est un pre-vol gratuit autant qu'un devis.
+
+### 14.3 Modeles et bornes de prix
+
+| Operation | Modele | Budget par unite | Source |
+|---|---|---|---|
+| image | `higgsfield-ai/soul/v2/standard` | 0,0032 $ | blog officiel, lu le 2026-10-28 |
+| video | `kling-video/v2.5-turbo/standard/image-to-video` | 0,42 $ (0,042 $/s x 10 s au pire) | blog officiel, lu le 2026-10-28 |
+| video | `alibaba/happy-horse/v1.1/image-to-video` | **non verifie ⇒ refuse** | prix non publie hors console |
+
+Ces montants sont des **bornes hautes assumees**, pas une affirmation sur le prix
+reel : c'est l'estimation par compte qui tranche a chaque appel. A 0,42 $ la
+video, le plafond de 2 $ ne laisse passer que **quatre** plans animes par film —
+c'est voulu, et non releve par ce lot.
+
+### 14.4 Ce qui protege l'argent, en plus du plafond
+
+- `Idempotency-Key` sur chaque soumission ; le seul rejeu (apres un echec reseau
+  ou un 5xx) rejoue la MEME cle, donc ne peut pas creer une seconde generation
+  facturee. C'est la reponse directe au double-debit observe cote Replicate.
+- `failed`, `nsfw` et une annulation avant traitement ne sont **pas factures**
+  par Higgsfield : ces issues rendent `nonFacture: true`, ce qui LIBERE la
+  reservation de depense au lieu de la compter (`plafond-compte.ts`).
+- Les fichiers Higgsfield vivent 7 jours : le resultat est rapatrie en local
+  immediatement, puis passe par les memes controles qu'un import manuel.
+- `status_url` vient de la reponse du fournisseur : il n'est suivi que s'il
+  pointe sur `api.higgsfield.ai`.
+- L'image source est televersee dans le stockage temporaire du fournisseur
+  (`POST /files/generate-upload-url`), ce qui evite d'exposer MinIO ; aucune cle
+  n'est envoyee a l'URL presignee.
+- **Transferts de medias sans SSRF** (`generation/reseau-sur.ts`). Les URLs de depot, de
+  media public et de resultat sont rendues par le fournisseur : jamais une cible de
+  confiance, et HTTPS ne suffit pas.
+  - URL : https, port 443, sans identifiants, NOM de domaine (jamais une IP litterale,
+    `localhost`, un nom a un seul libelle ou un suffixe interne).
+  - Adresse : verifiee DANS la resolution utilisee par la connexion (`lookup` de
+    `https.request`) — l'adresse controlee est celle de la socket, sans fenetre entre
+    verification et connexion (pas de rebinding). Refusees : prive, boucle locale,
+    lien-local (metadonnees cloud), CGNAT, documentation, multicast, reserve, et les
+    formes IPv6 encapsulant de l'IPv4 (mappee, NAT64, 6to4, Teredo). Un nom qui melange
+    adresses publiques et privees est refuse en bloc.
+  - Redirections : jamais suivies a l'aveugle ; chaque saut re-verifie (URL puis
+    adresse), 3 au plus ; un depot (PUT) n'en suit aucune. Les appels a l'API officielle
+    (qui portent les cles) refusent toute redirection (`redirect: 'error'`).
+  - En-tetes fournis pour un depot presigne : `Host`, `Content-Length`, `Authorization`,
+    `Cookie` et le cadrage du corps sont retires ; aucune cle n'est jamais envoyee.
+  - Pas de liste figee de domaines (les noms reels du stockage/CDN ne sont pas
+    verifies et peuvent changer) : ce sont les ADRESSES qui sont controlees.
+  - Une cible refusee a la reprise est un echec FACTURE definitif (jamais retente).
+  - Limite : le connecteur Replicate (inchange) rapatrie encore par `fetch` sans ce
+    controle ; hors du perimetre de cette PR.
+- A l'expiration de l'attente, la demande est annulee par
+  `POST /requests/{request_id}/cancel`. Seul un **202** libere la depense (annulee
+  avant traitement, non facturee) ; 400, 5xx ou echec reseau la laissent
+  `incertaine`. Le chemin n'est construit que si `request_id` est un UUID.
+- Rapatriement borne : 120 s et 200 Mo, plafond verifie PENDANT la reception
+  (un `Content-Length` absent ou faux ne permet pas de le depasser).
+- ⚠️ Aucune annulation UTILISATEUR d'une generation n'existe a ce jour :
+  « Annuler » ne concerne que le rendu du film (local, sans fournisseur). Un tel
+  parcours (route, bouton, drapeau sur la generation) reste a concevoir ; il
+  devra passer par la meme annulation officielle et la meme regle du 202.
+
+### 14.5 Ce qui reste a faire avant un premier essai reel
+
+1. Creer les cles dans la console Higgsfield et crediter le compte (5 $ suffisent).
+2. Appliquer `migrations/2026-10-31-cinema-plafond-compte.sql` (non appliquee).
+3. Lire le prix de Happy Horse 1.1 dans la console avant de l'activer.
+4. Verifier que `aspect_ratio` est bien accepte par Soul v2 : le schema de la v2
+   n'est pas publie dans `openapi.json`, et c'est l'estimation qui le dira — en
+   422, gratuitement.
+
+## 15. Prise en main : exemples et apercu agrandi
+
+### 15.1 Trois exemples de depart (`components/cinema/ModelesFilm.tsx`)
+
+Aventure, Romance, Publicite cinematique. Chaque carte remplit d'un coup le titre,
+l'histoire AVEC ses repliques, le casting et son apparence, le format, la qualite et
+le nombre de scenes. Les vignettes sont les images STATIQUES deja presentes dans
+`public/styles-video/` : aucune image generee pour cet ecran.
+
+Deux regles tenues par les tests (`cinema-modeles-film.test.tsx`) :
+
+- **un exemple n'ecrase jamais une saisie sans accord** : tant que les champs sont
+  encore ceux d'origine (ou vides), un clic suffit ; des qu'il y a quelque chose a
+  perdre — ou qu'un film est charge — la carte demande une confirmation EN LIGNE,
+  jamais une boite native ;
+- **choisir un exemple ne genere rien** : des `set…` de formulaire, et rien d'autre.
+  Aucun appel, aucun credit, aucune composition declenchee.
+
+⚠️ Les repliques des exemples se ponctuent **a la virgule**. `scenario.phrases` coupe
+apres chaque `.`, `!` ou `?` : une ponctuation forte DANS les guillemets scinde la
+phrase et la replique n'est plus reconnue par `scenario.citation`.
+
+### 15.2 Apercu agrandi
+
+Une icone en haut a droite du cadre ouvre l'apercu en grand ; l'icone de retour, un
+clic hors du cadre ou **Echap** referment. Le format (16:9 / 9:16) est tenu par le
+meme helper canonique `ratioCadre` dans les deux tailles, et deux bornes (`96vw`,
+`80vh`) le font tenir dans un telephone sans jamais le deformer.
+
+Il n'y a **pas de second moteur d'apercu** : la chronologie, la lecture et la voix
+restent dans `Apercu` ; `CadreMontage` et `CommandesMontage` ne font que dessiner
+l'etat qu'on leur donne. Agrandir ne relance donc rien et ne perd aucune saisie.
+
+⚠️ La fenetre est rendue dans `document.body` par un **portail**. Mesure le
+2026-10-28 : la colonne de droite est `lg:sticky`, et `position: sticky` cree
+TOUJOURS un contexte d'empilement — la barre laterale (`z-50`) passait par-dessus la
+fenetre, qui s'arretait au bord du contenu. Augmenter le `z-index` a l'interieur n'y
+pouvait rien.
+
+## 16. Abonnements : films et minutes inclus (prepare, NON active)
+
+`src/lib/cinema/abonnement/`, migration `2026-11-01-cinema-abonnements.sql`
+(non appliquee), ecran Administration > « Cinema IA — formules ».
+
+- Une formule Cinema se rattache a une formule existante (`plans.key`). Elle ne
+  porte AUCUN prix : le prix CHF reste dans `plans` (Tarification, prix Stripe).
+- Grandeurs distinctes : films distincts par periode, secondes de FILM FINAL,
+  duree max d'un film, budget fournisseur USD (tentatives et regenerations
+  comprises), tentatives (journal, information). Une regeneration d'un film deja
+  compte ne consomme ni film ni minute, seulement du budget.
+- Sans ligne en base, Cinema n'est PAS inclus : comportement actuel inchange
+  (credits). Aucune valeur par defaut n'est choisie.
+- Reservation atomique en base (`reserver_quota_cinema`, verrou par compte et
+  periode), puis `confirmer_quota_cinema` : confirmee / incertaine (reste comptee)
+  / liberee (tout est rendu ; le film reste compte s'il a une autre reservation
+  active). Reference unique par compte : aucun double debit.
+- Regimes : `cout_reel` (administrateur : ni quota ni credit, cout fournisseur
+  reel, plafonds de depense par compte et global maintenus) et `abonnement`.
+  Estimation obligatoire et > 0 dans les deux cas.
+- Un film qui s'allonge : `reserver_quota_cinema` recoit la duree TOTALE du film
+  et n'ajoute, sous le verrou, que la difference avec ce qui est deja reserve pour
+  ce film dans la periode. Un film raccourci ne rend rien.
+
+### 16.1 Raccordement (`abonnement/regime.ts`, `executeur-generation.ts`)
+
+- Interrupteur `CINEMA_ABONNEMENTS=true`, FERME par defaut : eteint, tout compte
+  reste en regime `credits`, exactement comme avant.
+- Regime decide cote serveur, au moment du paiement : `cout_reel` si l'email RELU
+  EN BASE depuis l'identifiant de session est admin (`isAdmin`, liste unique de
+  `lib/admin.ts`) ; `abonnement` si la meilleure ligne `subscriptions` en
+  `active`/`trialing` a une formule qui inclut Cinema ; `credits` sinon ;
+  `refus` si la base est illisible (jamais des credits pour ce qui est peut-etre
+  inclus). `past_due` n'ouvre pas de quota.
+- Ordre dans l'executeur : estimation (obligatoire hors credits) → plafond de
+  depense compte/global (tous regimes) → quota atomique (abonnement) ou credits
+  (regime credits seulement). Plafond par film (2 $) inchange, dans l'atelier.
+  Un refus libere la depense reservee. Apres l'appel, le quota prend le MEME
+  statut que la depense (liberee seulement sur preuve de non-facturation).
+- Depassement : REFUS avec la raison (402 des la route). Aucune bascule vers les
+  credits, aucun supplement.
+- Periode : fenetres mensuelles ancrees sur `subscriptions.current_period_end`
+  (seule date que le webhook ecrit). Fin inconnue ou passee : aucun quota.
+- Affichage : `GET /api/cinema/films/[id]/quota` + `components/cinema/QuotaCinema.tsx`
+  (films, minutes, duree du projet, disponibilite ; dollars pour l'admin
+  seulement). Regime credits : rien n'est affiche.
+
+### 16.2 Reconciliation
+
+- La generation note `referenceDepense` et `referenceQuota` AVANT l'appel payant.
+- Interrompue (serveur mort, bail expire) : `solderGenerationsInterrompues`
+  rend les credits (regime credits, idempotent) et passe depense ET quota en
+  `incertaine` — jamais `liberee` : rien ne prouve que l'appel n'a pas ete
+  facture. `depenseReconciliee` evite de le refaire ; base injoignable = retente.
+- Reussie apres interruption (executeur vivant, bail perdu) : depense et quota
+  reclasses `confirmee` (facture). Le media est LIVRE (`livrerApresInterruption`)
+  seulement si la generation n'a pris AUCUN credit (abonnement, administrateur)
+  et que le plan n'a pas change depuis le depart — ecriture gardee, une seule
+  livraison. Sinon (credits rendus, ou plan modifie) il est jete et la
+  generation le DIT a l'utilisateur. Echec prouve non facture apres
+  interruption : `incertaine` → `liberee`. Une issue definitive n'est jamais
+  ecrasee (`deja_finalisee`).
+- Processus MORT pendant l'appel (`generation/reprise.ts`) :
+  - AVANT l'appel payant, la generation porte `externe` : fournisseur, cle
+    d'idempotence (envoyee telle quelle a Higgsfield ; Replicate n'en propose
+    pas), cout estime, media du plan au depart, date de soumission ;
+  - DES l'acceptation, avant toute attente, l'identifiant de la demande y est
+    ajoute (Higgsfield : apres la reponse de soumission ; Replicate : rappel
+    `progress` du SDK, a la creation de la prediction) ;
+  - a la relecture du film (GET) et avant une nouvelle generation, chaque
+    generation interrompue est REPRISE : bail exclusif sur la generation, puis
+    LECTURE SEULE du statut chez le fournisseur — jamais de resoumission ;
+  - termine → media controle comme a la generation, livre si aucun credit pris
+    et plan inchange, depense et quota `confirmee` ; echec non facture (engagement
+    ecrit) → `liberee` ; echec sinon → `confirmee` ; en cours ou injoignable →
+    retente plus tard ; sans identifiant, introuvable, ou au-dela de 7 jours →
+    depense `incertaine` conservee et expliquee, jamais annoncee remboursee.
+- Limite assumee : un arret ENTRE l'acceptation par le fournisseur et l'ecriture
+  de son identifiant laisse une demande non relisible (`introuvable`). Elle n'est
+  JAMAIS resoumise automatiquement (la resoumission avec la meme cle n'est pas un
+  « nouvel appel » chez Higgsfield, mais la regle est : aucun appel payant pendant
+  une reprise). Fenetre de quelques millisecondes, comptee en `incertaine`.
+- Les champs `externe` et le bail de reprise ne sortent jamais vers le
+  navigateur (`filmPublic`, `generationPublique`).
+
+### 16.3 Devis global et budget du projet
+
+- `devisProjet` : scenes, plans, duree, qualite, modeles et prix unitaires,
+  images manquantes, animations possibles, deja engage ; deux perimetres
+  approuvables (`images`, `complet`). Tarif inconnu = `null`, jamais partiel.
+- Hors regime credits, AUCUNE generation payante sans `film.budgetApprouve`
+  (POST `…/quota`, devis RECALCULE par le serveur, borne par le plafond par film
+  et, pour l'abonne, par le budget restant de la formule). Le budget approuve
+  borne la depense CUMULEE du film a chaque generation (route et executeur).
+  Le regime credits garde sa confirmation par generation, inchangee.
+
+### 16.4 Minutes reellement produites
+
+- Les generations reservent des minutes PREVUES ; le rendu final les regle :
+  `reserver_production_cinema` avant de rendre (ajustement signe, refus si les
+  minutes manquent), `finaliser_production_cinema` sur la duree mesuree (jamais
+  au-dela de la reserve), liberation si le rendu n'aboutit pas.
+- Un film deja livre ne rend pas ses minutes en etant raccourci ; un film sans
+  generation payante dans la periode n'est pas concerne (rendu libre).
+- Budget fournisseur (USD) et minutes sont deux compteurs separes : un film plus
+  court rend des minutes, jamais du budget consomme.
+
+### 16.5 Reste a faire avant activation
+
+Valeurs par formule ; application de la migration (puis SIGUSR1 PostgREST) ;
+reconciliation des depenses `incertaine` contre l'etat reel chez le fournisseur
+(lecture de statut, a construire sans appel payant) ; verification en staging
+avec un abonnement Stripe de test.

@@ -76,6 +76,47 @@ export const CATALOGUE_GENERATION: readonly TarifGenerationIA[] = [
     usdParUnite: 0.45, actif: true,
     source: 'https://replicate.com/pricing, lu le 2026-10-27 : « $0.09 / second of output video » (wavespeedai/wan-2.1-i2v-480p), x 5 s au pire',
   },
+  // ─────────────────────────────────────────────────────────────────────────
+  // HIGGSFIELD — un BUDGET PAR UNITE, pas un tarif suppose
+  // ─────────────────────────────────────────────────────────────────────────
+  // Higgsfield expose un endpoint d'estimation qui rend le prix du COMPTE pour le corps
+  // exact qui sera soumis (`POST /estimate/<modele>` → `{"usd": "0.094"}`, documente comme
+  // faisant foi). Le connecteur (`generation/higgsfield.ts`) l'appelle AVANT chaque
+  // generation et REFUSE si le prix rendu depasse le montant ci-dessous.
+  //
+  // Ces montants se lisent donc comme un BUDGET MAXIMAL PAR UNITE — « au-dela, on
+  // n'engage pas » — et non comme une affirmation sur le prix reel. C'est ce qui permet de
+  // les poser depuis le tableau officiel, dont les chiffres sont annonces comme des
+  // « starting rates » variant selon la resolution et l'audio : une borne haute reste
+  // vraie meme si la configuration exacte coute moins.
+  {
+    fournisseurId: 'higgsfield-soul2', operation: 'image',
+    libelle: 'Image (Soul 2)',
+    usdParUnite: 0.0032, actif: true,
+    source: 'https://higgsfield.ai/blog/higgsfield-api, lu le 2026-10-28 : « Soul 2 $0.0032 / image » — borne verifiee a chaque appel par POST /estimate',
+  },
+  {
+    fournisseurId: 'higgsfield-kling25-i2v', operation: 'video',
+    libelle: 'Video image-vers-video (Kling 2.5 turbo standard)',
+    // « Kling 2.5 $0.042 / sec ». Le schema officiel de ce modele n'accepte que DEUX
+    // durees, 5 s ou 10 s : la borne est posee au PIRE CAS (10 s), jamais sur la plus
+    // courte — un devis ne doit pas sous-estimer, meme si la plupart des plans feront 5 s.
+    usdParUnite: 0.42, actif: true,
+    source: 'https://higgsfield.ai/blog/higgsfield-api, lu le 2026-10-28 : « Kling 2.5 $0.042 / sec » x 10 s au pire — borne verifiee a chaque appel par POST /estimate',
+  },
+  {
+    fournisseurId: 'higgsfield-happyhorse-i2v', operation: 'video',
+    libelle: 'Video image-vers-video (Happy Horse 1.1)',
+    // ⚠️ DELIBEREMENT `null`. Ce modele est le plus capable (duree 2 a 15 s, 720p/1080p —
+    // schema officiel lu le 2026-10-28) mais son prix N'EST PUBLIE SUR AUCUNE PAGE
+    // OFFICIELLE lisible sans compte : le tableau du blog ne liste que Kling, Seedance,
+    // PixVerse, MiniMax, LTX, Wan, DoP et les modeles d'image. Lui appliquer le tarif de
+    // Kling serait exactement l'erreur que ce fichier s'interdit. Il est donc declare pour
+    // que le devis sache de quoi il parle, et refuse par le plafond jusqu'a lecture de son
+    // prix dans la console Higgsfield.
+    usdParUnite: null, actif: false,
+    source: 'prix non publie hors console Higgsfield (verifie le 2026-10-28) — a lire avant toute activation',
+  },
 ];
 
 export function tarifGeneration(fournisseurId: string, operation: OperationGenerationIA): TarifGenerationIA | null {

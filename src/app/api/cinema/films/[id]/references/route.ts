@@ -15,6 +15,7 @@ import { extensionAcceptee, signatureConnue } from '@/lib/cinema/medias';
 import { ajouterReference, referenceActive } from '@/lib/cinema/personnages';
 import { cleReference } from '@/lib/cinema/stockage/cles';
 import { modifierFilm } from '@/lib/cinema/stockage/depot-films';
+import { filmPublic } from '@/lib/cinema/generation/suivi';
 import { typeContenuDepuisCle } from '@/lib/storage/acces-objet';
 
 export const dynamic = 'force-dynamic';
@@ -70,5 +71,5 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     await ctx.objets.supprimer(cle).catch(() => {});
     return NextResponse.json({ ok: false, erreur: 'film modifie en parallele, reessayez' }, { status: 409 });
   }
-  return NextResponse.json({ ok: true, film });
+  return NextResponse.json({ ok: true, film: filmPublic(film) });
 }
