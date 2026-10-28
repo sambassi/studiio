@@ -380,3 +380,38 @@ corbeille, puis coche de confirmation.
 - **Dossiers abandonnes** : `balayerDossiersAbandonnes` (au plus toutes les 10 min) n'efface que les enfants
   directs de `<tmp>/studiio-cinema` nommes `<uuid>-<prise>` ou `tmp-<hex>`, vrais dossiers (pas de lien),
   hors de ce processus, de plus de 3 h. Au moindre doute : conserve. Le temporaire du systeme n'est jamais balaye.
+
+## 13. Generation IA suivie, voix joignable (correctifs du 2026-10-27)
+
+### 13.1 Generation : un suivi durable, hors de la requete HTTP
+
+La route `POST …/generation` ne tient plus la requete pendant l'appel au
+fournisseur. Elle valide, **reserve** la generation sur le film
+(`generation/suivi.ts`), lance l'execution en arriere-plan
+(`generation/executeur-generation.ts`) et repond **202** avec l'identifiant.
+
+| Besoin | Mecanisme |
+|---|---|
+| Identifiant unique | `Film.generations[].id` (UUID), ecrit avant tout debit |
+| Pas de double depense | UNE generation active par film, reservee par l'ecriture versionnee du film (`modifierFilm` rejoue sur conflit) ; un second clic recoit **409** `enCours` et la generation existante, sans rien lancer ni debiter |
+| Suivi / reprise | l'etat vit sur le film : la page relit le film toutes les 2,5 s tant qu'une generation est `en_cours`, et retrouve cet etat apres un rechargement |
+| En cours ≠ echouee | statuts `en_cours`, `reussie`, `echouee`, `interrompue` ; l'erreur et les credits pris/rendus sont ecrits sur la generation |
+| Interruption du serveur | au-dela de 15 min (l'appel le plus long est borne a 10 min), une generation `en_cours` est lue `interrompue` ; les credits pris (reference ecrite AVANT l'appel payant) sont rendus, de facon idempotente |
+| Finance | logique deplacee telle quelle depuis la route : plafond compte/global reserve avant les credits, credits debites au dernier moment, remboursement apres echec, journal de depense confirme / libere / incertain |
+
+Aucune migration : le film est deja un document JSON versionne.
+
+### 13.2 Confirmation dans la page
+
+Plus de `window.confirm` : une boite native bloque tout le fil de la page tant
+qu'elle est ouverte (rendu, minuteurs, sondages). La confirmation d'une
+generation payante est un groupe en ligne « Confirmer · N credits », comme la
+suppression d'un film.
+
+### 13.3 Voix : cause reelle du « Connect Error »
+
+Verifie depuis le serveur Hetzner (conteneur jetable, 2026-10-27) :
+`msedge-tts@2.0.4` → « Connect Error », `msedge-tts@2.1.1` → audio recu. Le
+service exige desormais le jeton `Sec-MS-GEC`, envoye a partir de la 2.1. La
+dependance passe a `^2.1.1` ; l'API est inchangee. Aucun fournisseur payant
+n'est branche sur la voix de Cinema.

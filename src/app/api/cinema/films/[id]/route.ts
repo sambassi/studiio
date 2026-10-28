@@ -19,6 +19,8 @@ import { presenterMontage } from '@/lib/cinema/stockage/presentation';
 import { appliquerPatch, erreurPatch } from '@/lib/cinema/patch';
 import { reprendreOrphelins } from '@/lib/cinema/travaux/lanceur';
 import type { Film } from '@/lib/cinema/types';
+import { generationsDuFilm } from '@/lib/cinema/generation/suivi';
+import { solderGenerationsInterrompues } from '@/lib/cinema/generation/executeur-generation';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -27,7 +29,9 @@ function reponse(film: Film) {
   const aProduire = scenesAReproduire(film).map((s) => s.id);
   return NextResponse.json({
     ok: true,
-    film,
+    // Le statut des generations est celui de MAINTENANT : une generation sans executeur
+    // vivant depuis trop longtemps est rendue `interrompue`, jamais « en cours » pour toujours.
+    film: film.generations ? { ...film, generations: generationsDuFilm(film) } : film,
     montage: presenterMontage(monterFilm(film), film.id),
     scenesAProduire: aProduire,
     devis: devisFilm(film, aProduire),
@@ -43,6 +47,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   if (!lu) return filmInconnu();
   // Rouvrir un film est l'occasion de relancer ce qu'un redemarrage a laisse en plan.
   reprendreOrphelins(ctx.travaux, () => dependancesExecuteur(ctx)).catch(() => {});
+  // Une generation interrompue (serveur redemarre pendant l'appel) rend ses credits.
+  solderGenerationsInterrompues(ctx, params.id, s.userId, lu.film).catch(() => {});
   return reponse(lu.film);
 }
 
