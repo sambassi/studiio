@@ -138,8 +138,8 @@ const ATTENTE_MAX_MS = 10_000;
 const DELAI_RAPATRIEMENT_MS = 120_000;
 /** Un plan anime de 10 s pese quelques Mo : au-dela, la reponse n'est pas un media attendu. */
 export const TAILLE_MAX_RAPATRIEMENT = 200 * 1024 * 1024;
-/** `request_id` est un UUID : tout autre caractere rendrait le chemin d'annulation ambigu. */
-const ID_REQUETE_SUR = /^[A-Za-z0-9-]{1,64}$/;
+/** `request_id` est documente comme un UUID : toute autre forme n'est jamais placee dans un chemin. */
+const ID_REQUETE_SUR = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Les cles sont-elles presentes ? (condition 3 sur 3) */
 export function higgsfieldConfigure(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -468,14 +468,30 @@ async function rapatrier(url: string, extension: string): Promise<{ ok: true; fi
       ctrl.abort();
       return { ok: false, erreur: 'media rapatrie trop volumineux' };
     }
-    octets = Buffer.from(await r.arrayBuffer());
+    if (!r.body) return { ok: false, erreur: 'rapatriement : reponse sans contenu lisible' };
+    // La limite est appliquee PENDANT la reception : un `Content-Length` absent ou faux ne
+    // doit jamais laisser charger en memoire plus que le plafond.
+    const lecteur = r.body.getReader();
+    const morceaux: Uint8Array[] = [];
+    let recu = 0;
+    for (;;) {
+      const { done, value } = await lecteur.read();
+      if (done) break;
+      recu += value.byteLength;
+      if (recu > TAILLE_MAX_RAPATRIEMENT) {
+        await lecteur.cancel().catch(() => {});
+        ctrl.abort();
+        return { ok: false, erreur: 'media rapatrie trop volumineux' };
+      }
+      morceaux.push(value);
+    }
+    octets = Buffer.concat(morceaux, recu);
   } catch (e) {
     if (ctrl.signal.aborted) return { ok: false, erreur: `rapatriement : delai depasse (${DELAI_RAPATRIEMENT_MS / 1000} s)` };
     return { ok: false, erreur: e instanceof Error ? e.message.slice(0, 140) : 'rapatriement impossible' };
   } finally {
     clearTimeout(minuteur);
   }
-  if (octets.length > TAILLE_MAX_RAPATRIEMENT) return { ok: false, erreur: 'media rapatrie trop volumineux' };
   if (octets.length < 1024) return { ok: false, erreur: 'media rapatrie trop petit pour etre valide' };
   const fichier = path.join(os.tmpdir(), `cinema-higgsfield-${randomBytes(6).toString('hex')}.${extension}`);
   await writeFile(fichier, octets);

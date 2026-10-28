@@ -19,7 +19,7 @@ import {
   higgsfieldActif, higgsfieldChoisi, higgsfieldConfigure, estimerUsd, dureeVideoAutorisee,
   urlHiggsfieldSure, FOURNISSEUR_HIGGSFIELD_IMAGE, FOURNISSEUR_HIGGSFIELD_VIDEO,
   ID_HIGGSFIELD_IMAGE, ID_HIGGSFIELD_VIDEO, ID_HIGGSFIELD_VIDEO_HAPPYHORSE,
-  MODELE_IMAGE_HF, MODELE_VIDEO_HF, BASE_HIGGSFIELD, DUREES_VIDEO_HF,
+  MODELE_IMAGE_HF, MODELE_VIDEO_HF, BASE_HIGGSFIELD, DUREES_VIDEO_HF, TAILLE_MAX_RAPATRIEMENT,
 } from '@/lib/cinema/generation/higgsfield';
 import { fournisseurServeur, modeGenerationAffiche } from '@/lib/cinema/garde';
 import { ID_REPLICATE_IMAGE, ID_REPLICATE_VIDEO } from '@/lib/cinema/generation/replicate';
@@ -49,13 +49,29 @@ function reponse(statut: number, corps: unknown) {
     ok: statut >= 200 && statut < 300,
     status: statut,
     json: async () => corps,
-    arrayBuffer: async () => new ArrayBuffer(4096), // > 1024 : passe le controle de taille
+    // > 1024 octets : passe le controle de taille du rapatriement, lu en flux comme en vrai.
+    get body() { return new Response(new Uint8Array(4096)).body; },
   } as unknown as Response;
 }
 
 /** Un media binaire simule (pour le rapatriement). */
 function reponseMedia() {
-  return { ok: true, status: 200, arrayBuffer: async () => new ArrayBuffer(4096) } as unknown as Response;
+  return new Response(new Uint8Array(4096), { status: 200 });
+}
+
+/** Un flux de `n` morceaux de `taille` octets, SANS Content-Length ; compte ce qui a ete lu. */
+function fluxSansLongueur(n: number, taille: number) {
+  const morceau = new Uint8Array(taille);
+  const compteur = { lus: 0 };
+  const body = new ReadableStream<Uint8Array>({
+    pull(c) {
+      if (compteur.lus >= n) { c.close(); return; }
+      compteur.lus++;
+      c.enqueue(morceau);
+    },
+  }, { highWaterMark: 0 }); // aucun pre-chargement : `lus` ne compte que ce qui a ete demande
+
+  return { reponse: new Response(body, { status: 200 }), compteur };
 }
 
 describe('activation : ETEINT par defaut, et par TROIS conditions', () => {
@@ -409,8 +425,10 @@ describe('expiration de l’attente : annulation officielle, et rapatriement bor
     promptPlan: 'p', promptConstruit: 'a shot', personnages: [], format: '16:9' as const, graine: 1,
   };
 
+  const UUID = '3f2b8c1e-9a4d-4e7f-b6a1-0c5d2e8f9a71';
+
   /** Une demande qui reste `queued` jusqu'a l'echeance ; l'annulation rend `statutAnnulation`. */
-  const enFileSansFin = (statutAnnulation: number, requestId = 'r1') => vi.fn(async (url: string, init?: RequestInit) => {
+  const enFileSansFin = (statutAnnulation: number, requestId = UUID) => vi.fn(async (url: string, init?: RequestInit) => {
     if (url.includes('/estimate/')) return reponse(200, { usd: '0.002' });
     if (url.endsWith(MODELE_IMAGE_HF)) {
       return reponse(200, { status: 'queued', request_id: requestId, status_url: `${BASE_HIGGSFIELD}/requests/r1/status` });
@@ -440,7 +458,17 @@ describe('expiration de l’attente : annulation officielle, et rapatriement bor
     }
     const annulations = f.mock.calls.filter(([u]) => String(u).endsWith('/cancel'));
     expect(annulations).toHaveLength(1);
-    expect(annulations[0][0]).toBe(`${BASE_HIGGSFIELD}/requests/r1/cancel`);
+    expect(annulations[0][0]).toBe(`${BASE_HIGGSFIELD}/requests/${UUID}/cancel`);
+  });
+
+  it('une reponse d’annulation non confirmee (5xx, reseau) ne libere RIEN', async () => {
+    vi.stubGlobal('fetch', enFileSansFin(503));
+    const r = await genererJusquAEcheance();
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.incertain).toBe(true);
+      expect(r.nonFacture).toBeFalsy();
+    }
   });
 
   it('deja demarree (400) : la depense reste INCERTAINE, jamais liberee', async () => {
@@ -453,35 +481,63 @@ describe('expiration de l’attente : annulation officielle, et rapatriement bor
     }
   });
 
-  it('un request_id hors forme n’est jamais injecte dans un chemin', async () => {
-    const f = enFileSansFin(202, '../../estimate/x');
-    vi.stubGlobal('fetch', f);
-    const r = await genererJusquAEcheance();
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.incertain).toBe(true);
-    expect(f.mock.calls.some(([u]) => String(u).endsWith('/cancel'))).toBe(false);
+  it('un request_id hors du format UUID n’est jamais place dans un chemin', async () => {
+    for (const id of ['../../estimate/x', 'r1', `${UUID}/../x`]) {
+      const f = enFileSansFin(202, id);
+      vi.stubGlobal('fetch', f);
+      const r = await genererJusquAEcheance();
+      expect(r.ok, id).toBe(false);
+      if (!r.ok) expect(r.incertain, id).toBe(true);
+      expect(f.mock.calls.some(([u]) => String(u).endsWith('/cancel')), id).toBe(false);
+      vi.useRealTimers();
+    }
+  });
+
+  /** Termine la generation et sert `media` au rapatriement. */
+  const termineeAvec = (media: () => Response) => vi.fn(async (url: string) => {
+    if (url.includes('/estimate/')) return reponse(200, { usd: '0.002' });
+    if (url.endsWith(MODELE_IMAGE_HF)) {
+      return reponse(200, { status: 'queued', request_id: UUID, status_url: `${BASE_HIGGSFIELD}/requests/${UUID}/status` });
+    }
+    if (url.startsWith(`${BASE_HIGGSFIELD}/requests/`)) {
+      return reponse(200, { status: 'completed', images: [{ url: 'https://cdn.example/i.jpg' }] });
+    }
+    return media();
   });
 
   it('un media annonce trop volumineux est refuse sans etre lu', async () => {
-    const lu = vi.fn(async () => new ArrayBuffer(4096));
-    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-      if (url.includes('/estimate/')) return reponse(200, { usd: '0.002' });
-      if (url.endsWith(MODELE_IMAGE_HF)) {
-        return reponse(200, { status: 'queued', request_id: 'r1', status_url: `${BASE_HIGGSFIELD}/requests/r1/status` });
-      }
-      if (url.startsWith(`${BASE_HIGGSFIELD}/requests/`)) {
-        return reponse(200, { status: 'completed', images: [{ url: 'https://cdn.example/i.jpg' }] });
-      }
-      return {
-        ok: true, status: 200,
-        headers: new Headers({ 'content-length': String(500 * 1024 * 1024) }),
-        arrayBuffer: lu,
-      } as unknown as Response;
-    }));
+    const { reponse: media, compteur } = fluxSansLongueur(4, 1024);
+    media.headers.set('content-length', String(500 * 1024 * 1024));
+    vi.stubGlobal('fetch', termineeAvec(() => media));
     const r = await FOURNISSEUR_HIGGSFIELD_IMAGE.genererImage(demandeImage);
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.erreur).toContain('trop volumineux');
-    expect(lu).not.toHaveBeenCalled();
+    expect(compteur.lus).toBe(0);
+  });
+
+  it('SANS Content-Length : la reception s’arrete des que le plafond est franchi', async () => {
+    const morceau = 16 * 1024 * 1024;
+    const total = Math.ceil(TAILLE_MAX_RAPATRIEMENT / morceau) + 20; // ~520 Mo proposes
+    const { reponse: media, compteur } = fluxSansLongueur(total, morceau);
+    vi.stubGlobal('fetch', termineeAvec(() => media));
+    const r = await FOURNISSEUR_HIGGSFIELD_IMAGE.genererImage(demandeImage);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.erreur).toContain('trop volumineux');
+    // Arrete au premier morceau qui franchit 200 Mo, pas au bout du flux.
+    expect(compteur.lus).toBeLessThanOrEqual(Math.ceil(TAILLE_MAX_RAPATRIEMENT / morceau) + 2);
+    expect(compteur.lus).toBeLessThan(total);
+  });
+
+  it('SANS Content-Length et sous le plafond : le media est rapatrie en entier', async () => {
+    const { reponse: media, compteur } = fluxSansLongueur(3, 2048);
+    vi.stubGlobal('fetch', termineeAvec(() => media));
+    const r = await FOURNISSEUR_HIGGSFIELD_IMAGE.genererImage(demandeImage);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(statSync(r.fichier).size).toBe(3 * 2048);
+      rmSync(r.fichier, { force: true });
+    }
+    expect(compteur.lus).toBe(3);
   });
 });
 

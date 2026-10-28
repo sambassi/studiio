@@ -473,6 +473,16 @@ c'est voulu, et non releve par ce lot.
 - L'image source est televersee dans le stockage temporaire du fournisseur
   (`POST /files/generate-upload-url`), ce qui evite d'exposer MinIO ; aucune cle
   n'est envoyee a l'URL presignee.
+- A l'expiration de l'attente, la demande est annulee par
+  `POST /requests/{request_id}/cancel`. Seul un **202** libere la depense (annulee
+  avant traitement, non facturee) ; 400, 5xx ou echec reseau la laissent
+  `incertaine`. Le chemin n'est construit que si `request_id` est un UUID.
+- Rapatriement borne : 120 s et 200 Mo, plafond verifie PENDANT la reception
+  (un `Content-Length` absent ou faux ne permet pas de le depasser).
+- ⚠️ Aucune annulation UTILISATEUR d'une generation n'existe a ce jour :
+  « Annuler » ne concerne que le rendu du film (local, sans fournisseur). Un tel
+  parcours (route, bouton, drapeau sur la generation) reste a concevoir ; il
+  devra passer par la meme annulation officielle et la meme regle du 202.
 
 ### 14.5 Ce qui reste a faire avant un premier essai reel
 
