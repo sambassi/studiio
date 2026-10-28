@@ -100,11 +100,23 @@ export function apparencesDuPlan(film: Film, plan: Pick<PlanCinema, 'personnages
     });
 }
 
-/** Graine stable : deux appels sur le MEME plan, sans graine fournie, redemandent la meme chose. */
+/**
+ * Graine stable : deux appels sur le MEME plan, sans graine fournie, redemandent la meme
+ * chose.
+ *
+ * ⚠️ BORNEE A [0, 2^31-1] (diagnostic E002, 2026-10-28), PAS [0, 2^32-1]. Le schema
+ * officiel Replicate du modele video (`wavespeedai/wan-2.1-i2v-480p`) declare `seed`
+ * comme un simple `integer` SANS aucune borne — cette valeur n'est donc PAS prouvee
+ * comme la cause des echecs observes. Mais un entier non signe 32 bits (`>>> 0`, jusqu'a
+ * 4294967295) depasse l'intervalle que la plupart des bibliotheques d'alea sous-jacentes
+ * (PyTorch, NumPy historique, Cog) traitent de maniere garantie : masquer le bit de poids
+ * fort (`& 0x7fffffff`) rend une valeur sure pour TOUTE interpretation usuelle (entier
+ * signe ou non signe 32 bits), sans rien changer au principe de reproductibilite.
+ */
 function graineParDefaut(planId: string): number {
   let h = 0;
   for (let i = 0; i < planId.length; i++) h = (h * 31 + planId.charCodeAt(i)) >>> 0;
-  return h;
+  return h & 0x7fffffff;
 }
 
 export async function genererMediaPlan(film: Film, planId: string, options: OptionsGenerationPlan): Promise<ResultatGenerationPlan> {
@@ -180,9 +192,10 @@ export async function genererMediaPlan(film: Film, planId: string, options: Opti
   } else {
     // Garanti present et de genre 'image' par le controle plus haut.
     const imageSource = fichierDuMedia(options.racinePublique, plan.media!.url);
-    // Meme construction que l'image (lot 1) : le fournisseur image-vers-video exige un
-    // prompt ANGLAIS decrivant le mouvement, pas seulement l'image source.
-    const { promptFinal: promptVideo } = construirePromptImage(plan.description, { mode: 'texte' });
+    // Mode `'video'` (diagnostic E002, 2026-10-28) : decrit le MOUVEMENT a animer et
+    // demande explicitement de garder l'identite de l'image source — `mode: 'texte'`
+    // decrivait une scene statique, adaptee a une IMAGE, pas a une animation.
+    const { promptFinal: promptVideo } = construirePromptImage(plan.description, { mode: 'video' });
     const resultat = await fournisseur.genererVideo({
       fichierImageSource: imageSource,
       prompt: promptVideo,

@@ -17,7 +17,7 @@
  * ⚠️ AUCUN APPEL SORTANT ICI : aucun test ne met `CINEMA_GENERATION_REELLE` à `true` avec un
  * vrai jeton pour ensuite générer. On n'éprouve que la DÉCISION, jamais la dépense.
  */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { readFileSync, mkdtempSync, writeFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
@@ -27,11 +27,30 @@ import {
 } from '@/lib/cinema/generation/replicate';
 import { fournisseurServeur, modeGenerationAffiche, compteAutoriseADepenser } from '@/lib/cinema/garde';
 import { tarifGeneration, CATALOGUE_GENERATION } from '@/lib/cinema/generation/couts';
+import { executer } from '@/lib/cinema/rendu-local';
+import { cheminFfmpeg } from '@/lib/ffmpeg/binaires';
+import * as mediasModule from '@/lib/cinema/medias';
 
 const env = (o: Record<string, string>) => o as unknown as NodeJS.ProcessEnv;
 const src = (p: string) => readFileSync(p, 'utf8');
 const ENV0 = { ...process.env };
-afterEach(() => { process.env = { ...ENV0 }; });
+afterEach(() => { process.env = { ...ENV0 }; vi.restoreAllMocks(); });
+
+/**
+ * Un VRAI fichier image, decodable par ffprobe (pas seulement des octets de tete) : depuis
+ * le correctif E002 du 28/10/2026, `genererVideo` verifie l'accessibilite REELLE de l'image
+ * source (`sonderMedia`, ffprobe) avant toute autre chose — un en-tete minimal ne suffit
+ * plus a depasser cette etape. Meme procede que `tests-cinema/fixtures-medias.ts` (lavfi,
+ * zero octet reseau).
+ */
+async function imagePngReelle(dir: string, nom = 'source.png'): Promise<string> {
+  const fichier = join(dir, nom);
+  const r = await executer(cheminFfmpeg(), [
+    '-f', 'lavfi', '-i', 'color=c=red:s=16x16', '-frames:v', '1', '-y', fichier,
+  ], { timeoutMs: 20_000 });
+  if (r.code !== 0) throw new Error(`fixture image ${nom} : ffmpeg code ${r.code}\n${r.stderr.slice(-500)}`);
+  return fichier;
+}
 
 describe('la génération réelle exige DEUX conditions', () => {
   it('rien, décision seule, ou jeton seul : ÉTEINTE', () => {
@@ -237,14 +256,13 @@ describe('le modèle vidéo exige prompt + image, jamais num_frames', () => {
 
   it('le code envoie `prompt` dans l’appel MODELE_VIDEO', () => {
     const code = src('src/lib/cinema/generation/replicate.ts');
-    const bloc = code.slice(code.indexOf('async function genererVideo'), code.indexOf('async function genererVideo') + 2200);
+    const bloc = code.slice(code.indexOf('async function genererVideo'), code.indexOf('async function genererVideo') + 4000);
     expect(bloc).toMatch(/appeler\(MODELE_VIDEO,\s*\{\s*image,\s*prompt:\s*demande\.prompt/);
   });
 
-  it('un prompt vide est refusé AVANT tout appel réseau (image lisible, mais aucun jeton nécessaire)', async () => {
+  it('un prompt vide est refusé AVANT tout appel réseau (image accessible, mais aucun jeton nécessaire)', async () => {
     dir = mkdtempSync(join(tmpdir(), 'studiio-replicate-video-'));
-    const image = join(dir, 'source.png');
-    writeFileSync(image, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])); // en-tête PNG minimal, suffisant pour etre lu en base64
+    const image = await imagePngReelle(dir);
     delete process.env.REPLICATE_API_TOKEN; // si un vrai appel partait, il échouerait ici — la preuve qu'il ne part pas
     const r = await FOURNISSEUR_REPLICATE_VIDEO.genererVideo({
       fichierImageSource: image, prompt: '   ', dureeS: 3, format: '9:16', graine: 1,
@@ -253,9 +271,9 @@ describe('le modèle vidéo exige prompt + image, jamais num_frames', () => {
     expect((r as { erreur: string }).erreur).toContain('prompt manquant');
   });
 
-  it('l’atelier construit le prompt vidéo depuis `plan.description`, comme pour l’image', () => {
+  it('l’atelier construit le prompt vidéo depuis `plan.description`, en mode `video` (pas `texte`)', () => {
     const a = src('src/lib/cinema/generation/atelier.ts');
-    expect(a).toContain("construirePromptImage(plan.description, { mode: 'texte' })");
+    expect(a).toContain("construirePromptImage(plan.description, { mode: 'video' })");
     expect(a).toMatch(/fournisseur\.genererVideo\(\{[^}]*prompt:\s*promptVideo/s);
   });
 });
@@ -350,11 +368,13 @@ describe('le data URI vidéo déclare le VRAI format de l’image, jamais une su
     expect(sansCommentaires).not.toContain('data:image/png;base64');
   });
 
-  it('une image WEBP réelle (celle que `genererImage` produit) passe la détection — jamais rejetée pour son format', async () => {
+  it('une image REELLE et accessible (celle que `genererImage` produit) passe la détection — jamais rejetée pour son format', async () => {
+    // La reconnaissance precise du BYTE PATTERN webp (vs png/jpeg) est deja unit-testee,
+    // isolement, dans `ai-generate-bg-route.test.ts` (`detecterSignatureImage`). Ici, c'est
+    // l'INTEGRATION dans `genererVideo` qu'on eprouve — avec un PNG reel et decodable, exige
+    // depuis le correctif E002 du 28/10/2026 (`sonderMedia`, voir le helper du fichier).
     dir = mkdtempSync(join(tmpdir(), 'studiio-replicate-mime-'));
-    const image = join(dir, 'source.webp');
-    // En-tête RIFF/WEBP minimal, suffisant pour la signature (pas une image décodable complète).
-    writeFileSync(image, Buffer.from([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]));
+    const image = await imagePngReelle(dir);
     delete process.env.REPLICATE_API_TOKEN; // preuve qu'aucun appel reseau ne part, meme ici
     const r = await FOURNISSEUR_REPLICATE_VIDEO.genererVideo({
       fichierImageSource: image, prompt: 'mouvement', dureeS: 3, format: '9:16', graine: 1,
@@ -363,9 +383,16 @@ describe('le data URI vidéo déclare le VRAI format de l’image, jamais une su
     // reconnu avant d'atteindre l'appel réseau.
     expect(r).toMatchObject({ ok: false, jamaisEnvoye: true });
     expect((r as { erreur: string }).erreur).not.toContain('format non reconnu');
+    expect((r as { erreur: string }).erreur).not.toContain('inaccessible');
   });
 
   it('un contenu qui n’est ni PNG, ni JPEG, ni WEBP est refusé AVANT tout appel réseau', async () => {
+    // Isole la couche SIGNATURE (`detecterSignatureImage`) de la couche ACCESSIBILITE
+    // (`sonderMedia`, ffprobe) : en pratique les deux rejettent deja ce contenu (aucun
+    // conteneur ffprobe hors png/jpeg/webp n'est dans la liste blanche de `medias.ts`), donc
+    // sans ce contournement cette branche precise ne serait plus jamais atteinte par un
+    // fichier reel. On verifie ici qu'elle reste correcte si jamais `sonderMedia` evoluait.
+    vi.spyOn(mediasModule, 'sonderMedia').mockResolvedValue({ genre: 'image', largeur: 16, hauteur: 16, dureeS: null });
     dir = mkdtempSync(join(tmpdir(), 'studiio-replicate-mime-'));
     const image = join(dir, 'source.bin');
     writeFileSync(image, Buffer.from([0, 1, 2, 3, 4, 5, 6, 7]));
@@ -374,5 +401,104 @@ describe('le data URI vidéo déclare le VRAI format de l’image, jamais une su
     });
     expect(r).toMatchObject({ ok: false, jamaisEnvoye: true });
     expect((r as { erreur: string }).erreur).toContain('format non reconnu');
+  });
+});
+
+/**
+ * DIAGNOSTIC E002 (2026-10-28) — accessibilite de l'image source, aspect_ratio, et seed sur.
+ */
+describe('image source : accessibilite reellement verifiee (ffprobe), avant tout appel reseau', () => {
+  let dir: string;
+  afterEach(() => { if (dir) rmSync(dir, { recursive: true, force: true }); });
+
+  it('un fichier illisible (corrompu, tronque, ou absent) est refuse par `sonderMedia`, jamais envoye', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'studiio-replicate-sonde-'));
+    const image = join(dir, 'source.png');
+    writeFileSync(image, Buffer.from('ceci n’est pas une image'));
+    const r = await FOURNISSEUR_REPLICATE_VIDEO.genererVideo({
+      fichierImageSource: image, prompt: 'mouvement', dureeS: 3, format: '9:16', graine: 1,
+    });
+    expect(r).toMatchObject({ ok: false, jamaisEnvoye: true });
+    expect((r as { erreur: string }).erreur).toMatch(/illisible|inaccessible/);
+  });
+
+  it('une image REELLE et decodable passe l’accessibilite, jusqu’au jeton absent', async () => {
+    dir = mkdtempSync(join(tmpdir(), 'studiio-replicate-sonde-'));
+    const image = await imagePngReelle(dir);
+    delete process.env.REPLICATE_API_TOKEN;
+    const r = await FOURNISSEUR_REPLICATE_VIDEO.genererVideo({
+      fichierImageSource: image, prompt: 'mouvement', dureeS: 3, format: '9:16', graine: 1,
+    });
+    expect(r).toMatchObject({ ok: false, jamaisEnvoye: true });
+    expect((r as { erreur: string }).erreur).not.toMatch(/illisible|inaccessible|format non reconnu/);
+  });
+
+  it('le code verifie l’image AVEC `sonderMedia` AVANT de lire les octets pour la signature', () => {
+    const code = src('src/lib/cinema/generation/replicate.ts');
+    const debut = code.indexOf('async function genererVideo');
+    const idxSonde = code.indexOf('sonderMedia', debut);
+    const idxSignature = code.indexOf('detecterSignatureImage', debut);
+    expect(idxSonde).toBeGreaterThan(debut);
+    expect(idxSignature).toBeGreaterThan(idxSonde); // l'accessibilite est verifiee EN PREMIER
+  });
+});
+
+describe('aspect_ratio : envoye au modele video, jamais laisse au defaut officiel (16:9)', () => {
+  it('le code envoie `aspect_ratio` dans l’appel MODELE_VIDEO, derive du format du film', () => {
+    const code = src('src/lib/cinema/generation/replicate.ts');
+    const bloc = code.slice(code.indexOf('async function genererVideo'), code.indexOf('async function genererVideo') + 4500);
+    expect(bloc).toMatch(/appeler\(MODELE_VIDEO,\s*\{[^}]*aspect_ratio:\s*rapport\(demande\.format\)/s);
+  });
+
+  it('`rapport()` rend exactement les deux valeurs acceptees par le schema officiel (16:9 | 9:16)', () => {
+    // `rapport` n'est pas exportee : verifiee directement sur le code source. Un film `9:16`
+    // ne doit JAMAIS recevoir `16:9` par defaut — c'est tout le sens de ce correctif.
+    const code = src('src/lib/cinema/generation/replicate.ts');
+    expect(code).toMatch(/function rapport\(format: FormatFilm\): string \{\s*return format === '16:9' \? '16:9' : '9:16';/);
+  });
+});
+
+describe('seed : borne a une valeur sure pour toute interpretation (diagnostic E002)', () => {
+  it('`graineParDefaut` masque desormais le bit de poids fort — plus jamais > 2^31-1', () => {
+    // `graineParDefaut` n'est pas exportee (fonction privee d'`atelier.ts`) : verifiee
+    // directement sur le code source, meme convention que les autres preuves statiques de
+    // ce fichier (`jamaisEnvoye`/`incertain`, plus haut) la ou un test dynamique serait
+    // disproportionne pour une fonction pure a une ligne.
+    const code = src('src/lib/cinema/generation/atelier.ts');
+    const debut = code.indexOf('function graineParDefaut');
+    const bloc = code.slice(debut, debut + 300);
+    expect(bloc).toContain('return h & 0x7fffffff;');
+    // L'ancienne formule (`>>> 0` seul, jusqu'a 4294967295, ex. 3339054566 cite dans
+    // l'incident) ne doit plus etre le dernier mot de la fonction.
+    expect(bloc).not.toMatch(/return h;\s*\n\}/);
+  });
+
+  it('exemple reel de l’incident (seed 3339054566) : au-dela de 2^31-1, confirme comme hors de l’intervalle sur', () => {
+    const SEED_INCIDENT = 3339054566;
+    expect(SEED_INCIDENT).toBeGreaterThan(0x7fffffff); // 2147483647
+    expect(SEED_INCIDENT).toBeLessThanOrEqual(0xffffffff); // dans l'intervalle NON SIGNE 32 bits (l'ancienne formule)
+    // Un masque sur 31 bits ramene TOUJOURS une valeur dans l'intervalle sur, quel que soit
+    // l'entier non signe 32 bits de depart.
+    expect(SEED_INCIDENT & 0x7fffffff).toBeLessThanOrEqual(0x7fffffff);
+  });
+});
+
+describe('prompt video : decrit un MOUVEMENT a animer, et preserve l’identite de l’image source', () => {
+  it('le mode `video` de `construirePromptImage` demande explicitement de garder visage, coiffure et tenue', async () => {
+    const { construirePromptImage } = await import('@/lib/ai/prompt-image');
+    const { promptFinal } = construirePromptImage('Nina entre dans la salle avant le lever du jour.', { mode: 'video' });
+    expect(promptFinal.toLowerCase()).toContain('same face');
+    expect(promptFinal.toLowerCase()).toContain('clothing');
+    expect(promptFinal.toLowerCase()).toMatch(/animate|motion/);
+    // Le mouvement de la phrase d'origine est repris (pas une scene statique generique).
+    expect(promptFinal.toLowerCase()).toMatch(/enter|walk|room/);
+  });
+
+  it('different du mode `texte` (image fixe) : le mode `video` ne decrit pas qu’une scene statique', async () => {
+    const { construirePromptImage } = await import('@/lib/ai/prompt-image');
+    const texte = construirePromptImage('Nina entre dans la salle avant le lever du jour.', { mode: 'texte' }).promptFinal;
+    const video = construirePromptImage('Nina entre dans la salle avant le lever du jour.', { mode: 'video' }).promptFinal;
+    expect(video).not.toBe(texte);
+    expect(video.toLowerCase()).toContain('animate');
   });
 });
