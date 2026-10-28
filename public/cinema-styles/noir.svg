@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
+  <defs>
+    <linearGradient id="fond" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1b1f26"/><stop offset="1" stop-color="#050607"/></linearGradient>
+    <clipPath id="vue"><rect width="640" height="360"/></clipPath>
+    <filter id="grain"><feTurbulence type="fractalNoise" baseFrequency="1.2" numOctaves="2" seed="9"/><feColorMatrix values="0 0 0 0 0.6  0 0 0 0 0.6  0 0 0 0 0.6  0 0 0 0.28 0"/></filter>
+  </defs>
+  <rect width="640" height="360" fill="url(#fond)"/>
+  <g clip-path="url(#vue)" fill="#e9edf2" opacity="0.88">
+    <polygon points="-40,40 600,-120 640,-96 0,64"/><polygon points="-40,92 640,-80 640,-56 -40,116"/>
+    <polygon points="-40,148 640,-40 640,-16 -40,172"/><polygon points="-40,204 640,0 640,24 -40,228"/>
+    <polygon points="-40,260 640,40 640,64 -40,284"/><polygon points="-40,316 640,80 640,104 -40,340"/>
+  </g>
+  <rect y="290" width="640" height="70" fill="#000" opacity="0.7"/>
+  <path d="M330 120 Q350 100 372 120 L392 130 H310 Z" fill="#050607"/>
+  <circle cx="351" cy="150" r="21" fill="#050607"/>
+  <path d="M302 186 Q351 168 400 186 L412 300 H290 Z" fill="#050607"/>
+  <path d="M440 214 q10 -20 0 -40 q10 -14 0 -30" fill="none" stroke="#c9d0d8" stroke-opacity="0.5" stroke-width="3" stroke-linecap="round"/>
+  <rect width="640" height="360" filter="url(#grain)"/>
+</svg>

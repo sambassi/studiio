@@ -22,6 +22,9 @@ import {
 import { useTarifs, libellePrix, type TarifsEcran } from '@/lib/tarifs/client';
 import { ratioCadre } from '@/lib/ui/lecteur-generation';
 import QuotaCinema from '@/components/cinema/QuotaCinema';
+import { SelecteurStyleFilm, SelecteurStyleScene, SelecteurCamera, ResumeStyle } from '@/components/cinema/DirectionCinema';
+import { cameraEffective } from '@/lib/cinema/direction/camera';
+import type { IdCameraCinema, IdStyleCinema } from '@/lib/cinema/types';
 import ModelesFilm, { type ModeleFilm } from '@/components/cinema/ModelesFilm';
 
 interface SegmentApi {
@@ -34,15 +37,15 @@ interface SegmentApi {
 }
 interface MediaApi { url: string; genre: 'image' | 'video'; largeur: number; hauteur: number; dureeS: number | null; octets: number; origine: string; sonActif?: boolean }
 interface MontageApi { filmId: string; titre: string; format: string; largeur: number; hauteur: number; fps: number; segments: SegmentApi[]; dureeS: number }
-interface PlanApi { id: string; cadre: string; description: string; personnages: string[]; dialogue: { personnageId: string | null; texte: string } | null; dureeS: number; media: MediaApi | null }
-interface SceneApi { id: string; index: number; titre: string; lieu: string; intention: string; personnages: string[]; plans: PlanApi[]; etat: string; coutUsd: number }
+interface PlanApi { id: string; cadre: string; description: string; personnages: string[]; dialogue: { personnageId: string | null; texte: string } | null; dureeS: number; media: MediaApi | null; camera?: IdCameraCinema }
+interface SceneApi { id: string; index: number; titre: string; lieu: string; intention: string; personnages: string[]; plans: PlanApi[]; etat: string; coutUsd: number; styleCinema?: IdStyleCinema }
 interface PersonnageApi { id: string; nom: string; role: string; voix: string; references: Array<{ id: string; version: number; description: string }>; referenceActiveId: string | null }
 interface GenerationApi {
   id: string; planId: string; operation: 'image' | 'video'; mode: 'reelle' | 'simulee';
   statut: 'en_cours' | 'reussie' | 'echouee' | 'interrompue'; creeLe: string; majLe: string;
   erreur?: string | null; creditsPris?: number; creditsRembourses?: boolean;
 }
-interface FilmApi { id: string; titre: string; histoire?: string; format: string; qualite: string; personnages: PersonnageApi[]; scenes: SceneApi[]; generations?: GenerationApi[] }
+interface FilmApi { id: string; titre: string; histoire?: string; format: string; qualite: string; personnages: PersonnageApi[]; scenes: SceneApi[]; generations?: GenerationApi[]; styleCinema?: IdStyleCinema }
 /** La generation active du film (une seule a la fois, decide par le serveur). */
 const generationActiveDe = (f: FilmApi | null) => f?.generations?.find((g) => g.statut === 'en_cours') ?? null;
 /** La derniere generation d'un plan, quelle qu'en soit l'issue. */
@@ -331,6 +334,8 @@ export default function CinemaPage() {
   const [histoire, setHistoire] = useState(HISTOIRE_EXEMPLE);
   const [format, setFormat] = useState<'16:9' | '9:16'>('16:9');
   const [qualite, setQualite] = useState('standard');
+  /** Style choisi AVANT la creation du film ; une fois le film charge, c'est le sien qui fait foi. */
+  const [styleAvantFilm, setStyleAvantFilm] = useState<IdStyleCinema | null>(null);
   const [nbScenes, setNbScenes] = useState(4);
   const [casting, setCasting] = useState([
     { nom: 'Nina', role: 'protagoniste', description: 'cheveux courts, veste rouge', urlImage: '' },
@@ -474,10 +479,17 @@ export default function CinemaPage() {
     }
   }, [appliquer]);
 
+  /** Le style montre a l'ecran : celui du film ouvert, sinon celui choisi avant sa creation. */
+  const styleAffiche: IdStyleCinema | null = film ? (film.styleCinema ?? null) : styleAvantFilm;
+  const choisirStyleFilm = (id: IdStyleCinema | null) => {
+    if (!film) { setStyleAvantFilm(id); return; }
+    void enregistrer({ style: id });
+  };
+
   const composer = async () => {
     const data = await appel('/api/cinema/films', {
       method: 'POST',
-      body: JSON.stringify({ titre, histoire, format, qualite, nbScenes, personnages: casting }),
+      body: JSON.stringify({ titre, histoire, format, qualite, nbScenes, personnages: casting, styleCinema: styleAffiche }),
     }, 'scenario');
     if (data) { setTravail(null); chargerListe(); }
   };
@@ -893,6 +905,7 @@ export default function CinemaPage() {
                 <input type="number" min={3} max={5} value={nbScenes} onChange={(e) => setNbScenes(Number(e.target.value))} className="w-16 rounded bg-slate-950 border border-slate-700 px-2 py-1" />
               </label>
             </div>
+            <SelecteurStyleFilm valeur={styleAffiche} surChoisir={choisirStyleFilm} />
           </CollapsiblePanel>
 
           <CollapsiblePanel numero={2} titre="Personnages et references" icone={Users}
@@ -944,6 +957,12 @@ export default function CinemaPage() {
                 </span>
               ) : undefined}
             >
+              <div className="mb-4">
+                <ResumeStyle
+                  styleFilm={film.styleCinema ?? null}
+                  exceptions={film.scenes.filter((x) => x.styleCinema && x.styleCinema !== film.styleCinema).length}
+                />
+              </div>
               <div className="space-y-5">
                 {film.scenes.map((scene) => (
                   <div key={scene.id} id={`scene-cinema-${scene.id}`} className="rounded-lg border border-slate-800 bg-slate-950/60 p-4 scroll-mt-4">
@@ -952,6 +971,11 @@ export default function CinemaPage() {
                       <span className="font-semibold">{scene.titre}</span>
                       <span className="text-xs text-slate-400">{scene.lieu}</span>
                       {scene.etat === 'validee' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
+                      <SelecteurStyleScene
+                        valeur={scene.styleCinema ?? null}
+                        styleFilm={film.styleCinema ?? null}
+                        surChoisir={(id) => enregistrer({ scenes: [{ id: scene.id, style: id }] })}
+                      />
                       {/* Actions secondaires : icones, libelle accessible (UX-PREMIUM.md). */}
                       <button
                         type="button"
@@ -1011,6 +1035,11 @@ export default function CinemaPage() {
                           </div>
 
                           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                            <SelecteurCamera
+                              valeur={plan.camera ?? 'auto'}
+                              automatique={cameraEffective({ ...plan, camera: undefined, cadre: plan.cadre as never }, scene as never).effective}
+                              surChoisir={(id) => enregistrer({ plans: [{ id: plan.id, camera: id }] })}
+                            />
                             {/* Media du plan : importe en octets, mesure par le serveur. */}
                             {plan.media ? (
                               <>

@@ -28,6 +28,15 @@ export type FormatFilm = '9:16' | '16:9';
  */
 export type NiveauQualite = 'brouillon' | 'standard' | 'cinema';
 
+/**
+ * Direction artistique (`lib/cinema/direction/`). Champs OPTIONNELS dans le document du
+ * film : un film d'avant reste valide sans migration (pas de style = prompts d'avant).
+ */
+export type IdStyleCinema = 'realiste' | 'noir' | 'publicite' | 'romantique' | 'documentaire' | 'scifi';
+export type IdCameraCinema =
+  | 'auto' | 'fixe' | 'travelling_avant' | 'travelling_arriere'
+  | 'pano_gauche' | 'pano_droite' | 'suivi_lateral' | 'orbite';
+
 /** Les intentions dramatiques, dans l'ordre ou le scenariste les pose. */
 export type IntentionScene = 'exposition' | 'incident' | 'confrontation' | 'resolution' | 'epilogue';
 
@@ -131,6 +140,12 @@ export interface PlanCinema {
   media: MediaPlan | null;
   /** Reference utilisee au moment du rendu de ce plan (tracabilite). */
   referencesUtilisees?: string[];
+  /**
+   * Mouvement de camera DEMANDE pour la generation video de ce plan. Absent = automatique
+   * (choisi selon le plan, `direction/camera.ts`). Une indication donnee au modele, pas une
+   * garantie : aucun fournisseur actuel n'expose de parametre de camera.
+   */
+  camera?: IdCameraCinema;
 }
 
 export interface SceneCinema {
@@ -147,6 +162,8 @@ export interface SceneCinema {
   empreinte: string;
   /** Cout fournisseur deja depense sur cette scene, en USD. */
   coutUsd: number;
+  /** EXCEPTION de style pour cette scene. Absent = le style du film. */
+  styleCinema?: IdStyleCinema;
 }
 
 export interface Film {
@@ -156,6 +173,8 @@ export interface Film {
   histoire: string;
   format: FormatFilm;
   qualite: NiveauQualite;
+  /** Style cinematique GLOBAL. Absent = aucun style impose (prompts d'avant). */
+  styleCinema?: IdStyleCinema;
   personnages: Personnage[];
   scenes: SceneCinema[];
   creeLe: string;

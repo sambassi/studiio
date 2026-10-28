@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
+  <defs>
+    <linearGradient id="ciel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6c9a4"/><stop offset="0.55" stop-color="#e99a8d"/><stop offset="1" stop-color="#7b4a5e"/></linearGradient>
+    <radialGradient id="soleil" cx="0.74" cy="0.6" r="0.55"><stop offset="0" stop-color="#fff2c9" stop-opacity="0.95"/><stop offset="0.35" stop-color="#ffd69a" stop-opacity="0.5"/><stop offset="1" stop-color="#ffd69a" stop-opacity="0"/></radialGradient>
+    <filter id="doux"><feGaussianBlur stdDeviation="1.4"/></filter>
+  </defs>
+  <rect width="640" height="360" fill="url(#ciel)"/>
+  <rect width="640" height="360" fill="url(#soleil)"/>
+  <circle cx="474" cy="216" r="26" fill="#fff6dc"/>
+  <path d="M0 262 Q160 240 320 258 T640 250 V360 H0 Z" fill="#5a3347"/>
+  <g filter="url(#doux)" fill="#2a1522">
+    <circle cx="258" cy="168" r="17"/><path d="M232 200 Q258 188 284 200 L290 270 H226 Z"/>
+    <circle cx="312" cy="172" r="16"/><path d="M288 202 Q312 192 336 202 L342 270 H282 Z"/>
+  </g>
+  <g fill="#fff2c9" opacity="0.6"><circle cx="120" cy="90" r="3"/><circle cx="190" cy="60" r="2"/><circle cx="560" cy="80" r="3"/><circle cx="420" cy="50" r="2"/><circle cx="90" cy="170" r="2"/></g>
+</svg>

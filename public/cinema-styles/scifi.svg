@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
+  <defs>
+    <linearGradient id="ciel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#06122a"/><stop offset="0.6" stop-color="#0d3a55"/><stop offset="1" stop-color="#1b1146"/></linearGradient>
+    <linearGradient id="neon" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#19f0e0"/><stop offset="1" stop-color="#ff3fb8"/></linearGradient>
+    <radialGradient id="brume" cx="0.5" cy="0.75" r="0.6"><stop offset="0" stop-color="#19f0e0" stop-opacity="0.35"/><stop offset="1" stop-color="#19f0e0" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="640" height="360" fill="url(#ciel)"/>
+  <rect width="640" height="360" fill="url(#brume)"/>
+  <g fill="#081633" stroke="#19f0e0" stroke-opacity="0.55" stroke-width="1.5">
+    <rect x="40" y="150" width="70" height="170"/><rect x="120" y="96" width="56" height="224"/><rect x="190" y="170" width="84" height="150"/>
+    <rect x="400" y="120" width="64" height="200"/><rect x="478" y="70" width="52" height="250"/><rect x="544" y="150" width="70" height="170"/>
+  </g>
+  <g stroke="url(#neon)" stroke-width="3" stroke-linecap="round" opacity="0.9"><path d="M54 176 H96 M54 206 H88 M134 120 H162 M134 150 H158 M416 146 H452 M492 96 H516 M492 126 H512"/></g>
+  <path d="M0 320 H640 V360 H0 Z" fill="#04091a"/>
+  <path d="M120 360 L300 322 M520 360 L340 322" stroke="#19f0e0" stroke-opacity="0.5" stroke-width="2"/>
+  <circle cx="320" cy="214" r="18" fill="#cfeff2"/>
+  <path d="M296 246 Q320 232 344 246 L350 322 H290 Z" fill="#0c1f3c" stroke="#ff3fb8" stroke-width="2.5"/>
+  <path d="M0 214 H640" stroke="#19f0e0" stroke-opacity="0.14" stroke-width="40"/>
+  <path d="M590 40 L640 22 M560 34 L640 8" stroke="#fff" stroke-opacity="0.5" stroke-width="2"/>
+</svg>

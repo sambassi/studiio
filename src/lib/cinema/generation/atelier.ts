@@ -31,6 +31,7 @@ import {
   fournisseurGeneration, type ApparencePersonnageGeneration, type OperationGenerationIA, type SuiviSoumission,
 } from '@/lib/cinema/generation/fournisseur';
 import type { Film, MediaPlan, PlanCinema } from '@/lib/cinema/types';
+import { directionDuPlan, promptImageAvecDirection, promptVideoAvecDirection } from '@/lib/cinema/direction/prompt';
 
 // Side-effect : enregistre le fournisseur simule dans le registre partage.
 // Importe ICI (et non seulement par la route) pour que tout appelant de
@@ -184,7 +185,11 @@ export async function genererMediaPlan(film: Film, planId: string, options: Opti
     const texteSource = personnages.length
       ? `${personnages.map((p) => `${p.nom} (${p.description || 'apparence non decrite'})`).join(', ')}. ${plan.description}`
       : plan.description;
-    const { promptFinal } = construirePromptImage(texteSource, { mode: aReference ? 'reference' : 'texte' });
+    const { promptFinal: promptBase } = construirePromptImage(texteSource, { mode: aReference ? 'reference' : 'texte' });
+    // Direction artistique : le style EFFECTIF du plan (exception de scene, sinon style du
+    // film) est ajoute au prompt — la meme voie pour une premiere generation et pour une
+    // regeneration, puisque le prompt est reconstruit a chaque appel depuis le film COURANT.
+    const promptFinal = promptImageAvecDirection(promptBase, directionDuPlan(film, planId));
 
     const resultat = await fournisseur.genererImage({
       promptPlan: plan.description,
@@ -213,7 +218,10 @@ export async function genererMediaPlan(film: Film, planId: string, options: Opti
     // Mode `'video'` (diagnostic E002, 2026-10-28) : decrit le MOUVEMENT a animer et
     // demande explicitement de garder l'identite de l'image source — `mode: 'texte'`
     // decrivait une scene statique, adaptee a une IMAGE, pas a une animation.
-    const { promptFinal: promptVideo } = construirePromptImage(plan.description, { mode: 'video' });
+    const { promptFinal: promptVideoBase } = construirePromptImage(plan.description, { mode: 'video' });
+    // Direction artistique : le mouvement de camera du plan (choisi, ou automatique) et le
+    // style effectif. La camera remplace la consigne figee du prompt video partage.
+    const promptVideo = promptVideoAvecDirection(promptVideoBase, directionDuPlan(film, planId));
     const resultat = await fournisseur.genererVideo({
       fichierImageSource: imageSource,
       prompt: promptVideo,
