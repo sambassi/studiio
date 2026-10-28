@@ -33,6 +33,7 @@ import { BAIL_S, TENTATIVES_MAX, cleTravail } from '../src/lib/cinema/travaux/ty
 import { preparerFilm } from '../src/lib/cinema/atelier';
 import { scenesAReproduire } from '../src/lib/cinema/empreinte';
 import { appliquerPatch } from '../src/lib/cinema/patch';
+import { cheminFfmpeg, cheminFfprobe } from '../src/lib/ffmpeg/binaires';
 
 const m = (f: string) => join(RACINE, 'migrations', f);
 const MOINDRE = m('2026-09-29-postgrest-moindre-privilege.sql');
@@ -454,51 +455,80 @@ describeSiBinaire('Cinema IA — PostgreSQL + PostgREST reels', () => {
   });
 
   describe('reprise apres arret du serveur — sur le VRAI depot de films', () => {
-    it('6 reprises SIMULTANEES d’une meme generation interrompue : une seule consultation, une seule livraison', async () => {
-      const { reprendreGenerationsInterrompues } = await import('../src/lib/cinema/generation/reprise');
+    // ffmpeg ET ffprobe : le job PostgreSQL de la CI ne les installe pas (seul « Tests Vitest »
+    // le fait). Le test de livraison complete en depend ; celui de concurrence, non.
+    const MEDIA_OUTILS = spawnSync(cheminFfmpeg(), ['-version']).status === 0 && spawnSync(cheminFfprobe(), ['-version']).status === 0;
+    const ID_EXTERNE = '3f2b8c1e-9a4d-4e7f-b6a1-0c5d2e8f9a71';
+
+    /** Un film dont la generation REELLE a ete interrompue : bail expire, soumission connue. */
+    async function generationInterrompue(idFilm: string, racine: string) {
+      const f = unFilm(idFilm);
+      await films.creer(f, A);
       const { reserverGeneration } = await import('../src/lib/cinema/generation/suivi');
-      const { executer } = await import('../src/lib/cinema/rendu-local');
-      const { cheminFfmpeg } = await import('../src/lib/ffmpeg/binaires');
+      const r = await reserverGeneration(films, f.id, A, { planId: f.scenes[0].plans[0].id, operation: 'image', mode: 'reelle' });
+      if (!r.ok) throw new Error('reservation');
+      await modifierFilm(films, f.id, A, (x) => ({
+        ...x,
+        generations: x.generations!.map((g) => ({
+          ...g, statut: 'interrompue' as const, bailJusqua: null,
+          externe: { fournisseurId: 'fournisseur-test', cleIdempotence: 'c', idExterne: ID_EXTERNE, coutEstimeUsd: 0.04, mediaAvantUrl: null, soumisLe: new Date().toISOString() },
+        })),
+      }));
+      const deposes: string[] = [];
+      const ctx = {
+        films, dossierTravail: join(racine, 'travail'),
+        objets: { deposerFichier: async (k: string) => { deposes.push(k); }, supprimer: async () => {}, telechargerVers: async () => true },
+      } as never;
+      const dependances = (consulter: () => Promise<unknown>) => ({
+        fournisseur: () => ({ id: 'fournisseur-test', libelle: 't', actif: true, genererImage: async () => ({ ok: false as const, erreur: 'x' }), genererVideo: async () => ({ ok: false as const, erreur: 'x' }), consulter }),
+        confirmerDepense: async () => ({ ok: true, motif: null }), confirmerQuota: async () => ({ ok: true, motif: null }),
+      }) as never;
+      return { f, ctx, deposes, dependances };
+    }
+
+    it('6 reprises SIMULTANEES (sans FFmpeg) : UN SEUL bail, une seule consultation, les autres n’y touchent pas', async () => {
+      const { reprendreGenerationsInterrompues } = await import('../src/lib/cinema/generation/reprise');
       const racine = await mkdtemp(join(tmpdir(), 'cinema-reprise-pg-'));
       try {
-        const f = unFilm('film-pg-reprise');
-        await films.creer(f, A);
-        const planId = f.scenes[0].plans[0].id;
-        const r = await reserverGeneration(films, f.id, A, { planId, operation: 'image', mode: 'reelle' });
-        if (!r.ok) throw new Error('reservation');
-        // Le serveur est mort pendant l'appel : bail expire, soumission connue.
-        await modifierFilm(films, f.id, A, (x) => ({
-          ...x,
-          generations: x.generations!.map((g) => ({
-            ...g, statut: 'interrompue' as const, bailJusqua: null,
-            externe: { fournisseurId: 'fournisseur-test', cleIdempotence: 'c', idExterne: '3f2b8c1e-9a4d-4e7f-b6a1-0c5d2e8f9a71', coutEstimeUsd: 0.04, mediaAvantUrl: null, soumisLe: new Date().toISOString() },
-          })),
-        }));
+        const { f, ctx, dependances } = await generationInterrompue('film-pg-bail', racine);
         let consultations = 0;
-        const deposes: string[] = [];
+        // Lente : le bail reste tenu pendant que les cinq autres reprises tentent leur chance.
+        const consulter = async () => { consultations++; await new Promise((r) => setTimeout(r, 400)); return { etat: 'introuvable' as const, erreur: '404' }; };
+        const issues = (await enConcurrence(6, () => reprendreGenerationsInterrompues(ctx, f.id, A, dependances(consulter)))).flat();
+        expect(consultations).toBe(1);
+        expect(issues.filter((i) => i.etat === 'introuvable')).toHaveLength(1);
+        expect(issues.every((i) => i.etat === 'introuvable' || i.etat === 'non_prise')).toBe(true);
+        const g = (await films.lire(f.id, A))!.film.generations![0];
+        expect(g).toMatchObject({ statut: 'interrompue', reprise: { etat: 'introuvable' } });
+        // Etat definitif : rejouee, plus rien a reprendre — et jamais une seconde consultation.
+        expect(await reprendreGenerationsInterrompues(ctx, f.id, A, dependances(consulter))).toEqual([]);
+        expect(consultations).toBe(1);
+      } finally {
+        await rm(racine, { recursive: true, force: true });
+      }
+    }, 60_000);
+
+    it.skipIf(!MEDIA_OUTILS)('6 reprises SIMULTANEES, media disponible : une seule consultation, UNE SEULE livraison', async () => {
+      const { reprendreGenerationsInterrompues } = await import('../src/lib/cinema/generation/reprise');
+      const { executer } = await import('../src/lib/cinema/rendu-local');
+      const racine = await mkdtemp(join(tmpdir(), 'cinema-reprise-pg-'));
+      try {
+        const { f, ctx, deposes, dependances } = await generationInterrompue('film-pg-reprise', racine);
+        let consultations = 0;
         const consulter = async () => {
           consultations++;
           const image = join(racine, `resultat-${consultations}.png`);
           await executer(cheminFfmpeg(), ['-f', 'lavfi', '-i', 'color=c=red:s=32x32', '-frames:v', '1', '-y', image], { timeoutMs: 20_000 });
           return { etat: 'termine' as const, fichier: image, nomSuggere: 'resultat.png' };
         };
-        const ctx = {
-          films, dossierTravail: join(racine, 'travail'),
-          objets: { deposerFichier: async (k: string) => { deposes.push(k); }, supprimer: async () => {}, telechargerVers: async () => true },
-        } as never;
-        const dep = {
-          fournisseur: () => ({ id: 'fournisseur-test', libelle: 't', actif: true, genererImage: async () => ({ ok: false as const, erreur: 'x' }), genererVideo: async () => ({ ok: false as const, erreur: 'x' }), consulter }),
-          confirmerDepense: async () => ({ ok: true, motif: null }), confirmerQuota: async () => ({ ok: true, motif: null }),
-        };
-        const issues = (await enConcurrence(6, () => reprendreGenerationsInterrompues(ctx, f.id, A, dep))).flat();
+        const issues = (await enConcurrence(6, () => reprendreGenerationsInterrompues(ctx, f.id, A, dependances(consulter)))).flat();
         expect(issues.filter((i) => i.etat === 'livree')).toHaveLength(1);
         expect(consultations).toBe(1);
         expect(deposes).toHaveLength(1);
         const fin = (await films.lire(f.id, A))!.film;
         expect(fin.generations![0]).toMatchObject({ statut: 'reussie', reprise: { etat: 'livree' } });
         expect(fin.scenes[0].plans[0].media?.url).toBeTruthy();
-        // Rejouee : plus rien a reprendre.
-        expect(await reprendreGenerationsInterrompues(ctx, f.id, A, dep)).toEqual([]);
+        expect(await reprendreGenerationsInterrompues(ctx, f.id, A, dependances(consulter))).toEqual([]);
       } finally {
         await rm(racine, { recursive: true, force: true });
       }
