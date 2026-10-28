@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useTarifs, libellePrix, type TarifsEcran } from '@/lib/tarifs/client';
 import { ratioCadre } from '@/lib/ui/lecteur-generation';
+import QuotaCinema from '@/components/cinema/QuotaCinema';
 
 interface SegmentApi {
   sceneId: string; sceneIndex: number; planId: string; cadre: string;
@@ -764,6 +765,10 @@ export default function CinemaPage() {
             ))}
           </label>
         )}
+        <QuotaCinema
+          filmId={film?.id ?? null}
+          version={(film?.generations ?? []).map((g) => `${g.id}:${g.statut}`).join('|')}
+        />
       </header>
 
       {/* Rail des etapes — raccourci de navigation ; les panneaux ci-dessous restent TOUS accessibles, rien n'est cache. */}

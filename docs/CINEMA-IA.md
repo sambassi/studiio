@@ -436,8 +436,36 @@ n'est branche sur la voix de Cinema.
 - Regimes : `cout_reel` (administrateur : ni quota ni credit, cout fournisseur
   reel, plafonds de depense par compte et global maintenus) et `abonnement`.
   Estimation obligatoire et > 0 dans les deux cas.
-- RESTE A FAIRE avant activation : valeurs par formule, application de la
-  migration, branchement dans `executeur-generation.ts` (reserver le quota avec
-  la depense, liberer/confirmer avec elle), affichage des quotas restants a
-  l'utilisateur, regle de depassement (refus seul, ou bascule explicite sur les
-  credits).
+- Un film qui s'allonge : `reserver_quota_cinema` recoit la duree TOTALE du film
+  et n'ajoute, sous le verrou, que la difference avec ce qui est deja reserve pour
+  ce film dans la periode. Un film raccourci ne rend rien.
+
+### 16.1 Raccordement (`abonnement/regime.ts`, `executeur-generation.ts`)
+
+- Interrupteur `CINEMA_ABONNEMENTS=true`, FERME par defaut : eteint, tout compte
+  reste en regime `credits`, exactement comme avant.
+- Regime decide cote serveur, au moment du paiement : `cout_reel` si l'email RELU
+  EN BASE depuis l'identifiant de session est admin (`isAdmin`, liste unique de
+  `lib/admin.ts`) ; `abonnement` si la meilleure ligne `subscriptions` en
+  `active`/`trialing` a une formule qui inclut Cinema ; `credits` sinon ;
+  `refus` si la base est illisible (jamais des credits pour ce qui est peut-etre
+  inclus). `past_due` n'ouvre pas de quota.
+- Ordre dans l'executeur : estimation (obligatoire hors credits) → plafond de
+  depense compte/global (tous regimes) → quota atomique (abonnement) ou credits
+  (regime credits seulement). Plafond par film (2 $) inchange, dans l'atelier.
+  Un refus libere la depense reservee. Apres l'appel, le quota prend le MEME
+  statut que la depense (liberee seulement sur preuve de non-facturation).
+- Depassement : REFUS avec la raison (402 des la route). Aucune bascule vers les
+  credits, aucun supplement.
+- Periode : fenetres mensuelles ancrees sur `subscriptions.current_period_end`
+  (seule date que le webhook ecrit). Fin inconnue ou passee : aucun quota.
+- Affichage : `GET /api/cinema/films/[id]/quota` + `components/cinema/QuotaCinema.tsx`
+  (films, minutes, duree du projet, disponibilite ; dollars pour l'admin
+  seulement). Regime credits : rien n'est affiche.
+
+### 16.2 Reste a faire avant activation
+
+Valeurs par formule ; application de la migration (puis SIGUSR1 PostgREST) ;
+reconciliation des reservations `incertaine` et des generations `interrompue`
+(le quota reste compte, jamais rendu a tort) ; verification en staging avec un
+abonnement Stripe de test.
