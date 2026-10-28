@@ -12,15 +12,17 @@
  * par construction.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Clapperboard, Users, Wand2, Link2, Play, Pause, Download,
   Info, Loader2, Plus, Trash2, RefreshCw, CheckCircle2, AlertTriangle,
   ImageIcon, Film, Volume2, VolumeX, Upload, Sparkles, X, Check, Circle,
-  ChevronDown, ChevronLeft, ChevronRight,
+  ChevronDown, ChevronLeft, ChevronRight, Maximize2, Minimize2,
 } from 'lucide-react';
 import { useTarifs, libellePrix, type TarifsEcran } from '@/lib/tarifs/client';
 import { ratioCadre } from '@/lib/ui/lecteur-generation';
 import QuotaCinema from '@/components/cinema/QuotaCinema';
+import ModelesFilm, { type ModeleFilm } from '@/components/cinema/ModelesFilm';
 
 interface SegmentApi {
   sceneId: string; sceneIndex: number; planId: string; cadre: string;
@@ -58,6 +60,7 @@ interface TravailApi {
 const ACTIF = (t: TravailApi | null) => !!t && (t.statut === 'en_attente' || t.statut === 'en_cours');
 interface DevisApi { totalUsd: number | null; secondesAProduire: number; fournisseur: { libelle: string } | null; lignes: Array<{ sceneId: string; titre: string; secondes: number; usd: number | null; motif: string }> }
 
+const TITRE_EXEMPLE = 'Avant le jour';
 const HISTOIRE_EXEMPLE = "Nina entre dans la salle avant le lever du jour. Le tatami est encore froid et personne ne parle. Marco la regarde sans bouger. Nina sait que le combat a deja commence. Marco avance et le silence se brise. Nina tient bon jusqu au dernier instant. Le jour se leve sur la salle vide.";
 
 /** Rail visuel condense : les 7 sections reelles (voir panneaux) se regroupent en 5 etapes a l'ecran. */
@@ -324,7 +327,7 @@ function SceneCarousel({
 }
 
 export default function CinemaPage() {
-  const [titre, setTitre] = useState('Avant le jour');
+  const [titre, setTitre] = useState(TITRE_EXEMPLE);
   const [histoire, setHistoire] = useState(HISTOIRE_EXEMPLE);
   const [format, setFormat] = useState<'16:9' | '9:16'>('16:9');
   const [qualite, setQualite] = useState('standard');
@@ -334,6 +337,14 @@ export default function CinemaPage() {
     { nom: 'Marco', role: 'antagoniste', description: 'grand, barbe, ceinture noire', urlImage: '' },
   ]);
 
+  /**
+   * LES CHAMPS SONT-ILS ENCORE CEUX DE L'EXEMPLE D'ORIGINE ?
+   *
+   * Tant qu'ils le sont (ou qu'ils sont vides), appliquer un modele n'ecrase rien et se
+   * fait d'un seul clic. Des que quelque chose a ete ecrit — ou qu'un film est charge —
+   * le modele demande une confirmation en ligne (voir `ModelesFilm`). Une saisie de
+   * l'utilisateur ne doit jamais disparaitre sur un clic de curiosite.
+   */
   const [film, setFilm] = useState<FilmApi | null>(null);
   const [montage, setMontage] = useState<MontageApi | null>(null);
   const [devis, setDevis] = useState<DevisApi | null>(null);
@@ -367,6 +378,39 @@ export default function CinemaPage() {
     const idCible = ['panneau-cinema-1', 'panneau-cinema-2', 'panneau-cinema-4', 'cinema-apercu', 'cinema-export'][index];
     // Le panneau peut venir de s'ouvrir dans ce meme rendu : laisser le DOM se poser avant de defiler.
     requestAnimationFrame(() => document.getElementById(idCible)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  };
+
+  /**
+   * Les champs portent-ils une saisie a proteger ? Non si ce sont encore ceux de
+   * l'exemple d'origine, ou s'ils sont vides. Oui des qu'un film est charge : appliquer
+   * un modele divergerait alors du film affiche, et cela se confirme.
+   */
+  const aDesSaisies = !!film
+    || !((titre === TITRE_EXEMPLE && histoire === HISTOIRE_EXEMPLE) || (!titre.trim() && !histoire.trim()));
+
+  /**
+   * APPLIQUER UN MODELE REMPLIT DES CHAMPS, ET S'ARRETE LA.
+   *
+   * Aucun appel, aucun credit, aucune composition de scenario : l'utilisateur garde la
+   * main et lance lui-meme « Composer le scenario » quand il le decide. Le film deja
+   * charge, lui, n'est pas touche — c'est le formulaire qui change, pas le film.
+   */
+  const appliquerModele = (m: ModeleFilm) => {
+    setTitre(m.valeurs.titre);
+    setHistoire(m.valeurs.histoire);
+    setFormat(m.valeurs.format);
+    setQualite(m.valeurs.qualite);
+    setNbScenes(m.valeurs.nbScenes);
+    setCasting(m.valeurs.casting.map((c) => ({ ...c })));
+    setPanneauxOuverts((x) => ({ ...x, 1: true }));
+  };
+
+  /** Repartir d'une page blanche : les champs se vident, rien d'autre ne bouge. */
+  const partirDeZero = () => {
+    setTitre('');
+    setHistoire('');
+    setCasting([{ nom: '', role: '', description: '', urlImage: '' }]);
+    setPanneauxOuverts((x) => ({ ...x, 1: true }));
   };
 
   const appliquer = useCallback((data: any) => {
@@ -808,6 +852,11 @@ export default function CinemaPage() {
             numero={1} titre="Histoire" icone={Clapperboard}
             ouvertControle={panneauxOuverts[1]} onChangerOuvert={(v) => setPanneauxOuverts((p) => ({ ...p, 1: v }))}
           >
+            <ModelesFilm
+              aDesSaisies={aDesSaisies}
+              surAppliquer={appliquerModele}
+              surPartirDeZero={partirDeZero}
+            />
             <input
               value={titre}
               onChange={(e) => setTitre(e.target.value)}
@@ -818,8 +867,13 @@ export default function CinemaPage() {
               value={histoire}
               onChange={(e) => setHistoire(e.target.value)}
               rows={5}
+              placeholder="Une phrase par plan. Pour une replique, mettez-la entre guillemets apres le nom du personnage."
               className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm leading-relaxed"
             />
+            <p className="mt-1 flex items-center gap-1 text-[11px] text-slate-500">
+              Une phrase = un plan.
+              <Detail texte="Une phrase entre guillemets devient une replique dite par le personnage nomme dans la phrase ; sans guillemets, c'est le narrateur. Decrire la lumiere et le lieu dans la phrase ameliore l'image du plan : c'est ce texte qui sert de description visuelle." />
+            </p>
             <div className="mt-3 flex flex-wrap gap-4 text-sm">
               <label className="flex items-center gap-2">Format
                 <select value={format} onChange={(e) => setFormat(e.target.value as '16:9' | '9:16')} className="rounded bg-slate-950 border border-slate-700 px-2 py-1">
@@ -1280,12 +1334,133 @@ function SuiviGenerationPlan({ generation, confirmation, prix, surConfirmer, sur
  * un intervalle derive et l'aperçu finirait decale de la bande son. Les voix
  * deja synthetisees sont jouees a leur segment, chacune depuis son debut.
  */
+/**
+ * LE CADRE DE L'APERCU — UN SEUL rendu, utilise tel quel en ligne et en plein ecran.
+ *
+ * ⚠️ IL N'Y A PAS DE SECOND MOTEUR D'APERCU. La chronologie (`tempsS`), la lecture, la
+ * voix et le segment courant vivent UNIQUEMENT dans `Apercu` : ce composant ne fait que
+ * DESSINER l'etat qu'on lui donne. Agrandir ne demarre donc rien, ne recalcule rien et ne
+ * remet rien a zero — c'est le meme aperçu, plus grand.
+ *
+ * Le format est tenu par `aspectRatio` (helper canonique `ratioCadre`, comme « Mon
+ * avatar ») dans les deux tailles : un 9:16 reste un 9:16 agrandi, jamais etire.
+ */
+function CadreMontage({ montage, segment, tempsS, taille, children }: {
+  montage: MontageApi; segment: SegmentApi; tempsS: number;
+  taille: 'ligne' | 'immersif'; children?: React.ReactNode;
+}) {
+  const portrait = montage.hauteur > montage.largeur;
+  const immersif = taille === 'immersif';
+  const fond = `radial-gradient(130% 110% at 25% 15%, ${segment.couleurs[0]} 0%, ${segment.couleurs[1]} 55%, #0A0A0F 100%)`;
+  const ratio = ratioCadre(portrait ? '9:16' : '16:9');
+
+  return (
+    <div
+      className={`relative overflow-hidden rounded-xl border border-slate-800 ${immersif ? 'mx-auto' : 'mx-auto w-full'}`}
+      style={immersif
+        // Les deux bornes (`maxWidth`/`maxHeight`) plus le ratio suffisent a tenir dans
+        // n'importe quel ecran, telephone compris, sans jamais deformer l'image : c'est la
+        // dimension la plus contraignante qui gagne.
+        ? {
+          aspectRatio: ratio,
+          width: portrait ? 'auto' : 'min(96vw, 1400px)',
+          height: portrait ? 'min(80vh, 1100px)' : 'auto',
+          maxWidth: '96vw',
+          maxHeight: '80vh',
+          background: fond,
+        }
+        // Largeur responsive : une largeur fixe en pixels debordait sur tout viewport plus
+        // etroit que 640px (mobile, colonne de droite en 380px) — `max-width` +
+        // `aspect-ratio` gardent les memes proportions tout en retrecissant avec le
+        // conteneur. `minHeight` : le texte superpose (titre scene + dialogue centre) est
+        // en taille FIXE, pas proportionnelle a la largeur — en dessous de cette hauteur
+        // les deux blocs se chevauchent.
+        : {
+          maxWidth: portrait ? 270 : 640,
+          aspectRatio: ratio,
+          minHeight: portrait ? 320 : 200,
+          background: fond,
+        }}
+    >
+      {/* Le media reel du plan, cadre comme au rendu (cover, sans etirement). */}
+      {segment.media && (
+        segment.media.genre === 'image' ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={segment.media.url.startsWith('/') ? segment.media.url : `/${segment.media.url}`} alt="" className="absolute inset-0 w-full h-full" style={{ objectFit: 'cover' }} />
+        ) : (
+          <video
+            src={segment.media.url.startsWith('/') ? segment.media.url : `/${segment.media.url}`}
+            className="absolute inset-0 w-full h-full"
+            style={{ objectFit: 'cover' }}
+            muted autoPlay loop playsInline
+          />
+        )
+      )}
+      <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(10,10,15,0.55) 0%, rgba(10,10,15,0.15) 45%, rgba(10,10,15,0.85) 100%)' }} />
+      <div className="absolute top-4 left-4 right-16">
+        <div className="text-[10px] tracking-[0.2em] text-pink-400 font-bold">SCENE {segment.sceneIndex + 1} · {segment.intention.toUpperCase()}</div>
+        <div className={immersif ? 'text-2xl font-extrabold' : 'text-lg font-extrabold'}>{segment.titreScene}</div>
+        <div className="text-[11px] text-slate-300">{segment.lieu} — {segment.cadre}</div>
+      </div>
+      <div className="absolute inset-0 flex items-center justify-center px-8 text-center">
+        <div>
+          {segment.locuteur && (
+            <div className="inline-block mb-2 rounded-full bg-pink-500 px-2 py-0.5 text-[10px] font-bold tracking-widest text-slate-950">
+              {segment.locuteur.toUpperCase()}
+            </div>
+          )}
+          <div className={`${immersif ? 'text-2xl' : 'text-base'} font-bold leading-snug`} style={{ textShadow: '0 4px 24px rgba(0,0,0,0.65)' }}>{segment.texte}</div>
+        </div>
+      </div>
+      <div className="absolute bottom-3 left-4 right-4 flex justify-between text-[10px] text-slate-300">
+        <span>{tempsS.toFixed(1)} s / {montage.dureeS.toFixed(1)} s</span>
+        <span>STUDIIO CINEMA IA</span>
+      </div>
+      {/* Le bouton d'agrandissement (ou de retour) est pose PAR L'APPELANT, dans le coin
+          haut droit : c'est la seule difference d'habillage entre les deux tailles. */}
+      {children}
+    </div>
+  );
+}
+
+/** Les MEMES commandes de lecture dans les deux tailles — jamais un second jeu de boutons. */
+function CommandesMontage({ montage, joue, tempsS, surBasculerLecture, surDeplacer, surPreparerVoix, voixEnCours }: {
+  montage: MontageApi; joue: boolean; tempsS: number;
+  surBasculerLecture: () => void; surDeplacer: (t: number) => void;
+  surPreparerVoix?: () => void; voixEnCours?: boolean;
+}) {
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-3">
+      <button onClick={surBasculerLecture} className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm hover:border-violet-500/50">
+        {joue ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+        {joue ? 'Pause' : 'Lire le montage'}
+      </button>
+      <input
+        type="range" min={0} max={montage.dureeS} step={0.1} value={tempsS}
+        onChange={(e) => surDeplacer(Number(e.target.value))}
+        aria-label="Position dans le montage"
+        className="flex-1 min-w-[120px] accent-violet-500"
+      />
+      {surPreparerVoix && !montage.segments.some((s) => s.voixUrl) && (
+        <button onClick={surPreparerVoix} disabled={voixEnCours} className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm hover:border-violet-500/50 disabled:opacity-50">
+          {voixEnCours ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+          Preparer les voix
+        </button>
+      )}
+    </div>
+  );
+}
+
 function Apercu({ montage, surPreparerVoix, voixEnCours }: { montage: MontageApi; surPreparerVoix: () => void; voixEnCours: boolean }) {
   const [tempsS, setTempsS] = useState(0);
   const [joue, setJoue] = useState(false);
+  /** Aperçu agrandi. Un simple affichage : la lecture et le temps ne bougent pas. */
+  const [plein, setPlein] = useState(false);
   const debutRef = useRef<number>(0);
   const trameRef = useRef<number | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const agrandirRef = useRef<HTMLButtonElement | null>(null);
+  const reduireRef = useRef<HTMLButtonElement | null>(null);
 
   const segment = useMemo(
     () => montage.segments.find((s) => tempsS >= s.debutS && tempsS < s.finS) ?? montage.segments[0],
@@ -1320,7 +1495,35 @@ function Apercu({ montage, surPreparerVoix, voixEnCours }: { montage: MontageApi
     return () => { audio.pause(); };
   }, [joue, segment?.planId, segment?.voixUrl]);
 
+  /**
+   * ⚠️ FERMETURE PAR ECHAP, ET LE FOCUS QUI REVIENT D'OU IL VIENT.
+   *
+   * Le defilement de la page est bloque pendant l'agrandissement (sinon la page continue
+   * de defiler derriere l'aperçu), et la valeur PRECEDENTE est restituee a la fermeture —
+   * jamais remise a une valeur devinee. Le focus part sur le bouton de retour a
+   * l'ouverture, et revient sur le bouton d'agrandissement a la fermeture : au clavier,
+   * on ne se retrouve jamais perdu en haut du document.
+   */
+  const fermerPlein = useCallback(() => {
+    setPlein(false);
+    agrandirRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (!plein) return;
+    const surTouche = (e: KeyboardEvent) => { if (e.key === 'Escape') fermerPlein(); };
+    document.addEventListener('keydown', surTouche);
+    const defilementPrecedent = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    reduireRef.current?.focus();
+    return () => {
+      document.removeEventListener('keydown', surTouche);
+      document.body.style.overflow = defilementPrecedent;
+    };
+  }, [plein, fermerPlein]);
+
   if (!segment) return null;
+  /** Meme lecture que dans le cadre : le format vient du montage, jamais d'un reglage d'ecran. */
   const portrait = montage.hauteur > montage.largeur;
 
   return (
@@ -1330,77 +1533,76 @@ function Apercu({ montage, surPreparerVoix, voixEnCours }: { montage: MontageApi
         <Detail texte="Meme chronologie que le MP4 : les debuts, durees et couleurs viennent du montage renvoye par l'API, pas d'un calcul propre a la page." />
       </h2>
 
-      {/* Largeur responsive : une largeur fixe en pixels debordait sur tout viewport plus
-          etroit que 640px (mobile, colonne de droite en 380px) — `max-width` + `aspect-ratio`
-          gardent les memes proportions 16:9/9:16 tout en retrecissant avec le conteneur.
-          `minHeight` : le texte superpose (titre scene + dialogue centre) est en taille FIXE,
-          pas proportionnelle a la largeur — en dessous de cette hauteur les deux blocs se
-          chevauchent. Une boite plus "carree" qu'un 16:9 strict sur les tres petits ecrans
-          reste lisible ; un chevauchement de texte ne l'est pas. */}
-      <div
-        className="relative mx-auto w-full overflow-hidden rounded-xl border border-slate-800"
-        style={{
-          maxWidth: portrait ? 270 : 640,
-          // Ratio CSS via le meme helper canonique que « Mon avatar » (lib/ui/lecteur-generation) :
-          // un contrat verrouille interdit d'ecrire '9 / 16' en dur hors de cette liste.
-          aspectRatio: ratioCadre(portrait ? '9:16' : '16:9'),
-          minHeight: portrait ? 320 : 200,
-          background: `radial-gradient(130% 110% at 25% 15%, ${segment.couleurs[0]} 0%, ${segment.couleurs[1]} 55%, #0A0A0F 100%)`,
-        }}
-      >
-        {/* Le media reel du plan, cadre comme au rendu (cover, sans etirement). */}
-        {segment.media && (
-          segment.media.genre === 'image' ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={segment.media.url.startsWith('/') ? segment.media.url : `/${segment.media.url}`} alt="" className="absolute inset-0 w-full h-full" style={{ objectFit: 'cover' }} />
-          ) : (
-            <video
-              src={segment.media.url.startsWith('/') ? segment.media.url : `/${segment.media.url}`}
-              className="absolute inset-0 w-full h-full"
-              style={{ objectFit: 'cover' }}
-              muted autoPlay loop playsInline
-            />
-          )
-        )}
-        <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(10,10,15,0.55) 0%, rgba(10,10,15,0.15) 45%, rgba(10,10,15,0.85) 100%)' }} />
-        <div className="absolute top-4 left-4 right-4">
-          <div className="text-[10px] tracking-[0.2em] text-pink-400 font-bold">SCENE {segment.sceneIndex + 1} · {segment.intention.toUpperCase()}</div>
-          <div className="text-lg font-extrabold">{segment.titreScene}</div>
-          <div className="text-[11px] text-slate-300">{segment.lieu} — {segment.cadre}</div>
-        </div>
-        <div className="absolute inset-0 flex items-center justify-center px-8 text-center">
-          <div>
-            {segment.locuteur && (
-              <div className="inline-block mb-2 rounded-full bg-pink-500 px-2 py-0.5 text-[10px] font-bold tracking-widest text-slate-950">
-                {segment.locuteur.toUpperCase()}
-              </div>
-            )}
-            <div className="text-base font-bold leading-snug" style={{ textShadow: '0 4px 24px rgba(0,0,0,0.65)' }}>{segment.texte}</div>
-          </div>
-        </div>
-        <div className="absolute bottom-3 left-4 right-4 flex justify-between text-[10px] text-slate-300">
-          <span>{tempsS.toFixed(1)} s / {montage.dureeS.toFixed(1)} s</span>
-          <span>STUDIIO CINEMA IA</span>
-        </div>
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <button onClick={() => setJoue((v) => !v)} className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm hover:border-violet-500/50">
-          {joue ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-          {joue ? 'Pause' : 'Lire le montage'}
+      <CadreMontage montage={montage} segment={segment} tempsS={tempsS} taille="ligne">
+        <button
+          ref={agrandirRef}
+          type="button"
+          onClick={() => setPlein(true)}
+          aria-label="Agrandir l’apercu"
+          title="Agrandir l’apercu"
+          className="absolute top-3 right-3 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700/70 bg-slate-950/60 text-slate-200 backdrop-blur-sm transition-colors hover:border-violet-500/60 hover:text-violet-200"
+        >
+          <Maximize2 className="w-4 h-4" />
         </button>
-        <input
-          type="range" min={0} max={montage.dureeS} step={0.1} value={tempsS}
-          onChange={(e) => setTempsS(Number(e.target.value))}
-          className="flex-1 min-w-[120px] accent-violet-500"
-        />
-        {!montage.segments.some((s) => s.voixUrl) && (
-          <button onClick={surPreparerVoix} disabled={voixEnCours} className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm hover:border-violet-500/50 disabled:opacity-50">
-            {voixEnCours ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-            Preparer les voix
-          </button>
-        )}
-      </div>
+      </CadreMontage>
+
+      <CommandesMontage
+        montage={montage} joue={joue} tempsS={tempsS}
+        surBasculerLecture={() => setJoue((v) => !v)}
+        surDeplacer={setTempsS}
+        surPreparerVoix={surPreparerVoix}
+        voixEnCours={voixEnCours}
+      />
+
+      {/* APERÇU AGRANDI — le meme cadre, les memes commandes, le meme etat de lecture.
+          Il reste dans CET arbre React (donc aucune donnee saisie ailleurs n'est remontee
+          ni remise a zero), mais il est rendu dans `document.body` par un PORTAIL.
+          ⚠️ POURQUOI UN PORTAIL, ET PAS SEULEMENT UN `z-index` PLUS GRAND (mesure le
+          2026-10-28, Playwright) : la colonne de droite est `lg:sticky`, et un element
+          `position: sticky` cree TOUJOURS un contexte d'empilement. Tout ce qu'il
+          contient est donc plafonne a l'interieur, et la barre laterale (`z-50`,
+          `components/layout/Sidebar.tsx`) passait PAR-DESSUS la fenetre : l'aperçu
+          « immersif » s'arretait au bord du contenu. Monter le `z-index` a l'interieur ne
+          pouvait rien y changer ; sortir du contexte, si.
+          `zIndex` en style en ligne et non en classe Tailwind arbitraire : les classes
+          arbitraires sont purgees en production (piege connu, CLAUDE.md). */}
+      {plein && typeof document !== 'undefined' && createPortal(
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Apercu agrandi du montage"
+          className="fixed inset-0 flex flex-col items-center justify-center gap-2 bg-slate-950/95 p-3 sm:p-6"
+          style={{ zIndex: 60 }}
+          onClick={(e) => { if (e.target === e.currentTarget) fermerPlein(); }}
+        >
+          <CadreMontage montage={montage} segment={segment} tempsS={tempsS} taille="immersif">
+            <button
+              ref={reduireRef}
+              type="button"
+              onClick={fermerPlein}
+              aria-label="Reduire l’apercu (Echap)"
+              title="Reduire l’apercu (Echap)"
+              className="absolute top-3 right-3 inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-700/70 bg-slate-950/60 text-slate-200 backdrop-blur-sm transition-colors hover:border-violet-500/60 hover:text-violet-200"
+            >
+              <Minimize2 className="w-4 h-4" />
+            </button>
+          </CadreMontage>
+
+          {/* Les commandes s'alignent sur la LARGEUR DU CADRE, pas sur l'ecran : en 9:16,
+              une barre de 1400px sous une image de 450px donnait deux objets sans rapport.
+              Style en ligne et non classe Tailwind arbitraire (`max-w-[...]`) : les classes
+              arbitraires sont purgees en production (piege connu, CLAUDE.md). */}
+          <div className="w-full" style={{ maxWidth: portrait ? 'min(45vh, 96vw)' : 'min(96vw, 1400px)' }}>
+            <CommandesMontage
+              montage={montage} joue={joue} tempsS={tempsS}
+              surBasculerLecture={() => setJoue((v) => !v)}
+              surDeplacer={setTempsS}
+            />
+            <p className="mt-2 text-center text-[11px] text-slate-500">Echap pour revenir</p>
+          </div>
+        </div>,
+        document.body,
+      )}
     </section>
   );
 }

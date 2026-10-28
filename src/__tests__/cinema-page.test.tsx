@@ -363,3 +363,88 @@ describe('un appel qui ne répond jamais ne bloque plus la page indéfiniment', 
     expect(bloc).toMatch(/\} else \{\s*\/\/[^\n]*\n(\s*\/\/[^\n]*\n)*\s*delai = Math\.min\(delai \* 2, 10_000\);\s*\n\s*\}/);
   });
 });
+
+/**
+ * APERÇU AGRANDI (lot D) — un SEUL moteur d'aperçu, et rien de perdu en revenant.
+ *
+ * Ce qui est éprouvé ici est exactement ce qu'un utilisateur risque : agrandir pendant
+ * qu'il a saisi quelque chose, puis revenir et retrouver sa saisie.
+ */
+describe('l’aperçu s’agrandit sans rien perdre', () => {
+  it('une icône agrandit, Échap revient, et la saisie reste intacte', async () => {
+    await ouvrir();
+
+    const titre = () => screen.getByPlaceholderText('Titre du film') as HTMLInputElement;
+    fireEvent.change(titre(), { target: { value: 'Mon titre a moi' } });
+
+    const agrandir = screen.getByLabelText(/Agrandir/i);
+    fireEvent.click(agrandir);
+
+    const fenetre = screen.getByRole('dialog');
+    expect(fenetre.getAttribute('aria-modal')).toBe('true');
+    // Les commandes de lecture sont présentes DANS la fenêtre, pas seulement derrière.
+    expect(within(fenetre).getByLabelText(/Position dans le montage/i)).toBeTruthy();
+    expect(within(fenetre).getByText(/Lire le montage|Pause/)).toBeTruthy();
+    // Et une petite icône pour revenir, annoncée avec son raccourci.
+    expect(within(fenetre).getByLabelText(/Reduire/i)).toBeTruthy();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    // La saisie du formulaire n'a pas bougé : la fenêtre vit dans le même arbre React.
+    expect(titre().value).toBe('Mon titre a moi');
+  });
+
+  it('le bouton de retour referme aussi, et le défilement de la page est rendu', async () => {
+    await ouvrir();
+    fireEvent.click(screen.getByLabelText(/Agrandir/i));
+    expect(document.body.style.overflow).toBe('hidden');
+    fireEvent.click(within(screen.getByRole('dialog')).getByLabelText(/Reduire/i));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.body.style.overflow).not.toBe('hidden');
+  });
+
+  it('UN SEUL moteur d’aperçu : la chronologie n’existe qu’à un endroit', () => {
+    const fs = require('fs') as typeof import('fs');
+    const code = fs.readFileSync('src/app/dashboard/cinema/page.tsx', 'utf-8');
+    // Une seule boucle d'animation, une seule lecture du temps.
+    expect(code.match(/requestAnimationFrame\(avancer\)/g)?.length).toBe(2); // amorce + boucle
+    expect(code.match(/const \[tempsS, setTempsS\] = useState\(0\)/g)?.length).toBe(1);
+    // Le cadre est un composant réutilisé, pas un second rendu copié.
+    expect(code.match(/<CadreMontage /g)?.length).toBe(2);
+    expect(code.match(/<CommandesMontage/g)?.length).toBe(2);
+    expect(code.match(/function CadreMontage/g)?.length).toBe(1);
+  });
+
+  it('le format reste tenu par le helper canonique dans les DEUX tailles', () => {
+    const fs = require('fs') as typeof import('fs');
+    const code = fs.readFileSync('src/app/dashboard/cinema/page.tsx', 'utf-8');
+    const i = code.indexOf('function CadreMontage');
+    const corps = code.slice(i, code.indexOf('function CommandesMontage'));
+    // Un seul calcul de ratio, via `ratioCadre`, utilisé par les deux styles.
+    expect(corps).toContain("const ratio = ratioCadre(portrait ? '9:16' : '16:9');");
+    expect(corps.match(/aspectRatio: ratio/g)?.length).toBe(2);
+    // Et des bornes qui tiennent dans un téléphone sans déformer.
+    expect(corps).toContain("maxWidth: '96vw'");
+    expect(corps).toContain("maxHeight: '80vh'");
+  });
+});
+
+/**
+ * Regression mesuree le 2026-10-28 (Playwright) : la fenetre d'aperçu agrandi etait
+ * recouverte par la barre laterale, parce que la colonne de droite est `lg:sticky` — et
+ * un element `sticky` cree TOUJOURS un contexte d'empilement, qui plafonne tout ce qu'il
+ * contient. Seul un portail hors de ce contexte le corrige ; un `z-index` plus grand a
+ * l'interieur n'y pouvait rien.
+ */
+describe('l’aperçu agrandi sort du contexte d’empilement de la colonne', () => {
+  it('la fenetre est rendue directement dans <body>, pas dans la colonne collante', async () => {
+    await ouvrir();
+    fireEvent.click(screen.getByLabelText(/Agrandir/i));
+    const fenetre = screen.getByRole('dialog');
+    expect(fenetre.parentElement).toBe(document.body);
+    // Au-dessus de la barre laterale (`z-50`), et en style EN LIGNE : une classe Tailwind
+    // arbitraire (`z-[60]`) serait purgee en production.
+    expect(fenetre.style.zIndex).toBe('60');
+    fireEvent.keyDown(document, { key: 'Escape' });
+  });
+});

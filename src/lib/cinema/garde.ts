@@ -14,6 +14,7 @@
 import { proprietaireValide } from '@/lib/cinema/stockage/cles';
 import { modeStockage } from '@/lib/cinema/contexte';
 import { generationReelleActive, ID_REPLICATE_IMAGE, ID_REPLICATE_VIDEO } from '@/lib/cinema/generation/replicate';
+import { higgsfieldActif, ID_HIGGSFIELD_IMAGE, ID_HIGGSFIELD_VIDEO } from '@/lib/cinema/generation/higgsfield';
 import { ID_FOURNISSEUR_SIMULE } from '@/lib/cinema/generation/simule';
 
 export type SujetSession = { id?: string | null } | null | undefined;
@@ -114,6 +115,13 @@ export function compteAutoriseADepenser(userId: string | null | undefined, env: 
 export function fournisseurServeur(
   operation: OperationGeneration, userId: string | null | undefined, env: NodeJS.ProcessEnv = process.env,
 ): { id: string; mode: ModeGeneration } | null {
+  // REELLE, PAR HIGGSFIELD : seulement si `CINEMA_FOURNISSEUR=higgsfield` a ete pose
+  // EXPLICITEMENT, en plus de l'interrupteur, des cles et de l'autorisation du compte
+  // (`higgsfieldActif`). Sans cette variable, ce test est faux et la suite ne change pas
+  // d'un iota : le fournisseur reel reste Replicate, exactement comme avant ce lot.
+  if (higgsfieldActif(env) && compteAutoriseADepenser(userId, env)) {
+    return { id: operation === 'video' ? ID_HIGGSFIELD_VIDEO : ID_HIGGSFIELD_IMAGE, mode: 'reelle' };
+  }
   // REELLE : interrupteur + jeton + CE COMPTE explicitement autorise a depenser.
   if (generationReelleActive(env) && compteAutoriseADepenser(userId, env)) {
     return { id: operation === 'video' ? ID_REPLICATE_VIDEO : ID_REPLICATE_IMAGE, mode: 'reelle' };

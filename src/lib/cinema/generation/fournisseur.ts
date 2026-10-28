@@ -88,6 +88,18 @@ export type ResultatGenerationIA =
      * reste compte comme depense jusqu'a reconciliation.
      */
     incertain?: boolean;
+    /**
+     * `true` quand l'appel EST parti, a bien echoue, et que le fournisseur
+     * DOCUMENTE que cette issue n'est pas facturee (Higgsfield : « Failed and
+     * NSFW requests are not charged; any reserved amount is refunded », et une
+     * annulation avant traitement est remboursee).
+     *
+     * Ce n'est donc pas `jamaisEnvoye` — quelque chose est bien parti — mais la
+     * consequence financiere est la meme : la reservation de depense est
+     * LIBEREE au lieu d'etre comptee. Absent par defaut : sans engagement
+     * ecrit du fournisseur, un echec reste suppose facture.
+     */
+    nonFacture?: boolean;
   };
 
 /**

@@ -39,6 +39,9 @@ import { refusBudgetProjet } from '@/lib/cinema/abonnement/devis';
 // Imports pour leur SEULE presence : ils enregistrent les fournisseurs dans le registre.
 import '@/lib/cinema/generation/simule';
 import '@/lib/cinema/generation/replicate';
+// Declare, et eteint par ses trois conditions (`higgsfieldActif`) : sa seule presence dans
+// le registre ne l'allume pas, et `garde.ts` ne le choisit que sur `CINEMA_FOURNISSEUR`.
+import '@/lib/cinema/generation/higgsfield';
 
 export interface ParametresGeneration {
   ctx: Pick<ContexteCinema, 'films' | 'objets' | 'dossierTravail'>;
@@ -188,7 +191,12 @@ export async function executerGeneration(p: ParametresGeneration): Promise<Statu
         return await statutFinal(ctx, filmId, userId, generation.id, 'echouee');
       }
       const engageUsd = ('depenseUsd' in resultat ? resultat.depenseUsd : 0) ?? 0;
-      const statutDepense: StatutDepense = ('jamaisEnvoye' in resultat && resultat.jamaisEnvoye) ? 'liberee'
+      // `nonFacture` : issue que le fournisseur s'engage a ne pas facturer (`failed`,
+      // `nsfw`, annulation avant traitement chez Higgsfield) — meme effet financier que
+      // « jamais envoye », la reservation est liberee plutot que comptee. Un DELAI EXPIRE
+      // n'est jamais une preuve : il rend `incertain`, donc `incertaine`.
+      const statutDepense: StatutDepense = (('jamaisEnvoye' in resultat && resultat.jamaisEnvoye)
+        || ('nonFacture' in resultat && resultat.nonFacture)) ? 'liberee'
         : ('incertain' in resultat && resultat.incertain) ? 'incertaine' : 'confirmee';
       if (dep) await confirmerDepenseReplicate(userId, dep.reference, statutDepense).catch(() => null);
       // Le quota suit EXACTEMENT la depense : libere seulement sur preuve de non-facturation,
