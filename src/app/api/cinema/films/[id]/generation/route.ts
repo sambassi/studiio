@@ -67,6 +67,25 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   if (corps?.plafondUsd !== undefined) {
     const v = typeof corps.plafondUsd === 'number' ? corps.plafondUsd : Number.NaN;
     if (!Number.isFinite(v) || v < 0) return NextResponse.json({ ok: false, erreur: 'plafondUsd invalide' }, { status: 400 });
+    // ⚠️ CORRECTIF (incident reel, 2026-10-28) : `plafondUsd` plafonne TOUT LE FILM, pas le
+    // cout d'UNE seule generation — un appelant qui y mettait le devis de la generation en
+    // cours (ex. 0,45 $, en pensant fixer « ce que je suis pret a depenser pour CET appel »)
+    // plafonnait sans le savoir le FILM ENTIER a cette valeur. Avec un film deja a 0,903 $, le
+    // film depassait alors IMMEDIATEMENT ce plafond mal compris (0,903 $ > 0,45 $), AVANT meme
+    // de regarder le cout de la nouvelle generation — refus illisible, qui ressemblait a un bug
+    // de calcul alors que c'etait un parametre mal employe. Une valeur sous ce que le film a
+    // DEJA depense est donc TOUJOURS un signe de ce contre-sens : elle est refusee ICI, avec le
+    // VRAI sens du parametre explique, plutot que de produire un refus de plafond illisible.
+    const dejaDepense = film.coutGenerationUsd ?? 0;
+    if (v < dejaDepense) {
+      return NextResponse.json({
+        ok: false,
+        erreur: `plafondUsd (${v.toFixed(4)} $) est inferieur a ce que ce FILM a deja depense `
+          + `(${dejaDepense.toFixed(4)} $). Ce parametre plafonne TOUT LE FILM, pas le cout de cette `
+          + `seule generation — omettez-le pour utiliser le plafond du serveur, ou passez une valeur `
+          + `superieure au total deja depense sur ce film.`,
+      }, { status: 400 });
+    }
     plafondUsd = Math.min(v, ctx.plafondUsd);
   }
 

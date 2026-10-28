@@ -105,12 +105,68 @@ describe('reserverDepenseReplicate — ne depense jamais a l’aveugle', () => {
     expect(etat.compte).toBe(4.8);
   });
 
-  it('plafond global depasse : refus chiffre, meme si le compte a de la marge', async () => {
+  /**
+   * CORRECTIF (confusion plafond PAR GENERATION vs CUMULE DU COMPTE, diagnostic 2026-10-28) :
+   * le message de refus ne disait QUE le plafond, jamais ce que le COMPTE avait deja engage.
+   * Un refus a « 2,00 $ de plafond » etait IDENTIQUE a l'ecran, que le compte soit a 0,10 $ ou
+   * a 1,95 $ deja engages — sans ce chiffre, un refus sur une generation a 0,45 $ se lisait, a
+   * tort, comme si ces 0,45 $ etaient eux-memes traites comme le plafond du film.
+   */
+  it('le message DISTINGUE desormais le total DEJA ENGAGE sur le compte du plafond lui-meme', async () => {
+    // Exactement le cas rapporte : le COMPTE est deja a 1,95 $ (generations anterieures,
+    // peut-etre sur un AUTRE film) — information invisible si seul le plafond est montre.
+    const etat = { compte: 1.95, global: 1.95 };
+    const reserver = reserveur(etat);
+    const r = await reserverDepenseReplicate('u1', 0.45, 'video', { reserver, plafondCompte: 2, plafondGlobal: 100 });
+    expect(r).toMatchObject({ ok: false, motif: 'plafond_compte_depasse' });
+    if (!r.ok) {
+      expect(r.message).toContain('1.9500'); // ce que le COMPTE avait deja engage
+      expect(r.message).toContain('0.4500'); // ce que CETTE generation propose
+      expect(r.message).toContain('2.00');   // le plafond lui-meme
+      expect(r.message.toUpperCase()).toContain('COMPTE'); // jamais confondu avec « film »
+    }
+  });
+
+  it('a l’inverse : un compte PEU engage (0,903 $, le cas rapporte) sous un plafond de 2 $ AUTORISE une generation a 0,45 $', async () => {
+    const etat = { compte: 0.903, global: 0.903 };
+    const reserver = reserveur(etat);
+    const r = await reserverDepenseReplicate('u1', 0.45, 'video', { reserver, plafondCompte: 2, plafondGlobal: 100 });
+    expect(r.ok).toBe(true);
+    expect(etat.compte).toBeCloseTo(1.353, 5);
+  });
+
+  it('plafond global depasse, meme si le compte a de la marge', async () => {
     const etat = { compte: 0, global: 99.6 };
     const reserver = reserveur(etat);
     const r = await reserverDepenseReplicate('u1', 1, 'video', { reserver, plafondCompte: 50, plafondGlobal: 100 });
     expect(r).toMatchObject({ ok: false, motif: 'plafond_global_depasse' });
-    if (!r.ok) expect(r.message).toContain('100.00');
+  });
+
+  /**
+   * CORRECTIF SECURITE (revue automatique, 2026-10-28, sur le correctif precedent de ce
+   * fichier) : le total GLOBAL agrege la depense de TOUS les comptes Studiio. Le montrer a
+   * UN utilisateur revelerait l'activite financiere agregee de tous les autres — contrairement
+   * au total DU COMPTE, qui est la propre donnee de l'utilisateur. Le message global reste
+   * donc VOLONTAIREMENT generique, jamais chiffre ; le total DU COMPTE, lui, reste precis.
+   */
+  it('le message du plafond GLOBAL ne revele JAMAIS le total agrege ni le plafond — contrairement au plafond DE COMPTE', async () => {
+    const etat = { compte: 0, global: 99.6 };
+    const reserver = reserveur(etat);
+    const r = await reserverDepenseReplicate('u1', 1, 'video', { reserver, plafondCompte: 50, plafondGlobal: 100 });
+    expect(r).toMatchObject({ ok: false, motif: 'plafond_global_depasse' });
+    if (!r.ok) {
+      expect(r.message).not.toContain('99.6');  // jamais l'agregat de TOUS les comptes
+      expect(r.message).not.toContain('100.00'); // jamais le plafond global lui-meme
+      expect(r.message.toLowerCase()).toContain('plafond');
+    }
+  });
+
+  it('a l’inverse, le message du plafond DE COMPTE reste precis — c’est la propre donnee de l’utilisateur, sans risque', async () => {
+    const etat = { compte: 1.95, global: 1.95 };
+    const reserver = reserveur(etat);
+    const r = await reserverDepenseReplicate('u1', 0.45, 'video', { reserver, plafondCompte: 2, plafondGlobal: 100 });
+    expect(r).toMatchObject({ ok: false, motif: 'plafond_compte_depasse' });
+    if (!r.ok) expect(r.message).toContain('1.9500');
   });
 
   it('migration absente (socle_absent) : refus explicite, jamais un appel a l’aveugle', async () => {
