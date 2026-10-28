@@ -482,3 +482,42 @@ c'est voulu, et non releve par ce lot.
 4. Verifier que `aspect_ratio` est bien accepte par Soul v2 : le schema de la v2
    n'est pas publie dans `openapi.json`, et c'est l'estimation qui le dira — en
    422, gratuitement.
+
+## 15. Prise en main : exemples et apercu agrandi
+
+### 15.1 Trois exemples de depart (`components/cinema/ModelesFilm.tsx`)
+
+Aventure, Romance, Publicite cinematique. Chaque carte remplit d'un coup le titre,
+l'histoire AVEC ses repliques, le casting et son apparence, le format, la qualite et
+le nombre de scenes. Les vignettes sont les images STATIQUES deja presentes dans
+`public/styles-video/` : aucune image generee pour cet ecran.
+
+Deux regles tenues par les tests (`cinema-modeles-film.test.tsx`) :
+
+- **un exemple n'ecrase jamais une saisie sans accord** : tant que les champs sont
+  encore ceux d'origine (ou vides), un clic suffit ; des qu'il y a quelque chose a
+  perdre — ou qu'un film est charge — la carte demande une confirmation EN LIGNE,
+  jamais une boite native ;
+- **choisir un exemple ne genere rien** : des `set…` de formulaire, et rien d'autre.
+  Aucun appel, aucun credit, aucune composition declenchee.
+
+⚠️ Les repliques des exemples se ponctuent **a la virgule**. `scenario.phrases` coupe
+apres chaque `.`, `!` ou `?` : une ponctuation forte DANS les guillemets scinde la
+phrase et la replique n'est plus reconnue par `scenario.citation`.
+
+### 15.2 Apercu agrandi
+
+Une icone en haut a droite du cadre ouvre l'apercu en grand ; l'icone de retour, un
+clic hors du cadre ou **Echap** referment. Le format (16:9 / 9:16) est tenu par le
+meme helper canonique `ratioCadre` dans les deux tailles, et deux bornes (`96vw`,
+`80vh`) le font tenir dans un telephone sans jamais le deformer.
+
+Il n'y a **pas de second moteur d'apercu** : la chronologie, la lecture et la voix
+restent dans `Apercu` ; `CadreMontage` et `CommandesMontage` ne font que dessiner
+l'etat qu'on leur donne. Agrandir ne relance donc rien et ne perd aucune saisie.
+
+⚠️ La fenetre est rendue dans `document.body` par un **portail**. Mesure le
+2026-10-28 : la colonne de droite est `lg:sticky`, et `position: sticky` cree
+TOUJOURS un contexte d'empilement — la barre laterale (`z-50`) passait par-dessus la
+fenetre, qui s'arretait au bord du contenu. Augmenter le `z-index` a l'interieur n'y
+pouvait rien.
