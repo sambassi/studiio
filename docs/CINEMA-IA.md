@@ -415,3 +415,29 @@ Verifie depuis le serveur Hetzner (conteneur jetable, 2026-10-27) :
 service exige desormais le jeton `Sec-MS-GEC`, envoye a partir de la 2.1. La
 dependance passe a `^2.1.1` ; l'API est inchangee. Aucun fournisseur payant
 n'est branche sur la voix de Cinema.
+
+## 16. Abonnements : films et minutes inclus (prepare, NON active)
+
+`src/lib/cinema/abonnement/`, migration `2026-11-01-cinema-abonnements.sql`
+(non appliquee), ecran Administration > « Cinema IA — formules ».
+
+- Une formule Cinema se rattache a une formule existante (`plans.key`). Elle ne
+  porte AUCUN prix : le prix CHF reste dans `plans` (Tarification, prix Stripe).
+- Grandeurs distinctes : films distincts par periode, secondes de FILM FINAL,
+  duree max d'un film, budget fournisseur USD (tentatives et regenerations
+  comprises), tentatives (journal, information). Une regeneration d'un film deja
+  compte ne consomme ni film ni minute, seulement du budget.
+- Sans ligne en base, Cinema n'est PAS inclus : comportement actuel inchange
+  (credits). Aucune valeur par defaut n'est choisie.
+- Reservation atomique en base (`reserver_quota_cinema`, verrou par compte et
+  periode), puis `confirmer_quota_cinema` : confirmee / incertaine (reste comptee)
+  / liberee (tout est rendu ; le film reste compte s'il a une autre reservation
+  active). Reference unique par compte : aucun double debit.
+- Regimes : `cout_reel` (administrateur : ni quota ni credit, cout fournisseur
+  reel, plafonds de depense par compte et global maintenus) et `abonnement`.
+  Estimation obligatoire et > 0 dans les deux cas.
+- RESTE A FAIRE avant activation : valeurs par formule, application de la
+  migration, branchement dans `executeur-generation.ts` (reserver le quota avec
+  la depense, liberer/confirmer avec elle), affichage des quotas restants a
+  l'utilisateur, regle de depassement (refus seul, ou bascule explicite sur les
+  credits).
