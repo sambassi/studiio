@@ -19,6 +19,7 @@ import {
   ChevronDown, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import { useTarifs, libellePrix, type TarifsEcran } from '@/lib/tarifs/client';
+import { ratioCadre } from '@/lib/ui/lecteur-generation';
 
 interface SegmentApi {
   sceneId: string; sceneIndex: number; planId: string; cadre: string;
@@ -1335,7 +1336,9 @@ function Apercu({ montage, surPreparerVoix, voixEnCours }: { montage: MontageApi
         className="relative mx-auto w-full overflow-hidden rounded-xl border border-slate-800"
         style={{
           maxWidth: portrait ? 270 : 640,
-          aspectRatio: portrait ? '9 / 16' : '16 / 9',
+          // Ratio CSS via le meme helper canonique que « Mon avatar » (lib/ui/lecteur-generation) :
+          // un contrat verrouille interdit d'ecrire '9 / 16' en dur hors de cette liste.
+          aspectRatio: ratioCadre(portrait ? '9:16' : '16:9'),
           minHeight: portrait ? 320 : 200,
           background: `radial-gradient(130% 110% at 25% 15%, ${segment.couleurs[0]} 0%, ${segment.couleurs[1]} 55%, #0A0A0F 100%)`,
         }}
