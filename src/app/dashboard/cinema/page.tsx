@@ -22,8 +22,9 @@ import {
 import { useTarifs, libellePrix, type TarifsEcran } from '@/lib/tarifs/client';
 import { ratioCadre } from '@/lib/ui/lecteur-generation';
 import QuotaCinema from '@/components/cinema/QuotaCinema';
-import { SelecteurStyleFilm, SelecteurStyleScene, SelecteurCamera, ResumeStyle } from '@/components/cinema/DirectionCinema';
+import { SelecteurStyleFilm, SelecteurStyleScene, SelecteurCamera, ResumeStyle, PlanAregenerer } from '@/components/cinema/DirectionCinema';
 import { cameraEffective } from '@/lib/cinema/direction/camera';
+import { plansARegenerer } from '@/lib/cinema/direction/signature';
 import type { IdCameraCinema, IdStyleCinema } from '@/lib/cinema/types';
 import ModelesFilm, { type ModeleFilm } from '@/components/cinema/ModelesFilm';
 
@@ -35,7 +36,7 @@ interface SegmentApi {
   media: MediaApi | null; cadrage: { echelle: number; rogneX: number; rogneY: number; memeRapport: boolean } | null;
   voixUrl: string | null; couleurs: [string, string];
 }
-interface MediaApi { url: string; genre: 'image' | 'video'; largeur: number; hauteur: number; dureeS: number | null; octets: number; origine: string; sonActif?: boolean }
+interface MediaApi { url: string; genre: 'image' | 'video'; largeur: number; hauteur: number; dureeS: number | null; octets: number; origine: string; sonActif?: boolean; direction?: string }
 interface MontageApi { filmId: string; titre: string; format: string; largeur: number; hauteur: number; fps: number; segments: SegmentApi[]; dureeS: number }
 interface PlanApi { id: string; cadre: string; description: string; personnages: string[]; dialogue: { personnageId: string | null; texte: string } | null; dureeS: number; media: MediaApi | null; camera?: IdCameraCinema }
 interface SceneApi { id: string; index: number; titre: string; lieu: string; intention: string; personnages: string[]; plans: PlanApi[]; etat: string; coutUsd: number; styleCinema?: IdStyleCinema }
@@ -45,7 +46,7 @@ interface GenerationApi {
   statut: 'en_cours' | 'reussie' | 'echouee' | 'interrompue'; creeLe: string; majLe: string;
   erreur?: string | null; creditsPris?: number; creditsRembourses?: boolean;
 }
-interface FilmApi { id: string; titre: string; histoire?: string; format: string; qualite: string; personnages: PersonnageApi[]; scenes: SceneApi[]; generations?: GenerationApi[]; styleCinema?: IdStyleCinema }
+interface FilmApi { id: string; titre: string; histoire?: string; format: string; qualite: string; personnages: PersonnageApi[]; scenes: SceneApi[]; generations?: GenerationApi[]; styleCinema?: IdStyleCinema; directionActive?: boolean }
 /** La generation active du film (une seule a la fois, decide par le serveur). */
 const generationActiveDe = (f: FilmApi | null) => f?.generations?.find((g) => g.statut === 'en_cours') ?? null;
 /** La derniere generation d'un plan, quelle qu'en soit l'issue. */
@@ -481,6 +482,8 @@ export default function CinemaPage() {
 
   /** Le style montre a l'ecran : celui du film ouvert, sinon celui choisi avant sa creation. */
   const styleAffiche: IdStyleCinema | null = film ? (film.styleCinema ?? null) : styleAvantFilm;
+  /** Plans dont le media genere ne suit plus le style/la camera actuels (le media est conserve). */
+  const aRegenerer = new Set(film ? plansARegenerer(film as never).map((x) => x.planId) : []);
   const choisirStyleFilm = (id: IdStyleCinema | null) => {
     if (!film) { setStyleAvantFilm(id); return; }
     void enregistrer({ style: id });
@@ -1037,9 +1040,11 @@ export default function CinemaPage() {
                           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                             <SelecteurCamera
                               valeur={plan.camera ?? 'auto'}
+                              ancien={film.directionActive !== true}
                               automatique={cameraEffective({ ...plan, camera: undefined, cadre: plan.cadre as never }, scene as never).effective}
                               surChoisir={(id) => enregistrer({ plans: [{ id: plan.id, camera: id }] })}
                             />
+                            {plan.media && aRegenerer.has(plan.id) && <PlanAregenerer genre={plan.media.genre} />}
                             {/* Media du plan : importe en octets, mesure par le serveur. */}
                             {plan.media ? (
                               <>

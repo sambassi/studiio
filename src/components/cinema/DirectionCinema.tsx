@@ -11,7 +11,7 @@
  */
 import { useState } from 'react';
 import {
-  AlertCircle, ArrowLeft, ArrowRight, Info, Lock, MoveHorizontal, Orbit, Palette, Sparkles, ZoomIn, ZoomOut,
+  AlertCircle, ArrowLeft, ArrowRight, Info, Lock, MoveHorizontal, Orbit, Palette, RefreshCw, Sparkles, ZoomIn, ZoomOut,
   type LucideIcon,
 } from 'lucide-react';
 import { STYLES_CINEMA, styleCinema } from '@/lib/cinema/direction/styles';
@@ -120,8 +120,8 @@ export function SelecteurStyleScene({ valeur, styleFilm, surChoisir }: {
 }
 
 /** Mouvement de camera d'UN plan. `automatique` : le mouvement que l'automatique choisirait. */
-export function SelecteurCamera({ valeur, automatique, surChoisir }: {
-  valeur: IdCameraCinema; automatique: Exclude<IdCameraCinema, 'auto'>; surChoisir: (id: IdCameraCinema) => void;
+export function SelecteurCamera({ valeur, automatique, ancien = false, surChoisir }: {
+  valeur: IdCameraCinema; automatique: Exclude<IdCameraCinema, 'auto'>; ancien?: boolean; surChoisir: (id: IdCameraCinema) => void;
 }) {
   const Icone = ICONES_CAMERA[valeur];
   return (
@@ -135,7 +135,9 @@ export function SelecteurCamera({ valeur, automatique, surChoisir }: {
       >
         {CAMERAS_CINEMA.map((c) => (
           <option key={c.id} value={c.id}>
-            {c.id === 'auto' ? `Automatique (${cameraCinema(automatique).libelle.toLowerCase()})` : c.libelle}
+            {c.id === 'auto'
+              ? (ancien ? 'Camera d’origine (douce)' : `Automatique (${cameraCinema(automatique).libelle.toLowerCase()})`)
+              : c.libelle}
           </option>
         ))}
       </select>
@@ -159,5 +161,23 @@ export function ResumeStyle({ styleFilm, exceptions }: { styleFilm: IdStyleCinem
         <AlertCircle className="w-3 h-3" aria-hidden="true" /> s’applique aux prochaines generations
       </span>
     </p>
+  );
+}
+
+/**
+ * Plan dont le media genere date d'AVANT le style ou la camera actuels. Le media est conserve ;
+ * il n'est simplement pas presente comme issu de la direction actuelle. Aucun bouton ici :
+ * regenerer reste l'action habituelle du plan, avec son devis et sa validation.
+ */
+export function PlanAregenerer({ genre }: { genre: 'image' | 'video' }) {
+  return (
+    <span
+      data-direction="a-regenerer"
+      title="Ce media a ete genere avec un autre style ou une autre camera. Il est conserve ; regenerez ce plan pour appliquer la direction actuelle (devis a valider)."
+      className="inline-flex items-center gap-1 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-200"
+    >
+      <RefreshCw className="w-3 h-3" aria-hidden="true" />
+      {genre === 'video' ? 'Video' : 'Image'} a regenerer : direction modifiee
+    </span>
   );
 }

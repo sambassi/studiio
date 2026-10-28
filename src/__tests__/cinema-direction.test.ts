@@ -33,7 +33,7 @@ import type { Film, IdCameraCinema, IdStyleCinema } from '@/lib/cinema/types';
 const HISTOIRE = 'Nina entre dans la salle avant le lever du jour. Le tatami est encore froid. Marco la regarde sans bouger. Nina dit : « je ne reculerai pas ». Le jour se leve sur la salle vide.';
 const unFilm = (extra: Partial<Film> = {}): Film => ({
   ...preparerFilm({ histoire: HISTOIRE, personnages: [{ nom: 'Nina', description: 'veste rouge' }, { nom: 'Marco', description: 'ceinture noire' }], idFilm: 'film-dir' }),
-  proprietaire: 'u1', ...extra,
+  proprietaire: 'u1', directionActive: true, ...extra,
 });
 
 describe('les six styles sont reels et DISTINCTS', () => {
@@ -318,13 +318,31 @@ describe('ATELIER : ce que le fournisseur recoit REELLEMENT', () => {
     expect(demandes.video[0].prompt).not.toMatch(/camera: auto/);
   });
 
-  it('VIDEO d’un film d’avant (aucun champ) : fonctionne, avec la camera automatique', async () => {
+  it('VIDEO d’un film d’avant (sans drapeau, sans camera choisie) : ancien prompt, consigne douce d’origine', async () => {
     const f = filmAvecImage();
+    delete f.directionActive;
     expect('camera' in f.scenes[0].plans[0]).toBe(false);
-    expect('styleCinema' in f).toBe(false);
     await video(f, f.scenes[0].plans[0].id);
     expect(demandes.video).toHaveLength(1);
+    expect(demandes.video[0].prompt).toContain(CAMERA_FIGEE);
+    expect(demandes.video[0].prompt).not.toMatch(/camera: /);
+    expect(demandes.video[0].prompt).not.toContain('look of the input image');
+  });
+
+  it('VIDEO d’un film d’avant dont UN plan recoit une camera : seul ce plan change', async () => {
+    const f = filmAvecImage();
+    delete f.directionActive;
+    f.scenes[0].plans[0].camera = 'orbite';
+    await video(f, f.scenes[0].plans[0].id);
+    expect(demandes.video[0].prompt).toContain(`camera: ${cameraCinema('orbite').prompt}`);
+  });
+
+  it('VIDEO d’un film neuf : camera automatique par defaut', async () => {
+    const f = filmAvecImage();
+    expect(f.directionActive).toBe(true);
+    await video(f, f.scenes[0].plans[0].id);
     expect(demandes.video[0].prompt).toMatch(/camera: /);
+    expect(demandes.video[0].prompt).not.toContain(CAMERA_FIGEE);
   });
 });
 

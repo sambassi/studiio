@@ -44,7 +44,12 @@ export function matiereScene(scene: SceneCinema, versionsReferences: Record<stri
     // Media IMPORTE seulement : l'url, son genre, sa duree et son son.
     p.media && p.media.origine === 'import'
       ? `${p.media.url}|${p.media.genre}|${p.media.dureeS ?? ''}|${p.media.sonActif ? 1 : 0}`
-      : '',
+      // Media GENERE sous la direction artistique : un nouveau media (autre style ou camera,
+      // donc autre fichier) doit invalider le rendu de la scene. Les medias generes d'avant
+      // (sans `direction`) restent hors empreinte : aucun film d'avant n'est declare perime.
+      : p.media && p.media.origine === 'genere' && p.media.direction
+        ? `gen|${p.media.url}|${p.media.direction}`
+        : '',
     p.personnages.map((id) => `${id}@${versionsReferences[id] ?? 0}`).join(','),
   ].join('|'));
   return [scene.titre, scene.lieu, scene.intention, ...plans].join('\n');

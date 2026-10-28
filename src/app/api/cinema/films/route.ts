@@ -79,6 +79,8 @@ export async function POST(req: NextRequest) {
 
   // Le style n'entre PAS dans le decoupage du scenario : il se pose sur le film fini.
   if (styleCinema) film.styleCinema = styleCinema;
+  // Film neuf : camera AUTOMATIQUE par defaut (un film d'avant n'a pas ce drapeau).
+  film.directionActive = true;
 
   // Le proprietaire est pose par le DEPOT, a partir de la session.
   const r = await ctx.films.creer(film, s.userId);

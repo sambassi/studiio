@@ -117,6 +117,12 @@ export interface MediaPlan {
    */
   fournisseurGeneration?: string;
   /**
+   * Signature de la direction artistique (style, camera) sous laquelle ce media a ete GENERE
+   * (`direction/signature.ts`). Absent = media d'avant la fonction : il vaut « aucun style,
+   * camera d'origine ». Sert a dire quels plans sont a regenerer apres un changement de style.
+   */
+  direction?: string;
+  /**
    * Garder le son du media. Defaut `false` : le son d'ambiance d'un rush et
    * la voix du plan se couvrent, et c'est la parole qu'on perd.
    */
@@ -175,6 +181,11 @@ export interface Film {
   qualite: NiveauQualite;
   /** Style cinematique GLOBAL. Absent = aucun style impose (prompts d'avant). */
   styleCinema?: IdStyleCinema;
+  /**
+   * Film cree AVEC la direction artistique : ses plans sans camera choisie suivent la camera
+   * AUTOMATIQUE. Absent = film d'avant, qui garde son ancien comportement (camera douce figee).
+   */
+  directionActive?: boolean;
   personnages: Personnage[];
   scenes: SceneCinema[];
   creeLe: string;

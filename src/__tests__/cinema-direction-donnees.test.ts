@@ -99,6 +99,9 @@ describe('creation : le style global est sauvegarde avec le film', () => {
     const { film } = await r.json();
     expect(film.styleCinema).toBe('noir');
     expect((await lireFilm(film.id)).styleCinema).toBe('noir');
+    // Film neuf : camera automatique par defaut (un film d'avant n'a pas ce drapeau).
+    expect(film.directionActive).toBe(true);
+    expect((await lireFilm(film.id)).directionActive).toBe(true);
     expect((await ctx.films.lire(film.id, A))!.film.styleCinema).toBe('noir');
   });
 

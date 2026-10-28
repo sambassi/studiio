@@ -692,3 +692,20 @@ aucun champ : ses images sont inchangees ; ses videos recoivent la camera automa
 camera ne changent ni modele, ni duree, ni devis, ni empreinte de scene : aucune re-validation
 de budget, aucune depense au choix. API : `POST /films {styleCinema}`, `PATCH {style}`,
 `{scenes:[{id, style}]}`, `{plans:[{id, camera}]}` (`null` ou `auto` retire le reglage).
+
+### 17.1 Anciens films et changement de direction apres generation
+
+- **Anciens films** : sans `film.directionActive` (pose a la creation d'un film neuf), un plan sans
+  camera choisie garde la consigne figee d'origine ; un film neuf utilise l'automatique. Les
+  empreintes des films d'avant ne changent pas : rien n'est re-rendu ni refacture.
+- **Signature** : chaque media genere porte `media.direction` (style, et camera pour une video ;
+  `direction/signature.ts`). Absent = « aucun style, camera d'origine ».
+- **Changement apres generation** : le media est CONSERVE ; `plansARegenerer(film)` signale les
+  plans dont la signature differe (badge ambre dans l'editeur). Rien ne part seul : regenerer est
+  l'action habituelle du plan, avec devis et budget valides. La cle d'idempotence est aleatoire :
+  aucun ancien resultat n'est reutilise.
+- **Rendu** : l'empreinte de scene integre url + signature d'un media genere sous direction, donc
+  un nouveau media invalide le rendu en cache (les medias d'avant, sans signature, restent hors
+  empreinte).
+- Limite : un media recupere par la reprise apres interruption recoit la signature de la
+  direction au moment de la recuperation.

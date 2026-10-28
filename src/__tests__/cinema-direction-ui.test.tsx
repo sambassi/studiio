@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { readFileSync } from 'fs';
-import { SelecteurStyleFilm, SelecteurStyleScene, SelecteurCamera, ResumeStyle } from '@/components/cinema/DirectionCinema';
+import { SelecteurStyleFilm, SelecteurStyleScene, SelecteurCamera, ResumeStyle, PlanAregenerer } from '@/components/cinema/DirectionCinema';
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
@@ -73,6 +73,20 @@ describe('camera', () => {
     expect(document.body.textContent).not.toMatch(/peut s’en ecarter/);
     fireEvent.click(screen.getByLabelText('A propos du mouvement de camera'));
     expect(document.body.textContent).toMatch(/peut s’en ecarter/);
+  });
+});
+
+describe('anciens films et plans a regenerer', () => {
+  it('un ancien film propose « Camera d’origine », pas une automatique qu’il n’a jamais eue', () => {
+    render(<SelecteurCamera valeur="auto" automatique="orbite" ancien surChoisir={() => {}} />);
+    const sel = screen.getByLabelText('Mouvement de camera de ce plan') as HTMLSelectElement;
+    expect(sel.options[0].textContent).toBe('Camera d’origine (douce)');
+  });
+  it('le signalement dit que le media est conserve et que regenerer demande le devis, sans bouton de depense', () => {
+    render(<PlanAregenerer genre="video" />);
+    expect(document.body.textContent).toMatch(/Video a regenerer : direction modifiee/);
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(document.querySelector('[data-direction="a-regenerer"]')!.getAttribute('title')).toMatch(/conserve.*devis a valider/);
   });
 });
 

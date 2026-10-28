@@ -32,6 +32,7 @@ import {
 } from '@/lib/cinema/generation/fournisseur';
 import type { Film, MediaPlan, PlanCinema } from '@/lib/cinema/types';
 import { directionDuPlan, promptImageAvecDirection, promptVideoAvecDirection } from '@/lib/cinema/direction/prompt';
+import { signatureDirection } from '@/lib/cinema/direction/signature';
 
 // Side-effect : enregistre le fournisseur simule dans le registre partage.
 // Importe ICI (et non seulement par la route) pour que tout appelant de
@@ -293,7 +294,11 @@ export async function importerResultatFournisseur(args: {
   // generes depuis la MEME apparence ou depuis deux versions differentes
   // (`generation/coherence.ts`). Sans cette trace, un changement de
   // reference entre deux generations serait invisible.
-  const mediaTrace: MediaPlan = { ...importe.media, fournisseurGeneration: fournisseur.id };
+  // `direction` : sous quel style/camera ce media a ete genere (voir `direction/signature.ts`).
+  const mediaTrace: MediaPlan = {
+    ...importe.media, fournisseurGeneration: fournisseur.id,
+    direction: signatureDirection(film, planId, importe.media.genre),
+  };
   const filmAvecMedia = remplacerMedia(importe.film, planId, mediaTrace);
   // Aligne POSITIONNELLEMENT sur `plan.personnages` : `coherence.ts` lit
   // `referencesUtilisees[plan.personnages.indexOf(id)]`, donc un personnage

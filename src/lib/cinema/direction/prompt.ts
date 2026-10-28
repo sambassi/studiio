@@ -26,7 +26,8 @@ export const CAMERA_FIGEE = 'subtle and steady camera motion';
 
 export interface DirectionPlan {
   style: StyleCinema | null;
-  camera: ReturnType<typeof cameraEffective>;
+  /** `null` = film d'avant sans camera choisie : la consigne figee d'origine est conservee. */
+  camera: ReturnType<typeof cameraEffective> | null;
   sceneId: string | null;
 }
 
@@ -35,7 +36,9 @@ export function directionDuPlan(film: Film, planId: string): DirectionPlan {
   const plan: PlanCinema | undefined = scene?.plans.find((p) => p.id === planId);
   return {
     style: styleEffectif(film, scene),
-    camera: cameraEffective(plan ?? { cadre: 'moyen', description: '', dialogue: null }, scene),
+    camera: film.directionActive === true || plan?.camera !== undefined
+      ? cameraEffective(plan ?? { cadre: 'moyen', description: '', dialogue: null }, scene)
+      : null,
     sceneId: scene?.id ?? null,
   };
 }
@@ -66,11 +69,11 @@ export function promptImageAvecDirection(promptBase: string, direction: Directio
 
 /** Prompt de VIDEO : la camera remplace la consigne figee ; le style est rappele. */
 export function promptVideoAvecDirection(promptBase: string, direction: DirectionPlan): string {
-  const phrase = cameraCinema(direction.camera.effective).prompt as string;
-  const camera = `camera: ${phrase}`;
-  let prompt = promptBase.includes(CAMERA_FIGEE)
-    ? promptBase.replace(CAMERA_FIGEE, camera)
-    : avantOriginal(promptBase, camera);
+  let prompt = promptBase;
+  if (direction.camera) {
+    const camera = `camera: ${cameraCinema(direction.camera.effective).prompt as string}`;
+    prompt = promptBase.includes(CAMERA_FIGEE) ? promptBase.replace(CAMERA_FIGEE, camera) : avantOriginal(promptBase, camera);
+  }
   if (direction.style) {
     const p = direction.style.prompt;
     prompt = avantOriginal(prompt, `keep the ${direction.style.nomEn} look of the input image: ${p.eclairage}, ${p.palette}, ${p.texture}`);
