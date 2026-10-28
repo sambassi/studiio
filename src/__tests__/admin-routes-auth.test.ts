@@ -92,6 +92,8 @@ const R = (route: string, method: Method, anonymous: 401 | 403, load: Case['load
 
 const CASES: Case[] = [
   R('avatar-couts', 'GET', 401, () => import('@/app/api/admin/avatar-couts/route')),
+  R('cinema-formules', 'GET', 401, () => import('@/app/api/admin/cinema-formules/route')),
+  R('cinema-formules', 'PUT', 401, () => import('@/app/api/admin/cinema-formules/route')),
   R('cleanup-duplicates', 'GET', 401, () => import('@/app/api/admin/cleanup-duplicates/route')),
   R('fournisseurs', 'GET', 401, () => import('@/app/api/admin/fournisseurs/route')),
   R('fournisseurs', 'PATCH', 401, () => import('@/app/api/admin/fournisseurs/route')),
