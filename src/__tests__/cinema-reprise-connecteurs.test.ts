@@ -22,12 +22,31 @@ vi.mock('replicate', () => ({
   },
 }));
 
-const { FOURNISSEUR_HIGGSFIELD_IMAGE, consulterHiggsfield, BASE_HIGGSFIELD, MODELE_IMAGE_HF } = await import('@/lib/cinema/generation/higgsfield');
+const { FOURNISSEUR_HIGGSFIELD_IMAGE, consulterHiggsfield, BASE_HIGGSFIELD, MODELE_IMAGE_HF, reseauMedia } = await import('@/lib/cinema/generation/higgsfield');
 const { FOURNISSEUR_REPLICATE_IMAGE, consulterReplicate } = await import('@/lib/cinema/generation/replicate');
+
+/**
+ * RESEAU SIMULE des transferts de medias Higgsfield : la resolution DNS est simulee et
+ * l'envoi passe par le `fetch` remplace de chaque test, APRES la verification d'adresse de
+ * `lookupSur` — comme la connexion reelle. Rien ne sort de la machine.
+ */
+const resoudreSimule = async (hote: string) => [{ address: DNS[hote] ?? '93.184.216.34', family: 4 }];
+const DNS: Record<string, string> = {};
+const envoiSimule = (url: string, init: unknown, lookup: unknown) => new Promise<Response>((ok, ko) => {
+  (lookup as (h: string, o: object, cb: (e: Error | null) => void) => void)(new URL(url).hostname, { all: true }, (e) => {
+    if (e) { ko(e); return; }
+    Promise.resolve((globalThis.fetch as unknown as (u: string, i: unknown) => Promise<Response>)(url, init)).then(ok, ko);
+  });
+});
+beforeEach(() => {
+  for (const k of Object.keys(DNS)) delete DNS[k];
+  reseauMedia.envoyer = envoiSimule as never;
+  reseauMedia.resoudre = resoudreSimule;
+});
 
 const ENV0 = { ...process.env };
 const UUID = '3f2b8c1e-9a4d-4e7f-b6a1-0c5d2e8f9a71';
-afterEach(() => { process.env = { ...ENV0 }; vi.unstubAllGlobals(); r.surRun = null; });
+afterEach(() => { process.env = { ...ENV0 }; vi.unstubAllGlobals(); r.surRun = null; reseauMedia.envoyer = undefined; reseauMedia.resoudre = undefined; });
 
 const json = (statut: number, corps: unknown) => ({
   ok: statut >= 200 && statut < 300, status: statut, json: async () => corps,
@@ -154,5 +173,39 @@ describe('Replicate : suivi de la prediction', () => {
     const c = client({ status: 'succeeded' });
     expect((await consulterReplicate('../x', 'image', { client: c })).etat).toBe('introuvable');
     expect((c as unknown as { predictions: { get: ReturnType<typeof vi.fn> } }).predictions.get).not.toHaveBeenCalled();
+  });
+});
+
+describe('Higgsfield : l’API ne redirige JAMAIS (ses appels portent les cles)', () => {
+  const UUID2 = '3f2b8c1e-9a4d-4e7f-b6a1-0c5d2e8f9a71';
+  beforeEach(() => {
+    process.env = { ...ENV0, CINEMA_FOURNISSEUR: 'higgsfield', CINEMA_GENERATION_REELLE: 'true', HIGGSFIELD_API_KEY_ID: 'k', HIGGSFIELD_API_KEY_SECRET: 's' } as NodeJS.ProcessEnv;
+  });
+
+  it('estimation, soumission, statut : tous demandent `redirect: error`', async () => {
+    const options: Array<{ url: string; redirect: unknown }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      options.push({ url, redirect: init?.redirect });
+      if (url.includes('/estimate/')) return json(200, { usd: '0.002' });
+      if (url.endsWith(MODELE_IMAGE_HF)) return json(200, { status: 'queued', request_id: UUID2, status_url: `${BASE_HIGGSFIELD}/requests/${UUID2}/status` });
+      if (url.endsWith('/status')) return json(200, { status: 'completed', images: [{ url: 'https://cdn.example/i.jpg' }] });
+      return media();
+    }));
+    await FOURNISSEUR_HIGGSFIELD_IMAGE.genererImage({ promptPlan: 'p', promptConstruit: 'a', personnages: [], format: '16:9', graine: 1 });
+    await consulterHiggsfield(UUID2, 'image');
+    const api = options.filter((o) => o.url.startsWith(BASE_HIGGSFIELD));
+    expect(api.length).toBeGreaterThanOrEqual(4);
+    for (const o of api) expect(o.redirect, o.url).toBe('error');
+  });
+
+  it('une redirection a la SOUMISSION est un echec prudent : `incertain`, jamais « rien n’est parti »', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.includes('/estimate/')) return json(200, { usd: '0.002' });
+      if (url.endsWith(MODELE_IMAGE_HF)) throw new TypeError('fetch failed: unexpected redirect');
+      return media();
+    }));
+    const r = await FOURNISSEUR_HIGGSFIELD_IMAGE.genererImage({ promptPlan: 'p', promptConstruit: 'a', personnages: [], format: '16:9', graine: 1 });
+    expect(r.ok).toBe(false);
+    if (!r.ok) { expect(r.incertain).toBe(true); expect(r.jamaisEnvoye).toBeFalsy(); }
   });
 });

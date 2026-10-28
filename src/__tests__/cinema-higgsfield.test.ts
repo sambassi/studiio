@@ -20,7 +20,9 @@ import {
   urlHiggsfieldSure, FOURNISSEUR_HIGGSFIELD_IMAGE, FOURNISSEUR_HIGGSFIELD_VIDEO,
   ID_HIGGSFIELD_IMAGE, ID_HIGGSFIELD_VIDEO, ID_HIGGSFIELD_VIDEO_HAPPYHORSE,
   MODELE_IMAGE_HF, MODELE_VIDEO_HF, BASE_HIGGSFIELD, DUREES_VIDEO_HF, TAILLE_MAX_RAPATRIEMENT,
+  reseauMedia,
 } from '@/lib/cinema/generation/higgsfield';
+import type { Envoi } from '@/lib/cinema/generation/reseau-sur';
 import { fournisseurServeur, modeGenerationAffiche } from '@/lib/cinema/garde';
 import { ID_REPLICATE_IMAGE, ID_REPLICATE_VIDEO } from '@/lib/cinema/generation/replicate';
 import {
@@ -41,7 +43,35 @@ const CLES = {
   HIGGSFIELD_API_KEY_SECRET: 'k-secret',
 };
 
-afterEach(() => { process.env = { ...ENV0 }; vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+/**
+ * RESEAU SIMULE pour les transferts de medias : la resolution DNS est simulee (`DNS`), et
+ * l'envoi passe par le `fetch` remplace de chaque test — APRES la verification d'adresse
+ * de `lookupSur`, exactement comme la connexion reelle. Rien ne sort de la machine.
+ */
+const DNS: Record<string, string[]> = {};
+const ADRESSE_PUBLIQUE = '93.184.216.34';
+function resoudreSimule(hote: string) {
+  const ips = DNS[hote] ?? [ADRESSE_PUBLIQUE];
+  return Promise.resolve(ips.map((address) => ({ address, family: address.includes(':') ? 6 : 4 })));
+}
+const envoiSimule: Envoi = (url, init, lookup) => new Promise<Response>((ok, ko) => {
+  (lookup as unknown as (h: string, o: object, cb: (e: Error | null) => void) => void)(
+    new URL(url).hostname, { all: true }, (e) => {
+      if (e) { ko(e); return; }
+      Promise.resolve((globalThis.fetch as unknown as (u: string, i: unknown) => Promise<Response>)(url, init)).then(ok, ko);
+    },
+  );
+});
+beforeEach(() => {
+  for (const k of Object.keys(DNS)) delete DNS[k];
+  reseauMedia.envoyer = envoiSimule;
+  reseauMedia.resoudre = resoudreSimule;
+});
+
+afterEach(() => {
+  process.env = { ...ENV0 }; vi.restoreAllMocks(); vi.unstubAllGlobals();
+  reseauMedia.envoyer = undefined; reseauMedia.resoudre = undefined;
+});
 
 /** Une reponse JSON simulee, de la forme minimale que lit le connecteur. */
 function reponse(statut: number, corps: unknown) {
@@ -287,6 +317,121 @@ describe('URL de media rendues par le fournisseur : jamais une cible interne', (
     expect(hoteNonPublic('cdn.example')).toBe(false);
     expect(hoteNonPublic('d3abc.cloudfront.net')).toBe(false);
     expect(hoteNonPublic('stockage.higgsfield.ai')).toBe(false);
+  });
+
+  /** Termine avec `urlMedia`, et sert le media selon `servir` (redirections comprises). */
+  const termineVers = (urlMedia: string, servir: (url: string) => Response, appelsMedia: string[]) => vi.fn(async (url: string) => {
+    if (url.includes('/estimate/')) return reponse(200, { usd: '0.002' });
+    if (url.endsWith(MODELE_IMAGE_HF)) return reponse(200, { status: 'queued', request_id: UUID, status_url: `${BASE_HIGGSFIELD}/requests/${UUID}/status` });
+    if (url.startsWith(`${BASE_HIGGSFIELD}/requests/`)) return reponse(200, { status: 'completed', images: [{ url: urlMedia }] });
+    appelsMedia.push(url);
+    return servir(url);
+  });
+  const redirection = (vers: string, statut = 302) => new Response(null, { status: statut, headers: { location: vers } });
+  const demande = { promptPlan: 'p', promptConstruit: 'a', personnages: [], format: '16:9' as const, graine: 1 };
+
+  it.each([
+    ['IPv4 privee', ['10.0.0.5']], ['metadonnees cloud', ['169.254.169.254']], ['boucle locale', ['127.0.0.1']],
+    ['IPv6 boucle locale', ['::1']], ['IPv6 locale unique', ['fd00:ec2::254']], ['IPv4 mappee en IPv6', ['::ffff:10.0.0.1']],
+    ['melange public + prive', [ADRESSE_PUBLIQUE, '192.168.1.10']],
+  ])('DNS d’un nom public vers %s : aucune connexion, echec facture', async (_cas, ips) => {
+    process.env = { ...ENV0, ...CLES } as NodeJS.ProcessEnv;
+    DNS['media.piege.example'] = ips;
+    const appelsMedia: string[] = [];
+    vi.stubGlobal('fetch', termineVers('https://media.piege.example/i.jpg', () => reponseMedia(), appelsMedia));
+    const r = await FOURNISSEUR_HIGGSFIELD_IMAGE.genererImage(demande);
+    expect(r.ok).toBe(false);
+    if (!r.ok) { expect(r.erreur).toContain('refuse'); expect(r.nonFacture).toBeFalsy(); }
+    expect(appelsMedia).toEqual([]);
+  });
+
+  it('redirection d’un CDN public vers le reseau interne (nom) : le second saut n’a JAMAIS lieu', async () => {
+    process.env = { ...ENV0, ...CLES } as NodeJS.ProcessEnv;
+    DNS['interne.piege.example'] = ['10.1.2.3'];
+    const appelsMedia: string[] = [];
+    vi.stubGlobal('fetch', termineVers('https://cdn.example/i.jpg', (u) => (u.includes('cdn.example')
+      ? redirection('https://interne.piege.example/secret') : reponseMedia()), appelsMedia));
+    const r = await FOURNISSEUR_HIGGSFIELD_IMAGE.genererImage(demande);
+    expect(r.ok).toBe(false);
+    expect(appelsMedia).toEqual(['https://cdn.example/i.jpg']);
+  });
+
+  it.each([
+    'https://169.254.169.254/latest/meta-data/', 'http://cdn2.example/i.jpg', 'https://localhost/x',
+    'https://[::1]/x', 'https://cdn2.example:8080/x', '/../../x@169.254.169.254',
+  ])('redirection vers %s : refusee avant toute requete', async (vers) => {
+    process.env = { ...ENV0, ...CLES } as NodeJS.ProcessEnv;
+    const appelsMedia: string[] = [];
+    vi.stubGlobal('fetch', termineVers('https://cdn.example/i.jpg', (u) => (u === 'https://cdn.example/i.jpg'
+      ? redirection(vers, 307) : reponseMedia()), appelsMedia));
+    const r = await FOURNISSEUR_HIGGSFIELD_IMAGE.genererImage(demande);
+    // Une redirection relative reste sur le meme hote public : seul ce cas peut aboutir.
+    if (vers.startsWith('/')) { expect(r.ok).toBe(true); if (r.ok) rmSync(r.fichier, { force: true }); return; }
+    expect(r.ok).toBe(false);
+    expect(appelsMedia).toEqual(['https://cdn.example/i.jpg']);
+  });
+
+  it('chaine de redirections publiques : suivie jusqu’a 3 sauts, refusee au-dela', async () => {
+    process.env = { ...ENV0, ...CLES } as NodeJS.ProcessEnv;
+    const chaine = (sauts: number) => (u: string) => {
+      const n = Number(new URL(u).pathname.slice(1)) || 0;
+      return n < sauts ? redirection(`https://cdn${n + 1}.example/${n + 1}`, 301) : reponseMedia();
+    };
+    const ok: string[] = [];
+    vi.stubGlobal('fetch', termineVers('https://cdn0.example/0', chaine(3), ok));
+    const r1 = await FOURNISSEUR_HIGGSFIELD_IMAGE.genererImage(demande);
+    expect(r1.ok).toBe(true);
+    if (r1.ok) rmSync(r1.fichier, { force: true });
+    expect(ok).toHaveLength(4);
+
+    const trop: string[] = [];
+    vi.stubGlobal('fetch', termineVers('https://cdn0.example/0', chaine(4), trop));
+    const r2 = await FOURNISSEUR_HIGGSFIELD_IMAGE.genererImage(demande);
+    expect(r2.ok).toBe(false);
+    if (!r2.ok) expect(r2.erreur).toContain('trop de redirections');
+    expect(trop).toHaveLength(4); // le 5e saut n'est jamais tente
+  });
+
+  it('chaine publique dont le DERNIER saut resout vers un reseau prive : refusee', async () => {
+    process.env = { ...ENV0, ...CLES } as NodeJS.ProcessEnv;
+    DNS['cdn2.example'] = ['172.16.5.4'];
+    const appels: string[] = [];
+    vi.stubGlobal('fetch', termineVers('https://cdn0.example/0', (u) => (u.includes('cdn0')
+      ? redirection('https://cdn1.example/1') : u.includes('cdn1') ? redirection('https://cdn2.example/2') : reponseMedia()), appels));
+    const r = await FOURNISSEUR_HIGGSFIELD_IMAGE.genererImage(demande);
+    expect(r.ok).toBe(false);
+    expect(appels).toEqual(['https://cdn0.example/0', 'https://cdn1.example/1']);
+  });
+
+  it('reprise apres redemarrage : DNS prive = echec definitif (facture), jamais retente ni contacte', async () => {
+    process.env = { ...ENV0, ...CLES } as NodeJS.ProcessEnv;
+    DNS['media.piege.example'] = ['10.0.0.9'];
+    const appelsMedia: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.startsWith(`${BASE_HIGGSFIELD}/requests/`)) return reponse(200, { status: 'completed', video: { url: 'https://media.piege.example/v.mp4' } });
+      appelsMedia.push(url);
+      return reponseMedia();
+    }));
+    const { consulterHiggsfield } = await import('@/lib/cinema/generation/higgsfield');
+    const e = await consulterHiggsfield(UUID, 'video');
+    expect(e.etat).toBe('echec');
+    if (e.etat === 'echec') expect(e.nonFacture).toBe(false);
+    expect(appelsMedia).toEqual([]);
+  });
+
+  it('reprise apres redemarrage : un media public legitime est recupere', async () => {
+    process.env = { ...ENV0, ...CLES } as NodeJS.ProcessEnv;
+    const appelsMedia: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.startsWith(`${BASE_HIGGSFIELD}/requests/`)) return reponse(200, { status: 'completed', video: { url: 'https://cdn.example/v.mp4' } });
+      appelsMedia.push(url);
+      return reponseMedia();
+    }));
+    const { consulterHiggsfield } = await import('@/lib/cinema/generation/higgsfield');
+    const e = await consulterHiggsfield(UUID, 'video');
+    expect(e.etat).toBe('termine');
+    if (e.etat === 'termine') rmSync(e.fichier, { force: true });
+    expect(appelsMedia).toEqual(['https://cdn.example/v.mp4']);
   });
 });
 
@@ -700,6 +845,46 @@ describe('video : l’image source est verifiee AVANT tout appel', () => {
     const urls = f.mock.calls.map((c) => String((c as unknown as [string])[0]));
     expect(urls.some((u) => u.includes('/estimate/'))).toBe(false);
     expect(urls.some((u) => u === `${BASE_HIGGSFIELD}/${MODELE_VIDEO_HF}`)).toBe(false);
+  });
+
+  /** Le televersement rend `depot` ; le depot (PUT) repond `reponseDepot`. */
+  const parcoursDepot = (depot: string, reponseDepot: () => Response) => vi.fn(async (url: string) => {
+    if (url.endsWith('/files/generate-upload-url')) {
+      return reponse(200, { upload_url: depot, public_url: 'https://stockage.higgsfield.ai/public/src.png' });
+    }
+    if (url.startsWith(depot.split('?')[0])) return reponseDepot();
+    return reponse(200, { usd: '0.21' });
+  });
+
+  it.each([
+    ['DNS du depot vers un reseau prive', 'https://depot.piege.example/presigne?sig=1', ['10.0.0.7']],
+    ['DNS du depot vers les metadonnees cloud', 'https://depot.piege.example/presigne?sig=1', ['169.254.169.254']],
+    ['depot en IPv6 locale', 'https://[fd00::1]/presigne', [] as string[]],
+  ])('%s : AUCUN octet envoye, ni estimation ni soumission', async (_cas, depot, ips) => {
+    const image = join(dossier, 'src.png');
+    await executer(cheminFfmpeg(), ['-f', 'lavfi', '-i', 'color=c=red:s=16x16', '-frames:v', '1', '-y', image], { timeoutMs: 20_000 });
+    if (ips.length) DNS[new URL(depot).hostname] = ips;
+    const f = parcoursDepot(depot, () => reponse(200, {}));
+    vi.stubGlobal('fetch', f);
+    const r = await FOURNISSEUR_HIGGSFIELD_VIDEO.genererVideo(demandeVideo(image));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.jamaisEnvoye).toBe(true);
+    const urls = f.mock.calls.map((c) => String((c as unknown as [string])[0]));
+    expect(urls).toEqual([`${BASE_HIGGSFIELD}/files/generate-upload-url`]);
+  });
+
+  it('un depot qui repond par une redirection : refuse, la redirection n’est pas suivie', async () => {
+    const image = join(dossier, 'src.png');
+    await executer(cheminFfmpeg(), ['-f', 'lavfi', '-i', 'color=c=red:s=16x16', '-frames:v', '1', '-y', image], { timeoutMs: 20_000 });
+    const f = parcoursDepot('https://stockage.higgsfield.ai/presigne?sig=1',
+      () => new Response(null, { status: 307, headers: { location: 'https://stockage2.higgsfield.ai/x' } }));
+    vi.stubGlobal('fetch', f);
+    const r = await FOURNISSEUR_HIGGSFIELD_VIDEO.genererVideo(demandeVideo(image));
+    expect(r.ok).toBe(false);
+    if (!r.ok) { expect(r.jamaisEnvoye).toBe(true); expect(r.erreur).toContain('redirection'); }
+    const urls = f.mock.calls.map((c) => String((c as unknown as [string])[0]));
+    expect(urls.some((u) => u.includes('stockage2'))).toBe(false);
+    expect(urls.some((u) => u.includes('/estimate/'))).toBe(false);
   });
 });
 

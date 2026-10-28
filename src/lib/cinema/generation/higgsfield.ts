@@ -108,6 +108,10 @@ import {
   type FournisseurGenerationIA, type ResultatGenerationIA,
 } from '@/lib/cinema/generation/fournisseur';
 import { coutUniteGeneration } from '@/lib/cinema/generation/couts';
+import {
+  hoteNonPublic, urlMediaSure, transfertSur, DestinationInterdite, REDIRECTIONS_MAX,
+  type Envoi, type InitTransfert, type Resolveur,
+} from '@/lib/cinema/generation/reseau-sur';
 import type { FormatFilm } from '@/lib/cinema/types';
 
 export const ID_HIGGSFIELD_IMAGE = 'higgsfield-soul2';
@@ -192,36 +196,25 @@ export function urlHiggsfieldSure(url: unknown): string | null {
   } catch { return null; }
 }
 
-/**
- * Un hote qui n'est PAS un nom de domaine public : adresse IP numerique (IPv4 ou IPv6, y
- * compris les formes decimale/hexadecimale que `URL` normalise), `localhost`, nom a un seul
- * libelle, ou suffixe interne. Pas de resolution DNS ici : ce filtre ecarte les cibles
- * evidentes (metadonnees cloud, services locaux) sans rien deviner du reseau.
- */
-export function hoteNonPublic(hote: string): boolean {
-  const h = hote.toLowerCase().replace(/\.$/, '');
-  if (!h || h.includes(':') || h.startsWith('[')) return true;      // IPv6 litterale
-  if (/^[0-9.]+$/.test(h)) return true;                              // IPv4 litterale
-  if (!h.includes('.')) return true;                                 // un seul libelle
-  return /\.(local|localhost|internal|lan|home|corp|intranet)$/.test(h) || h === 'localhost';
-}
+export { hoteNonPublic };
 
 /**
  * Une URL rendue par le fournisseur et qu'on va TELECHARGER (ou ou l'on va deposer un
  * fichier) : https obligatoire, nom de domaine public, sans identifiants, port 443 seul.
- * Le fournisseur n'est pas une source de confiance pour designer une cible reseau : une
- * reponse alteree ne doit pas nous faire contacter un service interne.
+ * Ce n'est que le PREMIER filtre : l'adresse reellement contactee et chaque redirection
+ * sont verifiees au moment du transfert (`reseau-sur.ts`).
  */
-function urlHttpsSure(url: unknown): string | null {
-  if (typeof url !== 'string' || !url) return null;
-  try {
-    const u = new URL(url);
-    if (u.protocol !== 'https:') return null;
-    if (u.username || u.password) return null;
-    if (u.port && u.port !== '443') return null;
-    if (hoteNonPublic(u.hostname)) return null;
-    return u.toString();
-  } catch { return null; }
+const urlHttpsSure = urlMediaSure;
+
+/**
+ * LE TRANSPORT DES MEDIAS (depot de l'image source, rapatriement du resultat) — toujours
+ * `transfertSur`. Seule la primitive d'envoi et la resolution sont remplacables, pour les
+ * tests : les controles d'URL, d'adresse et de redirection s'appliquent dans tous les cas.
+ */
+export const reseauMedia: { envoyer?: Envoi; resoudre?: Resolveur } = {};
+
+function transfererMedia(url: string, init: InitTransfert, redirectionsMax: number): Promise<Response> {
+  return transfertSur(url, init, { redirectionsMax, envoyer: reseauMedia.envoyer, resoudre: reseauMedia.resoudre });
 }
 
 type Echec = { ok: false; erreur: string; jamaisEnvoye?: boolean; incertain?: boolean; nonFacture?: boolean };
@@ -232,7 +225,11 @@ async function appelJson(
   const ctrl = new AbortController();
   const minuteur = setTimeout(() => ctrl.abort(), delaiMs);
   try {
-    const r = await fetch(url, { ...init, signal: ctrl.signal });
+    // `redirect: 'error'` : l'API officielle ne redirige jamais. Une redirection ne doit pas
+    // nous mener ailleurs — et ces appels portent les cles du fournisseur. Elle est traitee
+    // comme une panne de reseau : prudente (`incertain` apres une soumission), jamais un
+    // « rien n'est parti ».
+    const r = await fetch(url, { ...init, redirect: 'error', signal: ctrl.signal });
     let corps: unknown = null;
     try { corps = await r.json(); } catch { corps = null; }
     return { ok: true, statut: r.status, corps };
@@ -346,9 +343,11 @@ async function televerserImage(
   const ctrl = new AbortController();
   const minuteur = setTimeout(() => ctrl.abort(), DELAI_IMAGE_MS);
   try {
-    const depot = await fetch(cible, {
+    // Un depot ne suit AUCUNE redirection (0) : un 3xx est un refus.
+    const depot = await transfererMedia(cible, {
       method: 'PUT', headers: enTetesDepot, body: new Uint8Array(octets), signal: ctrl.signal,
-    });
+    }, 0);
+    await depot.body?.cancel().catch(() => {});
     if (!depot.ok) return { ok: false, erreur: `televersement de l'image refuse (HTTP ${depot.status})` };
   } catch (e) {
     return { ok: false, erreur: `televersement de l'image impossible (${e instanceof Error ? e.message.slice(0, 80) : 'inconnu'})` };
@@ -485,12 +484,15 @@ async function attendre(
  * partagee pour qu'AUCUN changement sur ce connecteur ne puisse modifier le
  * comportement de l'autre, qui reste le fournisseur par defaut.
  */
-async function rapatrier(url: string, extension: string): Promise<{ ok: true; fichier: string } | { ok: false; erreur: string }> {
+async function rapatrier(
+  url: string, extension: string,
+): Promise<{ ok: true; fichier: string } | { ok: false; erreur: string; interdit?: boolean }> {
   let octets: Buffer;
   const ctrl = new AbortController();
   const minuteur = setTimeout(() => ctrl.abort(), DELAI_RAPATRIEMENT_MS);
   try {
-    const r = await fetch(url, { signal: ctrl.signal });
+    // Redirections suivies seulement apres re-verification, et au plus `REDIRECTIONS_MAX`.
+    const r = await transfererMedia(url, { method: 'GET', signal: ctrl.signal }, REDIRECTIONS_MAX);
     if (!r.ok) return { ok: false, erreur: `rapatriement impossible (HTTP ${r.status})` };
     const annonce = Number(r.headers?.get?.('content-length'));
     if (Number.isFinite(annonce) && annonce > TAILLE_MAX_RAPATRIEMENT) {
@@ -516,6 +518,8 @@ async function rapatrier(url: string, extension: string): Promise<{ ok: true; fi
     }
     octets = Buffer.concat(morceaux, recu);
   } catch (e) {
+    // Une cible interne n'est pas une panne passagere : la retenter ne la rendra jamais sure.
+    if (e instanceof DestinationInterdite) return { ok: false, erreur: `rapatriement refuse (${e.message})`, interdit: true };
     if (ctrl.signal.aborted) return { ok: false, erreur: `rapatriement : delai depasse (${DELAI_RAPATRIEMENT_MS / 1000} s)` };
     return { ok: false, erreur: e instanceof Error ? e.message.slice(0, 140) : 'rapatriement impossible' };
   } finally {
@@ -633,6 +637,9 @@ export async function consulterHiggsfield(
   // Termine et facture, mais sans media : rien a recuperer — c'est un echec FACTURE.
   if (!url) return { etat: 'echec', nonFacture: false, erreur: 'generation terminee sans media exploitable' };
   const f = await rapatrier(url, operation === 'image' ? 'jpg' : 'mp4');
+  // Cible interne (DNS prive, redirection interne) : meme issue qu'une URL interne
+  // litterale — termine et facture, rien de recuperable, et surtout rien a retenter.
+  if (!f.ok && f.interdit) return { etat: 'echec', nonFacture: false, erreur: f.erreur };
   // Le media existe mais n'a pas pu etre lu maintenant : on retentera.
   if (!f.ok) return { etat: 'injoignable', erreur: f.erreur };
   return { etat: 'termine', fichier: f.fichier, nomSuggere: `higgsfield-reprise.${operation === 'image' ? 'jpg' : 'mp4'}` };

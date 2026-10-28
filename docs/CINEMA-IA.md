@@ -473,6 +473,27 @@ c'est voulu, et non releve par ce lot.
 - L'image source est televersee dans le stockage temporaire du fournisseur
   (`POST /files/generate-upload-url`), ce qui evite d'exposer MinIO ; aucune cle
   n'est envoyee a l'URL presignee.
+- **Transferts de medias sans SSRF** (`generation/reseau-sur.ts`). Les URLs de depot, de
+  media public et de resultat sont rendues par le fournisseur : jamais une cible de
+  confiance, et HTTPS ne suffit pas.
+  - URL : https, port 443, sans identifiants, NOM de domaine (jamais une IP litterale,
+    `localhost`, un nom a un seul libelle ou un suffixe interne).
+  - Adresse : verifiee DANS la resolution utilisee par la connexion (`lookup` de
+    `https.request`) — l'adresse controlee est celle de la socket, sans fenetre entre
+    verification et connexion (pas de rebinding). Refusees : prive, boucle locale,
+    lien-local (metadonnees cloud), CGNAT, documentation, multicast, reserve, et les
+    formes IPv6 encapsulant de l'IPv4 (mappee, NAT64, 6to4, Teredo). Un nom qui melange
+    adresses publiques et privees est refuse en bloc.
+  - Redirections : jamais suivies a l'aveugle ; chaque saut re-verifie (URL puis
+    adresse), 3 au plus ; un depot (PUT) n'en suit aucune. Les appels a l'API officielle
+    (qui portent les cles) refusent toute redirection (`redirect: 'error'`).
+  - En-tetes fournis pour un depot presigne : `Host`, `Content-Length`, `Authorization`,
+    `Cookie` et le cadrage du corps sont retires ; aucune cle n'est jamais envoyee.
+  - Pas de liste figee de domaines (les noms reels du stockage/CDN ne sont pas
+    verifies et peuvent changer) : ce sont les ADRESSES qui sont controlees.
+  - Une cible refusee a la reprise est un echec FACTURE definitif (jamais retente).
+  - Limite : le connecteur Replicate (inchange) rapatrie encore par `fetch` sans ce
+    controle ; hors du perimetre de cette PR.
 - A l'expiration de l'attente, la demande est annulee par
   `POST /requests/{request_id}/cancel`. Seul un **202** libere la depense (annulee
   avant traitement, non facturee) ; 400, 5xx ou echec reseau la laissent
