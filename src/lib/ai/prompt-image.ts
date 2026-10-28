@@ -122,6 +122,14 @@ const LEXIQUE: EntreeLexique[] = [
   { fr: ['sprinte', 'sprinter', 'sprintant'], en: 'sprinting', cat: 'action' },
   { fr: ['saute', 'sauter', 'sautant', 'sautent'], en: 'jumping', cat: 'action' },
   { fr: ['marcher', 'marchant', 'marchent'], en: 'walking', cat: 'action' },
+  // Verbes narratifs (Cinema IA, diagnostic E002 2026-10-28) : le lexique ci-dessus visait
+  // le fitness/lifestyle (danse, course, musculation…) ; ces entrees couvrent les actions de
+  // scene les plus courantes d'un scenario (entrer, sortir, s'avancer), absentes jusqu'ici.
+  { fr: ['entre', 'entrer', 'entrant', 'rentre', 'rentrer', 'rentrant'], en: 'walking in, entering the room', cat: 'action' },
+  { fr: ['sort', 'sortir', 'sortant'], en: 'walking out, leaving the room', cat: 'action' },
+  { fr: ['avance', 'avancer', 'avancant', 's avance', 's avancer'], en: 'stepping forward', cat: 'action' },
+  { fr: ['se tourne', 'se tourner', 'se retourne', 'se retourner'], en: 'turning around', cat: 'action' },
+  { fr: ['regarde', 'regarder', 'regardant'], en: 'looking', cat: 'action' },
   { fr: ['chante', 'chanter', 'chantant', 'chantent'], en: 'singing', cat: 'action' },
   { fr: ['rit', 'rire', 'riant', 'rient', 'eclate de rire'], en: 'laughing', cat: 'action' },
   { fr: ['sourit', 'sourire'], en: 'smiling', cat: 'action' },
@@ -268,6 +276,9 @@ const LEXIQUE: EntreeLexique[] = [
   { fr: ['brouillard', 'brume'], en: 'in the fog', cat: 'decor', prep: '' },
   { fr: ['orage'], en: 'stormy weather', cat: 'decor', prep: 'in' },
   { fr: ['salle de sport', 'salle de musculation', 'salle de fitness', 'gym', 'gymnase'], en: 'gym', cat: 'decor' },
+  { fr: ['salle'], en: 'room', cat: 'decor' },
+  { fr: ['avant le lever du jour', 'avant le lever de jour'], en: 'before daybreak', cat: 'decor', prep: '' },
+  { fr: ['lever du jour', 'lever de jour'], en: 'at daybreak', cat: 'decor', prep: '' },
   { fr: ['plage'], en: 'beach', cat: 'decor', prep: 'on a' },
   { fr: ['foret'], en: 'forest', cat: 'decor' },
   { fr: ['parc'], en: 'park', cat: 'decor' },
@@ -562,10 +573,17 @@ function phraseAnglaise({ structure: s, sujetsPluriels, objetsPluriels }: Analys
  * couleurs) de la photo, mais appliquer librement la nouvelle pose, l'action,
  * le decor, l'ambiance et la lumiere demandes — la posture d'origine n'est
  * jamais imposee.
+ *
+ * `mode: 'video'` (image-vers-video, Cinema IA) : le modele RECOIT DEJA l'image
+ * comme premiere frame — il lui manque le MOUVEMENT, pas une description de scene
+ * statique. Decrit l'ANIMATION attendue (reprend l'action deja analysee, ex. « entre
+ * dans la salle » → « walks into the room ») et demande explicitement de garder le
+ * visage, la coiffure et la tenue de l'image fournie : sans cette consigne, le modele
+ * peut regenerer un sujet different de celui de l'image source pendant l'animation.
  */
 export function construirePromptImage(
   texte: string,
-  options: { mode?: 'texte' | 'reference' } = {},
+  options: { mode?: 'texte' | 'reference' | 'video' } = {},
 ): PromptImageConstruit {
   const analyse = analyser(texte);
   const { structure } = analyse;
@@ -584,6 +602,13 @@ export function construirePromptImage(
       `new scene: ${corps}`,
       'change the pose freely to perform the requested action, new dynamic pose, do not keep the original standing pose',
       'apply the requested setting, mood and lighting, replace the original background',
+    ].join('. ');
+  } else if (options.mode === 'video') {
+    corps = [
+      'Animate this exact image into a short video',
+      'keep the same face, identity, hairstyle and clothing as in the input image, do not change the person or the background',
+      `the motion to animate: ${corps}`,
+      'natural, smooth and realistic movement, subtle and steady camera motion, lighting consistent with the input image',
     ].join('. ');
   } else {
     corps = corps.charAt(0).toUpperCase() + corps.slice(1);

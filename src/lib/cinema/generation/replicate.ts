@@ -33,6 +33,51 @@
  *     output video ». C'est donc CE modele qui est branche, au tarif officiel.
  *     Une video de 5 s coute ainsi 0,45 $ : c'est cher, et le plafond par film
  *     (2 $ par defaut) n'en laisse passer que quatre.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * DIAGNOSTIC « E002 » (2026-10-28) — modele, schema, et correctifs
+ * ─────────────────────────────────────────────────────────────────────────
+ * Deux animations ont echoue avec un code « E002 » qui n'est documente NULLE PART
+ * (ni par Replicate — dont les codes d'erreur officiels font 4 chiffres a partir de
+ * 1000 — ni par WaveSpeed, ni dans ce depot). La VERSION EXACTE du modele branche,
+ * lue le 28/10/2026 sur le schema officiel servi par la page du modele
+ * (`replicate.com/wavespeedai/wan-2.1-i2v-480p/api/schema`) :
+ *
+ *   id de version : `9fd3e244d9da1d6936c96b37584a941c25af001380334a5c194c1bc4fb413314`
+ *   champs d'entree (requis : prompt, image) : prompt, image (format: uri),
+ *   aspect_ratio (enum 16:9|9:16, defaut 16:9), fast_mode (enum, defaut Balanced),
+ *   seed (integer, nullable, AUCUNE borne declaree dans le schema), sample_guide_scale
+ *   (1-10), sample_steps (1-40), sample_shift (0-10), negative_prompt, lora_weights,
+ *   lora_scale (0-4), disable_safety_checker.
+ *
+ * Trois ecarts reels trouves entre ce schema et l'appel envoye (corriges ci-dessous) :
+ *   1. `aspect_ratio` n'etait jamais envoye → retombait sur le defaut `16:9` pour
+ *      TOUT film, y compris les projets `9:16` (le format le plus courant).
+ *   2. Le `seed` par defaut (`graineParDefaut`, `atelier.ts`) est un entier NON
+ *      SIGNE 32 bits (`>>> 0`), donc jusqu'a 4294967295 — au-dela de l'intervalle
+ *      [0, 2^31-1] que la plupart des bibliotheques d'alea (PyTorch, NumPy legacy,
+ *      Cog lui-meme) traitent de maniere garantie. Le schema Replicate ne borne pas
+ *      ce champ, donc CE N'EST PAS PROUVE comme la cause de E002 — mais c'est une
+ *      incoherence reelle avec « une valeur sure », corrigee par principe.
+ *   3. Le prompt video reutilisait la MEME construction que pour une IMAGE fixe
+ *      (`mode: 'texte'`) : une description de scene statique, pas un mouvement a
+ *      animer, et sans consigne explicite de preserver l'identite de l'image
+ *      source. Un nouveau mode `'video'` (`lib/ai/prompt-image.ts`) decrit
+ *      l'ANIMATION attendue et demande explicitement de garder le visage, la
+ *      coiffure et la tenue de l'image fournie.
+ *
+ * AUCUNE preuve directe (log de prediction reel) n'a pu etre consultee ici — lecture
+ * seule, aucun appel reel autorise pour cette mission. Le libelle exact du message
+ * d'erreur (pas seulement « E002 ») reste le chainon manquant pour confirmer laquelle
+ * de ces causes a reellement declenche les deux echecs.
+ *
+ * MODELE ALTERNATIF ENVISAGEABLE (propose, PAS branche, PAS appele) : si `wan-2.1-i2v-480p`
+ * reste instable, `bytedance/seedance-1-lite` accepte aussi `image` + `last_frame_image`
+ * et, en plus, jusqu'a 4 `reference_images` — utile pour la coherence de personnage — a
+ * un tarif lu sur sa page officielle le 27/10/2026 de 0,018 $/s (480p) a 0,036 $/s (720p),
+ * soit 2,5 a 5 fois moins cher que le modele actuel (0,09 $/s). Changer de modele est un
+ * chantier a part (nouveau schema, nouveaux tests, nouvelle lecture de tarif datee) : non
+ * fait dans ce diagnostic.
  */
 import Replicate from 'replicate';
 import os from 'os';
@@ -170,6 +215,26 @@ async function genererImage(demande: DemandeImageGeneration): Promise<ResultatGe
 }
 
 async function genererVideo(demande: DemandeVideoGeneration): Promise<ResultatGenerationIA> {
+  // ⚠️ ACCESSIBILITE VERIFIEE AVANT TOUT APPEL (diagnostic E002, 2026-10-28) : `sonderMedia`
+  // (ffprobe local, deja utilise par `medias.ts` pour l'import manuel) confirme que le
+  // fichier est REELLEMENT une image decodable, et donne ses dimensions reelles — jamais
+  // devinees depuis l'extension ou les seuls octets de tete. Un fichier tronque, corrompu,
+  // ou qui n'est pas une image est refuse ICI, avant tout centime depense.
+  try {
+    const { sonderMedia } = await import('@/lib/cinema/medias');
+    const sonde = await sonderMedia(demande.fichierImageSource);
+    if (!sonde || sonde.genre !== 'image') {
+      return {
+        ok: false, erreur: 'Replicate (video) : image source illisible ou inaccessible (sonde ffprobe)',
+        jamaisEnvoye: true,
+      };
+    }
+  } catch (e) {
+    return {
+      ok: false, erreur: `Replicate (video) : verification de l'image source impossible (${e instanceof Error ? e.message.slice(0, 80) : 'inconnu'})`,
+      jamaisEnvoye: true,
+    };
+  }
   // L'image source est un fichier LOCAL : le modele veut une donnee, on lui passe un data URI.
   //
   // ⚠️ LE TYPE DECLARE DOIT ETRE CELUI DES OCTETS, PAS UNE SUPPOSITION. `genererImage`
@@ -177,11 +242,22 @@ async function genererVideo(demande: DemandeVideoGeneration): Promise<ResultatGe
   // annoncee `image/png` sans jamais etre regardee — une incoherence reelle entre le
   // contenu et son en-tete. Meme principe que `lib/storage/image-signature.ts`, deja
   // applique a `lib/ai/affiche-reference.ts` : detecter le format reel, jamais le deviner.
+  //
+  // ⚠️ TAILLE (diagnostic E002, 2026-10-28) : la documentation OFFICIELLE de Replicate pour
+  // les fichiers d'entree (`replicate.com/docs/topics/predictions/input-files`) dit qu'un
+  // data URI inline « is only recommended if the file is less than 1MB » — au-dela, elle
+  // recommande un VRAI upload (URL signee), comme le fait deja `lib/ai/affiche-reference.ts`
+  // (`input_image: signerSiNotreStockage(...)`) pour un autre modele. Aucune limite stricte
+  // n'est documentee au-dela de cette recommandation : la taille REELLE est donc mesuree et
+  // jointe a toute erreur distante, plutot que devinee — une piste plus concrete que le seed
+  // pour diagnostiquer un futur E002, non prouvee ici par manque d'acces aux logs.
   let image: string;
+  let octetsImage = 0;
   try {
     const { readFile } = await import('fs/promises');
     const { detecterSignatureImage } = await import('@/lib/storage/image-signature');
     const octets = await readFile(demande.fichierImageSource);
+    octetsImage = octets.length;
     const signature = detecterSignatureImage(octets);
     if (!signature) {
       return {
@@ -204,8 +280,21 @@ async function genererVideo(demande: DemandeVideoGeneration): Promise<ResultatGe
   if (!demande.prompt || !demande.prompt.trim()) {
     return { ok: false, erreur: 'Replicate (video) : prompt manquant — le fournisseur refuse une image seule', jamaisEnvoye: true };
   }
-  const r = await appeler(MODELE_VIDEO, { image, prompt: demande.prompt, seed: demande.graine }, DELAI_VIDEO_MS);
-  if (!r.ok) return { ok: false, erreur: `Replicate (video) : ${r.erreur}`, jamaisEnvoye: r.jamaisEnvoye, incertain: r.incertain };
+  // ⚠️ SANS CE CHAMP, LE MODELE RETOMBE SUR SON DEFAUT OFFICIEL (`16:9`) QUEL QUE SOIT LE
+  // FORMAT REEL DU FILM (diagnostic E002, 2026-10-28) : un projet `9:16` — le format vertical
+  // le plus courant sur Studiio — recevait silencieusement une video horizontale, deformee
+  // au montage. Les deux seules valeurs acceptees par le schema officiel sont EXACTEMENT
+  // celles que `rapport()` produit deja pour l'image.
+  const r = await appeler(MODELE_VIDEO, { image, prompt: demande.prompt, seed: demande.graine, aspect_ratio: rapport(demande.format) }, DELAI_VIDEO_MS);
+  if (!r.ok) {
+    // La taille de l'image envoyee est jointe ICI, pas devinee apres coup : au-dela de 1 Mo,
+    // Replicate ne recommande plus le data URI inline (voir le commentaire plus haut).
+    const tailleMo = Math.round((octetsImage / 1_000_000) * 100) / 100;
+    return {
+      ok: false, erreur: `Replicate (video) : ${r.erreur} (image envoyee : ${tailleMo} Mo)`,
+      jamaisEnvoye: r.jamaisEnvoye, incertain: r.incertain,
+    };
+  }
   const f = await rapatrier(r.url, 'mp4');
   if (!f.ok) return { ok: false, erreur: `Replicate (video) : ${f.erreur}` };
   return { ok: true, fichier: f.fichier, nomSuggere: `replicate-${demande.graine}.mp4` };
