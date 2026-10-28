@@ -9,13 +9,25 @@ import { useTranslations } from '@/i18n/client';
 import { LanguageSelector } from '@/components/LanguageSelector';
 import { ETAT_INTERACTIF_SANS_FOND, ETAT_SELECTION } from '@/lib/ui/etats';
 
-const menuKeys = [
+interface EntreeMenu {
+  icon: typeof LayoutDashboard;
+  key: string;
+  href: string;
+  color: string;
+  /** Affichee seulement si le serveur confirme l'acces a Cinema IA (`cinemaDisponible`). */
+  siCinema?: true;
+}
+
+const menuKeys: EntreeMenu[] = [
   { icon: LayoutDashboard, key: 'dashboard', href: '/dashboard', color: '#7C3AED' },
   // Une SEULE entree « Creer ». Le parcours guide, longtemps second sous
   // « Creer (simple) », EST desormais `/dashboard/creer` : garder deux entrees
   // renverrait vers deux editeurs concurrents. On conserve son icone et sa
   // couleur (Wand2 / violet), pas celles de l'ancien editeur.
   { icon: Wand2, key: 'create', href: '/dashboard/creer', color: '#A855F7' },
+  // `Film`, pas `Clapperboard` (deja pris par « Media ») : l'audit d'icones
+  // (CLAUDE.md, point E) note la famille Film/Video/Clapperboard deja chargee.
+  { icon: Film, key: 'cinema', href: '/dashboard/cinema', color: '#F43F5E', siCinema: true },
   { icon: UserSquare2, key: 'avatar', href: '/dashboard/avatar', color: '#EC4899' },
   { icon: Calendar, key: 'calendar', href: '/dashboard/calendar', color: '#3B82F6' },
   { icon: Library, key: 'library', href: '/dashboard/library', color: '#8B5CF6' },
@@ -91,7 +103,7 @@ export function Sidebar() {
       </Link>
 
       <nav className="space-y-1.5 flex-1">
-        {menuKeys.map(({ icon: Icon, key, href, color }) => {
+        {menuKeys.filter((e) => !e.siCinema || cinemaDisponible).map(({ icon: Icon, key, href, color }) => {
           // Le `+ '/'` borne la comparaison sur un segment complet. Sans lui,
           // `/dashboard/creer` etant un prefixe de `/dashboard/creer-avance`,
           // l'entree « Creer » s'allumerait sur l'ancien editeur. Les
@@ -122,34 +134,6 @@ export function Sidebar() {
             </Link>
           );
         })}
-
-        {cinemaDisponible && (() => {
-          const href = '/dashboard/cinema';
-          const isActive = pathname === href || pathname.startsWith(`${href}/`);
-          return (
-            <Link
-              href={href}
-              onClick={handleNavClick}
-              aria-current={isActive ? 'page' : undefined}
-              className={`relative flex items-center gap-3 px-3 py-2.5 rounded-xl ${ETAT_INTERACTIF_SANS_FOND} ${
-                isActive ? ETAT_SELECTION : 'text-gray-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              {isActive && <span aria-hidden data-barre className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-purple-400" />}
-              <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                style={{ backgroundColor: '#F43F5E20', color: '#F43F5E' }}
-              >
-                {/* `Film`, pas `Clapperboard` (déjà pris par « Média ») : l'audit
-                    d'icônes (CLAUDE.md, point E) note la famille Film/Video/
-                    Clapperboard déjà chargée dans l'éditeur — ici, aucune des deux
-                    autres entrées de ce menu ne l'utilise. */}
-                <Film size={18} />
-              </div>
-              <span className={`font-medium text-sm ${isActive ? 'text-white' : ''}`}>{t('cinema')}</span>
-            </Link>
-          );
-        })()}
 
         {isAdmin && (
           <Link

@@ -55,6 +55,32 @@ describe('entrée Cinema IA — visible seulement si le serveur confirme', () =>
     for (const lien of liens) expect(lien.getAttribute('href')).toBe('/dashboard/cinema');
   });
 
+  /** Les href du menu, dans l'ordre, pour UNE des deux copies (bureau). */
+  const ordreDuMenu = () => {
+    const nav = document.querySelector('aside nav') as HTMLElement;
+    return [...nav.querySelectorAll('a')].map((a) => a.getAttribute('href'));
+  };
+
+  it('Cinema IA est JUSTE SOUS « Créer », une seule fois, avec le même lien', async () => {
+    reponseFilms = () => ({ ok: true, generationIa: false, generationMode: null, films: [] });
+    render(<Sidebar />);
+    await screen.findAllByRole('link', { name: 'cinema' });
+    expect(ordreDuMenu().slice(0, 4)).toEqual([
+      '/dashboard', '/dashboard/creer', '/dashboard/cinema', '/dashboard/avatar',
+    ]);
+    // Une entrée par copie (bureau + mobile), jamais deux dans la même liste.
+    expect(ordreDuMenu().filter((h) => h === '/dashboard/cinema')).toHaveLength(1);
+    expect(screen.getAllByRole('link', { name: 'cinema' })).toHaveLength(2);
+  });
+
+  it('Cinema IA fermé : le reste du menu garde son ordre, sans trou', async () => {
+    render(<Sidebar />);
+    await waitFor(() => expect(screen.getAllByText('dashboard').length).toBeGreaterThan(0));
+    expect(ordreDuMenu().slice(0, 4)).toEqual([
+      '/dashboard', '/dashboard/creer', '/dashboard/avatar', '/dashboard/calendar',
+    ]);
+  });
+
   it('l’appel réseau échoue : le lien reste caché (fermé par défaut, jamais ouvert par erreur)', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
