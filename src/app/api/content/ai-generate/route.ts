@@ -4,80 +4,24 @@ import { shortenForCard } from '@/lib/smart-content';
 import { briefPourPrompt } from '@/lib/creer/brief';
 import { detectAndReportServiceError } from '@/lib/service-alerts';
 import { carteSansChiffresInventes, chiffresAutorises, CONSIGNE_SANS_CHIFFRES, texteSansChiffresInventes } from '@/lib/contenu/chiffres-sources';
+import {
+  DELAI_TEXTE_MS, MODELE_TEXTE_PRIMAIRE, MODELE_TEXTE_REPLI,
+  appelerModeleTexte, genererTexteIA,
+} from '@/lib/ia/texte';
 
-// Fast model for card generation. Haiku 4.5 is 5-10× faster than Sonnet on
-// short JSON responses, which prevents client-side 8s AbortError timeouts
-// during batch (batchCount=3..10) exports where we make N sequential calls.
-const PRIMARY_MODEL = 'claude-haiku-4-5-20251001';
-const FALLBACK_MODEL = 'claude-3-5-sonnet-20241022';
-// Server-side timeout — cap each Anthropic call. Must be short enough that
-// batch variations don't stall a whole export.
-// 30s: Claude Haiku 4.5 usually answers in 3-12s, but spikes (cold start,
-// high traffic) can push it past 20s. We'd rather wait a bit longer than
-// punch through to the local fallback, which produces materially lower
-// quality content.
-const AI_TIMEOUT_MS = 30_000;
-
-/**
- * Extracts the `text` value from a Claude response targeted at the
- * single-field prompt ({"text":"..."}). Tries in order:
- *   1. Strip markdown fences (```json ... ```) and JSON.parse
- *   2. Locate the first {...} JSON object and parse it
- *   3. Fall back to a permissive regex that tolerates escaped quotes
- * Returns null if every strategy fails so the caller can surface a clear
- * error instead of silently returning the wrong value.
- */
-function extractFieldText(raw: string): string | null {
-  let s = raw.trim();
-  // Strip markdown code fences: ```json ... ``` or ``` ... ```
-  if (s.startsWith('```')) {
-    s = s.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?\s*```$/, '');
-  }
-  // Direct JSON.parse
-  try {
-    const parsed = JSON.parse(s);
-    if (parsed && typeof parsed.text === 'string') return parsed.text.trim();
-  } catch { /* fall through */ }
-  // Extract the first balanced JSON object by scanning braces
-  const first = s.indexOf('{');
-  const last = s.lastIndexOf('}');
-  if (first !== -1 && last > first) {
-    try {
-      const parsed = JSON.parse(s.substring(first, last + 1));
-      if (parsed && typeof parsed.text === 'string') return parsed.text.trim();
-    } catch { /* fall through */ }
-  }
-  // Permissive regex — tolerates escaped quotes inside the value
-  const m = s.match(/"text"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-  if (m) return m[1].replace(/\\"/g, '"').trim();
-  // Last resort: if the raw response is just plain text (no JSON at all),
-  // take the whole thing. Strips surrounding quotes if present.
-  const stripped = s.replace(/^['"]|['"]$/g, '').trim();
-  if (stripped && !stripped.includes('{') && stripped.length < 200) return stripped;
-  return null;
-}
+// Modeles, delai et appel HTTP : le moteur de texte PARTAGE (`lib/ia/texte.ts`), extrait
+// de ce fichier pour que l'aide a la redaction de Cinema IA passe par le MEME chemin —
+// meme cle serveur, memes modeles, meme repli. Les valeurs n'ont pas change.
+const PRIMARY_MODEL = MODELE_TEXTE_PRIMAIRE;
+const FALLBACK_MODEL = MODELE_TEXTE_REPLI;
+const AI_TIMEOUT_MS = DELAI_TEXTE_MS;
 
 async function callAnthropic(
   apiKey: string,
   body: Record<string, any>,
   model: string,
 ): Promise<Response> {
-  const ac = new AbortController();
-  const to = setTimeout(() => ac.abort(), AI_TIMEOUT_MS);
-  try {
-    return await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({ ...body, model }),
-      signal: ac.signal,
-    });
-  } finally {
-    clearTimeout(to);
-  }
+  return appelerModeleTexte(apiKey, body, model, AI_TIMEOUT_MS);
 }
 
 // POST /api/content/ai-generate - Generate rich infographic content using Claude
@@ -132,70 +76,27 @@ export async function POST(req: NextRequest) {
       // que la derniere ligne lue par le modele reste la forme attendue.
       const prompt = (fieldPrompts[fieldType] || fieldPrompts.title)
         + (briefContext ? `${briefContext}\nRéponds UNIQUEMENT en JSON: {"text":"..."}` : '');
-      // Try primary model first; if it returns a non-200 (commonly a
-      // transient 400/529 on Haiku under load) retry once on Sonnet.
-      const callModel = async (model: string) => {
-        const r = await callAnthropic(apiKey, {
-          max_tokens: 256,
-          messages: [{ role: 'user', content: prompt }],
-        }, model);
-        if (!r.ok) {
-          const errText = await r.text().catch(() => '');
-          console.error('[AI-Generate] field call not ok:', fieldType, 'model:', model, 'status:', r.status, 'body:', errText.slice(0, 500));
-          return { ok: false as const, status: r.status, errText };
-        }
-        const d = await r.json();
-        const block = d.content?.find((c: any) => c.type === 'text');
-        const raw = block?.text as string | undefined;
-        console.log('[AI-Generate] raw response for', fieldType, 'model:', model, '—', raw?.slice(0, 300));
-        return { ok: true as const, raw };
-      };
-      // Billing/credit-balance errors from Anthropic are permanent until the
-      // org tops up — retrying a second model yields the same 400. Treat
-      // them as a soft 503 and let the client fall back to local generation.
-      const isBillingError = (errText: string): boolean =>
-        errText.toLowerCase().includes('credit balance is too low')
-        || errText.toLowerCase().includes('plans & billing')
-        || errText.toLowerCase().includes('billing');
-      try {
-        let result = await callModel(PRIMARY_MODEL);
-        if (!result.ok && isBillingError(result.errText)) {
-          console.warn('[AI-Generate] Anthropic billing error — skipping fallback model, signaling local fallback');
-          return NextResponse.json({
-            success: false,
-            error: 'Service IA temporairement indisponible, utilisation du mode local',
-            useLocalFallback: true,
-          }, { status: 503 });
-        }
-        if (!result.ok) {
-          console.warn('[AI-Generate] primary model failed, retrying on fallback:', FALLBACK_MODEL);
-          result = await callModel(FALLBACK_MODEL);
-          if (!result.ok && isBillingError(result.errText)) {
-            console.warn('[AI-Generate] Anthropic billing error on fallback model — signaling local fallback');
-            return NextResponse.json({
-              success: false,
-              error: 'Service IA temporairement indisponible, utilisation du mode local',
-              useLocalFallback: true,
-            }, { status: 503 });
-          }
-        }
-        if (!result.ok) {
-          return NextResponse.json({ success: false, error: `AI status ${result.status}` }, { status: 502 });
-        }
-        if (!result.raw) {
-          console.error('[AI-Generate] no text block in response for', fieldType);
-          return NextResponse.json({ success: false, error: 'Empty AI response' }, { status: 502 });
-        }
-        const extracted = extractFieldText(result.raw);
-        if (extracted) {
-          return NextResponse.json({ success: true, text: extracted });
-        }
-        console.error('[AI-Generate] could not extract "text" from:', result.raw.slice(0, 300));
-        return NextResponse.json({ success: false, error: 'Could not parse AI response' }, { status: 502 });
-      } catch (err) {
-        console.error('[AI-Generate] field call threw:', fieldType, err);
-        return NextResponse.json({ success: false, error: (err as Error).message || 'AI generation failed' }, { status: 500 });
+      // Le moteur partage essaie le modele rapide, retombe sur Sonnet, et s'arrete net sur
+      // une erreur de facturation. Les reponses HTTP ci-dessous sont celles d'avant.
+      const issue = await genererTexteIA({ cleApi: apiKey, prompt, maxTokens: 256 });
+      if (issue.ok) return NextResponse.json({ success: true, text: issue.texte });
+      if (issue.motif === 'indisponible') {
+        console.warn('[AI-Generate] Anthropic billing error — signaling local fallback');
+        return NextResponse.json({
+          success: false,
+          error: 'Service IA temporairement indisponible, utilisation du mode local',
+          useLocalFallback: true,
+        }, { status: 503 });
       }
+      if (issue.motif === 'reponse') {
+        console.error('[AI-Generate] field call unusable:', fieldType, issue.detail);
+        return NextResponse.json({
+          success: false,
+          error: issue.statut ? `AI status ${issue.statut}` : (issue.detail === 'reponse vide' ? 'Empty AI response' : 'Could not parse AI response'),
+        }, { status: 502 });
+      }
+      console.error('[AI-Generate] field call threw:', fieldType, issue.detail);
+      return NextResponse.json({ success: false, error: issue.detail }, { status: 500 });
     }
 
     // Mode "video overlay only" — generate just a short overlay text for the video

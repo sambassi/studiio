@@ -28,6 +28,7 @@ import * as refsRoute from '@/app/api/cinema/films/[id]/references/route';
 import * as refPersoRoute from '@/app/api/cinema/films/[id]/references/[personnageId]/route';
 import * as generationRoute from '@/app/api/cinema/films/[id]/generation/route';
 import * as quotaRoute from '@/app/api/cinema/films/[id]/quota/route';
+import * as redactionRoute from '@/app/api/cinema/redaction/route';
 
 const USER = { id: 'abcdef01-1111-4111-8111-111111111111', email: 'quelquun@example.org' };
 const env = (v?: string) => ({ CINEMA_ACTIVE: v }) as unknown as NodeJS.ProcessEnv;
@@ -108,13 +109,16 @@ describe('interrupteur — TOUTES les routes API', () => {
     ['generation POST', () => generationRoute.POST(req('POST'), P)],
     ['quota GET', () => quotaRoute.GET(req(), P)],
     ['quota POST', () => quotaRoute.POST(req('POST'), P)],
+    // Aide a la redaction : elle ne cree rien, mais elle parle a un fournisseur — donc
+    // elle est fermee comme les autres quand le module est eteint ou la session absente.
+    ['redaction POST', () => redactionRoute.POST(req('POST'))],
   ];
 
-  it('le balayage couvre chaque route.ts : 14 fichiers, 18 handlers, tous derriere sessionCinema', () => {
+  it('le balayage couvre chaque route.ts : 15 fichiers, 19 handlers, tous derriere sessionCinema', () => {
     const trouves: string[] = [];
     const marche = (d: string) => { for (const n of readdirSync(d)) { const c = path.join(d, n); statSync(c).isDirectory() ? marche(c) : n === 'route.ts' && trouves.push(c); } };
     marche('src/app/api/cinema');
-    expect(trouves.length).toBe(14);
+    expect(trouves.length).toBe(15);
     for (const f of trouves) expect(readFileSync(f, 'utf8')).toMatch(/sessionCinema\b/);
     const handlers = trouves.reduce((n, f) => n + (readFileSync(f, 'utf8').match(/export async function (GET|POST|PATCH|PUT|DELETE)/g) ?? []).length, 0);
     expect(handlers).toBe(appels.length);

@@ -729,3 +729,46 @@ une video ni une image : un texte habille en ecran de film.
   appel serveur ; badge « Démonstration · clip d'exemple ». Ce ne sont pas des videos d'IA.
 - Retire : le filigrane « STUDIIO CINEMA IA », le bloc central de texte et la ligne
   « lieu — cadre » superposes a l'image ; la legende du plan est une ligne discrete en bas.
+
+## 19. Decouvrabilite et responsive (apres #635)
+
+- **Demonstration gratuite sans scenario** : « Voir une démonstration gratuite » dans l'aperçu vide
+  ouvre `DemoGratuite` (4 clips locaux, un par mouvement de camera, controles natifs, badge
+  « Démonstration », « pas des vidéos générées par l'IA »). Aucun appel serveur, aucun credit.
+- **Aperçu vide** : sa hauteur suit son contenu (plus de cadre 16:9 vide) ; le bouton agrandir
+  desactive reste en haut a droite.
+- **Responsive** : styles en 2 colonnes (3 des `sm`), exemples en 1 colonne (2 des `sm`),
+  personnages nom + role sur une ligne et apparence sur toute la largeur.
+- **4e exemple « Signal perdu » (science-fiction)** : histoire, 2 personnages, 2 repliques, 4 scenes ;
+  il propose aussi le style Science-fiction (simple choix d'ecran, rien n'est genere).
+- **Aide a la redaction (icone etincelle)** : 100 % locale (`AideRedaction.tsx`), sans IA ni credit.
+  Elle n'a donc ni estimation ni service indisponible ; une future aide generative passera par une
+  action explicite avec cout affiche.
+
+## 20. Aide a la redaction assistee : le moteur de texte PARTAGE
+
+L'icone etincelle a cote de l'histoire (`components/cinema/AideRedaction.tsx`) propose deux
+familles d'actions :
+
+- **Mise en forme**, calculee dans le navigateur (une phrase par ligne, ajouter une replique) ;
+- **Redaction assistee** : 6 actions (rediger depuis une idee, ameliorer, developper, proposer
+  des dialogues, structurer en scenes, raccourcir), via `POST /api/cinema/redaction`.
+
+**Aucun nouveau fournisseur.** La route appelle `lib/ia/texte.ts` — le moteur de texte de
+Studiio, EXTRAIT de `/api/content/ai-generate` (celui de « Creer ») : meme cle serveur
+`ANTHROPIC_API_KEY`, memes modeles (Haiku puis Sonnet en repli), meme lecture des reponses,
+meme arret net sur une erreur de facturation. `/api/content/ai-generate` passe desormais par ce
+module : son comportement et ses reponses HTTP sont inchanges (tests `ai-generate-*`).
+
+**Couts** : comme les textes de « Creer », c'est la cle de Studiio ; aucun credit utilisateur
+n'est debite, aucun plafond Cinema n'est touche (ils bornent les IMAGES et VIDEOS, ailleurs).
+
+**Contexte envoye** (`lib/cinema/redaction.ts`, module pur) : genre/style, personnages avec
+leur apparence (les SEULS autorises — le modele n'en invente aucun), nombre de scenes, format,
+titre et texte deja saisi. Le prompt porte les regles du decoupage existant : une phrase = un
+plan, repliques `Nom dit : « ... »` sans ponctuation forte dans les guillemets.
+
+**Rien n'est remplace automatiquement** : la proposition s'affiche en APERCU modifiable, avec ce
+que le decoupage en ferait (plans, repliques, prenoms hors casting, repliques cassees). Elle ne
+remplace l'histoire que sur « Appliquer » ; « Rejeter » ou Echap la jette, texte intact. Une
+panne (service indisponible, reseau) est DITE, et ne modifie jamais le texte.

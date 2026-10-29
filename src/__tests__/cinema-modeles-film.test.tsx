@@ -21,9 +21,10 @@ afterEach(() => cleanup());
 const src = (p: string) => readFileSync(p, 'utf8');
 
 describe('les exemples sont exploitables par le decoupage existant', () => {
-  it('trois themes distincts, aucun doublon', () => {
-    expect(MODELES_FILM).toHaveLength(3);
-    expect(new Set(MODELES_FILM.map((m) => m.id)).size).toBe(3);
+  it('quatre themes distincts, aucun doublon', () => {
+    expect(MODELES_FILM).toHaveLength(4);
+    expect(new Set(MODELES_FILM.map((m) => m.id)).size).toBe(4);
+    expect(MODELES_FILM.map((m) => m.theme.toLowerCase()).join(' ')).toMatch(/science-fiction/);
     expect(MODELES_FILM.map((m) => m.theme.toLowerCase()).join(' ')).toMatch(/aventure/);
     expect(MODELES_FILM.map((m) => m.theme.toLowerCase()).join(' ')).toMatch(/romance/);
     expect(MODELES_FILM.map((m) => m.theme.toLowerCase()).join(' ')).toMatch(/publicite/);
@@ -36,9 +37,9 @@ describe('les exemples sont exploitables par le decoupage existant', () => {
     }
   });
 
-  it('trois vignettes au CONTENU distinct, sans texte incruste qui serait rogne', () => {
+  it('quatre vignettes au CONTENU distinct, sans texte incruste qui serait rogne', () => {
     const contenus = MODELES_FILM.map((m) => src(join('public', m.vignette.replace(/^\//, ''))));
-    expect(new Set(contenus).size).toBe(3);
+    expect(new Set(contenus).size).toBe(4);
     for (const c of contenus) {
       expect(c).toMatch(/^<svg[^>]*\swidth="\d+"[^>]*\sheight="\d+"/);
       expect(c).not.toMatch(/<text\b/);
@@ -163,5 +164,20 @@ describe('un modele n’ecrase jamais une saisie sans confirmation', () => {
     const page = src('src/app/dashboard/cinema/page.tsx');
     expect(page).toContain('const aDesSaisies = !!film');
     expect(page).toContain('(titre === TITRE_EXEMPLE && histoire === HISTOIRE_EXEMPLE) || (!titre.trim() && !histoire.trim())');
+  });
+});
+
+describe('exemple science-fiction : complet, et sans aucune génération', () => {
+  const sf = MODELES_FILM.find((m) => m.id === 'scifi')!;
+  it('histoire, deux personnages, deux répliques, quatre scènes, ambiance et style science-fiction', () => {
+    expect(sf.nom).toBe('Signal perdu');
+    expect(sf.valeurs.nbScenes).toBe(4);
+    expect(sf.valeurs.casting.map((c) => c.nom)).toEqual(['Ada', 'Orion']);
+    expect(phrases(sf.valeurs.histoire).map(citation).filter(Boolean)).toHaveLength(2);
+    expect(sf.scenes).toHaveLength(4);
+    expect(sf.ambiance).toMatch(/neons|etoiles/);
+    expect(sf.valeurs.styleCinema).toBe('scifi');
+    // Les autres exemples ne choisissent aucun style : leur comportement est inchange.
+    for (const m of MODELES_FILM.filter((x) => x.id !== 'scifi')) expect(m.valeurs.styleCinema).toBeUndefined();
   });
 });

@@ -28,6 +28,7 @@ import { plansARegenerer } from '@/lib/cinema/direction/signature';
 import type { IdCameraCinema, IdStyleCinema } from '@/lib/cinema/types';
 import ModelesFilm, { type ModeleFilm } from '@/components/cinema/ModelesFilm';
 import AideRedaction from '@/components/cinema/AideRedaction';
+import DemoGratuite from '@/components/cinema/DemoGratuite';
 import { MediaDuPlan, EmplacementVide, Storyboard, appliquerDemo, bilanMedias } from '@/components/cinema/ApercuStoryboard';
 
 interface SegmentApi {
@@ -340,6 +341,8 @@ export default function CinemaPage() {
   const [format, setFormat] = useState<'16:9' | '9:16'>('16:9');
   const [qualite, setQualite] = useState('standard');
   /** Style choisi AVANT la creation du film ; une fois le film charge, c'est le sien qui fait foi. */
+  /** Demonstration gratuite sans scenario (4 clips locaux) : un simple affichage, rien n'est enregistre. */
+  const [demoLibre, setDemoLibre] = useState(false);
   const [styleAvantFilm, setStyleAvantFilm] = useState<IdStyleCinema | null>(null);
   const [nbScenes, setNbScenes] = useState(4);
   const [casting, setCasting] = useState([
@@ -412,6 +415,8 @@ export default function CinemaPage() {
     setQualite(m.valeurs.qualite);
     setNbScenes(m.valeurs.nbScenes);
     setCasting(m.valeurs.casting.map((c) => ({ ...c })));
+    // Un exemple peut proposer un style (ex. science-fiction) : un simple choix d'ecran, rien n'est genere.
+    if (m.valeurs.styleCinema) setStyleAvantFilm(m.valeurs.styleCinema);
     setPanneauxOuverts((x) => ({ ...x, 1: true }));
   };
 
@@ -890,8 +895,10 @@ export default function CinemaPage() {
                 placeholder="Une phrase par plan. Pour une replique, mettez-la entre guillemets apres le nom du personnage."
                 className="w-full rounded-lg bg-slate-950 border border-slate-700 py-2 pl-3 pr-11 text-sm leading-relaxed"
               />
-              {/* Aide a la redaction : locale, aucune IA payante (voir le composant). */}
+              {/* Aide a la redaction : mise en forme locale + redaction assistee par le
+                  moteur de texte PARTAGE de Studiio (aucun credit debite). */}
               <AideRedaction
+                contexte={{ titre, styleCinema: styleAffiche, nbScenes, format, casting }}
                 histoire={histoire}
                 surChanger={setHistoire}
                 personnages={casting.map((c) => c.nom).filter(Boolean)}
@@ -929,10 +936,10 @@ export default function CinemaPage() {
           >
             <div className="space-y-3">
               {casting.map((p, i) => (
-                <div key={i} className="grid grid-cols-1 md:grid-cols-4 gap-2">
-                  <input value={p.nom} onChange={(e) => setCasting(casting.map((c, k) => k === i ? { ...c, nom: e.target.value } : c))} placeholder="Nom" className="rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm" />
-                  <input value={p.role} onChange={(e) => setCasting(casting.map((c, k) => k === i ? { ...c, role: e.target.value } : c))} placeholder="Role" className="rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm" />
-                  <input value={p.description} onChange={(e) => setCasting(casting.map((c, k) => k === i ? { ...c, description: e.target.value } : c))} placeholder="Apparence (reference)" className="rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm md:col-span-2" />
+                <div key={i} className="grid grid-cols-2 gap-2">
+                  <input value={p.nom} onChange={(e) => setCasting(casting.map((c, k) => k === i ? { ...c, nom: e.target.value } : c))} placeholder="Nom" className="min-w-0 rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm" />
+                  <input value={p.role} onChange={(e) => setCasting(casting.map((c, k) => k === i ? { ...c, role: e.target.value } : c))} placeholder="Role" className="min-w-0 rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm" />
+                  <input value={p.description} onChange={(e) => setCasting(casting.map((c, k) => k === i ? { ...c, description: e.target.value } : c))} placeholder="Apparence (reference)" className="col-span-2 rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm" />
                 </div>
               ))}
             </div>
@@ -1165,8 +1172,10 @@ export default function CinemaPage() {
           <div id="cinema-apercu" className="scroll-mt-4">
             {montage ? (
               <Apercu montage={montage} surPreparerVoix={preparerVoix} voixEnCours={enCours === 'voix'} />
+            ) : demoLibre ? (
+              <DemoGratuite surQuitter={() => setDemoLibre(false)} />
             ) : (
-              <ApercuVide format={format} />
+              <ApercuVide format={format} surDemo={() => setDemoLibre(true)} />
             )}
           </div>
 
@@ -1387,33 +1396,35 @@ function SuiviGenerationPlan({ generation, confirmation, prix, surConfirmer, sur
  * format choisi (`ratioCadre`, style en ligne : les classes arbitraires sont purgees en
  * production).
  */
-function ApercuVide({ format }: { format: string }) {
-  const portrait = format === '9:16';
+function ApercuVide({ format, surDemo }: { format: string; surDemo: () => void }) {
   const infobulle = 'L’apercu agrandi sera disponible une fois le scenario compose';
   return (
     <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
       <h2 className="font-semibold mb-4 flex items-center gap-2">
         <Play className="w-4 h-4 text-violet-400" /> 6. Apercu
       </h2>
+      {/* La hauteur suit le CONTENU : un cadre vide n'a pas a occuper un ecran de film. */}
       <div
-        className="relative mx-auto w-full overflow-hidden rounded-xl border border-dashed border-slate-700"
+        className="relative mx-auto w-full overflow-hidden rounded-xl border border-dashed border-slate-700 px-6 py-8"
         style={{
-          maxWidth: portrait ? 270 : 640,
-          aspectRatio: ratioCadre(portrait ? '9:16' : '16:9'),
-          minHeight: portrait ? 320 : 200,
+          maxWidth: 640,
           background: 'radial-gradient(120% 100% at 25% 15%, rgba(124,58,237,0.18) 0%, rgba(15,23,42,0.6) 55%, #0A0A0F 100%)',
         }}
       >
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center">
+        <div className="flex flex-col items-center gap-2 text-center">
           <span className="flex h-11 w-11 items-center justify-center rounded-full border border-violet-500/30 bg-violet-500/10">
             <Film className="w-5 h-5 text-violet-300" />
           </span>
           <p className="text-sm font-medium text-slate-200">Votre film apparaitra ici</p>
           <p className="text-xs text-slate-400">Ecrivez l’histoire, puis composez le scenario.</p>
-        </div>
-        <div className="absolute bottom-3 left-4 right-4 flex justify-between text-[10px] text-slate-500">
-          <span>{format}</span>
-          <span>STUDIIO CINEMA IA</span>
+          <button
+            type="button"
+            onClick={surDemo}
+            className="mt-1 inline-flex items-center gap-1.5 rounded-lg border border-slate-600 bg-slate-950/60 px-3 py-1.5 text-xs text-slate-100 transition-colors hover:border-violet-500/60 hover:text-violet-200"
+          >
+            <Play className="w-3.5 h-3.5" aria-hidden="true" /> Voir une démonstration gratuite
+          </button>
+          <p className="text-[10px] text-slate-500">{format} · clips d’exemple, aucun crédit utilisé</p>
         </div>
         {/* Meme position, meme taille que le bouton actif de `Apercu` ; `aria-disabled` +
             infobulle plutot que `disabled` seul : il reste focusable et s'explique. */}

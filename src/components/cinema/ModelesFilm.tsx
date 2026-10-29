@@ -26,6 +26,7 @@
  */
 import { useState } from 'react';
 import { Info, Sparkles, FilePlus2, Check, X } from 'lucide-react';
+import type { IdStyleCinema } from '@/lib/cinema/types';
 
 export interface ValeursModele {
   titre: string;
@@ -34,6 +35,8 @@ export interface ValeursModele {
   qualite: string;
   nbScenes: number;
   casting: Array<{ nom: string; role: string; description: string; urlImage: string }>;
+  /** Style cinematographique propose par l'exemple (un simple choix d'ecran, rien n'est genere). */
+  styleCinema?: IdStyleCinema;
 }
 
 export interface ModeleFilm {
@@ -151,6 +154,37 @@ export const MODELES_FILM: readonly ModeleFilm[] = [
       ],
     },
   },
+  {
+    id: 'scifi',
+    nom: 'Signal perdu',
+    theme: 'Science-fiction',
+    vignette: '/cinema-exemples/scifi.svg',
+    ambiance: 'Lumieres de secours bleues, neons froids, brume de vapeur et poussiere d’etoiles.',
+    scenes: [
+      'Le couloir de la station, lumieres de secours',
+      'Orion attend devant le sas, l’oeil lumineux',
+      'Le hublot, la poussiere d’etoiles filant',
+      'La navette decolle, le signal bat sur l’ecran',
+    ],
+    valeurs: {
+      titre: 'Signal perdu',
+      histoire: 'Ada se reveille seule dans la station orbitale, les lumieres de secours baignent le couloir de bleu. '
+        + 'Orion, le droide de bord, l’attend devant le sas, son oeil lumineux pulse dans la penombre. '
+        + 'Orion dit : « Le signal vient de la face cachee de la planete, il se repete toutes les neuf minutes ». '
+        + 'Ada pose la main sur la vitre et regarde la poussiere d’etoiles filer derriere le hublot. '
+        + 'Ada repond : « Alors on y va, prepare la navette ». '
+        + 'La navette decolle dans un halo de vapeur froide et la station rapetisse derriere elle. '
+        + 'Le signal s’allume sur l’ecran, une ligne verte qui bat comme un coeur, et Ada sourit pour la premiere fois.',
+      format: '16:9',
+      qualite: 'cinema',
+      nbScenes: 4,
+      casting: [
+        { nom: 'Ada', role: 'protagoniste', description: 'cheveux courts argentes, combinaison blanche et bleue, casque sous le bras', urlImage: '' },
+        { nom: 'Orion', role: 'droide de bord', description: 'chassis argent poli, un seul oeil lumineux bleu, bras articules fins', urlImage: '' },
+      ],
+      styleCinema: 'scifi',
+    },
+  },
 ];
 
 /**
@@ -205,11 +239,11 @@ export default function ModelesFilm({ aDesSaisies, surAppliquer, surPartirDeZero
         Partir d’un exemple
         <InfoCourte
           libelle="Ce qu’un exemple remplit"
-          texte="Un exemple remplit le titre, l’histoire avec ses repliques, les personnages et leur apparence, le format et le nombre de scenes. Tout reste modifiable, et rien n’est genere : aucun credit n’est utilise."
+          texte="Un exemple remplit le titre, l’histoire avec ses repliques, les personnages et leur apparence, le format et le nombre de scenes (et un style, pour l’exemple science-fiction). Tout reste modifiable, et rien n’est genere : aucun credit n’est utilise."
         />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {MODELES_FILM.map((m) => {
           const enAttente = arme === m.id;
           return (
@@ -237,7 +271,7 @@ export default function ModelesFilm({ aDesSaisies, surAppliquer, surPartirDeZero
                   </span>
                 </span>
                 <span className="block px-3 py-2">
-                  <span className="block text-[11px] leading-snug text-slate-400">{m.ambiance}</span>
+                  <span className="block break-words text-[11px] leading-snug text-slate-400">{m.ambiance}</span>
                   <span className="mt-1 block text-[11px] text-slate-500">
                     {m.valeurs.format} · {m.valeurs.nbScenes} scenes · {m.valeurs.casting.length} personnages
                   </span>
