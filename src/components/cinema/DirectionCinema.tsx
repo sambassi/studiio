@@ -9,15 +9,13 @@
  * Les miniatures sont des illustrations de reference, pas des resultats generes ; la
  * camera est une indication donnee au modele, pas une garantie.
  */
-import { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useState } from 'react';
 import {
   AlertCircle, ArrowLeft, ArrowRight, Info, Lock, MoveHorizontal, Orbit, Palette, RefreshCw, Sparkles, ZoomIn, ZoomOut,
   type LucideIcon,
 } from 'lucide-react';
 import { STYLES_CINEMA, styleCinema } from '@/lib/cinema/direction/styles';
-import { EXTRAITS_STYLES, MENTION_EXTRAITS } from '@/lib/cinema/extraits-styles';
-import LecteurVideo from '@/components/cinema/LecteurVideo';
+import { EXTRAITS_STYLES } from '@/lib/cinema/extraits-styles';
 import { CAMERAS_CINEMA, cameraCinema } from '@/lib/cinema/direction/camera';
 import type { IdCameraCinema, IdStyleCinema } from '@/lib/cinema/types';
 import { ratioCadre } from '@/lib/ui/lecteur-generation';
@@ -44,30 +42,20 @@ function Info2({ libelle, texte }: { libelle: string; texte: string }) {
 /**
  * Style GLOBAL du film : six cartes, chacune avec le PHOTOGRAMME de son extrait.
  *
- * Un clic fait deux choses, et seulement deux : il choisit le style, et il montre l'extrait
- * correspondant SOUS la grille. Il ne touche ni au scenario, ni a l'apercu du film de
- * l'utilisateur (qui vit dans l'autre colonne), et ne lance aucune generation.
+ * Un clic fait deux choses, et seulement deux : il choisit le style, et il demande a l'APERCU
+ * PRINCIPAL (colonne de droite) de montrer l'extrait correspondant — jamais un second lecteur
+ * ici. Il ne touche ni au scenario, ni aux reglages, et ne lance aucune generation.
  * Reclic sur le style actif = aucun style impose.
  */
-export function SelecteurStyleFilm({ valeur, surChoisir }: {
-  valeur: IdStyleCinema | null; surChoisir: (id: IdStyleCinema | null) => void;
+export function SelecteurStyleFilm({ valeur, surChoisir, surMontrerExemple, exempleVu }: {
+  valeur: IdStyleCinema | null;
+  surChoisir: (id: IdStyleCinema | null) => void;
+  /** Absent : les cartes choisissent le style sans rien montrer (aucun apercu disponible). */
+  surMontrerExemple?: (id: IdStyleCinema) => void;
+  /** Le style dont l'extrait est affiche dans l'apercu principal, pour le marquer. */
+  exempleVu?: IdStyleCinema | null;
 }) {
   const actif = styleCinema(valeur);
-  /** L'extrait montre a l'ecran — pas forcement le style choisi : on peut regarder sans choisir. */
-  const [vu, setVu] = useState<IdStyleCinema | null>(null);
-  const [agrandi, setAgrandi] = useState(false);
-  const extrait = vu ? EXTRAITS_STYLES[vu] : null;
-  const styleVu = styleCinema(vu);
-
-  useEffect(() => {
-    if (!agrandi) return;
-    const surTouche = (e: KeyboardEvent) => { if (e.key === 'Escape') setAgrandi(false); };
-    document.addEventListener('keydown', surTouche);
-    const avant = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.removeEventListener('keydown', surTouche); document.body.style.overflow = avant; };
-  }, [agrandi]);
-
   return (
     <div className="mt-4" data-direction="style-film">
       <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
@@ -81,6 +69,7 @@ export function SelecteurStyleFilm({ valeur, surChoisir }: {
       <div role="radiogroup" aria-label="Style cinematique du film" className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         {STYLES_CINEMA.map((s) => {
           const choisi = valeur === s.id;
+          const montre = exempleVu === s.id;
           return (
             <button
               key={s.id}
@@ -88,11 +77,11 @@ export function SelecteurStyleFilm({ valeur, surChoisir }: {
               role="radio"
               aria-checked={choisi}
               aria-label={`${s.libelle}${choisi ? ' (choisi, cliquer pour retirer)' : ''}`}
-              title={s.resume}
-              onClick={() => { setVu(s.id); surChoisir(choisi ? null : s.id); }}
+              title={`${s.resume} — l’exemple s’affiche dans l’apercu`}
+              onClick={() => { surMontrerExemple?.(s.id); surChoisir(choisi ? null : s.id); }}
               className={`overflow-hidden rounded-lg border text-left transition-colors ${choisi
                 ? 'border-violet-500/80 ring-2 ring-violet-500/40 bg-violet-500/10'
-                : 'border-slate-800 bg-slate-900/40 hover:border-violet-500/40'}`}
+                : montre ? 'border-violet-500/40' : 'border-slate-800 bg-slate-900/40 hover:border-violet-500/40'}`}
             >
               <span className="relative block overflow-hidden bg-slate-950" style={{ aspectRatio: ratioCadre('16:9') }}>
                 {/* Photogramme de l'extrait : une image fixe du depot, jamais un rendu genere. */}
@@ -105,22 +94,6 @@ export function SelecteurStyleFilm({ valeur, surChoisir }: {
           );
         })}
       </div>
-
-      {/* L'extrait du style regarde : SOUS la grille, jamais a la place de l'apercu du film. */}
-      {extrait && styleVu && (
-        <div className="mt-2" data-direction="extrait-style">
-          <LecteurVideo
-            src={extrait.video} poster={extrait.poster} sansSon badge="Exemple"
-            titre={`Exemple de rendu — ${styleVu.libelle} : ${extrait.sujet}`}
-            autoLecture boucle agrandissable surAgrandir={() => setAgrandi(true)}
-            className="mx-auto w-full"
-          />
-          <p className="mt-1 text-[11px] text-slate-400">
-            <span className="text-slate-200">{styleVu.libelle}</span> — {extrait.sujet}.{' '}
-            <span className="text-slate-500">{MENTION_EXTRAITS} Image : {extrait.credit.auteur} ({extrait.credit.source}).</span>
-          </p>
-        </div>
-      )}
 
       <p className="mt-1.5 text-[11px] text-slate-500">
         {actif ? <><span className="text-slate-300">{actif.libelle}</span> — {actif.resume}</> : 'Aucun style impose : le plan est genere d’apres sa seule description.'}
@@ -135,27 +108,6 @@ export function SelecteurStyleFilm({ valeur, surChoisir }: {
             <li>Texture : {actif.detail.texture}</li>
           </ul>
         </details>
-      )}
-
-      {/* Fenetre separee : l'apercu du film de l'utilisateur, derriere, n'est pas remplace. */}
-      {agrandi && extrait && styleVu && typeof document !== 'undefined' && createPortal(
-        <div
-          role="dialog" aria-modal="true" aria-label={`Exemple de rendu — ${styleVu.libelle}`}
-          className="fixed inset-0 flex flex-col items-center justify-center gap-2 bg-slate-950/95 p-3 sm:p-6"
-          style={{ zIndex: 60 }}
-          onClick={(e) => { if (e.target === e.currentTarget) setAgrandi(false); }}
-        >
-          <LecteurVideo
-            src={extrait.video} poster={extrait.poster} sansSon badge="Exemple"
-            titre={`Exemple de rendu — ${styleVu.libelle} : ${extrait.sujet}`}
-            autoLecture boucle agrandi surReduire={() => setAgrandi(false)}
-            className="w-full"
-          />
-          <p className="max-w-3xl text-center text-[11px] text-slate-400">
-            {styleVu.libelle} — {extrait.sujet}. {MENTION_EXTRAITS} Image : {extrait.credit.auteur} ({extrait.credit.source}). Echap pour revenir.
-          </p>
-        </div>,
-        document.body,
       )}
     </div>
   );

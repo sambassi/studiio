@@ -804,3 +804,32 @@ film qui se telecharge a l'etape Export. `controlsList=nodownload`, `disablePict
 et le menu contextuel desactive RETIRENT des raccourcis de l'interface : **ce n'est pas une
 protection contre la copie**, et rien ne le pretend. Le telechargement du film de
 l'utilisateur reste entier a l'etape 5 (Export).
+
+
+## 22. Un seul apercu, et des exemples FILMES partout
+
+**Un seul lecteur a l'ecran.** La colonne de droite montre UNE chose a la fois : le film de
+l'utilisateur, ou un exemple. Avant, un extrait de style jouait sous la grille pendant que
+l'apercu du film tournait a cote — deux videos en concurrence, et on ne savait plus laquelle
+etait la sienne. Desormais :
+
+- clic sur une carte de STYLE → le style est choisi ET l'apercu montre son extrait ;
+- clic sur un MOUVEMENT (bloc sous l'apercu) → l'apercu montre le plan filme correspondant ;
+- « Revenir a mon film » ramene toujours a l'apercu du projet ; le scenario, les reglages et
+  le montage ne sont jamais touches par un exemple.
+
+**Quatre mouvements FILMES** (`public/cinema-mouvements/`, 1280x720, 5 s, muets, ~1,6 Mo) :
+travelling avant (la camera avance sur un chemin), panoramique (le relief traverse le cadre),
+suivi lateral (la camera accompagne une passante), orbite (la camera tourne autour d'un homme).
+Chaque mouvement a ete verifie image par image : **aucune simulation**, aucun zoom presente
+comme un travelling. Les anciens clips dessines (`public/cinema-demo/`) sont supprimes ; le
+mode demonstration du storyboard reutilise ces memes plans reels.
+
+**Cartes d'exemples** (`ModelesFilm`) : photogrammes reels. Aventure a le sien
+(`public/cinema-exemples/aventure.jpg`) ; Romance, Publicite et Science-fiction reutilisent
+l'extrait de leur style, ce qui garantit qu'un exemple et son style montrent la meme chose.
+Plus aucune illustration dessinee dans Cinema IA.
+
+Licence identique pour tout (Pexels, usage commercial gratuit, credits affiches, mention
+« pas une video produite par Studiio »). Chargement differe partout : aucune video n'est
+chargee avant un clic.
