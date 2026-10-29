@@ -52,7 +52,7 @@ export function SelecteurStyleFilm({ valeur, surChoisir }: {
           texte="Un style regle la lumiere, la palette, l’ambiance et la texture de l’image. Il ne change ni les personnages, ni les repliques, ni les lieux. Choisir un style ne lance aucune generation et ne coute rien : il s’applique a la prochaine image ou video generee."
         />
       </div>
-      <div role="radiogroup" aria-label="Style cinematique du film" className="grid grid-cols-3 md:grid-cols-6 gap-2">
+      <div role="radiogroup" aria-label="Style cinematique du film" className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         {STYLES_CINEMA.map((s) => {
           const choisi = valeur === s.id;
           return (

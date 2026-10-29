@@ -729,3 +729,18 @@ une video ni une image : un texte habille en ecran de film.
   appel serveur ; badge « Démonstration · clip d'exemple ». Ce ne sont pas des videos d'IA.
 - Retire : le filigrane « STUDIIO CINEMA IA », le bloc central de texte et la ligne
   « lieu — cadre » superposes a l'image ; la legende du plan est une ligne discrete en bas.
+
+## 19. Decouvrabilite et responsive (apres #635)
+
+- **Demonstration gratuite sans scenario** : « Voir une démonstration gratuite » dans l'aperçu vide
+  ouvre `DemoGratuite` (4 clips locaux, un par mouvement de camera, controles natifs, badge
+  « Démonstration », « pas des vidéos générées par l'IA »). Aucun appel serveur, aucun credit.
+- **Aperçu vide** : sa hauteur suit son contenu (plus de cadre 16:9 vide) ; le bouton agrandir
+  desactive reste en haut a droite.
+- **Responsive** : styles en 2 colonnes (3 des `sm`), exemples en 1 colonne (2 des `sm`),
+  personnages nom + role sur une ligne et apparence sur toute la largeur.
+- **4e exemple « Signal perdu » (science-fiction)** : histoire, 2 personnages, 2 repliques, 4 scenes ;
+  il propose aussi le style Science-fiction (simple choix d'ecran, rien n'est genere).
+- **Aide a la redaction (icone etincelle)** : 100 % locale (`AideRedaction.tsx`), sans IA ni credit.
+  Elle n'a donc ni estimation ni service indisponible ; une future aide generative passera par une
+  action explicite avec cout affiche.
