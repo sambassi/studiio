@@ -895,8 +895,10 @@ export default function CinemaPage() {
                 placeholder="Une phrase par plan. Pour une replique, mettez-la entre guillemets apres le nom du personnage."
                 className="w-full rounded-lg bg-slate-950 border border-slate-700 py-2 pl-3 pr-11 text-sm leading-relaxed"
               />
-              {/* Aide a la redaction : locale, aucune IA payante (voir le composant). */}
+              {/* Aide a la redaction : mise en forme locale + redaction assistee par le
+                  moteur de texte PARTAGE de Studiio (aucun credit debite). */}
               <AideRedaction
+                contexte={{ titre, styleCinema: styleAffiche, nbScenes, format, casting }}
                 histoire={histoire}
                 surChanger={setHistoire}
                 personnages={casting.map((c) => c.nom).filter(Boolean)}
