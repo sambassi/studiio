@@ -772,3 +772,35 @@ plan, repliques `Nom dit : « ... »` sans ponctuation forte dans les guillemets
 que le decoupage en ferait (plans, repliques, prenoms hors casting, repliques cassees). Elle ne
 remplace l'histoire que sur « Appliquer » ; « Rejeter » ou Echap la jette, texte intact. Une
 panne (service indisponible, reseau) est DITE, et ne modifie jamais le texte.
+
+## 21. Galerie de styles : de vrais extraits, et un lecteur sans barre native
+
+**Six extraits FILMES**, un par style (`public/cinema-styles-extraits/`, 1280x720, 24 i/s, 5 s,
+muets, ~2 Mo au total avec leurs affiches en 960x540). Le 720p est la resolution utile :
+l'apercu agrandi occupe au plus ~1400 px de large, un 640x360 y paraissait flou. Ce sont de vraies images (vraies personnes, vrais
+decors), pas des illustrations : `realiste` marche en rue ensoleillee, `noir` enqueteur en
+noir et blanc, `publicite` flacon en studio, `romantique` couple au couchant, `documentaire`
+travail aux champs, `scifi` personnage en neons.
+
+- **Licence** : Pexels — usage commercial gratuit, sans achat ni autorisation ecrite ;
+  modification autorisee (coupe 5 s, recadrage 16:9, son retire). L'attribution n'est pas
+  exigee : on la donne quand meme (auteur + source), et l'ecran dit en toutes lettres que
+  **ce ne sont pas des videos produites par Studiio** et que **les personnes filmees n'ont
+  aucun lien avec Studiio ni ne le recommandent** (`MENTION_EXTRAITS`) — la licence Pexels
+  interdit precisement de suggerer une recommandation par les personnes filmees.
+- **Au clic sur une carte** : le style est choisi ET son extrait s'affiche SOUS la grille
+  (colonne de gauche). L'apercu du film de l'utilisateur, dans l'autre colonne, n'est jamais
+  remplace ; « Agrandir » ouvre une fenetre separee (portail, Echap pour revenir). Aucun
+  scenario touche, aucune generation, aucun credit.
+- **Separation nette** : STYLE = ces extraits ; MOUVEMENT DE CAMERA = les 4 clips de
+  `DemoGratuite` (titre « 6. Mouvements de caméra ») ; APERCU DU PROJET = colonne de droite.
+- **Chargement differe** : les cartes n'affichent qu'une affiche JPEG (`loading="lazy"`), et
+  aucune video n'est chargee (`preload="none"`) avant un clic.
+
+**Lecteur** (`components/cinema/LecteurVideo.tsx`) : commandes SVG (lecture/pause, son quand il
+y en a, barre fine de 2 px, agrandir/reduire). Plus aucun `controls` natif dans Cinema IA — sa
+barre porte un menu « telecharger » qui n'a rien a faire sur un exemple, ni sur l'apercu d'un
+film qui se telecharge a l'etape Export. `controlsList=nodownload`, `disablePictureInPicture`
+et le menu contextuel desactive RETIRENT des raccourcis de l'interface : **ce n'est pas une
+protection contre la copie**, et rien ne le pretend. Le telechargement du film de
+l'utilisateur reste entier a l'etape 5 (Export).

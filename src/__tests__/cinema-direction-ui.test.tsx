@@ -10,13 +10,44 @@ import { SelecteurStyleFilm, SelecteurStyleScene, SelecteurCamera, ResumeStyle, 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('style du film', () => {
-  it('six choix, miniatures decoratives, mention « pas des images generees »', () => {
+  it('six choix, six PHOTOGRAMMES distincts, chargement differe', () => {
     render(<SelecteurStyleFilm valeur={null} surChoisir={() => {}} />);
     const radios = screen.getAllByRole('radio');
     expect(radios).toHaveLength(6);
-    expect(new Set(Array.from(document.querySelectorAll('img')).map((i) => i.getAttribute('src'))).size).toBe(6);
-    for (const i of Array.from(document.querySelectorAll('img'))) expect(i.getAttribute('alt')).toBe('');
-    expect(document.body.textContent).toMatch(/pas des images generees/);
+    const imgs = Array.from(document.querySelectorAll('img'));
+    expect(new Set(imgs.map((i) => i.getAttribute('src'))).size).toBe(6);
+    for (const i of imgs) {
+      expect(i.getAttribute('alt')).toBe('');
+      expect(i.getAttribute('src')).toMatch(/^\/cinema-styles-extraits\/\w+\.jpg$/);
+      expect(i.getAttribute('loading')).toBe('lazy');
+    }
+    // Aucun extrait tant qu'on n'a rien demande : la page ne charge pas six videos.
+    expect(document.querySelector('[data-direction="extrait-style"]')).toBeNull();
+  });
+
+  it('un clic montre l’extrait REEL du style, annonce comme un exemple et non comme un rendu Studiio', () => {
+    const choix = vi.fn();
+    render(<SelecteurStyleFilm valeur={null} surChoisir={choix} />);
+    fireEvent.click(screen.getByRole('radio', { name: /Film noir/ }));
+    expect(choix).toHaveBeenLastCalledWith('noir');
+    const zone = document.querySelector('[data-direction="extrait-style"]') as HTMLElement;
+    const v = zone.querySelector('video') as HTMLVideoElement;
+    expect(v.getAttribute('src')).toBe('/cinema-styles-extraits/noir.mp4');
+    expect(v.getAttribute('poster')).toBe('/cinema-styles-extraits/noir.jpg');
+    expect(v.hasAttribute('controls')).toBe(false);
+    expect(zone.textContent).toMatch(/pas des vidéos produites par Studiio/);
+    expect(zone.textContent).toMatch(/cottonbro studio \(Pexels\)/);
+  });
+
+  it('chaque style montre SON extrait : six vidéos différentes', () => {
+    const { rerender } = render(<SelecteurStyleFilm valeur={null} surChoisir={() => {}} />);
+    const vues = new Set<string>();
+    for (const s of ['Cinéma réaliste', 'Film noir', 'Publicité premium', 'Romantique', 'Documentaire', 'Science-fiction']) {
+      fireEvent.click(screen.getByRole('radio', { name: new RegExp(s) }));
+      vues.add(document.querySelector('[data-direction="extrait-style"] video')!.getAttribute('src')!);
+      rerender(<SelecteurStyleFilm valeur={null} surChoisir={() => {}} />);
+    }
+    expect(vues.size).toBe(6);
   });
 
   it('cliquer choisit ; recliquer le style actif le retire ; aucun appel reseau', () => {
