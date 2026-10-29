@@ -775,8 +775,9 @@ panne (service indisponible, reseau) est DITE, et ne modifie jamais le texte.
 
 ## 21. Galerie de styles : de vrais extraits, et un lecteur sans barre native
 
-**Six extraits FILMES**, un par style (`public/cinema-styles-extraits/`, 640x360, 5 s, muets,
-~680 Ko au total avec leurs affiches). Ce sont de vraies images (vraies personnes, vrais
+**Six extraits FILMES**, un par style (`public/cinema-styles-extraits/`, 1280x720, 24 i/s, 5 s,
+muets, ~2 Mo au total avec leurs affiches en 960x540). Le 720p est la resolution utile :
+l'apercu agrandi occupe au plus ~1400 px de large, un 640x360 y paraissait flou. Ce sont de vraies images (vraies personnes, vrais
 decors), pas des illustrations : `realiste` marche en rue ensoleillee, `noir` enqueteur en
 noir et blanc, `publicite` flacon en studio, `romantique` couple au couchant, `documentaire`
 travail aux champs, `scifi` personnage en neons.
@@ -784,7 +785,9 @@ travail aux champs, `scifi` personnage en neons.
 - **Licence** : Pexels — usage commercial gratuit, sans achat ni autorisation ecrite ;
   modification autorisee (coupe 5 s, recadrage 16:9, son retire). L'attribution n'est pas
   exigee : on la donne quand meme (auteur + source), et l'ecran dit en toutes lettres que
-  **ce ne sont pas des videos produites par Studiio** (`MENTION_EXTRAITS`).
+  **ce ne sont pas des videos produites par Studiio** et que **les personnes filmees n'ont
+  aucun lien avec Studiio ni ne le recommandent** (`MENTION_EXTRAITS`) — la licence Pexels
+  interdit precisement de suggerer une recommandation par les personnes filmees.
 - **Au clic sur une carte** : le style est choisi ET son extrait s'affiche SOUS la grille
   (colonne de gauche). L'apercu du film de l'utilisateur, dans l'autre colonne, n'est jamais
   remplace ; « Agrandir » ouvre une fenetre separee (portail, Echap pour revenir). Aucun

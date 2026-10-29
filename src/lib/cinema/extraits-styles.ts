@@ -3,8 +3,9 @@
  *
  * Ce sont de VRAIS extraits filmes (vraies personnes, vrais decors), pas des illustrations :
  * une carte de style doit montrer ce que le style donne a l'ecran, sinon on ne peut pas s'y
- * projeter. Ils vivent dans le depot (`public/cinema-styles-extraits/`), en 640x360, 5 s,
- * SANS SON, avec leur image d'affiche pour un chargement differe.
+ * projeter. Ils vivent dans le depot (`public/cinema-styles-extraits/`), en 1280x720, 5 s,
+ * 24 i/s, SANS SON, avec leur image d'affiche pour un chargement differe. Le 720p est la
+ * resolution utile : l'apercu agrandi occupe au plus ~1400 px de large, un 640x360 y paraissait flou.
  *
  * ⚠️ TROIS REGLES QUI NE SE NEGOCIENT PAS :
  *
@@ -13,6 +14,9 @@
  *   2. LICENCE : Pexels — usage commercial gratuit, sans achat ni autorisation ecrite,
  *      modification autorisee (ici : coupe de 5 s, recadrage 16:9, son retire). L'attribution
  *      n'est pas exigee par la licence ; on la donne quand meme, c'est l'auteur qui a filme.
+ *      La licence interdit en revanche de SUGGERER QUE LES PERSONNES FILMEES RECOMMANDENT le
+ *      produit : l'ecran le dit noir sur blanc (`MENTION_EXTRAITS`), et aucun extrait n'est
+ *      presente comme un temoignage, un avis ou une reference client.
  *   3. AUCUNE GENERATION, AUCUN CREDIT : montrer un extrait ne fait que lire un fichier.
  *
  * Ces extraits illustrent le STYLE (lumiere, palette, ambiance). Les MOUVEMENTS DE CAMERA ont
@@ -72,4 +76,5 @@ export const extraitStyle = (id: IdStyleCinema | null | undefined): ExtraitStyle
   (id && EXTRAITS_STYLES[id]) || null;
 
 /** La phrase qui accompagne TOUT extrait : elle dit ce que c'est, et ce que ce n'est pas. */
-export const MENTION_EXTRAITS = 'Extraits de films d’exemple (Pexels) — ce ne sont pas des vidéos produites par Studiio.';
+export const MENTION_EXTRAITS = 'Extraits de films d’exemple (Pexels) — ce ne sont pas des vidéos produites par Studiio, '
+  + 'et les personnes filmées n’ont aucun lien avec Studiio ni ne le recommandent.';

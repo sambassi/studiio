@@ -31,7 +31,7 @@ describe('les six extraits sont de vrais fichiers vidéo, distincts et légers',
     expect(extraitStyle(null)).toBeNull();
   });
 
-  it('fichiers mp4 h264 réels, 640×360, muets, et une page entière sous 1 Mo', () => {
+  it('fichiers mp4 h264 réels, 1280×720, muets, et un dossier sous 3 Mo', () => {
     let total = 0;
     for (const id of IDS_STYLES) {
       const f = `public${EXTRAITS_STYLES[id].video}`;
@@ -40,11 +40,11 @@ describe('les six extraits sont de vrais fichiers vidéo, distincts et légers',
       const p = ffprobe(f, 'stream=codec_type,codec_name,width,height');
       if (p.status !== 0) continue; // ffprobe absent : les contrôles de contenu sont sautés
       const sortie = p.stdout.trim();
-      expect(sortie, id).toMatch(/h264,video,640,360/);
+      expect(sortie, id).toMatch(/h264,video,1280,720/);
       // Aucune piste audio : un exemple ne doit pas se mettre à parler tout seul.
       expect(sortie, id).not.toMatch(/audio/);
     }
-    expect(total).toBeLessThan(1_000_000);
+    expect(total).toBeLessThan(3_000_000);
   });
 
   it('six vidéos et six affiches DIFFÉRENTES — pas le même plan recyclé', () => {
@@ -64,6 +64,8 @@ describe('les six extraits sont de vrais fichiers vidéo, distincts et légers',
       expect(EXTRAITS_STYLES[id].sujet.length).toBeGreaterThan(10);
     }
     expect(MENTION_EXTRAITS).toMatch(/pas des vidéos produites par Studiio/);
+    // Licence Pexels : ne jamais laisser croire que les personnes filmees recommandent Studiio.
+    expect(MENTION_EXTRAITS).toMatch(/aucun lien avec Studiio ni ne le recommandent/);
   });
 
   it('les extraits de STYLE et les clips de MOUVEMENT sont des fichiers séparés', () => {
