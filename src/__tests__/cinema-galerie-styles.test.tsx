@@ -6,12 +6,14 @@
  * Studiio), et l'interface ne propose nulle part de télécharger un exemple.
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, screen, within, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { readFileSync, statSync, existsSync } from 'fs';
 import { spawnSync } from 'child_process';
 import LecteurVideo from '@/components/cinema/LecteurVideo';
 import { SelecteurStyleFilm } from '@/components/cinema/DirectionCinema';
-import DemoGratuite from '@/components/cinema/DemoGratuite';
+import ChoixMouvements from '@/components/cinema/ChoixMouvements';
+import ApercuExemple from '@/components/cinema/ApercuExemple';
+import { MOUVEMENTS_CAMERA } from '@/lib/cinema/mouvements-camera';
 import { EXTRAITS_STYLES, extraitStyle, MENTION_EXTRAITS } from '@/lib/cinema/extraits-styles';
 import { IDS_STYLES } from '@/lib/cinema/direction/styles';
 import { CLIPS_DEMO } from '@/components/cinema/ApercuStoryboard';
@@ -68,48 +70,83 @@ describe('les six extraits sont de vrais fichiers vidéo, distincts et légers',
     expect(MENTION_EXTRAITS).toMatch(/aucun lien avec Studiio ni ne le recommandent/);
   });
 
-  it('les extraits de STYLE et les clips de MOUVEMENT sont des fichiers séparés', () => {
+  it('les extraits de STYLE et les plans de MOUVEMENT sont des fichiers séparés', () => {
     const styles = IDS_STYLES.map((id) => EXTRAITS_STYLES[id].video);
-    for (const c of CLIPS_DEMO) expect(styles).not.toContain(c);
+    for (const m of MOUVEMENTS_CAMERA) expect(styles).not.toContain(m.video);
+    expect(CLIPS_DEMO).toEqual(MOUVEMENTS_CAMERA.map((m) => m.video));
+  });
+
+  it('les quatre mouvements sont de vrais fichiers filmes, distincts, avec credit', () => {
+    expect(MOUVEMENTS_CAMERA).toHaveLength(4);
+    expect(MOUVEMENTS_CAMERA.map((m) => m.camera)).toEqual(['travelling_avant', 'pano_droite', 'suivi_lateral', 'orbite']);
+    const vus = new Set<string>();
+    for (const m of MOUVEMENTS_CAMERA) {
+      expect(existsSync(`public${m.video}`), m.video).toBe(true);
+      expect(existsSync(`public${m.poster}`), m.poster).toBe(true);
+      expect(readFileSync(`public${m.video}`).subarray(4, 8).toString()).toBe('ftyp');
+      vus.add(readFileSync(`public${m.video}`).toString('base64').slice(0, 2000));
+      expect(m.credit.url).toMatch(/^https:\/\/www\.pexels\.com\/video\//);
+      expect(m.quoiRegarder.length).toBeGreaterThan(15);
+      const p = ffprobe(`public${m.video}`, 'stream=codec_type,codec_name,width,height');
+      if (p.status === 0) {
+        expect(p.stdout.trim(), m.camera).toMatch(/h264,video,1280,720/);
+        expect(p.stdout.trim(), m.camera).not.toMatch(/audio/);
+      }
+    }
+    expect(vus.size).toBe(4);
+  });
+
+  it('plus aucun clip dessine : le dossier des anciennes demonstrations a disparu', () => {
+    expect(existsSync('public/cinema-demo')).toBe(false);
   });
 });
 
-describe('galerie : un clic montre l’extrait, sans rien casser d’autre', () => {
-  it('le style est choisi ET son extrait s’affiche, en lecture, sans appel réseau', () => {
-    const fetchEspion = vi.fn();
-    vi.stubGlobal('fetch', fetchEspion);
-    const choix = vi.fn();
-    render(<SelecteurStyleFilm valeur={null} surChoisir={choix} />);
+describe('galerie : un clic choisit le style ET demande l’exemple à l’aperçu', () => {
+  it('le style est choisi et l’exemple est DEMANDE — aucun second lecteur dans la colonne', () => {
+    const choix = vi.fn(); const montrer = vi.fn();
+    render(<SelecteurStyleFilm valeur={null} surChoisir={choix} surMontrerExemple={montrer} />);
     fireEvent.click(screen.getByRole('radio', { name: /Publicité premium/ }));
     expect(choix).toHaveBeenLastCalledWith('publicite');
-    const zone = document.querySelector('[data-direction="extrait-style"]') as HTMLElement;
-    const v = zone.querySelector('video') as HTMLVideoElement;
-    expect(v.getAttribute('src')).toBe('/cinema-styles-extraits/publicite.mp4');
-    expect(v.hasAttribute('autoplay')).toBe(true);
-    expect(fetchEspion).not.toHaveBeenCalled();
-    vi.unstubAllGlobals();
+    expect(montrer).toHaveBeenLastCalledWith('publicite');
+    // La grille ne joue aucune vidéo elle-même.
+    expect(document.querySelector('video')).toBeNull();
   });
 
-  it('regarder un extrait puis retirer le style : l’extrait reste consultable, le style est retiré', () => {
+  it('sans aperçu disponible, les cartes choisissent le style sans rien exiger', () => {
     const choix = vi.fn();
-    const { rerender } = render(<SelecteurStyleFilm valeur="noir" surChoisir={choix} />);
+    render(<SelecteurStyleFilm valeur={null} surChoisir={choix} />);
     fireEvent.click(screen.getByRole('radio', { name: /Film noir/ }));
-    expect(choix).toHaveBeenLastCalledWith(null);
-    rerender(<SelecteurStyleFilm valeur={null} surChoisir={choix} />);
-    expect(document.querySelector('[data-direction="extrait-style"] video')).toBeTruthy();
+    expect(choix).toHaveBeenLastCalledWith('noir');
   });
 
-  it('agrandir ouvre une FENÊTRE SÉPARÉE (l’aperçu du film n’est pas remplacé), Échap referme', () => {
-    render(<SelecteurStyleFilm valeur={null} surChoisir={() => {}} />);
-    fireEvent.click(screen.getByRole('radio', { name: /Romantique/ }));
-    fireEvent.click(within(document.querySelector('[data-direction="extrait-style"]') as HTMLElement).getByLabelText('Agrandir'));
-    const fenetre = screen.getByRole('dialog', { name: /Exemple de rendu — Romantique/ });
-    expect(fenetre.parentElement).toBe(document.body);
-    expect(fenetre.querySelector('video')!.getAttribute('src')).toBe('/cinema-styles-extraits/romantique.mp4');
-    expect(document.body.style.overflow).toBe('hidden');
-    fireEvent.keyDown(document, { key: 'Escape' });
-    expect(screen.queryByRole('dialog')).toBeNull();
-    expect(document.body.style.overflow).not.toBe('hidden');
+  it('l’aperçu d’exemple montre le bon extrait, son crédit, et le retour au film', () => {
+    const revenir = vi.fn();
+    render(<ApercuExemple exemple={{ type: 'style', id: 'romantique' }} format="16:9" surRevenir={revenir} surAgrandir={() => {}} />);
+    const v = document.querySelector('video') as HTMLVideoElement;
+    expect(v.getAttribute('src')).toBe('/cinema-styles-extraits/romantique.mp4');
+    expect(v.hasAttribute('controls')).toBe(false);
+    expect(document.body.textContent).toMatch(/Exemple de style — Romantique/);
+    expect(document.body.textContent).toMatch(/Naveen G \(Pexels\)/);
+    fireEvent.click(screen.getByText('Revenir à mon film'));
+    expect(revenir).toHaveBeenCalled();
+  });
+
+  it('un mouvement s’affiche dans le même aperçu, avec ce qu’il faut regarder', () => {
+    render(<ApercuExemple exemple={{ type: 'mouvement', id: 'orbite' }} format="16:9" surRevenir={() => {}} surAgrandir={() => {}} />);
+    expect(document.body.textContent).toMatch(/Mouvement de caméra — Orbite/);
+    expect(document.body.textContent).toMatch(/tourne autour/);
+    expect(document.querySelector('video')!.getAttribute('src')).toBe('/cinema-mouvements/orbite.mp4');
+  });
+
+  it('le format 9:16 garde un cadre vertical pour l’exemple', () => {
+    render(<ApercuExemple exemple={{ type: 'style', id: 'noir' }} format="9:16" surRevenir={() => {}} surAgrandir={() => {}} />);
+    const cadre = document.querySelector('video')!.closest('div')!.parentElement as HTMLElement;
+    expect(cadre.style.aspectRatio.replace(/\s/g, '')).toMatch(/9\/16|0\.5625/);
+  });
+
+  it('un exemple inconnu n’invente rien', () => {
+    const { container } = render(<ApercuExemple exemple={{ type: 'mouvement', id: 'zoom_fou' }} format="16:9" surRevenir={() => {}} surAgrandir={() => {}} />);
+    expect(container.firstChild).toBeNull();
   });
 });
 
@@ -150,8 +187,11 @@ describe('lecteur : commandes SVG, et aucun téléchargement proposé', () => {
     poser({ agrandissable: true, surAgrandir: () => {} });
     sansTelechargement(document.body);
     cleanup();
-    render(<DemoGratuite surQuitter={() => {}} />);
-    sansTelechargement(document.querySelector('[data-demo="gratuite"]') as HTMLElement);
+    render(<ApercuExemple exemple={{ type: 'mouvement', id: 'suivi_lateral' }} format="16:9" surRevenir={() => {}} surAgrandir={() => {}} />);
+    sansTelechargement(document.querySelector('[data-apercu="exemple"]') as HTMLElement);
+    cleanup();
+    render(<ChoixMouvements actif={null} surChoisir={() => {}} />);
+    sansTelechargement(document.querySelector('[data-bloc="mouvements"]') as HTMLElement);
   });
 
   it('le code du lecteur ne promet AUCUNE protection contre la copie', () => {

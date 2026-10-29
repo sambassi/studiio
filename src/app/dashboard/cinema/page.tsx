@@ -28,7 +28,8 @@ import { plansARegenerer } from '@/lib/cinema/direction/signature';
 import type { IdCameraCinema, IdStyleCinema } from '@/lib/cinema/types';
 import ModelesFilm, { type ModeleFilm } from '@/components/cinema/ModelesFilm';
 import AideRedaction from '@/components/cinema/AideRedaction';
-import DemoGratuite from '@/components/cinema/DemoGratuite';
+import ApercuExemple, { FenetreExemple, type Exemple } from '@/components/cinema/ApercuExemple';
+import ChoixMouvements from '@/components/cinema/ChoixMouvements';
 import { MediaDuPlan, EmplacementVide, Storyboard, appliquerDemo, bilanMedias } from '@/components/cinema/ApercuStoryboard';
 
 interface SegmentApi {
@@ -341,8 +342,13 @@ export default function CinemaPage() {
   const [format, setFormat] = useState<'16:9' | '9:16'>('16:9');
   const [qualite, setQualite] = useState('standard');
   /** Style choisi AVANT la creation du film ; une fois le film charge, c'est le sien qui fait foi. */
-  /** Demonstration gratuite sans scenario (4 clips locaux) : un simple affichage, rien n'est enregistre. */
-  const [demoLibre, setDemoLibre] = useState(false);
+  /**
+   * L'apercu principal montre UN EXEMPLE (style ou mouvement) a la place du film. Un simple
+   * affichage : le scenario, les reglages et le montage ne bougent pas, et « Revenir a mon
+   * film » remet l'apercu du projet. `null` = l'apercu du film de l'utilisateur.
+   */
+  const [exemple, setExemple] = useState<Exemple | null>(null);
+  const [exempleAgrandi, setExempleAgrandi] = useState(false);
   const [styleAvantFilm, setStyleAvantFilm] = useState<IdStyleCinema | null>(null);
   const [nbScenes, setNbScenes] = useState(4);
   const [casting, setCasting] = useState([
@@ -927,7 +933,12 @@ export default function CinemaPage() {
                 <input type="number" min={3} max={5} value={nbScenes} onChange={(e) => setNbScenes(Number(e.target.value))} className="w-16 rounded bg-slate-950 border border-slate-700 px-2 py-1" />
               </label>
             </div>
-            <SelecteurStyleFilm valeur={styleAffiche} surChoisir={choisirStyleFilm} />
+            <SelecteurStyleFilm
+              valeur={styleAffiche}
+              surChoisir={choisirStyleFilm}
+              surMontrerExemple={(id) => { setExemple({ type: 'style', id }); setExempleAgrandi(false); }}
+              exempleVu={exemple?.type === 'style' ? exemple.id : null}
+            />
           </CollapsiblePanel>
 
           <CollapsiblePanel numero={2} titre="Personnages et references" icone={Users}
@@ -1170,12 +1181,25 @@ export default function CinemaPage() {
         {/* Colonne de droite — apercu video, scenes, export : visibles sans defiler. UNE SEULE instance d'Apercu. */}
         <div className="space-y-4 lg:sticky lg:top-6 lg:self-start order-1 lg:order-2">
           <div id="cinema-apercu" className="scroll-mt-4">
-            {montage ? (
+            {/* UN SEUL apercu : un exemple, ou le film de l'utilisateur — jamais les deux. */}
+            {exemple ? (
+              <ApercuExemple
+                exemple={exemple} format={format}
+                surRevenir={() => { setExemple(null); setExempleAgrandi(false); }}
+                surAgrandir={() => setExempleAgrandi(true)}
+              />
+            ) : montage ? (
               <Apercu montage={montage} surPreparerVoix={preparerVoix} voixEnCours={enCours === 'voix'} />
-            ) : demoLibre ? (
-              <DemoGratuite surQuitter={() => setDemoLibre(false)} />
             ) : (
-              <ApercuVide format={format} surDemo={() => setDemoLibre(true)} />
+              <ApercuVide format={format} />
+            )}
+            {/* Les quatre mouvements : ils alimentent le MEME apercu, sous lui. */}
+            <ChoixMouvements
+              actif={exemple?.type === 'mouvement' ? exemple.id : null}
+              surChoisir={(id) => { setExemple({ type: 'mouvement', id }); setExempleAgrandi(false); }}
+            />
+            {exemple && exempleAgrandi && (
+              <FenetreExemple exemple={exemple} surFermer={() => setExempleAgrandi(false)} />
             )}
           </div>
 
@@ -1396,7 +1420,7 @@ function SuiviGenerationPlan({ generation, confirmation, prix, surConfirmer, sur
  * format choisi (`ratioCadre`, style en ligne : les classes arbitraires sont purgees en
  * production).
  */
-function ApercuVide({ format, surDemo }: { format: string; surDemo: () => void }) {
+function ApercuVide({ format }: { format: string }) {
   const infobulle = 'L’apercu agrandi sera disponible une fois le scenario compose';
   return (
     <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
@@ -1417,14 +1441,7 @@ function ApercuVide({ format, surDemo }: { format: string; surDemo: () => void }
           </span>
           <p className="text-sm font-medium text-slate-200">Votre film apparaitra ici</p>
           <p className="text-xs text-slate-400">Ecrivez l’histoire, puis composez le scenario.</p>
-          <button
-            type="button"
-            onClick={surDemo}
-            className="mt-1 inline-flex items-center gap-1.5 rounded-lg border border-slate-600 bg-slate-950/60 px-3 py-1.5 text-xs text-slate-100 transition-colors hover:border-violet-500/60 hover:text-violet-200"
-          >
-            <Play className="w-3.5 h-3.5" aria-hidden="true" /> Voir une démonstration gratuite
-          </button>
-          <p className="text-[10px] text-slate-500">{format} · clips d’exemple, aucun crédit utilisé</p>
+          <p className="text-[11px] text-slate-500">{format} · en attendant, choisissez un style ou un mouvement pour voir un exemple.</p>
         </div>
         {/* Meme position, meme taille que le bouton actif de `Apercu` ; `aria-disabled` +
             infobulle plutot que `disabled` seul : il reste focusable et s'explique. */}

@@ -1,12 +1,10 @@
 /**
- * CINEMA IA — découvrabilité et responsive : la démonstration gratuite est accessible sans
- * scénario, l'aperçu vide épouse son contenu, l'exemple science-fiction est complet.
+ * CINEMA IA — découvrabilité et responsive : les exemples (styles, mouvements) s'affichent
+ * dans l'UNIQUE aperçu, l'aperçu vide épouse son contenu, l'exemple science-fiction est complet.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, within, fireEvent, cleanup } from '@testing-library/react';
 import CinemaPage from '@/app/dashboard/cinema/page';
-import { CLIPS_DEMO } from '@/components/cinema/ApercuStoryboard';
-import { LIBELLES_DEMO } from '@/components/cinema/DemoGratuite';
 import { MODELES_FILM } from '@/components/cinema/ModelesFilm';
 
 let appels: Array<{ url: string; method: string }>;
@@ -26,51 +24,38 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 const ouvrir = async () => { render(<CinemaPage />); await screen.findByText(/Partir d’un exemple/i); };
 const ecritures = () => appels.filter((a) => a.method !== 'GET');
 
-describe('démonstration gratuite : visible dès l’arrivée, sans scénario', () => {
-  it('un bouton discret dans l’aperçu vide ouvre les 4 clips, étiquetés « Démonstration »', async () => {
+describe('un seul aperçu : les mouvements s’affichent dedans, sans scénario', () => {
+  it('les 4 mouvements filmés sont proposés sous l’aperçu, avec leur photogramme', async () => {
     await ouvrir();
-    const bouton = screen.getByRole('button', { name: /Voir une démonstration gratuite/ });
-    expect(bouton.querySelector('svg')).toBeTruthy();
+    const bloc = document.querySelector('[data-bloc="mouvements"]') as HTMLElement;
+    const boutons = within(bloc).getAllByRole('button');
+    expect(boutons.map((b) => b.textContent!.trim())).toEqual(['Travelling avant', 'Panoramique', 'Suivi latéral', 'Orbite']);
+    const imgs = Array.from(bloc.querySelectorAll('img'));
+    expect(imgs).toHaveLength(4);
+    expect(new Set(imgs.map((i) => i.getAttribute('src'))).size).toBe(4);
+    for (const i of imgs) expect(i.getAttribute('loading')).toBe('lazy');
+    expect(bloc.textContent).toMatch(/mouvement réel, pas une simulation/);
+  });
+
+  it('un clic montre le plan dans l’APERÇU, pas dans un second lecteur — et aucun appel', async () => {
+    await ouvrir();
     const avant = appels.length;
-    fireEvent.click(bouton);
-
-    const zone = document.querySelector('[data-demo="gratuite"]') as HTMLElement;
-    expect(zone).toBeTruthy();
-    expect(within(zone).getAllByText(/Démonstration/).length).toBeGreaterThan(1);
-    expect(zone.textContent).toMatch(/pas des vidéos générées par l’IA/);
-    expect(zone.textContent).toMatch(/rien n’est débité/);
-    // Ce bloc montre les MOUVEMENTS de camera — le style du film a ses propres extraits.
-    expect(zone.textContent).toMatch(/Mouvements de caméra/);
-    const video = zone.querySelector('video') as HTMLVideoElement;
-    expect(video.getAttribute('src')).toBe(CLIPS_DEMO[0]);
-    // Commandes de l'application : jamais la barre native (et son menu « telecharger »).
-    expect(video.hasAttribute('controls')).toBe(false);
-    expect(within(zone).getByLabelText(/^Lecture$|^Pause$/)).toBeTruthy();
-
-    // Les 4 clips, un par mouvement de caméra.
-    const boutons = within(within(zone).getByRole('group', { name: /Clips de démonstration/ })).getAllByRole('button').filter((b) => LIBELLES_DEMO.includes(b.textContent!.trim()));
-    expect(boutons).toHaveLength(4);
-    for (const [k, b] of boutons.entries()) {
-      fireEvent.click(b);
-      expect((zone.querySelector('video') as HTMLVideoElement).getAttribute('src')).toBe(CLIPS_DEMO[k]);
-      expect(b.getAttribute('aria-pressed')).toBe('true');
-    }
-    // Aucun appel : ni génération, ni enregistrement, ni crédit.
+    fireEvent.click(within(document.querySelector('[data-bloc="mouvements"]') as HTMLElement).getByText('Orbite'));
+    const zone = document.querySelector('[data-apercu="exemple"]') as HTMLElement;
+    expect(zone.textContent).toMatch(/Mouvement de caméra — Orbite/);
+    const videos = Array.from(document.querySelectorAll('video'));
+    expect(videos).toHaveLength(1);
+    expect(videos[0].getAttribute('src')).toBe('/cinema-mouvements/orbite.mp4');
     expect(appels.slice(avant)).toEqual([]);
-    expect(ecritures()).toEqual([]);
   });
 
-  it('on peut quitter la démonstration et retrouver l’aperçu vide', async () => {
+  it('« Revenir à mon film » rend l’aperçu du projet', async () => {
     await ouvrir();
-    fireEvent.click(screen.getByRole('button', { name: /Voir une démonstration gratuite/ }));
-    fireEvent.click(screen.getByRole('button', { name: /Quitter la démonstration/ }));
-    expect(document.querySelector('[data-demo="gratuite"]')).toBeNull();
+    fireEvent.click(within(document.querySelector('[data-bloc="mouvements"]') as HTMLElement).getByText('Panoramique'));
+    expect(document.querySelector('[data-apercu="exemple"]')).toBeTruthy();
+    fireEvent.click(screen.getByText('Revenir à mon film'));
+    expect(document.querySelector('[data-apercu="exemple"]')).toBeNull();
     expect(screen.getByText('Votre film apparaitra ici')).toBeTruthy();
-  });
-
-  it('les clips servis existent vraiment (4 fichiers locaux)', () => {
-    expect(CLIPS_DEMO).toHaveLength(4);
-    expect(LIBELLES_DEMO).toHaveLength(4);
   });
 });
 

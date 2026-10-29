@@ -19,10 +19,10 @@
  *   2. CHOISIR UN MODELE NE GENERE RIEN. Cela remplit des champs, et s'arrete la : aucun
  *      appel, aucun credit, aucune composition de scenario declenchee.
  *
- * Les vignettes sont des illustrations SVG STATIQUES (`public/cinema-exemples/`), une
- * par genre, sans texte incruste : aucune image generee. Les miniatures de l'Autopilote
- * (`public/styles-video/`) etaient la meme video de danse avec un titre incruste, donc
- * indiscernables entre elles et rognees en 16:9.
+ * Les vignettes sont des PHOTOGRAMMES REELS (images fixes du depot, licence Pexels, sans
+ * texte incruste) : un dessin ne dit pas a quoi ressemblera un film. Trois d'entre elles
+ * reutilisent l'extrait du style correspondant (`extraits-styles.ts`), ce qui garantit qu'un
+ * exemple et son style montrent la meme chose. Aucune image generee.
  */
 import { useState } from 'react';
 import { Info, Sparkles, FilePlus2, Check, X } from 'lucide-react';
@@ -45,7 +45,7 @@ export interface ModeleFilm {
   nom: string;
   /** Le genre, en un mot. */
   theme: string;
-  /** Image statique du depot — jamais une image generee. */
+  /** PHOTOGRAMME reel du depot (licence Pexels) — jamais une image generee ni un dessin. */
   vignette: string;
   /** L'ambiance visuelle, en une ligne : c'est ce que les phrases de l'histoire portent. */
   ambiance: string;
@@ -68,7 +68,7 @@ export const MODELES_FILM: readonly ModeleFilm[] = [
     id: 'aventure',
     nom: 'L’ascension',
     theme: 'Aventure',
-    vignette: '/cinema-exemples/aventure.svg',
+    vignette: '/cinema-exemples/aventure.jpg',
     ambiance: 'Lumiere froide d’avant l’aube, contre-jour, grain de pellicule.',
     scenes: [
       'Le camp de base dans la brume, sacs prets',
@@ -98,7 +98,7 @@ export const MODELES_FILM: readonly ModeleFilm[] = [
     id: 'romance',
     nom: 'Deux cafes',
     theme: 'Romance',
-    vignette: '/cinema-exemples/romance.svg',
+    vignette: '/cinema-styles-extraits/romantique.jpg',
     ambiance: 'Lumiere douce de fin de journee, tons chauds, cadres epures.',
     scenes: [
       'Le comptoir presque vide, pluie derriere la vitre',
@@ -128,7 +128,7 @@ export const MODELES_FILM: readonly ModeleFilm[] = [
     id: 'publicite',
     nom: 'Trente secondes',
     theme: 'Publicite cinematique',
-    vignette: '/cinema-exemples/publicite.svg',
+    vignette: '/cinema-styles-extraits/publicite.jpg',
     ambiance: 'Contrastes nets, fond sombre, un seul objet eclaire au centre.',
     scenes: [
       'Salle vide avant l’ouverture, lumiere rasante',
@@ -158,7 +158,7 @@ export const MODELES_FILM: readonly ModeleFilm[] = [
     id: 'scifi',
     nom: 'Signal perdu',
     theme: 'Science-fiction',
-    vignette: '/cinema-exemples/scifi.svg',
+    vignette: '/cinema-styles-extraits/scifi.jpg',
     ambiance: 'Lumieres de secours bleues, neons froids, brume de vapeur et poussiere d’etoiles.',
     scenes: [
       'Le couloir de la station, lumieres de secours',
@@ -263,7 +263,7 @@ export default function ModelesFilm({ aDesSaisies, surAppliquer, surPartirDeZero
                   {/* Image STATIQUE du depot. eslint-disable : meme choix que le reste de
                       cet ecran, qui n'utilise pas `next/image` pour des visuels decoratifs. */}
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={m.vignette} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-cover opacity-80 transition-opacity group-hover:opacity-100" />
+                  <img src={m.vignette} alt="" aria-hidden="true" loading="lazy" className="absolute inset-0 h-full w-full object-cover opacity-80 transition-opacity group-hover:opacity-100" />
                   <span className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(10,10,15,0.1) 0%, rgba(10,10,15,0.85) 100%)' }} />
                   <span className="absolute bottom-2 left-3 right-3 block">
                     <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-violet-300">{m.theme}</span>

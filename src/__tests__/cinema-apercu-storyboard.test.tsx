@@ -177,15 +177,16 @@ describe('mode démonstration : gratuit, à l’écran, rien d’enregistré', (
 });
 
 describe('les clips de démonstration existent vraiment, et sont locaux', () => {
-  it('quatre clips mp4 h264 légers dans public/cinema-demo', () => {
+  it('quatre plans FILMES (les mouvements de camera), mp4 h264 et legers', () => {
     expect(CLIPS_DEMO).toHaveLength(4);
     for (const url of CLIPS_DEMO) {
       const f = `public${url}`;
+      expect(url, 'les clips viennent des mouvements filmes').toMatch(/^\/cinema-mouvements\//);
       expect(statSync(f).size).toBeGreaterThan(5_000);
-      expect(statSync(f).size).toBeLessThan(500_000);
+      expect(statSync(f).size).toBeLessThan(1_000_000);
       expect(readFileSync(f).subarray(4, 8).toString()).toBe('ftyp');
     }
-    const p = spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_name', '-of', 'csv=p=0', 'public/cinema-demo/demo-1.mp4'], { encoding: 'utf8' });
+    const p = spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_name', '-of', 'csv=p=0', `public${CLIPS_DEMO[0]}`], { encoding: 'utf8' });
     if (p.status === 0) expect(p.stdout.trim()).toBe('h264');
   });
 

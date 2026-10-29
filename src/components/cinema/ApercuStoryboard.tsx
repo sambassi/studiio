@@ -16,6 +16,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { ImageOff, Film, Image as ImageIcon } from 'lucide-react';
+import { MOUVEMENTS_CAMERA } from '@/lib/cinema/mouvements-camera';
 import { ratioCadre } from '@/lib/ui/lecteur-generation';
 
 /** Le strict necessaire d'un segment du montage pour l'afficher. */
@@ -27,8 +28,11 @@ export interface SegmentVue {
   demo?: boolean;
 }
 
-/** Clips d'exemple locaux (FFmpeg, `public/cinema-demo/`) : jamais des videos generees par une IA. */
-export const CLIPS_DEMO: ReadonlyArray<string> = [1, 2, 3, 4].map((n) => `/cinema-demo/demo-${n}.mp4`);
+/**
+ * Clips d'exemple locaux : les QUATRE PLANS FILMES des mouvements de camera
+ * (`mouvements-camera.ts`). Jamais des videos generees par une IA, et plus aucun dessin.
+ */
+export const CLIPS_DEMO: ReadonlyArray<string> = MOUVEMENTS_CAMERA.map((m) => m.video);
 
 export function urlMedia(url: string): string { return url.startsWith('/') ? url : `/${url}`; }
 

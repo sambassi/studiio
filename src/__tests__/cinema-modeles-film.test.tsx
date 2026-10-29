@@ -11,7 +11,7 @@
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, statSync } from 'fs';
 import { join } from 'path';
 import ModelesFilm, { MODELES_FILM } from '@/components/cinema/ModelesFilm';
 import { phrases, citation, personnagesCites, nombreDeScenes, SCENES_MIN, SCENES_MAX } from '@/lib/cinema/scenario';
@@ -37,12 +37,15 @@ describe('les exemples sont exploitables par le decoupage existant', () => {
     }
   });
 
-  it('quatre vignettes au CONTENU distinct, sans texte incruste qui serait rogne', () => {
-    const contenus = MODELES_FILM.map((m) => src(join('public', m.vignette.replace(/^\//, ''))));
+  it('quatre PHOTOGRAMMES reels, distincts — plus aucun dessin', () => {
+    const fichiers = MODELES_FILM.map((m) => join('public', m.vignette.replace(/^\//, '')));
+    const contenus = fichiers.map((f) => readFileSync(f).toString('base64').slice(0, 2000));
     expect(new Set(contenus).size).toBe(4);
-    for (const c of contenus) {
-      expect(c).toMatch(/^<svg[^>]*\swidth="\d+"[^>]*\sheight="\d+"/);
-      expect(c).not.toMatch(/<text\b/);
+    for (const [i, f] of fichiers.entries()) {
+      // JPEG (ffd8ff) : une image filmee, pas un SVG dessine.
+      expect(readFileSync(f).subarray(0, 3).toString('hex'), f).toBe('ffd8ff');
+      expect(MODELES_FILM[i].vignette, f).toMatch(/\.jpg$/);
+      expect(statSync(f).size).toBeLessThan(150_000);
     }
   });
 
