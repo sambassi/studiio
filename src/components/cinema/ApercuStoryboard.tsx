@@ -135,6 +135,7 @@ export function Storyboard({ segments, courantId, portrait, surChoisir }: {
                 <span className="absolute inset-0 flex items-center justify-center text-slate-600"><ImageOff className="h-4 w-4" aria-hidden="true" /></span>
               )}
               <span className="absolute left-1 top-1 rounded bg-slate-950/80 px-1 text-[9px] text-slate-300">{i + 1}</span>
+              {s.demo && <span className="absolute bottom-1 left-1 rounded bg-amber-500/80 px-1 text-[8px] font-bold uppercase text-slate-950">démo</span>}
               {s.media && (
                 <span className="absolute bottom-1 right-1 text-slate-200">
                   {s.media.genre === 'video' ? <Film className="h-3 w-3" aria-hidden="true" /> : <ImageIcon className="h-3 w-3" aria-hidden="true" />}

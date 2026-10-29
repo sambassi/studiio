@@ -152,6 +152,8 @@ describe('mode démonstration : gratuit, à l’écran, rien d’enregistré', (
     const labels = within(zone()).getAllByRole('button').map((b) => b.getAttribute('aria-label')!);
     expect(labels.some((l) => /manquant/.test(l))).toBe(false);
     expect(labels.filter((l) => /média d’exemple/.test(l))).toHaveLength(labels.length - 1);
+    // Chaque vignette de démonstration porte son étiquette « démo » (jamais confondue avec un vrai média).
+    expect(within(zone()).getAllByText('démo')).toHaveLength(labels.length - 1);
     // Un plan de démonstration est annoncé comme tel dans le cadre.
     fireEvent.click(within(zone()).getAllByRole('button')[3]);
     expect(screen.getByText(/Démonstration · clip d’exemple/)).toBeTruthy();
