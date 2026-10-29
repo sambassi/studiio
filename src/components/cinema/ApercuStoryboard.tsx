@@ -89,6 +89,11 @@ export function MediaDuPlan({ segment, tempsS, joue, son }: { segment: SegmentVu
       className="absolute inset-0 h-full w-full"
       style={style}
       muted playsInline loop preload="auto"
+      // Aucun `controls` : la lecture suit la chronologie de l'apercu, et la barre native
+      // proposerait « telecharger » un media qui se telecharge a l'etape Export.
+      disablePictureInPicture
+      controlsList="nodownload noplaybackrate noremoteplayback"
+      onContextMenu={(e) => e.preventDefault()}
       onLoadedMetadata={(e) => { const v = e.currentTarget; if (v.duration > 0) v.currentTime = cible % v.duration; }}
     />
   );

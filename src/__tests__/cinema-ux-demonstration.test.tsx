@@ -39,9 +39,13 @@ describe('démonstration gratuite : visible dès l’arrivée, sans scénario', 
     expect(within(zone).getAllByText(/Démonstration/).length).toBeGreaterThan(1);
     expect(zone.textContent).toMatch(/pas des vidéos générées par l’IA/);
     expect(zone.textContent).toMatch(/rien n’est débité/);
+    // Ce bloc montre les MOUVEMENTS de camera — le style du film a ses propres extraits.
+    expect(zone.textContent).toMatch(/Mouvements de caméra/);
     const video = zone.querySelector('video') as HTMLVideoElement;
     expect(video.getAttribute('src')).toBe(CLIPS_DEMO[0]);
-    expect(video.hasAttribute('controls')).toBe(true);
+    // Commandes de l'application : jamais la barre native (et son menu « telecharger »).
+    expect(video.hasAttribute('controls')).toBe(false);
+    expect(within(zone).getByLabelText(/^Lecture$|^Pause$/)).toBeTruthy();
 
     // Les 4 clips, un par mouvement de caméra.
     const boutons = within(within(zone).getByRole('group', { name: /Clips de démonstration/ })).getAllByRole('button').filter((b) => LIBELLES_DEMO.includes(b.textContent!.trim()));

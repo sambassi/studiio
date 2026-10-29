@@ -12,6 +12,7 @@ import { useState } from 'react';
 import { Play, X, Film } from 'lucide-react';
 import { ratioCadre } from '@/lib/ui/lecteur-generation';
 import { CLIPS_DEMO } from '@/components/cinema/ApercuStoryboard';
+import LecteurVideo from '@/components/cinema/LecteurVideo';
 
 /** Un libelle par clip : le mouvement de camera qu'il montre (meme ordre que `CLIPS_DEMO`). */
 export const LIBELLES_DEMO: ReadonlyArray<string> = ['Travelling avant', 'Panoramique', 'Suivi latéral', 'Orbite'];
@@ -21,28 +22,24 @@ export default function DemoGratuite({ surQuitter }: { surQuitter: () => void })
   return (
     <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-5" data-demo="gratuite">
       <h2 className="mb-1 flex items-center gap-2 font-semibold">
-        <Play className="w-4 h-4 text-violet-400" /> 6. Démonstration
+        <Play className="w-4 h-4 text-violet-400" /> 6. Mouvements de caméra
         <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-200">Démonstration</span>
       </h2>
       <p className="mb-3 text-xs text-slate-400">
-        Quatre clips d’exemple (un par mouvement de caméra). Ce ne sont pas des vidéos générées par l’IA, et rien n’est débité.
+        Quatre clips qui montrent les MOUVEMENTS (le style du film, lui, a ses propres extraits plus haut).
+        Ce ne sont pas des vidéos générées par l’IA, et rien n’est débité.
       </p>
 
-      <div
-        className="relative mx-auto w-full overflow-hidden rounded-xl border border-slate-800 bg-slate-950"
-        style={{ maxWidth: 640, aspectRatio: ratioCadre('16:9') }}
-      >
-        <video
+      {/* Commandes SVG de l'application : aucune barre native, donc aucun menu « telecharger ». */}
+      <div className="mx-auto w-full" style={{ maxWidth: 640, aspectRatio: ratioCadre('16:9') }}>
+        <LecteurVideo
           key={CLIPS_DEMO[i]}
           src={CLIPS_DEMO[i]}
-          className="absolute inset-0 h-full w-full"
-          style={{ objectFit: 'cover' }}
-          controls muted loop playsInline autoPlay
-          aria-label={`Clip de démonstration : ${LIBELLES_DEMO[i]}`}
+          titre={`Clip de démonstration : ${LIBELLES_DEMO[i]}`}
+          badge={`Démonstration · ${LIBELLES_DEMO[i]}`}
+          sansSon autoLecture boucle
+          className="h-full w-full"
         />
-        <span className="pointer-events-none absolute left-3 top-3 rounded bg-amber-500/25 px-1.5 py-0.5 text-[10px] font-semibold text-amber-100">
-          Démonstration · {LIBELLES_DEMO[i]}
-        </span>
       </div>
 
       <div role="group" aria-label="Clips de démonstration" className="mt-3 flex flex-wrap gap-2">
