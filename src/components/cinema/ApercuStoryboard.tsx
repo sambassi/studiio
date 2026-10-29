@@ -16,6 +16,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { ImageOff, Film, Image as ImageIcon } from 'lucide-react';
+import { ratioCadre } from '@/lib/ui/lecteur-generation';
 
 /** Le strict necessaire d'un segment du montage pour l'afficher. */
 export interface SegmentVue {
@@ -122,7 +123,7 @@ export function Storyboard({ segments, courantId, portrait, surChoisir }: {
               aria-label={`Plan ${i + 1}, scène ${s.sceneIndex + 1}${s.media ? (s.demo ? ', média d’exemple' : '') : ', média manquant'}`}
               aria-current={actif ? 'true' : undefined}
               className={`relative block w-full overflow-hidden rounded-md border transition-colors ${actif ? 'border-violet-500 ring-1 ring-violet-500/50' : 'border-slate-800 hover:border-slate-600'}`}
-              style={{ aspectRatio: portrait ? '9 / 16' : '16 / 9', background: '#0d0f16' }}
+              style={{ aspectRatio: ratioCadre(portrait ? '9:16' : '16:9'), background: '#0d0f16' }}
             >
               {s.media ? (
                 s.media.genre === 'image' ? (
