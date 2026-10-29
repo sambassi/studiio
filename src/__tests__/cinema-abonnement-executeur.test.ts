@@ -90,12 +90,12 @@ const EVALUATION_OK = {
 };
 
 /** Budget de projet confirme par defaut (1 $), sauf `budget: null`. */
-async function lancer(fournisseurId = ID_REPLICATE_IMAGE, o: { budget?: number | null; dejaEngage?: number } = {}) {
+async function lancer(fournisseurId = ID_REPLICATE_IMAGE, o: { budget?: number | null; dejaEngage?: number; style?: 'noir' } = {}) {
   const depot = depotFilmsMemoire();
   const base = { ...preparerFilm({ histoire: 'Nina entre. Marco la regarde.', personnages: [{ nom: 'Nina', description: 'x' }], idFilm: 'film-abo', titre: 't' }), proprietaire: U };
   const budget = o.budget === undefined ? 1 : o.budget;
   const film = {
-    ...base, coutGenerationUsd: o.dejaEngage ?? 0,
+    ...base, coutGenerationUsd: o.dejaEngage ?? 0, ...(o.style ? { styleCinema: o.style } : null),
     ...(budget === null ? null : { budgetApprouve: { usd: budget, perimetre: 'images' as const, devisUsd: budget, approuveLe: 'x' } }),
   };
   await depot.creer(film, U);
@@ -397,12 +397,21 @@ describe('SOUMISSION SUIVIE : ecrite avant l’appel, completee a l’acceptatio
       avant = (await e.depotCourant!.lire('film-abo', U))!.film.generations![0].externe as never;
     };
     const { g } = await lancer();
-    expect(avant).toMatchObject({ fournisseurId: ID_REPLICATE_IMAGE, mediaAvantUrl: null });
+    expect(avant).toMatchObject({ fournisseurId: ID_REPLICATE_IMAGE, mediaAvantUrl: null, direction: 's:' });
     expect(avant!.cleIdempotence).toBe(e.cleRecue);
     expect(avant!.idExterne).toBeUndefined();
     expect(g.externe).toMatchObject({ idExterne: 'ext-123', cleIdempotence: e.cleRecue });
     expect(g.externe!.coutEstimeUsd).toBeGreaterThan(0);
     expect(typeof g.externe!.accepteLe).toBe('string');
+  });
+
+  it('la direction ENVOYEE est figee dans la soumission, avant l’appel payant', async () => {
+    e.regime = { type: 'credits' };
+    let avant: Record<string, unknown> | undefined;
+    e.avantAcceptation = async () => { avant = (await e.depotCourant!.lire('film-abo', U))!.film.generations![0].externe as never; };
+    const { g } = await lancer(ID_REPLICATE_IMAGE, { style: 'noir' });
+    expect(avant!.direction).toBe('s:noir');
+    expect(g.externe!.direction).toBe('s:noir');
   });
 
   it('generation simulee : aucune soumission suivie (rien n’est facturable)', async () => {

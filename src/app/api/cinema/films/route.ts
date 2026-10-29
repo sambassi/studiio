@@ -13,6 +13,7 @@ import { FILMS_MAX_PAR_COMPTE, sessionCinema } from '@/lib/cinema/routes-aide';
 import { modeGenerationAffiche } from '@/lib/cinema/garde';
 import { presenterMontage } from '@/lib/cinema/stockage/presentation';
 import type { FormatFilm, NiveauQualite } from '@/lib/cinema/types';
+import { estStyleCinema } from '@/lib/cinema/direction/styles';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -47,6 +48,11 @@ export async function POST(req: NextRequest) {
   if (histoire.length > 20_000) {
     return NextResponse.json({ ok: false, erreur: 'histoire trop longue (20 000 caracteres maximum)' }, { status: 400 });
   }
+  // Style cinematique global : optionnel ; une valeur inconnue est une erreur, pas un oubli.
+  const styleCinema = corps?.styleCinema === undefined || corps.styleCinema === null ? null : corps.styleCinema;
+  if (styleCinema !== null && !estStyleCinema(styleCinema)) {
+    return NextResponse.json({ ok: false, erreur: 'style de film inconnu' }, { status: 400 });
+  }
   const personnages = Array.isArray(corps?.personnages) ? corps.personnages.slice(0, 6) : [];
   if (personnages.length === 0) {
     return NextResponse.json({ ok: false, erreur: 'au moins un personnage est requis' }, { status: 400 });
@@ -70,6 +76,11 @@ export async function POST(req: NextRequest) {
       urlImage: null,
     })).filter((p: { nom: string }) => p.nom.length > 0),
   });
+
+  // Le style n'entre PAS dans le decoupage du scenario : il se pose sur le film fini.
+  if (styleCinema) film.styleCinema = styleCinema;
+  // Film neuf : camera AUTOMATIQUE par defaut (un film d'avant n'a pas ce drapeau).
+  film.directionActive = true;
 
   // Le proprietaire est pose par le DEPOT, a partir de la session.
   const r = await ctx.films.creer(film, s.userId);

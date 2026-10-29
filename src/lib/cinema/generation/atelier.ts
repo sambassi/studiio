@@ -31,6 +31,8 @@ import {
   fournisseurGeneration, type ApparencePersonnageGeneration, type OperationGenerationIA, type SuiviSoumission,
 } from '@/lib/cinema/generation/fournisseur';
 import type { Film, MediaPlan, PlanCinema } from '@/lib/cinema/types';
+import { directionDuPlan, promptImageAvecDirection, promptVideoAvecDirection } from '@/lib/cinema/direction/prompt';
+import { signatureDirection } from '@/lib/cinema/direction/signature';
 
 // Side-effect : enregistre le fournisseur simule dans le registre partage.
 // Importe ICI (et non seulement par la route) pour que tout appelant de
@@ -184,7 +186,11 @@ export async function genererMediaPlan(film: Film, planId: string, options: Opti
     const texteSource = personnages.length
       ? `${personnages.map((p) => `${p.nom} (${p.description || 'apparence non decrite'})`).join(', ')}. ${plan.description}`
       : plan.description;
-    const { promptFinal } = construirePromptImage(texteSource, { mode: aReference ? 'reference' : 'texte' });
+    const { promptFinal: promptBase } = construirePromptImage(texteSource, { mode: aReference ? 'reference' : 'texte' });
+    // Direction artistique : le style EFFECTIF du plan (exception de scene, sinon style du
+    // film) est ajoute au prompt — la meme voie pour une premiere generation et pour une
+    // regeneration, puisque le prompt est reconstruit a chaque appel depuis le film COURANT.
+    const promptFinal = promptImageAvecDirection(promptBase, directionDuPlan(film, planId));
 
     const resultat = await fournisseur.genererImage({
       promptPlan: plan.description,
@@ -213,7 +219,10 @@ export async function genererMediaPlan(film: Film, planId: string, options: Opti
     // Mode `'video'` (diagnostic E002, 2026-10-28) : decrit le MOUVEMENT a animer et
     // demande explicitement de garder l'identite de l'image source — `mode: 'texte'`
     // decrivait une scene statique, adaptee a une IMAGE, pas a une animation.
-    const { promptFinal: promptVideo } = construirePromptImage(plan.description, { mode: 'video' });
+    const { promptFinal: promptVideoBase } = construirePromptImage(plan.description, { mode: 'video' });
+    // Direction artistique : le mouvement de camera du plan (choisi, ou automatique) et le
+    // style effectif. La camera remplace la consigne figee du prompt video partage.
+    const promptVideo = promptVideoAvecDirection(promptVideoBase, directionDuPlan(film, planId));
     const resultat = await fournisseur.genererVideo({
       fichierImageSource: imageSource,
       prompt: promptVideo,
@@ -254,6 +263,11 @@ export async function genererMediaPlan(film: Film, planId: string, options: Opti
 export async function importerResultatFournisseur(args: {
   film: Film; planId: string; fichier: string; nomSuggere: string; racinePublique: string;
   fournisseurId: string; coutUsd: number;
+  /**
+   * Direction sous laquelle la requete a ete ENVOYEE. Absent = celle du film courant (generation
+   * directe). `null` = inconnue (reprise d'une soumission sans trace) : aucune n'est attribuee.
+   */
+  direction?: string | null;
 }): Promise<{ ok: true; film: Film; media: MediaPlan } | { ok: false; erreur: string }> {
   const { film, planId } = args;
   const plan = film.scenes.flatMap((s) => s.plans).find((p) => p.id === planId);
@@ -285,7 +299,11 @@ export async function importerResultatFournisseur(args: {
   // generes depuis la MEME apparence ou depuis deux versions differentes
   // (`generation/coherence.ts`). Sans cette trace, un changement de
   // reference entre deux generations serait invisible.
-  const mediaTrace: MediaPlan = { ...importe.media, fournisseurGeneration: fournisseur.id };
+  // `direction` : sous quel style/camera ce media a ete genere (voir `direction/signature.ts`).
+  const mediaTrace: MediaPlan = {
+    ...importe.media, fournisseurGeneration: fournisseur.id,
+    ...(args.direction === null ? null : { direction: args.direction ?? signatureDirection(film, planId, importe.media.genre) }),
+  };
   const filmAvecMedia = remplacerMedia(importe.film, planId, mediaTrace);
   // Aligne POSITIONNELLEMENT sur `plan.personnages` : `coherence.ts` lit
   // `referencesUtilisees[plan.personnages.indexOf(id)]`, donc un personnage

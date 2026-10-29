@@ -16,10 +16,25 @@ import type { Film } from '@/lib/cinema/types';
 import { ajouterReference } from '@/lib/cinema/personnages';
 import { remplacerMedia, reglerSonMedia } from '@/lib/cinema/medias';
 import { referenceCinemaValide } from '@/lib/cinema/acces';
+import { estStyleCinema } from '@/lib/cinema/direction/styles';
+import { estCameraCinema } from '@/lib/cinema/direction/camera';
+import type { IdCameraCinema, IdStyleCinema } from '@/lib/cinema/types';
 
 /** Une erreur DE L'APPELANT, rendue en 400 telle quelle. */
 export function erreurPatch(corps: unknown): string | null {
-  const c = corps as { plans?: unknown[]; reference?: { urlImage?: unknown } } | null;
+  const c = corps as { plans?: unknown[]; scenes?: unknown[]; style?: unknown; reference?: { urlImage?: unknown } } | null;
+  // Direction artistique : `null` efface le choix, toute autre valeur doit etre connue.
+  if (c && 'style' in c && c.style !== null && !estStyleCinema(c.style)) return 'style de film inconnu';
+  if (Array.isArray(c?.scenes)) {
+    for (const sc of c!.scenes as Array<Record<string, unknown> | null>) {
+      if (sc && 'style' in sc && sc.style !== null && !estStyleCinema(sc.style)) return 'style de scene inconnu';
+    }
+  }
+  if (Array.isArray(c?.plans)) {
+    for (const p of c!.plans as Array<Record<string, unknown> | null>) {
+      if (p && 'camera' in p && p.camera !== null && !estCameraCinema(p.camera)) return 'mouvement de camera inconnu';
+    }
+  }
   if (Array.isArray(c?.plans)) {
     for (const p of c!.plans as Array<Record<string, unknown> | null>) {
       if ((p?.media !== undefined && p.media !== null) || p?.mediaUrl !== undefined) {
@@ -34,12 +49,15 @@ export function erreurPatch(corps: unknown): string | null {
   return null;
 }
 
-type PatchPlan = { id?: unknown; texte?: unknown; dureeS?: unknown; media?: null; sonMedia?: unknown; personnages?: unknown };
-type PatchScene = { id?: unknown; personnages?: unknown; etat?: unknown };
+type PatchPlan = { id?: unknown; texte?: unknown; dureeS?: unknown; media?: null; sonMedia?: unknown; personnages?: unknown; camera?: unknown };
+type PatchScene = { id?: unknown; personnages?: unknown; etat?: unknown; style?: unknown };
 
 export function appliquerPatch(film: Film, corps: unknown): Film {
-  const c = corps as { plans?: PatchPlan[]; scenes?: PatchScene[]; reference?: { personnageId?: unknown; description?: unknown; urlImage?: unknown } } | null;
+  const c = corps as { plans?: PatchPlan[]; scenes?: PatchScene[]; style?: unknown; reference?: { personnageId?: unknown; description?: unknown; urlImage?: unknown } } | null;
   let suivant = film;
+
+  // Style GLOBAL : `null` (ou absent du corps) → inchange ; `null` explicite → efface.
+  if (c && 'style' in c) suivant = avecChamp(suivant, 'styleCinema', c.style === null ? undefined : (estStyleCinema(c.style) ? c.style : suivant.styleCinema));
 
   if (Array.isArray(c?.plans)) {
     const patchs = new Map<string, PatchPlan>();
@@ -54,7 +72,7 @@ export function appliquerPatch(film: Film, corps: unknown): Film {
           if (!patch) return plan;
           const texte = typeof patch.texte === 'string' ? patch.texte.slice(0, 500) : null;
           return {
-            ...plan,
+            ...avecChamp(plan, 'camera', 'camera' in patch ? cameraDe(patch.camera, plan.camera) : plan.camera),
             personnages: Array.isArray(patch.personnages)
               ? (patch.personnages as unknown[]).filter((id): id is string => typeof id === 'string' && connus.has(id))
               : plan.personnages,
@@ -86,7 +104,7 @@ export function appliquerPatch(film: Film, corps: unknown): Film {
         const patch = patchs.get(scene.id);
         if (!patch) return scene;
         return {
-          ...scene,
+          ...avecChamp(scene, 'styleCinema', 'style' in patch ? styleDe(patch.style, scene.styleCinema) : scene.styleCinema),
           personnages: Array.isArray(patch.personnages)
             ? (patch.personnages as unknown[]).filter((id): id is string => typeof id === 'string' && connus.has(id))
             : scene.personnages,
@@ -108,4 +126,21 @@ export function appliquerPatch(film: Film, corps: unknown): Film {
     };
   }
   return suivant;
+}
+
+/** `valeur` absente ou `undefined` → le champ est RETIRE (jamais laisse a `undefined` dans le JSON). */
+function avecChamp<T extends object, K extends string>(objet: T, cle: K, valeur: unknown): T {
+  const { [cle]: _ancien, ...reste } = objet as Record<string, unknown>;
+  return (valeur === undefined ? reste : { ...reste, [cle]: valeur }) as T;
+}
+
+/** Une camera `auto` n'est pas stockee : l'absence EST l'automatique. */
+function cameraDe(v: unknown, actuel: IdCameraCinema | undefined): IdCameraCinema | undefined {
+  if (v === null || v === 'auto') return undefined;
+  return estCameraCinema(v) ? v : actuel;
+}
+
+function styleDe(v: unknown, actuel: IdStyleCinema | undefined): IdStyleCinema | undefined {
+  if (v === null) return undefined;
+  return estStyleCinema(v) ? v : actuel;
 }

@@ -666,3 +666,48 @@ Valeurs par formule ; application de la migration (puis SIGUSR1 PostgREST) ;
 reconciliation des depenses `incertaine` contre l'etat reel chez le fournisseur
 (lecture de statut, a construire sans appel payant) ; verification en staging
 avec un abonnement Stripe de test.
+
+## 17. Styles cinematographiques et mouvements de camera
+
+Six styles (Cinema realiste, Film noir, Publicite premium, Romantique, Documentaire,
+Science-fiction), definis dans `src/lib/cinema/direction/styles.ts` : profil, eclairage,
+palette, ambiance, texture. Un style est choisi pour le film (`film.styleCinema`) et peut
+avoir une exception par scene (`scene.styleCinema`). Huit mouvements de camera par plan
+(`plan.camera`, `direction/camera.ts`) : automatique (defaut, champ absent), fixe, travelling
+avant/arriere, panoramique gauche/droite, suivi lateral, orbite.
+
+**Application reelle** : `generation/atelier.ts` enveloppe le prompt du moteur partage
+(`lib/ai/prompt-image.ts`, non modifie) avec `direction/prompt.ts`, a chaque generation, depuis
+le film COURANT (premiere generation et regeneration passent par le meme chemin). Image : bloc
+de style avant le rappel « Original request ». Video : la camera remplace la consigne figee
+« subtle and steady camera motion », le style est rappele. Le bloc de style interdit de
+modifier personnages, dialogues et decor.
+
+**Limites** : aucun connecteur (Replicate wan-2.1, Higgsfield Kling) n'expose de parametre de
+camera natif : le mouvement est une INDICATION dans le prompt, pas une garantie. Les miniatures
+sont des illustrations statiques (`public/cinema-styles/`), jamais des resultats generes.
+
+**Donnees et couts** : champs optionnels du JSON du film, aucune migration. Un film d'avant n'a
+aucun champ : ses images sont inchangees ; ses videos recoivent la camera automatique. Style et
+camera ne changent ni modele, ni duree, ni devis, ni empreinte de scene : aucune re-validation
+de budget, aucune depense au choix. API : `POST /films {styleCinema}`, `PATCH {style}`,
+`{scenes:[{id, style}]}`, `{plans:[{id, camera}]}` (`null` ou `auto` retire le reglage).
+
+### 17.1 Anciens films et changement de direction apres generation
+
+- **Anciens films** : sans `film.directionActive` (pose a la creation d'un film neuf), un plan sans
+  camera choisie garde la consigne figee d'origine ; un film neuf utilise l'automatique. Les
+  empreintes des films d'avant ne changent pas : rien n'est re-rendu ni refacture.
+- **Signature** : chaque media genere porte `media.direction` (style, et camera pour une video ;
+  `direction/signature.ts`). Absent = « aucun style, camera d'origine ».
+- **Changement apres generation** : le media est CONSERVE ; `plansARegenerer(film)` signale les
+  plans dont la signature differe (badge ambre dans l'editeur). Rien ne part seul : regenerer est
+  l'action habituelle du plan, avec devis et budget valides. La cle d'idempotence est aleatoire :
+  aucun ancien resultat n'est reutilise.
+- **Rendu** : l'empreinte de scene integre url + signature d'un media genere sous direction, donc
+  un nouveau media invalide le rendu en cache (les medias d'avant, sans signature, restent hors
+  empreinte).
+- **Reprise apres interruption** : la direction ENVOYEE est figee dans la soumission
+  (`externe.direction`) avant l'appel payant ; la video recuperee recoit cette signature, jamais
+  celle du film d'aujourd'hui. Style change pendant l'arret = media conserve, plan « a regenerer ».
+  Soumission sans trace : aucune direction attribuee (le plan est signale).

@@ -28,6 +28,15 @@ export type FormatFilm = '9:16' | '16:9';
  */
 export type NiveauQualite = 'brouillon' | 'standard' | 'cinema';
 
+/**
+ * Direction artistique (`lib/cinema/direction/`). Champs OPTIONNELS dans le document du
+ * film : un film d'avant reste valide sans migration (pas de style = prompts d'avant).
+ */
+export type IdStyleCinema = 'realiste' | 'noir' | 'publicite' | 'romantique' | 'documentaire' | 'scifi';
+export type IdCameraCinema =
+  | 'auto' | 'fixe' | 'travelling_avant' | 'travelling_arriere'
+  | 'pano_gauche' | 'pano_droite' | 'suivi_lateral' | 'orbite';
+
 /** Les intentions dramatiques, dans l'ordre ou le scenariste les pose. */
 export type IntentionScene = 'exposition' | 'incident' | 'confrontation' | 'resolution' | 'epilogue';
 
@@ -108,6 +117,12 @@ export interface MediaPlan {
    */
   fournisseurGeneration?: string;
   /**
+   * Signature de la direction artistique (style, camera) sous laquelle ce media a ete GENERE
+   * (`direction/signature.ts`). Absent = media d'avant la fonction : il vaut « aucun style,
+   * camera d'origine ». Sert a dire quels plans sont a regenerer apres un changement de style.
+   */
+  direction?: string;
+  /**
    * Garder le son du media. Defaut `false` : le son d'ambiance d'un rush et
    * la voix du plan se couvrent, et c'est la parole qu'on perd.
    */
@@ -131,6 +146,12 @@ export interface PlanCinema {
   media: MediaPlan | null;
   /** Reference utilisee au moment du rendu de ce plan (tracabilite). */
   referencesUtilisees?: string[];
+  /**
+   * Mouvement de camera DEMANDE pour la generation video de ce plan. Absent = automatique
+   * (choisi selon le plan, `direction/camera.ts`). Une indication donnee au modele, pas une
+   * garantie : aucun fournisseur actuel n'expose de parametre de camera.
+   */
+  camera?: IdCameraCinema;
 }
 
 export interface SceneCinema {
@@ -147,6 +168,8 @@ export interface SceneCinema {
   empreinte: string;
   /** Cout fournisseur deja depense sur cette scene, en USD. */
   coutUsd: number;
+  /** EXCEPTION de style pour cette scene. Absent = le style du film. */
+  styleCinema?: IdStyleCinema;
 }
 
 export interface Film {
@@ -156,6 +179,13 @@ export interface Film {
   histoire: string;
   format: FormatFilm;
   qualite: NiveauQualite;
+  /** Style cinematique GLOBAL. Absent = aucun style impose (prompts d'avant). */
+  styleCinema?: IdStyleCinema;
+  /**
+   * Film cree AVEC la direction artistique : ses plans sans camera choisie suivent la camera
+   * AUTOMATIQUE. Absent = film d'avant, qui garde son ancien comportement (camera douce figee).
+   */
+  directionActive?: boolean;
   personnages: Personnage[];
   scenes: SceneCinema[];
   creeLe: string;
@@ -214,6 +244,12 @@ export interface SoumissionExterne {
   coutEstimeUsd: number;
   /** Media du plan au depart : une livraison tardive n'ecrase jamais plus recent. */
   mediaAvantUrl: string | null;
+  /**
+   * Direction artistique (style, camera) EXACTE de la requete envoyee, figee a la soumission
+   * (`direction/signature.ts`). La reprise la reutilise : une video recuperee apres un arret
+   * n'herite jamais du style que le film a pris entre-temps.
+   */
+  direction?: string;
   soumisLe: string;
   accepteLe?: string;
 }
