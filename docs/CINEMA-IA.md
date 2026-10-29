@@ -711,3 +711,21 @@ de budget, aucune depense au choix. API : `POST /films {styleCinema}`, `PATCH {s
   (`externe.direction`) avant l'appel payant ; la video recuperee recoit cette signature, jamais
   celle du film d'aujourd'hui. Style change pendant l'arret = media conserve, plan « a regenerer ».
   Soumission sans trace : aucune direction attribuee (le plan est signale).
+
+## 18. Apercu : storyboard honnete, vrais medias, demonstration gratuite
+
+**Cause de l'ancien « ecran violet »** : le lecteur dessinait la *carte de plan* du montage
+(degrade violet + titre de scene + description) meme quand aucun media n'existait. Ce n'etait ni
+une video ni une image : un texte habille en ecran de film.
+
+- **Sans aucun media** : titre « Prévisualisation du scénario », cadre sombre, « Média manquant »
+  par plan, storyboard cliquable (une vignette par plan), mention « pas un film ».
+- **Avec des medias** : le VRAI fichier est affiche (`ApercuStoryboard.tsx`), cale sur la
+  chronologie (lecture, pause, position), son audible si le plan le garde (`sonActif`) avec un
+  bouton couper/activer, formats 16:9 et 9:16 tenus par `ratioCadre`, agrandissement identique.
+  Les plans sans media restent signales (bilan « n plans sur N avec media »).
+- **Mode demonstration (gratuit)** : remplace, a l'ECRAN SEULEMENT, les medias manquants par 4 clips
+  locaux (`public/cinema-demo/`, FFmpeg, ~55 Ko chacun). Rien n'est enregistre ni genere, aucun
+  appel serveur ; badge « Démonstration · clip d'exemple ». Ce ne sont pas des videos d'IA.
+- Retire : le filigrane « STUDIIO CINEMA IA », le bloc central de texte et la ligne
+  « lieu — cadre » superposes a l'image ; la legende du plan est une ligne discrete en bas.

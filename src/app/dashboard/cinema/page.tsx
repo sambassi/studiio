@@ -28,6 +28,7 @@ import { plansARegenerer } from '@/lib/cinema/direction/signature';
 import type { IdCameraCinema, IdStyleCinema } from '@/lib/cinema/types';
 import ModelesFilm, { type ModeleFilm } from '@/components/cinema/ModelesFilm';
 import AideRedaction from '@/components/cinema/AideRedaction';
+import { MediaDuPlan, EmplacementVide, Storyboard, appliquerDemo, bilanMedias } from '@/components/cinema/ApercuStoryboard';
 
 interface SegmentApi {
   sceneId: string; sceneIndex: number; planId: string; cadre: string;
@@ -36,6 +37,8 @@ interface SegmentApi {
   debutS: number; finS: number; dureeS: number;
   media: MediaApi | null; cadrage: { echelle: number; rogneX: number; rogneY: number; memeRapport: boolean } | null;
   voixUrl: string | null; couleurs: [string, string];
+  /** Mode demonstration : le media affiche est un clip d'exemple, pas celui du film. */
+  demo?: boolean;
 }
 interface MediaApi { url: string; genre: 'image' | 'video'; largeur: number; hauteur: number; dureeS: number | null; octets: number; origine: string; sonActif?: boolean; direction?: string }
 interface MontageApi { filmId: string; titre: string; format: string; largeur: number; hauteur: number; fps: number; segments: SegmentApi[]; dureeS: number }
@@ -1440,13 +1443,15 @@ function ApercuVide({ format }: { format: string }) {
  * Le format est tenu par `aspectRatio` (helper canonique `ratioCadre`, comme « Mon
  * avatar ») dans les deux tailles : un 9:16 reste un 9:16 agrandi, jamais etire.
  */
-function CadreMontage({ montage, segment, tempsS, taille, children }: {
+function CadreMontage({ montage, segment, tempsS, taille, joue, son, children }: {
   montage: MontageApi; segment: SegmentApi; tempsS: number;
-  taille: 'ligne' | 'immersif'; children?: React.ReactNode;
+  taille: 'ligne' | 'immersif'; joue: boolean; son: boolean; children?: React.ReactNode;
 }) {
   const portrait = montage.hauteur > montage.largeur;
   const immersif = taille === 'immersif';
-  const fond = `radial-gradient(130% 110% at 25% 15%, ${segment.couleurs[0]} 0%, ${segment.couleurs[1]} 55%, #0A0A0F 100%)`;
+  // Fond SOMBRE et neutre : le degrade violet de la « carte de plan » imitait une video. Le
+  // contenu vient du media reel ; sans media, c'est un emplacement de storyboard vide.
+  const fond = '#05060a';
   const ratio = ratioCadre(portrait ? '9:16' : '16:9');
 
   return (
@@ -1477,39 +1482,24 @@ function CadreMontage({ montage, segment, tempsS, taille, children }: {
           background: fond,
         }}
     >
-      {/* Le media reel du plan, cadre comme au rendu (cover, sans etirement). */}
-      {segment.media && (
-        segment.media.genre === 'image' ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={segment.media.url.startsWith('/') ? segment.media.url : `/${segment.media.url}`} alt="" className="absolute inset-0 w-full h-full" style={{ objectFit: 'cover' }} />
-        ) : (
-          <video
-            src={segment.media.url.startsWith('/') ? segment.media.url : `/${segment.media.url}`}
-            className="absolute inset-0 w-full h-full"
-            style={{ objectFit: 'cover' }}
-            muted autoPlay loop playsInline
-          />
-        )
-      )}
-      <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(10,10,15,0.55) 0%, rgba(10,10,15,0.15) 45%, rgba(10,10,15,0.85) 100%)' }} />
-      <div className="absolute top-4 left-4 right-16">
-        <div className="text-[10px] tracking-[0.2em] text-pink-400 font-bold">SCENE {segment.sceneIndex + 1} · {segment.intention.toUpperCase()}</div>
-        <div className={immersif ? 'text-2xl font-extrabold' : 'text-lg font-extrabold'}>{segment.titreScene}</div>
-        <div className="text-[11px] text-slate-300">{segment.lieu} — {segment.cadre}</div>
+      {/* Le media REEL du plan, cadre comme au rendu (cover, sans etirement), cale sur la
+          chronologie. Sans media : un emplacement de storyboard, jamais une fausse video. */}
+      {segment.media
+        ? <MediaDuPlan segment={segment} tempsS={tempsS} joue={joue} son={son} />
+        : <EmplacementVide segment={segment} grand={immersif} />}
+      {/* Degrade bas seulement, pour la lisibilite de la legende. */}
+      <div className="absolute inset-x-0 bottom-0 h-1/3" style={{ background: 'linear-gradient(180deg, rgba(5,6,10,0) 0%, rgba(5,6,10,0.78) 100%)' }} />
+      <div className="absolute top-3 left-3 right-14 flex flex-wrap items-center gap-1.5 text-[10px]">
+        <span className="rounded bg-slate-950/70 px-1.5 py-0.5 font-semibold tracking-wider text-slate-200">SCENE {segment.sceneIndex + 1}</span>
+        {segment.demo && <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-amber-200">Démonstration · clip d’exemple</span>}
+        {!segment.media && <span className="rounded bg-slate-800/80 px-1.5 py-0.5 text-slate-300">Prévisualisation</span>}
       </div>
-      <div className="absolute inset-0 flex items-center justify-center px-8 text-center">
-        <div>
-          {segment.locuteur && (
-            <div className="inline-block mb-2 rounded-full bg-pink-500 px-2 py-0.5 text-[10px] font-bold tracking-widest text-slate-950">
-              {segment.locuteur.toUpperCase()}
-            </div>
-          )}
-          <div className={`${immersif ? 'text-2xl' : 'text-base'} font-bold leading-snug`} style={{ textShadow: '0 4px 24px rgba(0,0,0,0.65)' }}>{segment.texte}</div>
-        </div>
-      </div>
-      <div className="absolute bottom-3 left-4 right-4 flex justify-between text-[10px] text-slate-300">
-        <span>{tempsS.toFixed(1)} s / {montage.dureeS.toFixed(1)} s</span>
-        <span>STUDIIO CINEMA IA</span>
+      {/* Legende du plan (ce qui est dit ou montre) : une ligne discrete, pas un bloc central. */}
+      <div className="absolute inset-x-0 bottom-0 px-4 pb-3 text-center">
+        {segment.locuteur && (
+          <span className="mr-2 inline-block rounded-full bg-pink-500 px-2 py-0.5 text-[10px] font-bold tracking-widest text-slate-950 align-middle">{segment.locuteur.toUpperCase()}</span>
+        )}
+        <span className={`${immersif ? 'text-lg' : 'text-xs'} font-semibold leading-snug align-middle`} style={{ textShadow: '0 2px 12px rgba(0,0,0,0.85)' }}>{segment.texte}</span>
       </div>
       {/* Le bouton d'agrandissement (ou de retour) est pose PAR L'APPELANT, dans le coin
           haut droit : c'est la seule difference d'habillage entre les deux tailles. */}
@@ -1519,10 +1509,12 @@ function CadreMontage({ montage, segment, tempsS, taille, children }: {
 }
 
 /** Les MEMES commandes de lecture dans les deux tailles — jamais un second jeu de boutons. */
-function CommandesMontage({ montage, joue, tempsS, surBasculerLecture, surDeplacer, surPreparerVoix, voixEnCours }: {
+function CommandesMontage({ montage, joue, tempsS, surBasculerLecture, surDeplacer, surPreparerVoix, voixEnCours, aDuSon, son, surBasculerSon }: {
   montage: MontageApi; joue: boolean; tempsS: number;
   surBasculerLecture: () => void; surDeplacer: (t: number) => void;
   surPreparerVoix?: () => void; voixEnCours?: boolean;
+  /** Au moins un plan garde le son de son media : on propose de le couper. */
+  aDuSon?: boolean; son?: boolean; surBasculerSon?: () => void;
 }) {
   return (
     <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -1536,6 +1528,16 @@ function CommandesMontage({ montage, joue, tempsS, surBasculerLecture, surDeplac
         aria-label="Position dans le montage"
         className="flex-1 min-w-[120px] accent-violet-500"
       />
+      <span className="text-[11px] tabular-nums text-slate-400">{tempsS.toFixed(1)} / {montage.dureeS.toFixed(1)} s</span>
+      {aDuSon && surBasculerSon && (
+        <button
+          type="button" onClick={surBasculerSon} aria-pressed={!son}
+          aria-label={son ? 'Couper le son' : 'Activer le son'} title={son ? 'Couper le son' : 'Activer le son'}
+          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 text-slate-300 hover:border-violet-500/50"
+        >
+          {son ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+        </button>
+      )}
       {surPreparerVoix && !montage.segments.some((s) => s.voixUrl) && (
         <button onClick={surPreparerVoix} disabled={voixEnCours} className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm hover:border-violet-500/50 disabled:opacity-50">
           {voixEnCours ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
@@ -1557,9 +1559,16 @@ function Apercu({ montage, surPreparerVoix, voixEnCours }: { montage: MontageApi
   const agrandirRef = useRef<HTMLButtonElement | null>(null);
   const reduireRef = useRef<HTMLButtonElement | null>(null);
 
+  /** Mode demonstration (gratuit) : des clips d'exemple a la place des medias MANQUANTS, a l'ecran seulement. */
+  const [demo, setDemo] = useState(false);
+  const [son, setSon] = useState(true);
+  /** Le bilan se fait sur les medias REELS du film, jamais sur ceux de la demonstration. */
+  const bilan = useMemo(() => bilanMedias(montage.segments), [montage.segments]);
+  const segments = useMemo(() => appliquerDemo(montage.segments, demo), [montage.segments, demo]);
+  const aDuSon = segments.some((s) => s.media?.genre === 'video' && s.media.sonActif);
   const segment = useMemo(
-    () => montage.segments.find((s) => tempsS >= s.debutS && tempsS < s.finS) ?? montage.segments[0],
-    [montage.segments, tempsS],
+    () => segments.find((s) => tempsS >= s.debutS && tempsS < s.finS) ?? segments[0],
+    [segments, tempsS],
   );
 
   useEffect(() => {
@@ -1623,12 +1632,19 @@ function Apercu({ montage, surPreparerVoix, voixEnCours }: { montage: MontageApi
 
   return (
     <section className="mb-8 rounded-xl border border-slate-800 bg-slate-900/40 p-5">
-      <h2 className="font-semibold mb-4 flex items-center gap-2">
-        <Play className="w-4 h-4 text-violet-400" /> 6. Apercu
-        <Detail texte="Meme chronologie que le MP4 : les debuts, durees et couleurs viennent du montage renvoye par l'API, pas d'un calcul propre a la page." />
+      <h2 className="font-semibold mb-1 flex items-center gap-2">
+        <Play className="w-4 h-4 text-violet-400" /> {bilan.aucun && !demo ? '6. Prévisualisation du scénario' : '6. Apercu'}
+        <Detail texte="Meme chronologie que le MP4 : les debuts et durees viennent du montage renvoye par l'API. Un plan sans media est un emplacement de storyboard, pas une video." />
       </h2>
+      <p className="mb-3 text-xs text-slate-400" data-apercu="bilan">
+        {bilan.aucun
+          ? 'Aucune image ni vidéo pour l’instant : c’est le scénario en storyboard, pas un film.'
+          : bilan.manquants > 0
+            ? `${bilan.avecMedia} plan${bilan.avecMedia > 1 ? 's' : ''} sur ${bilan.total} avec média · ${bilan.manquants} manquant${bilan.manquants > 1 ? 's' : ''}.`
+            : `${bilan.total} plans avec média : vous voyez les vrais fichiers.`}
+      </p>
 
-      <CadreMontage montage={montage} segment={segment} tempsS={tempsS} taille="ligne">
+      <CadreMontage montage={montage} segment={segment} tempsS={tempsS} taille="ligne" joue={joue} son={son}>
         <button
           ref={agrandirRef}
           type="button"
@@ -1647,7 +1663,26 @@ function Apercu({ montage, surPreparerVoix, voixEnCours }: { montage: MontageApi
         surDeplacer={setTempsS}
         surPreparerVoix={surPreparerVoix}
         voixEnCours={voixEnCours}
+        aDuSon={aDuSon} son={son} surBasculerSon={() => setSon((v) => !v)}
       />
+
+      <Storyboard
+        segments={segments} courantId={segment.planId} portrait={portrait}
+        surChoisir={(s) => { setTempsS(s.debutS); }}
+      />
+
+      {bilan.manquants > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <button
+            type="button" onClick={() => setDemo((v) => !v)} aria-pressed={demo}
+            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${demo ? 'border-amber-500/50 bg-amber-500/10 text-amber-200' : 'border-slate-700 text-slate-300 hover:border-violet-500/50'}`}
+          >
+            <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
+            {demo ? 'Quitter la démonstration' : 'Mode démonstration (gratuit)'}
+          </button>
+          <Detail texte="Remplace, a l'ecran seulement, les medias manquants par des clips d'exemple locaux pour montrer le rendu d'un vrai montage. Rien n'est enregistre, rien n'est genere, aucun cout : ce ne sont pas des videos de votre film." />
+        </div>
+      )}
 
       {/* APERÇU AGRANDI — le meme cadre, les memes commandes, le meme etat de lecture.
           Il reste dans CET arbre React (donc aucune donnee saisie ailleurs n'est remontee
@@ -1670,7 +1705,7 @@ function Apercu({ montage, surPreparerVoix, voixEnCours }: { montage: MontageApi
           style={{ zIndex: 60 }}
           onClick={(e) => { if (e.target === e.currentTarget) fermerPlein(); }}
         >
-          <CadreMontage montage={montage} segment={segment} tempsS={tempsS} taille="immersif">
+          <CadreMontage montage={montage} segment={segment} tempsS={tempsS} taille="immersif" joue={joue} son={son}>
             <button
               ref={reduireRef}
               type="button"
@@ -1692,6 +1727,7 @@ function Apercu({ montage, surPreparerVoix, voixEnCours }: { montage: MontageApi
               montage={montage} joue={joue} tempsS={tempsS}
               surBasculerLecture={() => setJoue((v) => !v)}
               surDeplacer={setTempsS}
+              aDuSon={aDuSon} son={son} surBasculerSon={() => setSon((v) => !v)}
             />
             <p className="mt-2 text-center text-[11px] text-slate-500">Echap pour revenir</p>
           </div>
