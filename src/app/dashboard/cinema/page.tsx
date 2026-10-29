@@ -27,6 +27,7 @@ import { cameraEffective } from '@/lib/cinema/direction/camera';
 import { plansARegenerer } from '@/lib/cinema/direction/signature';
 import type { IdCameraCinema, IdStyleCinema } from '@/lib/cinema/types';
 import ModelesFilm, { type ModeleFilm } from '@/components/cinema/ModelesFilm';
+import AideRedaction from '@/components/cinema/AideRedaction';
 
 interface SegmentApi {
   sceneId: string; sceneIndex: number; planId: string; cadre: string;
@@ -878,13 +879,21 @@ export default function CinemaPage() {
               placeholder="Titre du film"
               className="w-full mb-3 rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm"
             />
-            <textarea
-              value={histoire}
-              onChange={(e) => setHistoire(e.target.value)}
-              rows={5}
-              placeholder="Une phrase par plan. Pour une replique, mettez-la entre guillemets apres le nom du personnage."
-              className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm leading-relaxed"
-            />
+            <div className="relative">
+              <textarea
+                value={histoire}
+                onChange={(e) => setHistoire(e.target.value)}
+                rows={5}
+                placeholder="Une phrase par plan. Pour une replique, mettez-la entre guillemets apres le nom du personnage."
+                className="w-full rounded-lg bg-slate-950 border border-slate-700 py-2 pl-3 pr-11 text-sm leading-relaxed"
+              />
+              {/* Aide a la redaction : locale, aucune IA payante (voir le composant). */}
+              <AideRedaction
+                histoire={histoire}
+                surChanger={setHistoire}
+                personnages={casting.map((c) => c.nom).filter(Boolean)}
+              />
+            </div>
             <p className="mt-1 flex items-center gap-1 text-[11px] text-slate-500">
               Une phrase = un plan.
               <Detail texte="Une phrase entre guillemets devient une replique dite par le personnage nomme dans la phrase ; sans guillemets, c'est le narrateur. Decrire la lumiere et le lieu dans la phrase ameliore l'image du plan : c'est ce texte qui sert de description visuelle." />
@@ -1154,10 +1163,7 @@ export default function CinemaPage() {
             {montage ? (
               <Apercu montage={montage} surPreparerVoix={preparerVoix} voixEnCours={enCours === 'voix'} />
             ) : (
-              <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-5 text-center">
-                <Play className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-                <p className="text-sm text-slate-400">L’apercu apparaitra ici une fois le scenario compose.</p>
-              </section>
+              <ApercuVide format={format} />
             )}
           </div>
 
@@ -1369,6 +1375,61 @@ function SuiviGenerationPlan({ generation, confirmation, prix, surConfirmer, sur
  * deja synthetisees sont jouees a leur segment, chacune depuis son debut.
  */
 /**
+ * APERCU VIDE — avant que le scenario soit compose.
+ *
+ * ⚠️ LE BOUTON D'AGRANDISSEMENT RESTE VISIBLE, desactive. L'ancien repli n'etait qu'un
+ * texte : le bouton n'existait que dans `Apercu`, donc rien n'indiquait qu'un aperçu
+ * agrandi existe. Il est ici au MEME endroit (haut droit) et au MEME gabarit qu'une fois
+ * le montage pret — le cadre ne « saute » pas quand le scenario arrive. Le cadre suit le
+ * format choisi (`ratioCadre`, style en ligne : les classes arbitraires sont purgees en
+ * production).
+ */
+function ApercuVide({ format }: { format: string }) {
+  const portrait = format === '9:16';
+  const infobulle = 'L’apercu agrandi sera disponible une fois le scenario compose';
+  return (
+    <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
+      <h2 className="font-semibold mb-4 flex items-center gap-2">
+        <Play className="w-4 h-4 text-violet-400" /> 6. Apercu
+      </h2>
+      <div
+        className="relative mx-auto w-full overflow-hidden rounded-xl border border-dashed border-slate-700"
+        style={{
+          maxWidth: portrait ? 270 : 640,
+          aspectRatio: ratioCadre(portrait ? '9:16' : '16:9'),
+          minHeight: portrait ? 320 : 200,
+          background: 'radial-gradient(120% 100% at 25% 15%, rgba(124,58,237,0.18) 0%, rgba(15,23,42,0.6) 55%, #0A0A0F 100%)',
+        }}
+      >
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-6 text-center">
+          <span className="flex h-11 w-11 items-center justify-center rounded-full border border-violet-500/30 bg-violet-500/10">
+            <Film className="w-5 h-5 text-violet-300" />
+          </span>
+          <p className="text-sm font-medium text-slate-200">Votre film apparaitra ici</p>
+          <p className="text-xs text-slate-400">Ecrivez l’histoire, puis composez le scenario.</p>
+        </div>
+        <div className="absolute bottom-3 left-4 right-4 flex justify-between text-[10px] text-slate-500">
+          <span>{format}</span>
+          <span>STUDIIO CINEMA IA</span>
+        </div>
+        {/* Meme position, meme taille que le bouton actif de `Apercu` ; `aria-disabled` +
+            infobulle plutot que `disabled` seul : il reste focusable et s'explique. */}
+        <button
+          type="button"
+          aria-disabled="true"
+          aria-label={infobulle}
+          title={infobulle}
+          onClick={(e) => e.preventDefault()}
+          className="absolute top-3 right-3 inline-flex h-9 w-9 cursor-not-allowed items-center justify-center rounded-lg border border-slate-700/70 bg-slate-950/70 text-slate-400"
+        >
+          <Maximize2 className="w-4 h-4" />
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/**
  * LE CADRE DE L'APERCU — UN SEUL rendu, utilise tel quel en ligne et en plein ecran.
  *
  * ⚠️ IL N'Y A PAS DE SECOND MOTEUR D'APERCU. La chronologie (`tempsS`), la lecture, la
@@ -1574,7 +1635,7 @@ function Apercu({ montage, surPreparerVoix, voixEnCours }: { montage: MontageApi
           onClick={() => setPlein(true)}
           aria-label="Agrandir l’apercu"
           title="Agrandir l’apercu"
-          className="absolute top-3 right-3 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700/70 bg-slate-950/60 text-slate-200 backdrop-blur-sm transition-colors hover:border-violet-500/60 hover:text-violet-200"
+          className="absolute top-3 right-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-600/80 bg-slate-950/75 text-white shadow-lg backdrop-blur-sm transition-colors hover:border-violet-500/60 hover:text-violet-200"
         >
           <Maximize2 className="w-4 h-4" />
         </button>

@@ -448,3 +448,72 @@ describe('l’aperçu agrandi sort du contexte d’empilement de la colonne', ()
     fireEvent.keyDown(document, { key: 'Escape' });
   });
 });
+
+/**
+ * BOUTON D'AGRANDISSEMENT TOUJOURS VISIBLE — meme avant tout scenario.
+ * Avant ce correctif, l'aperçu vide n'etait qu'un texte : aucun bouton, donc rien
+ * n'indiquait qu'un aperçu agrandi existait.
+ */
+describe('le bouton d’agrandissement est toujours visible', () => {
+  it('sans scenario : bouton present en haut a droite, desactive, avec infobulle — et il n’ouvre rien', async () => {
+    render(<CinemaPage />);
+    const bouton = await screen.findByLabelText(/agrandi sera disponible/i);
+    expect(bouton.getAttribute('aria-disabled')).toBe('true');
+    expect(bouton.getAttribute('title')).toMatch(/scenario compose/i);
+    expect(bouton.className).toContain('top-3');
+    expect(bouton.className).toContain('right-3');
+    // Un vrai element SVG (lucide), pas un caractere.
+    expect(bouton.querySelector('svg')).toBeTruthy();
+    fireEvent.click(bouton);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('avec un montage : le bouton actif remplace le bouton desactive, au meme endroit', async () => {
+    await ouvrir();
+    expect(screen.queryByLabelText(/agrandi sera disponible/i)).toBeNull();
+    const actif = screen.getByLabelText('Agrandir l’apercu');
+    expect(actif.getAttribute('aria-disabled')).toBeNull();
+    expect(actif.className).toContain('top-3');
+    expect(actif.className).toContain('right-3');
+    fireEvent.click(actif);
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
+
+describe('aide a la redaction (icone IA) : locale, sans appel', () => {
+  it('ouvre un panneau, restructure le texte et ajoute une replique — AUCUN appel reseau', async () => {
+    render(<CinemaPage />);
+    await screen.findByLabelText(/reprendre un film/i);
+    const avant = appels.length;
+    const zone = () => screen.getByPlaceholderText(/Une phrase par plan/) as HTMLTextAreaElement;
+    fireEvent.change(zone(), { target: { value: 'Nina entre. Marco attend.' } });
+
+    const icone = screen.getByRole('button', { name: 'Aide a la redaction' });
+    expect(icone.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(icone);
+    expect(icone.getAttribute('aria-expanded')).toBe('true');
+    const panneau = screen.getByRole('dialog', { name: 'Aide a la redaction' });
+    expect(within(panneau).getByText(/2 plans · 0 replique/)).toBeTruthy();
+
+    fireEvent.click(within(panneau).getByText('Une phrase par ligne'));
+    expect(zone().value).toBe('Nina entre.\nMarco attend.');
+    fireEvent.click(within(panneau).getByText('Ajouter une replique'));
+    expect(zone().value).toMatch(/\nNina dit : « Votre replique ici »\.$/);
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Aide a la redaction' })).toBeNull();
+    // Rien n'est parti vers un serveur, encore moins vers une IA.
+    expect(appels.slice(avant)).toEqual([]);
+  });
+
+  it('la restructuration ne change pas le decoupage du scenario', async () => {
+    const { unePhraseParLigne, ajouterReplique } = await import('@/components/cinema/AideRedaction');
+    const { phrases, citation } = await import('@/lib/cinema/scenario');
+    expect(phrases(unePhraseParLigne(HISTOIRE))).toEqual(phrases(HISTOIRE));
+    const avec = ajouterReplique(HISTOIRE, 'Marco');
+    const derniere = phrases(avec).at(-1)!;
+    expect(citation(derniere)).toBe("Votre replique ici");
+  });
+});
