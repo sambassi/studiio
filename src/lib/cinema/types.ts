@@ -218,6 +218,12 @@ export interface Film {
    * payante hors regime credits.
    */
   budgetApprouve?: BudgetApprouve;
+  /**
+   * Ecarts de fidelite que l'utilisateur a ACCEPTES en connaissance de cause (cles de
+   * `fidelite.ts`). Absent = aucun : une generation payante est alors bloquee tant qu'un ecart
+   * critique subsiste.
+   */
+  ecartsAcceptes?: string[];
 }
 
 export interface BudgetApprouve {

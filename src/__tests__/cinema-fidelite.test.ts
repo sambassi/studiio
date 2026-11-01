@@ -7,7 +7,8 @@
  * d'ensemble ajoute, decor neutre, locuteur devine) plus les prenoms hors casting.
  */
 import { describe, it, expect } from 'vitest';
-import { auditFidelite, ecartsScene, phrasesDeLaScene, resumeFidelite, DECOR_NEUTRE } from '@/lib/cinema/fidelite';
+import { auditFidelite, ecartsBloquants, ecartsScene, phrasesDeLaScene, resumeFidelite, DECOR_NEUTRE } from '@/lib/cinema/fidelite';
+import { appliquerPatch } from '@/lib/cinema/patch';
 import { preparerFilm } from '@/lib/cinema/atelier';
 import { phrases } from '@/lib/cinema/scenario';
 import type { Film } from '@/lib/cinema/types';
@@ -109,5 +110,61 @@ describe('les fabrications du moteur sont DITES, pas masquees', () => {
     const avant = JSON.stringify(f);
     auditFidelite(f);
     expect(JSON.stringify(f)).toBe(avant);
+  });
+});
+
+describe('gravite des ecarts, scenes inventees, narration et acceptation explicite', () => {
+  const casting = [{ nom: 'Nina', role: 'p', description: '', urlImage: null }, { nom: 'Marco', role: 'a', description: '', urlImage: null }];
+  const film = (histoire: string, nbScenes?: number) => preparerFilm({ histoire, personnages: casting, idFilm: 'f', titre: 't', nbScenes });
+
+  it('une histoire d’UNE phrase : le minimum de scenes en INVENTE deux, et c’est un ecart critique', () => {
+    const f = film('Nina entre dans la salle.');
+    const inventees = auditFidelite(f).ecarts.filter((e) => e.genre === 'scene_inventee');
+    expect(f.scenes.length).toBeGreaterThanOrEqual(3);
+    expect(inventees.length).toBe(f.scenes.length - 1);
+    expect(inventees.every((e) => e.critique)).toBe(true);
+    expect(inventees[0].detail).toMatch(/aucune phrase de votre texte/);
+  });
+
+  it('une histoire assez longue, lieux nommes, personnages au casting : aucun ecart critique', () => {
+    const f = film('Nina entre dans la salle. Marco la regarde dans la salle. Nina sourit dans la salle.');
+    expect(ecartsBloquants(f)).toEqual([]);
+  });
+
+  it('une phrase de recit est signalee « narration », sans bloquer, et n’est attribuee a personne', () => {
+    const f = film('Nina entre dans la salle. Marco la regarde dans la salle. Nina sourit dans la salle.');
+    const narrations = auditFidelite(f).ecarts.filter((e) => e.genre === 'narration');
+    expect(narrations.length).toBe(3);
+    expect(narrations.every((e) => !e.critique)).toBe(true);
+    const plansNarres = f.scenes.flatMap((s) => s.plans).filter((p) => p.dialogue?.genre === 'narration');
+    expect(plansNarres.every((p) => p.dialogue?.personnageId === null)).toBe(true);
+  });
+
+  it('une replique sans prenom est attribuee par rotation : critique, jusqu’a acceptation', () => {
+    const f = film('Nina entre dans la salle. « Je ne reculerai pas » dit une voix. Marco la regarde dans la salle.');
+    const b = ecartsBloquants(f);
+    expect(b.some((e) => e.genre === 'locuteur_devine' || e.genre === 'lieu_substitue')).toBe(true);
+  });
+
+  it('accepter un ecart le sort des bloquants — et rien d’autre ; le texte d’origine reste intact', () => {
+    const f = film('Nina sourit. Marco la regarde.');
+    const avant = ecartsBloquants(f);
+    expect(avant.length).toBeGreaterThan(0);
+    const accepte = { ...f, ecartsAcceptes: [avant[0].cle] };
+    expect(ecartsBloquants(accepte)).toHaveLength(avant.length - 1);
+    expect(accepte.histoire).toBe('Nina sourit. Marco la regarde.');
+  });
+
+  it('le constat est stable : la meme histoire donne les memes cles (une acceptation survit au rechargement)', () => {
+    const cles = (f: ReturnType<typeof film>) => auditFidelite(f).ecarts.map((e) => e.cle);
+    expect(cles(film('Nina sourit. Marco la regarde.'))).toEqual(cles(film('Nina sourit. Marco la regarde.')));
+  });
+
+  it('le PATCH « accepter » remplace la liste, deduplique et ignore ce qui n’est pas une cle', () => {
+    const f = film('Nina sourit. Marco la regarde.');
+    const a = appliquerPatch(f, { accepter: ['k1', 'k1', 42, '', 'k2'] });
+    expect(a.ecartsAcceptes).toEqual(['k1', 'k2']);
+    expect(appliquerPatch(a, { accepter: [] }).ecartsAcceptes).toEqual([]);
+    expect(appliquerPatch(a, { style: 'noir' }).ecartsAcceptes).toEqual(['k1', 'k2']);
   });
 });

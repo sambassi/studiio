@@ -869,3 +869,29 @@ segmentation que le decoupage, et DIT ce que le moteur a fait :
 
 L'etape Apercu affiche ce rapport, l'etat reel des medias et le cout AVANT toute generation.
 Studiio ne corrige rien de lui-meme : les ecarts sont des choix a valider, pas des erreurs.
+
+## 24. Formats des exemples, style global, storyboard et blocage de fidelite
+
+**Format.** Le format du PROJET (9:16 ou 16:9) ne s'applique qu'au film de l'utilisateur et a son
+export. Tout extrait d'exemple (6 styles, 4 mouvements, tous en 1280x720) garde son ratio natif :
+cadre 16:9, `object-fit: contain`, bandes sombres si besoin, y compris en plein ecran. En 9:16,
+une note le dit (« l'exemple reste en 16:9 pour etre vu en entier »). Sur mobile, le cadre fait
+262 px de large (147 px de haut) et tient entier dans la bande d'apercu.
+
+**Style global.** Choisi une fois a l'etape Histoire (`film.styleCinema`) ; chaque scene l'herite,
+et il part dans les prompts image ET video (`direction/prompt.ts`, teste sur les 6 styles x 4 scenes).
+Aucun selecteur de style dans les cartes : l'exception artistique vit dans « Options avancees » de la
+scene ouverte et n'est appliquee qu'apres un clic sur « Valider ».
+
+**Storyboard.** Une carte par scene : vignette (media reel, sinon icone vide — jamais une fausse
+image), numero, titre court, etat, une icone de modification. Une seule scene ouverte a la fois ;
+ses phrases d'origine, ses ecarts et ses outils n'existent que la.
+
+**Mouvements.** Choisir un mouvement sur un plan, ou cliquer sa vignette, montre aussitot l'extrait
+filme dans l'apercu (la colonne remonte en haut). Un mouvement sans plan filme ne montre rien.
+
+**Fidelite bloquante.** `fidelite.ts` classe les ecarts : critiques (phrase perdue, ordre change,
+lieu devine, locuteur devine, personnage hors casting, scene inventee) ou remarques (plan d'ensemble
+ajoute, narration). Une generation PAYANTE est refusee (409, cote serveur dans
+`films/[id]/generation`) tant qu'un ecart critique n'est ni corrige ni accepte (`film.ecartsAcceptes`,
+via `PATCH {accepter: [cles]}`). Le mode simule (gratuit) n'est pas concerne. Le texte n'est jamais modifie.

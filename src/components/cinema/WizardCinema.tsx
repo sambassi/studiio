@@ -69,8 +69,11 @@ export default function WizardCinema({
         .cinema-wizard{height:calc(100vh - 6rem);min-height:420px}
         /* Mobile : l'apercu reste visible en haut, mais COMPACT — sinon il mange l'ecran et
            recouvre la barre des etapes. Il defile chez lui ; « Agrandir » donne le plein ecran. */
-        .cinema-apercu{max-height:190px}
-        @media(min-width:1024px){.cinema-wizard{height:calc(100vh - 8rem)}.cinema-apercu{max-height:none}}
+        .cinema-apercu{max-height:235px}
+        /* L'extrait d'exemple y reste ENTIER (16:9, jamais rogne) : un cadre de 262 px de large
+           fait 147 px de haut, il tient dans la bande sans qu'on ait a la faire defiler. */
+        .cinema-apercu [data-ratio-exemple]{width:min(100%,262px);margin-inline:auto}
+        @media(min-width:1024px){.cinema-wizard{height:calc(100vh - 8rem)}.cinema-apercu{max-height:none}.cinema-apercu [data-ratio-exemple]{width:100%}}
       `}</style>
       <header className="shrink-0 border-b border-slate-800 px-4 py-3 sm:px-6">{entete}</header>
 

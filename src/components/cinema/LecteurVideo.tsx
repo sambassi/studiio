@@ -36,6 +36,11 @@ export interface LecteurVideoProps {
   agrandi?: boolean;
   surAgrandir?: () => void;
   surReduire?: () => void;
+  /**
+   * `contain` : toute l'image reste visible, bandes sombres si le cadre n'a pas le meme ratio.
+   * Les extraits d'EXEMPLE l'utilisent toujours : le format du projet ne leur est pas applique.
+   */
+  ajustement?: 'cover' | 'contain';
   /** Coin haut droit : badge discret (« Exemple », « Démonstration »…). */
   badge?: string;
   className?: string;
@@ -43,7 +48,7 @@ export interface LecteurVideoProps {
 
 export default function LecteurVideo({
   src, poster, titre, sansSon = false, autoLecture = false, boucle = true,
-  agrandissable = false, agrandi = false, surAgrandir, surReduire, badge, className = '',
+  agrandissable = false, agrandi = false, surAgrandir, surReduire, badge, ajustement = 'cover', className = '',
 }: LecteurVideoProps) {
   const ref = useRef<HTMLVideoElement | null>(null);
   const [joue, setJoue] = useState(false);
@@ -73,7 +78,7 @@ export default function LecteurVideo({
         poster={poster}
         aria-label={titre}
         className="block h-full w-full"
-        style={{ objectFit: 'cover' }}
+        style={{ objectFit: ajustement }}
         preload="none"
         playsInline
         muted={muet}

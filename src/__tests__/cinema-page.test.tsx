@@ -10,6 +10,7 @@ import { render, screen, waitFor, within, fireEvent, cleanup } from '@testing-li
 import CinemaPage from '@/app/dashboard/cinema/page';
 import { preparerFilm } from '@/lib/cinema/atelier';
 import { monterFilm } from '@/lib/cinema/montage';
+import { ecartsBloquants } from '@/lib/cinema/fidelite';
 import { presenterMontage } from '@/lib/cinema/stockage/presentation';
 import { devisFilm } from '@/lib/cinema/couts';
 
@@ -186,9 +187,10 @@ describe('page Cinema IA — production asynchrone', () => {
     await ouvrir();
     await ouvrirScene1();
     const regenerer = screen.getAllByRole('button', { name: /regenerer cette scene/i });
-    expect(regenerer.length).toBe(film.scenes.length);
+    // UNE seule scene est ouverte a la fois : ses outils sont les seuls montres.
+    expect(regenerer.length).toBe(1);
     expect(regenerer[0].textContent?.trim()).toBe('');
-    expect(screen.getAllByRole('button', { name: /valider la scene/i }).length).toBe(film.scenes.length);
+    expect(screen.getAllByRole('button', { name: /valider la scene/i }).length).toBe(1);
   });
 
   it('génération éteinte par le serveur (production) : AUCUN bouton de génération proposé', async () => {
@@ -208,6 +210,26 @@ describe('page Cinema IA — production asynchrone', () => {
   });
 
   describe('mode RÉEL (de vrais crédits sont en jeu)', () => {
+    // Le film de test comporte des ecarts avec son texte (lieu, locuteur) : en mode reel ils
+    // bloquent toute generation payante tant qu'ils ne sont pas acceptes (voir `fidelite.ts`).
+    const accepterLesEcarts = () => {
+      (film as { ecartsAcceptes?: string[] }).ecartsAcceptes = ecartsBloquants(film as never).map((e) => e.cle);
+    };
+    beforeEach(accepterLesEcarts);
+    afterEach(() => { delete (film as { ecartsAcceptes?: string[] }).ecartsAcceptes; });
+
+    it('un ecart critique NON accepte : le bouton paye n’ouvre aucune confirmation et dit pourquoi', async () => {
+      delete (film as { ecartsAcceptes?: string[] }).ecartsAcceptes;
+      expect(ecartsBloquants(film as never).length).toBeGreaterThan(0);
+      generationModeForce = 'reelle';
+      await ouvrir();
+      await ouvrirScene1();
+      fireEvent.click(document.querySelector('[data-cinema-generation="image"]') as HTMLButtonElement);
+      expect(screen.queryByRole('group', { name: /confirmer la generation payante/i })).toBeNull();
+      expect(document.body.textContent).toMatch(/ecart\(s\) avec votre histoire a valider avant toute generation payante/);
+      expect(appels.some((a) => a.url.includes('/generation'))).toBe(false);
+    });
+
     it('le coût en crédits est affiché SUR le bouton, avant tout clic', async () => {
       generationModeForce = 'reelle';
       await ouvrir();

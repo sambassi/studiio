@@ -53,11 +53,17 @@ type PatchPlan = { id?: unknown; texte?: unknown; dureeS?: unknown; media?: null
 type PatchScene = { id?: unknown; personnages?: unknown; etat?: unknown; style?: unknown };
 
 export function appliquerPatch(film: Film, corps: unknown): Film {
-  const c = corps as { plans?: PatchPlan[]; scenes?: PatchScene[]; style?: unknown; reference?: { personnageId?: unknown; description?: unknown; urlImage?: unknown } } | null;
+  const c = corps as { plans?: PatchPlan[]; scenes?: PatchScene[]; style?: unknown; accepter?: unknown; reference?: { personnageId?: unknown; description?: unknown; urlImage?: unknown } } | null;
   let suivant = film;
 
   // Style GLOBAL : `null` (ou absent du corps) → inchange ; `null` explicite → efface.
   if (c && 'style' in c) suivant = avecChamp(suivant, 'styleCinema', c.style === null ? undefined : (estStyleCinema(c.style) ? c.style : suivant.styleCinema));
+
+  // Ecarts de fidelite acceptes : la liste ENTIERE est remplacee (accepter puis retirer son choix).
+  if (c && Array.isArray(c.accepter)) {
+    const cles = (c.accepter as unknown[]).filter((k): k is string => typeof k === 'string' && k.length > 0 && k.length <= 400).slice(0, 200);
+    suivant = { ...suivant, ecartsAcceptes: [...new Set(cles)] };
+  }
 
   if (Array.isArray(c?.plans)) {
     const patchs = new Map<string, PatchPlan>();

@@ -12,7 +12,7 @@ import { spawnSync } from 'child_process';
 import LecteurVideo from '@/components/cinema/LecteurVideo';
 import { SelecteurStyleFilm } from '@/components/cinema/DirectionCinema';
 import ChoixMouvements from '@/components/cinema/ChoixMouvements';
-import ApercuExemple from '@/components/cinema/ApercuExemple';
+import ApercuExemple, { FenetreExemple } from '@/components/cinema/ApercuExemple';
 import { MOUVEMENTS_CAMERA } from '@/lib/cinema/mouvements-camera';
 import { EXTRAITS_STYLES, extraitStyle, MENTION_EXTRAITS } from '@/lib/cinema/extraits-styles';
 import { IDS_STYLES } from '@/lib/cinema/direction/styles';
@@ -138,10 +138,45 @@ describe('galerie : un clic choisit le style ET demande l’exemple à l’aper�
     expect(document.querySelector('video')!.getAttribute('src')).toBe('/cinema-mouvements/orbite.mp4');
   });
 
-  it('le format 9:16 garde un cadre vertical pour l’exemple', () => {
-    render(<ApercuExemple exemple={{ type: 'style', id: 'noir' }} format="9:16" surRevenir={() => {}} surAgrandir={() => {}} />);
-    const cadre = document.querySelector('video')!.closest('div')!.parentElement as HTMLElement;
-    expect(cadre.style.aspectRatio.replace(/\s/g, '')).toMatch(/9\/16|0\.5625/);
+  // Le format du PROJET ne s'applique jamais a un exemple : un cadre 9:16 autour d'un extrait
+  // 16:9 coupait le flacon de la publicite premium. Tous les extraits sont 1280x720.
+  const STYLES = ['realiste', 'noir', 'publicite', 'romantique', 'documentaire', 'scifi'] as const;
+  const MOUVEMENTS = ['travelling_avant', 'pano_droite', 'suivi_lateral', 'orbite'] as const;
+  const EXEMPLES = [
+    ...STYLES.map((id) => ({ type: 'style' as const, id })),
+    ...MOUVEMENTS.map((id) => ({ type: 'mouvement' as const, id })),
+  ];
+
+  it.each(EXEMPLES.flatMap((ex) => (['9:16', '16:9'] as const).map((f) => [`${ex.type}:${ex.id}`, ex, f] as const)))(
+    'format du projet %s en %s : l’extrait garde son cadre 16:9 et toute son image (contain)',
+    (_nom, ex, format) => {
+      const { unmount } = render(<ApercuExemple exemple={ex} format={format} surRevenir={() => {}} surAgrandir={() => {}} />);
+      const video = document.querySelector('video') as HTMLVideoElement;
+      expect(video).not.toBeNull();
+      const cadre = document.querySelector('[data-ratio-exemple]') as HTMLElement;
+      expect(cadre.style.aspectRatio.replace(/\s/g, '')).toBe('16/9');
+      expect(video.style.objectFit).toBe('contain');
+      // Aucune largeur maximale « portrait » : le cadre occupe la colonne.
+      expect(cadre.style.maxWidth).toBe('');
+      unmount();
+    },
+  );
+
+  it('en 9:16, une note dit que l’exemple reste en 16:9 et que le film sera compose en 9:16', () => {
+    render(<ApercuExemple exemple={{ type: 'style', id: 'publicite' }} format="9:16" surRevenir={() => {}} surAgrandir={() => {}} />);
+    expect(document.body.textContent).toMatch(/exemple reste en 16:9.*film sera compos. en 9:16/);
+  });
+
+  it('en 16:9, aucune note inutile', () => {
+    render(<ApercuExemple exemple={{ type: 'style', id: 'publicite' }} format="16:9" surRevenir={() => {}} surAgrandir={() => {}} />);
+    expect(document.body.textContent).not.toMatch(/reste en 16:9/);
+  });
+
+  it('plein ecran : le cadre est 16:9, l’image entiere, quel que soit le format du projet', () => {
+    render(<FenetreExemple exemple={{ type: 'style', id: 'publicite' }} surFermer={() => {}} />);
+    const cadre = document.querySelector('[role="dialog"] [data-ratio-exemple]') as HTMLElement;
+    expect(cadre.style.aspectRatio.replace(/\s/g, '')).toBe('16/9');
+    expect((document.querySelector('[role="dialog"] video') as HTMLVideoElement).style.objectFit).toBe('contain');
   });
 
   it('un exemple inconnu n’invente rien', () => {

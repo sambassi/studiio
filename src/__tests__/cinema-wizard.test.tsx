@@ -18,7 +18,7 @@ import type { Film } from '@/lib/cinema/types';
 const HISTOIRE = 'Nina entre dans la salle avant le lever du jour. Le tatami est encore froid. Marco la regarde sans bouger. Marco dit : « je ne reculerai pas ». Le jour se leve sur la salle vide.';
 const film: Film = { ...preparerFilm({ histoire: HISTOIRE, personnages: [{ nom: 'Nina', description: 'veste rouge' }, { nom: 'Marco', description: 'ceinture noire' }], idFilm: 'film-wiz', titre: 'Avant le jour' }), proprietaire: 'u1' };
 
-let appels: Array<{ url: string; method: string }>;
+let appels: Array<{ url: string; method: string; corps?: any }>;
 let filmsListes: Array<{ id: string; titre: string; majLe: string }>;
 
 beforeEach(() => {
@@ -26,7 +26,7 @@ beforeEach(() => {
   filmsListes = [{ id: film.id, titre: film.titre, majLe: film.majLe }];
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input); const method = init?.method ?? 'GET';
-    appels.push({ url, method });
+    appels.push({ url, method, corps: init?.body ? JSON.parse(String(init.body)) : undefined });
     const json = (c: unknown, status = 200) => new Response(JSON.stringify(c), { status, headers: { 'content-type': 'application/json' } });
     if (url === '/api/tarifs') return json({ ok: true, prix: {}, exempte: false });
     if (url === '/api/cinema/films' && method === 'GET') return json({ ok: true, generationIa: false, generationMode: null, films: filmsListes });
@@ -34,6 +34,7 @@ beforeEach(() => {
       return json({ ok: true, film, montage: presenterMontage(monterFilm(film), film.id), scenesAProduire: [], devis: devisFilm(film, film.scenes.map((s) => s.id)) });
     }
     if (url.includes('/travaux')) return json({ ok: true, travail: null });
+    if (method === 'PATCH') return json({ ok: true, film, montage: presenterMontage(monterFilm(film), film.id), scenesAProduire: [], devis: devisFilm(film, film.scenes.map((s) => s.id)) });
     return json({ ok: false, erreur: 'inattendu' }, 404);
   }));
 });
@@ -122,12 +123,41 @@ describe('scenes : cartes compactes, outils a la demande, phrases d’origine', 
     expect(within(zone()).queryAllByText(/Importer une image ou une video/)).toHaveLength(0);
   });
 
-  it('chaque carte montre les phrases de VOTRE texte, et le plan ajoute est signale', async () => {
+  it('une carte fermee montre vignette, numero, titre court et etat — pas ses phrases', async () => {
     await ouvrir();
     fireEvent.click(etape(3));
+    const cartes = document.querySelectorAll('[data-storyboard="scenes"] > div');
+    expect(cartes.length).toBeGreaterThan(1);
+    const premiere = cartes[0] as HTMLElement;
+    expect(premiere.querySelector('[data-vignette]')).not.toBeNull();
+    expect(premiere.textContent).toMatch(/Scene 1/);
+    expect(premiere.textContent).toMatch(/Brouillon|Validee/);
+    expect(zone().textContent).not.toContain('Nina entre dans la salle avant le lever du jour.');
+    // La modification est une petite icone SVG : aucun texte, juste un nom accessible.
+    const edition = within(premiere).getByRole('button', { name: /ouvrir les outils de la scene 1/i });
+    expect(edition.textContent?.trim()).toBe('');
+    expect(edition.querySelector('svg')).not.toBeNull();
+  });
+
+  it('la scene OUVERTE montre les phrases de VOTRE texte, et le plan ajoute est signale', async () => {
+    await ouvrir();
+    fireEvent.click(etape(3));
+    fireEvent.click(screen.getByRole('button', { name: /ouvrir les outils de la scene 1/i }));
     const texte = zone().textContent ?? '';
     expect(texte).toContain('Nina entre dans la salle avant le lever du jour.');
     expect(texte).toMatch(/Plan ajoute par Studiio/);
+  });
+
+  it('les cartes ne contiennent AUCUN selecteur de style : le style du film est choisi une fois, a l’etape Histoire', async () => {
+    await ouvrir();
+    fireEvent.click(etape(3));
+    expect(document.querySelectorAll('select[aria-label="Style de cette scene"]')).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: /ouvrir les outils de la scene 1/i }));
+    // Meme ouverte, l'exception reste derriere « Options avancees » et exige une validation.
+    const avance = document.querySelector('details[data-avance="style-scene"]') as HTMLDetailsElement;
+    expect(avance).not.toBeNull();
+    expect(avance.open).toBe(false);
+    expect(within(avance).getByRole('button', { name: /valider l.exception de style/i })).toBeDisabled();
   });
 
   it('ouvrir UNE scene n’ouvre qu’elle, et refermer la referme', async () => {
@@ -158,8 +188,8 @@ describe('etape Apercu : fidelite et cout, avant toute generation', () => {
     await ouvrir();
     fireEvent.click(etape(4));
     const texte = zone().textContent ?? '';
-    expect(texte).toMatch(/A valider : \d+ ecart\(s\) avec votre texte/);
-    expect(texte).toMatch(/ne corrige rien tout seul/);
+    expect(texte).toMatch(/\d+ ecart\(s\) a valider avant toute generation payante/);
+    expect(texte).toMatch(/Votre texte n’est jamais modifie/);
   });
 });
 
@@ -167,7 +197,9 @@ describe('la coque respecte les contraintes de la maquette', () => {
   it('hauteur bornee a l’ecran et apercu compact sur mobile — en CSS reel, pas en classe purgeable', () => {
     const src = readFileSync('src/components/cinema/WizardCinema.tsx', 'utf8');
     expect(src).toMatch(/\.cinema-wizard\{height:calc\(100vh - 6rem\);min-height:420px\}/);
-    expect(src).toMatch(/\.cinema-apercu\{max-height:190px\}/);
+    expect(src).toMatch(/\.cinema-apercu\{max-height:235px\}/);
+    // L'extrait d'exemple garde son ratio natif 16:9 dans la bande compacte du mobile.
+    expect(src).toMatch(/\.cinema-apercu \[data-ratio-exemple\]\{width:min\(100%,262px\)/);
     expect(src).toMatch(/@media\(min-width:1024px\)/);
     // Pas de hauteur en classe arbitraire Tailwind (purgee en production).
     expect(src).not.toMatch(/className="[^"]*\b(h|min-h)-\[/);
@@ -182,5 +214,46 @@ describe('la coque respecte les contraintes de la maquette', () => {
       expect(b.getAttribute('aria-label')).toMatch(/^Etape \d sur 5/);
       expect(b.querySelector('svg')).toBeTruthy();
     }
+  });
+});
+
+
+describe('mouvements de camera : l’extrait reel s’affiche tout de suite dans l’apercu', () => {
+  it('choisir « Orbite » sur un plan montre l’extrait filme correspondant, sans aucun appel IA', async () => {
+    await ouvrir();
+    fireEvent.click(etape(3));
+    fireEvent.click(screen.getByLabelText(/Ouvrir les outils de la scene 1/));
+    const select = document.querySelector('select[aria-label="Mouvement de camera de ce plan"]') as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'orbite' } });
+    const apercu = document.querySelector('[data-apercu="exemple"]') as HTMLElement;
+    expect(apercu).not.toBeNull();
+    expect(apercu.querySelector('video')!.getAttribute('src')).toBe('/cinema-mouvements/orbite.mp4');
+    expect(apercu.textContent).toMatch(/Mouvement de caméra — Orbite/);
+    expect(apercu.textContent).toMatch(/pas une vidéo produite par Studiio/);
+    expect(appels.some((a) => /generation|produire/.test(a.url))).toBe(false);
+  });
+
+  it('un mouvement sans plan filme (ex. fixe) ne remplace PAS l’apercu par une demonstration inventee', async () => {
+    await ouvrir();
+    fireEvent.click(etape(3));
+    fireEvent.click(screen.getByLabelText(/Ouvrir les outils de la scene 1/));
+    const select = document.querySelector('select[aria-label="Mouvement de camera de ce plan"]') as HTMLSelectElement;
+    const sansDemo = Array.from(select.options).map((o) => o.value).find((v) => v !== 'auto' && !['travelling_avant', 'pano_droite', 'suivi_lateral', 'orbite'].includes(v))!;
+    fireEvent.change(select, { target: { value: sansDemo } });
+    expect(document.querySelector('[data-apercu="exemple"]')).toBeNull();
+  });
+});
+
+describe('fidelite : accepter un ecart est un geste explicite, enregistre cote serveur', () => {
+  it('« accepter » envoie la cle de l’ecart au PATCH — jamais le texte de l’histoire', async () => {
+    await ouvrir();
+    fireEvent.click(etape(4));
+    const bouton = within(zone()).getAllByRole('button', { name: /accepter cet ecart/i })[0];
+    fireEvent.click(bouton);
+    const patch = appels.find((a) => a.method === 'PATCH');
+    expect(patch).toBeTruthy();
+    expect(patch!.corps.accepter).toHaveLength(1);
+    expect(typeof patch!.corps.accepter[0]).toBe('string');
+    expect(JSON.stringify(patch!.corps)).not.toMatch(/histoire/);
   });
 });

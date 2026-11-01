@@ -31,7 +31,19 @@ export type GenreEcart =
   | 'lieu_substitue'
   | 'locuteur_devine'
   | 'plan_ajoute'
+  | 'narration'
+  | 'scene_inventee'
   | 'personnage_hors_casting';
+
+/**
+ * Ce qui BLOQUE une generation payante tant que l'utilisateur ne l'a pas resolu (en corrigeant
+ * son texte) ou accepte explicitement : une information essentielle manque ou a ete devinee.
+ * Le plan d'ensemble ajoute et la narration sont montres mais ne bloquent pas : ils ne
+ * changent ni ce qui est dit, ni qui le dit, ni ou cela se passe.
+ */
+const CRITIQUES: ReadonlySet<GenreEcart> = new Set<GenreEcart>([
+  'phrase_absente', 'ordre_change', 'lieu_substitue', 'locuteur_devine', 'personnage_hors_casting', 'scene_inventee',
+]);
 
 export interface EcartFidelite {
   genre: GenreEcart;
@@ -39,6 +51,10 @@ export interface EcartFidelite {
   detail: string;
   sceneId?: string;
   planId?: string;
+  /** Vrai : bloque la generation payante tant que non resolu ni accepte. */
+  critique: boolean;
+  /** Identifiant stable : c'est ce que l'utilisateur « accepte ». Il change si le constat change. */
+  cle: string;
 }
 
 /** Une phrase de l'histoire et le plan qui la porte — le lien verifiable. */
@@ -67,21 +83,36 @@ export const DECOR_NEUTRE = 'un decor neutre';
 
 const normaliser = (s: string) => s.replace(/\s+/g, ' ').trim();
 
+/** Construit un ecart avec sa gravite et sa cle : le seul endroit ou ils se decident. */
+function ecart(e: { genre: GenreEcart; detail: string; sceneId?: string; planId?: string }): EcartFidelite {
+  return { ...e, critique: CRITIQUES.has(e.genre), cle: `${e.genre}|${e.sceneId ?? ''}|${e.planId ?? ''}|${e.detail}`.slice(0, 400) };
+}
+
 /** Les ecarts d'UNE scene — utilise par l'audit complet et par la carte de scene. */
 export function ecartsScene(film: Film, scene: SceneCinema): EcartFidelite[] {
   const out: EcartFidelite[] = [];
+  // Une scene dont AUCUN plan ne vient du texte (le decoupage garantit un minimum de scenes,
+  // meme pour une histoire courte) est une scene INVENTEE : elle n'a rien a raconter.
+  const plans = scene.plans as PlanCinema[];
+  if (plans.length > 0 && plans.every((p) => PLAN_AJOUTE.test(p.description))) {
+    out.push(ecart({
+      genre: 'scene_inventee', sceneId: scene.id,
+      detail: `Cette scene ne correspond a aucune phrase de votre texte : elle a ete ajoutee pour atteindre le minimum de scenes. Allongez votre histoire, ou acceptez cette scene generique.`,
+    }));
+    return out;
+  }
   if (scene.lieu === DECOR_NEUTRE) {
-    out.push({
+    out.push(ecart({
       genre: 'lieu_substitue', sceneId: scene.id,
-      detail: 'Aucun lieu reconnu dans votre texte : le plan d’ensemble parle d’« un decor neutre ». Nommez un lieu pour l’imposer.',
-    });
+      detail: 'Aucun lieu reconnu dans votre texte : le plan d’ensemble parle d’« un decor neutre ». Nommez un lieu pour l’imposer, ou acceptez ce decor.',
+    }));
   }
   for (const plan of scene.plans as PlanCinema[]) {
     if (PLAN_AJOUTE.test(plan.description)) {
-      out.push({
+      out.push(ecart({
         genre: 'plan_ajoute', sceneId: scene.id, planId: plan.id,
         detail: `Plan ajoute par Studiio pour ouvrir la scene : « ${plan.description} ». Il ne vient pas de votre texte.`,
-      });
+      }));
       continue;
     }
     const d = plan.dialogue;
@@ -89,11 +120,18 @@ export function ecartsScene(film: Film, scene: SceneCinema): EcartFidelite[] {
       const nommes = personnagesCites(plan.description, film.personnages);
       if (!nommes.includes(d.personnageId)) {
         const qui = film.personnages.find((p) => p.id === d.personnageId)?.nom ?? 'un personnage';
-        out.push({
+        out.push(ecart({
           genre: 'locuteur_devine', sceneId: scene.id, planId: plan.id,
-          detail: `La replique n’indique pas qui parle : Studiio l’a attribuee a ${qui}. Ecrivez le prenom devant la replique pour decider.`,
-        });
+          detail: `La replique n’indique pas qui parle : Studiio l’a attribuee a ${qui}. Ecrivez le prenom devant la replique pour decider, ou acceptez cette attribution.`,
+        }));
       }
+    }
+    // Une phrase SANS guillemets est du recit : elle est lue en narration, jamais mise dans la bouche d'un personnage.
+    if (d && d.genre === 'narration') {
+      out.push(ecart({
+        genre: 'narration', sceneId: scene.id, planId: plan.id,
+        detail: 'Cette phrase decrit une action : elle est lue en narration, et n’est attribuee a aucun personnage.',
+      }));
     }
   }
   return out;
@@ -116,7 +154,7 @@ export function auditFidelite(film: Film): RapportFidelite {
   const ecarts: EcartFidelite[] = [];
   for (const l of liens) {
     if (l.planId === null) {
-      ecarts.push({ genre: 'phrase_absente', detail: `Cette phrase n’apparait dans aucun plan : « ${l.phrase} ».` });
+      ecarts.push(ecart({ genre: 'phrase_absente', detail: `Cette phrase n’apparait dans aucun plan : « ${l.phrase} ».` }));
     }
   }
 
@@ -124,7 +162,7 @@ export function auditFidelite(film: Film): RapportFidelite {
   const rangs = liens.map((l) => l.rang).filter((r): r is number => r !== null);
   const ordreRespecte = rangs.every((r, i) => i === 0 || r > rangs[i - 1]);
   if (!ordreRespecte) {
-    ecarts.push({ genre: 'ordre_change', detail: 'L’ordre des phrases a change entre votre texte et les plans.' });
+    ecarts.push(ecart({ genre: 'ordre_change', detail: 'L’ordre des phrases a change entre votre texte et les plans.' }));
   }
 
   for (const scene of film.scenes) ecarts.push(...ecartsScene(film, scene));
@@ -132,10 +170,10 @@ export function auditFidelite(film: Film): RapportFidelite {
   // Un prenom ecrit dans l'histoire mais absent du casting n'entre dans aucun plan.
   const inconnus = diagnostiquerProposition(film.histoire, { histoire: '', personnages: film.personnages.map((p) => ({ nom: p.nom })) }).inconnus;
   for (const nom of inconnus) {
-    ecarts.push({
+    ecarts.push(ecart({
       genre: 'personnage_hors_casting',
       detail: `« ${nom} » est nomme dans votre histoire mais absent du casting : il n’apparaitra dans aucun plan. Ajoutez-le a l’etape Personnages.`,
-    });
+    }));
   }
 
   const retrouvees = liens.filter((l) => l.planId !== null).length;
@@ -146,6 +184,15 @@ export function auditFidelite(film: Film): RapportFidelite {
 export function phrasesDeLaScene(film: Film, scene: SceneCinema): string[] {
   const rapport = auditFidelite(film);
   return rapport.phrases.filter((l) => l.sceneId === scene.id).map((l) => l.phrase);
+}
+
+/**
+ * Les ecarts qui BLOQUENT une generation payante : critiques, et ni corriges (ils auraient
+ * disparu du constat) ni acceptes explicitement par l'utilisateur (`film.ecartsAcceptes`).
+ */
+export function ecartsBloquants(film: Film, rapport: RapportFidelite = auditFidelite(film)): EcartFidelite[] {
+  const acceptes = new Set(film.ecartsAcceptes ?? []);
+  return rapport.ecarts.filter((e) => e.critique && !acceptes.has(e.cle));
 }
 
 /** Un resume court pour la liste de controle de l'etape Apercu. */

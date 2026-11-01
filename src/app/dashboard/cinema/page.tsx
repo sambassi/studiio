@@ -17,12 +17,12 @@ import {
   Clapperboard, Users, Wand2, Link2, Play, Pause, Download,
   Info, Loader2, Plus, Trash2, RefreshCw, CheckCircle2, AlertTriangle,
   ImageIcon, Film, Volume2, VolumeX, Upload, Sparkles, X, Check, Circle,
-  ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Maximize2, Minimize2, Eye, Shield,
+  ChevronUp, ChevronLeft, ChevronRight, Maximize2, Minimize2, Eye, Shield, Pencil, SlidersHorizontal,
 } from 'lucide-react';
 import { useTarifs, libellePrix, type TarifsEcran } from '@/lib/tarifs/client';
 import { ratioCadre } from '@/lib/ui/lecteur-generation';
 import QuotaCinema from '@/components/cinema/QuotaCinema';
-import { SelecteurStyleFilm, SelecteurStyleScene, SelecteurCamera, ResumeStyle, PlanAregenerer } from '@/components/cinema/DirectionCinema';
+import { SelecteurStyleFilm, ExceptionStyleScene, SelecteurCamera, ResumeStyle, PlanAregenerer } from '@/components/cinema/DirectionCinema';
 import { cameraEffective } from '@/lib/cinema/direction/camera';
 import { plansARegenerer } from '@/lib/cinema/direction/signature';
 import type { IdCameraCinema, IdStyleCinema } from '@/lib/cinema/types';
@@ -30,8 +30,9 @@ import ModelesFilm, { type ModeleFilm } from '@/components/cinema/ModelesFilm';
 import AideRedaction from '@/components/cinema/AideRedaction';
 import ApercuExemple, { FenetreExemple, type Exemple } from '@/components/cinema/ApercuExemple';
 import WizardCinema, { TitreEtape, type EtapeWizard } from '@/components/cinema/WizardCinema';
-import { auditFidelite, ecartsScene, phrasesDeLaScene, resumeFidelite } from '@/lib/cinema/fidelite';
+import { auditFidelite, ecartsBloquants, ecartsScene, phrasesDeLaScene, resumeFidelite } from '@/lib/cinema/fidelite';
 import ChoixMouvements from '@/components/cinema/ChoixMouvements';
+import { mouvementDemo } from '@/lib/cinema/mouvements-camera';
 import { MediaDuPlan, EmplacementVide, Storyboard, appliquerDemo, bilanMedias } from '@/components/cinema/ApercuStoryboard';
 
 interface SegmentApi {
@@ -54,7 +55,7 @@ interface GenerationApi {
   statut: 'en_cours' | 'reussie' | 'echouee' | 'interrompue'; creeLe: string; majLe: string;
   erreur?: string | null; creditsPris?: number; creditsRembourses?: boolean;
 }
-interface FilmApi { id: string; titre: string; histoire?: string; format: string; qualite: string; personnages: PersonnageApi[]; scenes: SceneApi[]; generations?: GenerationApi[]; styleCinema?: IdStyleCinema; directionActive?: boolean }
+interface FilmApi { id: string; titre: string; histoire?: string; format: string; qualite: string; personnages: PersonnageApi[]; scenes: SceneApi[]; generations?: GenerationApi[]; styleCinema?: IdStyleCinema; directionActive?: boolean; ecartsAcceptes?: string[] }
 /** La generation active du film (une seule a la fois, decide par le serveur). */
 const generationActiveDe = (f: FilmApi | null) => f?.generations?.find((g) => g.statut === 'en_cours') ?? null;
 /** La derniere generation d'un plan, quelle qu'en soit l'issue. */
@@ -539,6 +540,11 @@ export default function CinemaPage() {
 
   const genererMedia = (planId: string, operation: 'image' | 'video') => {
     if (!film || generationActiveDe(film)) return;
+    // Fidelite : aucune generation payante tant qu'un ecart critique n'est pas resolu ou accepte.
+    if (generationMode === 'reelle' && bloquants.length > 0) {
+      setErreur(`${bloquants.length} ecart(s) avec votre histoire a valider avant toute generation payante (etape Apercu).`);
+      return;
+    }
     // Une generation REELLE depense : deux gestes. La SIMULEE est gratuite : un seul.
     if (generationMode === 'reelle') { setConfirmation({ planId, operation }); return; }
     lancerGenerationIa(planId, operation);
@@ -750,6 +756,11 @@ export default function CinemaPage() {
 
   /** Ce que le film a VRAIMENT garde de votre histoire (module pur, aucune ecriture). */
   const fidelite = useMemo(() => (film ? auditFidelite(film as never) : null), [film]);
+  // Les ecarts critiques ni corriges ni acceptes : ils bloquent toute generation payante.
+  const bloquants = useMemo(() => (film && fidelite ? ecartsBloquants(film as never, fidelite) : []), [film, fidelite]);
+  const acceptes = useMemo(() => new Set(film?.ecartsAcceptes ?? []), [film]);
+  const accepterEcart = (cle: string) => film && enregistrer({ accepter: [...new Set([...(film.ecartsAcceptes ?? []), cle])] });
+  const retirerAcceptation = (cle: string) => film && enregistrer({ accepter: (film.ecartsAcceptes ?? []).filter((k: string) => k !== cle) });
   const mediasGeneres = film ? film.scenes.flatMap((s) => s.plans).filter((p) => p.media).length : 0;
 
   const etapesWizard: EtapeWizard[] = [
@@ -994,20 +1005,63 @@ export default function CinemaPage() {
                   exceptions={film.scenes.filter((x) => x.styleCinema && x.styleCinema !== film.styleCinema).length}
                 />
               </div>
-              <div className="space-y-5">
-                {film.scenes.map((scene) => (
-                  <div key={scene.id} id={`scene-cinema-${scene.id}`} className="rounded-lg border border-slate-800 bg-slate-950/60 p-4 scroll-mt-4">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <span className="text-xs text-pink-400 font-semibold tracking-widest">SCENE {scene.index + 1} · {scene.intention.toUpperCase()}</span>
-                      <span className="font-semibold">{scene.titre}</span>
+              <div className="space-y-2" data-storyboard="scenes">
+                {film.scenes.map((scene) => {
+                  const ouverte = sceneOuverte === scene.id;
+                  const ecarts = ecartsScene(film as never, scene as never);
+                  const premierMedia = scene.plans.find((pl) => pl.media)?.media ?? null;
+                  const nbMedias = scene.plans.filter((pl) => pl.media).length;
+                  const aRefaire = aProduire.includes(scene.id);
+                  const etatScene = scene.etat === 'validee' ? 'Validee' : aRefaire ? 'A reproduire' : 'Brouillon';
+                  return (
+                  <div key={scene.id} id={`scene-cinema-${scene.id}`}
+                    className={`rounded-lg border bg-slate-950/60 p-2.5 scroll-mt-4 ${ouverte ? 'border-violet-500/60' : 'border-slate-800'}`}>
+                    {/* La carte de storyboard : vignette, numero, titre court, etat, une icone de modification. */}
+                    <div className="flex items-center gap-3">
+                      <span className="relative block shrink-0 overflow-hidden rounded-md border border-slate-800 bg-slate-900" style={{ width: 72, aspectRatio: '16 / 9' }} data-vignette={premierMedia ? 'media' : 'vide'}>
+                        {premierMedia?.genre === 'image' ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={premierMedia.url} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-contain" />
+                        ) : premierMedia ? (
+                          <video src={`${premierMedia.url}#t=0.1`} preload="metadata" muted playsInline aria-hidden="true" tabIndex={-1} className="absolute inset-0 h-full w-full object-contain" />
+                        ) : (
+                          <span className="absolute inset-0 flex items-center justify-center text-slate-600"><Film className="h-4 w-4" aria-hidden="true" /></span>
+                        )}
+                        <span className="absolute left-1 top-1 rounded bg-slate-950/80 px-1 text-[10px] font-semibold tabular-nums text-slate-200">{String(scene.index + 1).padStart(2, '0')}</span>
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[10px] font-semibold uppercase tracking-widest text-pink-400">Scene {scene.index + 1} · {scene.intention}</p>
+                        <p className="truncate text-sm font-semibold text-slate-100" title={scene.titre}>{scene.titre}</p>
+                        <p className="flex items-center gap-2 truncate text-[11px] text-slate-400">
+                          {scene.etat === 'validee' ? <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-400" aria-hidden="true" /> : <Circle className="h-3 w-3 shrink-0 text-slate-600" aria-hidden="true" />}
+                          <span>{etatScene}</span>
+                          <span aria-hidden="true">·</span>
+                          <span>{nbMedias}/{scene.plans.length} media</span>
+                          {ecarts.length > 0 && (
+                            <span className="inline-flex items-center gap-1 text-amber-300" title={`${ecarts.length} point(s) a valider dans cette scene`}>
+                              <AlertTriangle className="h-3 w-3" aria-hidden="true" />{ecarts.length}
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSceneOuverte(ouverte ? null : scene.id)}
+                        aria-expanded={ouverte}
+                        aria-controls={`outils-${scene.id}`}
+                        aria-label={ouverte ? `Fermer les outils de la scene ${scene.index + 1}` : `Ouvrir les outils de la scene ${scene.index + 1}`}
+                        title={ouverte ? 'Fermer' : 'Modifier cette scene'}
+                        className={`shrink-0 rounded-lg border p-2 transition-colors ${ouverte ? 'border-violet-500/60 text-violet-200' : 'border-slate-800 text-slate-400 hover:border-violet-500/40 hover:text-violet-200'}`}
+                      >
+                        {ouverte ? <ChevronUp className="h-4 w-4" aria-hidden="true" /> : <Pencil className="h-4 w-4" aria-hidden="true" />}
+                      </button>
+                    </div>
+
+                    {/* Le detail n'existe QUE pour la scene selectionnee. */}
+                    {ouverte && (
+                    <div className="mt-3 border-t border-slate-800 pt-3">
+                    <div className="mb-2 flex items-center gap-1">
                       <span className="text-xs text-slate-400">{scene.lieu}</span>
-                      {scene.etat === 'validee' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
-                      <SelecteurStyleScene
-                        valeur={scene.styleCinema ?? null}
-                        styleFilm={film.styleCinema ?? null}
-                        surChoisir={(id) => enregistrer({ scenes: [{ id: scene.id, style: id }] })}
-                      />
-                      {/* Actions secondaires : icones, libelle accessible (UX-PREMIUM.md). */}
                       <button
                         type="button"
                         onClick={() => enregistrer({ scenes: [{ id: scene.id, etat: scene.etat === 'validee' ? 'brouillon' : 'validee' }] })}
@@ -1028,17 +1082,6 @@ export default function CinemaPage() {
                       >
                         <RefreshCw className="w-4 h-4" />
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setSceneOuverte(sceneOuverte === scene.id ? null : scene.id)}
-                        aria-expanded={sceneOuverte === scene.id}
-                        aria-controls={`outils-${scene.id}`}
-                        aria-label={sceneOuverte === scene.id ? `Fermer les outils de la scene ${scene.index + 1}` : `Ouvrir les outils de la scene ${scene.index + 1}`}
-                        title={sceneOuverte === scene.id ? 'Fermer les outils' : 'Modifier cette scene'}
-                        className="rounded p-1.5 text-slate-500 transition-colors hover:text-violet-300"
-                      >
-                        {sceneOuverte === scene.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                      </button>
                     </div>
 
                     {/* Ce que VOTRE texte dit de cette scene : le lien verifiable avec l'original. */}
@@ -1049,14 +1092,43 @@ export default function CinemaPage() {
                         </li>
                       ))}
                     </ol>
-                    {ecartsScene(film as never, scene as never).length > 0 && (
+                    {ecarts.length > 0 && (
                       <ul className="mt-2 space-y-1">
-                        {ecartsScene(film as never, scene as never).map((e, k) => (
-                          <li key={k} className="flex items-start gap-1.5 text-[11px] text-amber-300/90">
-                            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />{e.detail}
+                        {ecarts.map((e, k) => (
+                          <li key={k} className={`flex items-start gap-1.5 text-[11px] ${e.critique ? 'text-amber-300/90' : 'text-slate-400'}`}>
+                            {e.critique
+                              ? <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+                              : <Info className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />}
+                            <span className="min-w-0 flex-1">{e.detail}</span>
+                            {e.critique && (acceptes.has(e.cle) ? (
+                              <span className="shrink-0 text-emerald-300">accepte</span>
+                            ) : (
+                              <button type="button" onClick={() => accepterEcart(e.cle)} aria-label="Accepter cet ecart" title="Accepter cet ecart"
+                                className="shrink-0 rounded border border-amber-500/40 p-0.5 text-amber-200 hover:bg-amber-500/10">
+                                <Check className="h-3 w-3" aria-hidden="true" />
+                              </button>
+                            ))}
                           </li>
                         ))}
                       </ul>
+                    )}
+
+                    {/* Options avancees : l'exception de style, masquee par defaut, jamais appliquee sans validation. */}
+                    <details className="mt-3 rounded-lg border border-slate-800/80 px-3 py-2" data-avance="style-scene">
+                      <summary className="flex cursor-pointer list-none items-center gap-2 text-xs text-slate-400 hover:text-slate-200">
+                        <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" /> Options avancees
+                        {scene.styleCinema && scene.styleCinema !== film.styleCinema && <span className="text-violet-300">· style different du film</span>}
+                      </summary>
+                      <div className="mt-2">
+                        <ExceptionStyleScene
+                          key={`${scene.id}:${scene.styleCinema ?? ''}`}
+                          valeur={scene.styleCinema ?? null}
+                          styleFilm={film.styleCinema ?? null}
+                          surValider={(id) => enregistrer({ scenes: [{ id: scene.id, style: id }] })}
+                        />
+                      </div>
+                    </details>
+                    </div>
                     )}
 
                     {/* Outils de la scene : duree, camera, image, voix — uniquement a la demande. */}
@@ -1080,21 +1152,29 @@ export default function CinemaPage() {
                     <div className="mt-3 space-y-2">
                       {scene.plans.map((plan) => (
                         <div key={plan.id} className="rounded border border-slate-800/80 bg-slate-900/40 p-2">
-                          <div className="flex flex-col md:flex-row md:items-center gap-2">
-                            <span className="text-xs text-slate-500 w-32 shrink-0">{plan.cadre} · {plan.dureeS.toFixed(1)} s</span>
+                          <div className="flex min-w-0 flex-col gap-1.5">
+                            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+                              <span className="shrink-0">{plan.cadre} · {plan.dureeS.toFixed(1)} s</span>
+                              {plan.dialogue && (
+                                <span
+                                  className="inline-flex min-w-0 max-w-full items-center rounded-full border border-pink-500/30 px-2 py-0.5 text-[11px] text-pink-300"
+                                  title={plan.dialogue.personnageId ? undefined : 'Phrase de recit : lue en narration, attribuee a aucun personnage'}
+                                >
+                                  <span className="truncate">
+                                    {film.personnages.find((p) => p.id === plan.dialogue?.personnageId)?.nom ?? 'Narration'}
+                                  </span>
+                                </span>
+                              )}
+                            </div>
                             <input
                               defaultValue={plan.dialogue?.texte ?? plan.description}
                               onBlur={(e) => {
                                 const texte = e.target.value;
                                 if (texte !== (plan.dialogue?.texte ?? plan.description)) enregistrer({ plans: [{ id: plan.id, texte }] });
                               }}
-                              className="flex-1 rounded bg-slate-950 border border-slate-800 px-3 py-2 text-sm"
+                              aria-label={`Texte du plan ${plan.cadre}`}
+                              className="w-full min-w-0 rounded bg-slate-950 border border-slate-800 px-3 py-2 text-sm"
                             />
-                            {plan.dialogue && (
-                              <span className="text-xs text-pink-300 w-24 shrink-0">
-                                {film.personnages.find((p) => p.id === plan.dialogue?.personnageId)?.nom ?? 'narrateur'}
-                              </span>
-                            )}
                           </div>
 
                           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
@@ -1102,7 +1182,11 @@ export default function CinemaPage() {
                               valeur={plan.camera ?? 'auto'}
                               ancien={film.directionActive !== true}
                               automatique={cameraEffective({ ...plan, camera: undefined, cadre: plan.cadre as never }, scene as never).effective}
-                              surChoisir={(id) => enregistrer({ plans: [{ id: plan.id, camera: id }] })}
+                              surChoisir={(id) => {
+                                enregistrer({ plans: [{ id: plan.id, camera: id }] });
+                                // Un mouvement qui a son plan filme : l'apercu le montre tout de suite (aucun appel IA).
+                                if (mouvementDemo(id)) { setExemple({ type: 'mouvement', id }); setExempleAgrandi(false); }
+                              }}
                             />
                             {plan.media && aRegenerer.has(plan.id) && <PlanAregenerer genre={plan.media.genre} />}
                             {/* Media du plan : importe en octets, mesure par le serveur. */}
@@ -1204,7 +1288,8 @@ export default function CinemaPage() {
                     </div>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
               </>
             ) : (
@@ -1245,17 +1330,45 @@ export default function CinemaPage() {
                 </div>
 
                 {fidelite.ecarts.length > 0 && (
-                  <section className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
-                    <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-200">
-                      <AlertTriangle className="h-4 w-4" aria-hidden="true" /> A valider : {fidelite.ecarts.length} ecart(s) avec votre texte
+                  <section className={`mt-4 rounded-lg border p-4 ${bloquants.length > 0 ? 'border-amber-500/40 bg-amber-500/5' : 'border-slate-800 bg-slate-900/40'}`} data-fidelite="ecarts">
+                    <h3 className={`mb-2 flex items-center gap-2 text-sm font-semibold ${bloquants.length > 0 ? 'text-amber-200' : 'text-slate-200'}`}>
+                      {bloquants.length > 0 ? <AlertTriangle className="h-4 w-4" aria-hidden="true" /> : <CheckCircle2 className="h-4 w-4 text-emerald-400" aria-hidden="true" />}
+                      {bloquants.length > 0
+                        ? `${bloquants.length} ecart(s) a valider avant toute generation payante`
+                        : `${fidelite.ecarts.length} ecart(s) signales, aucun ne bloque`}
                     </h3>
-                    <ul className="space-y-1.5">
-                      {fidelite.ecarts.map((e, k) => (
-                        <li key={k} className="text-[11px] leading-snug text-amber-100/80">{e.detail}</li>
+<ul className="space-y-1.5">
+                      {fidelite.ecarts.filter((e) => e.critique).map((e) => (
+                        <li key={e.cle} className="flex items-start gap-2 text-[11px] leading-snug text-slate-300">
+                          <span className="min-w-0 flex-1">{e.detail}</span>
+                          {e.critique && (acceptes.has(e.cle) ? (
+                            <button type="button" onClick={() => retirerAcceptation(e.cle)} aria-label="Retirer l’acceptation" title="Retirer l’acceptation"
+                              className="inline-flex shrink-0 items-center gap-1 rounded border border-emerald-500/40 px-1.5 py-0.5 text-emerald-300">
+                              <Check className="h-3 w-3" aria-hidden="true" /> accepte
+                            </button>
+                          ) : (
+                            <button type="button" onClick={() => accepterEcart(e.cle)} aria-label="Accepter cet ecart" title="Accepter cet ecart"
+                              className="inline-flex shrink-0 items-center gap-1 rounded border border-amber-500/40 px-1.5 py-0.5 text-amber-200 hover:bg-amber-500/10">
+                              <Check className="h-3 w-3" aria-hidden="true" /> accepter
+                            </button>
+                          ))}
+                        </li>
                       ))}
                     </ul>
+                    {fidelite.ecarts.some((e) => !e.critique) && (
+                      <details className="mt-2 text-[11px] text-slate-400" data-fidelite="remarques">
+                        <summary className="flex cursor-pointer list-none items-center gap-1.5 hover:text-slate-200">
+                          <Info className="h-3 w-3" aria-hidden="true" /> {fidelite.ecarts.filter((e) => !e.critique).length} remarque(s) qui ne bloquent rien (plan d’ensemble ajoute, narration)
+                        </summary>
+                        <ul className="mt-1.5 space-y-1">
+                          {fidelite.ecarts.filter((e) => !e.critique).map((e) => (
+                            <li key={e.cle} className="leading-snug">{e.detail}</li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
                     <p className="mt-2 text-[11px] text-slate-400">
-                      Studiio ne corrige rien tout seul : modifiez votre histoire ou vos personnages, puis recomposez le scenario.
+                      Votre texte n’est jamais modifie. Corrigez-le puis recomposez le scenario, ou acceptez un ecart en connaissance de cause.
                     </p>
                   </section>
                 )}
