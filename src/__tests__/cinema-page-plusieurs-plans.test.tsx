@@ -34,7 +34,13 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 async function ouvrir() {
   render(<CinemaPage />);
   fireEvent.change(await screen.findByLabelText(/reprendre un film/i), { target: { value: film.id } });
-  await screen.findByText(/Export MP4/);
+  await screen.findByRole('button', { name: /^Etape 5 sur 5/ });
+}
+
+/** Les scenes vivent a l'etape 3 ; les outils d'UNE scene s'ouvrent au clic. */
+async function ouvrirScene(n: number) {
+  fireEvent.click(await screen.findByRole('button', { name: /^Etape 3 sur 5/ }));
+  fireEvent.click(await screen.findByLabelText(new RegExp(`Ouvrir les outils de la scene ${n}`)));
 }
 
 describe('page Cinema IA — plusieurs scenes, beaucoup de plans', () => {
@@ -43,12 +49,16 @@ describe('page Cinema IA — plusieurs scenes, beaucoup de plans', () => {
     expect(film.scenes.flatMap((s) => s.plans).length).toBeGreaterThanOrEqual(20);
   });
 
-  it('s’affiche entierement, chaque plan avec son bouton, en un temps borne', async () => {
+  it('n’affiche PAS les 20+ plans d’un coup : une scene ouverte, ses plans seulement, en un temps borne', async () => {
     const t0 = performance.now();
     await ouvrir();
+    fireEvent.click(await screen.findByRole('button', { name: /^Etape 3 sur 5/ }));
+    // Le parcours montre des cartes de scene, pas tous les plans du film.
+    expect(document.querySelectorAll('[data-cinema-generation="image"]')).toHaveLength(0);
+
+    fireEvent.click(await screen.findByLabelText(/Ouvrir les outils de la scene 1/));
     const duree = performance.now() - t0;
-    const nbPlans = film.scenes.flatMap((s) => s.plans).length;
-    expect(document.querySelectorAll('[data-cinema-generation="image"]').length).toBe(nbPlans);
+    expect(document.querySelectorAll('[data-cinema-generation="image"]').length).toBe(film.scenes[0].plans.length);
     expect(duree).toBeLessThan(5000); // jsdom, machine partagee : marge large, mais finie
   });
 
@@ -62,6 +72,7 @@ describe('page Cinema IA — plusieurs scenes, beaucoup de plans', () => {
     generations = [{ id: 'g1', planId: film.scenes[1].plans[1].id, operation: 'video', mode: 'reelle', statut: 'en_cours', creeLe: new Date().toISOString(), majLe: new Date().toISOString() }];
     const spy = vi.spyOn(globalThis, 'setInterval');
     await ouvrir();
+    await ouvrirScene(2);
     await screen.findByText(/generation video en cours/i);
     expect(spy.mock.calls.filter(([, ms]) => ms === 1000)).toHaveLength(1);
     expect(document.querySelectorAll('[data-cinema-generation-statut="en_cours"]')).toHaveLength(1);

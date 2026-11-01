@@ -17,7 +17,7 @@ import {
   Clapperboard, Users, Wand2, Link2, Play, Pause, Download,
   Info, Loader2, Plus, Trash2, RefreshCw, CheckCircle2, AlertTriangle,
   ImageIcon, Film, Volume2, VolumeX, Upload, Sparkles, X, Check, Circle,
-  ChevronDown, ChevronLeft, ChevronRight, Maximize2, Minimize2,
+  ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Maximize2, Minimize2, Eye, Shield,
 } from 'lucide-react';
 import { useTarifs, libellePrix, type TarifsEcran } from '@/lib/tarifs/client';
 import { ratioCadre } from '@/lib/ui/lecteur-generation';
@@ -29,6 +29,8 @@ import type { IdCameraCinema, IdStyleCinema } from '@/lib/cinema/types';
 import ModelesFilm, { type ModeleFilm } from '@/components/cinema/ModelesFilm';
 import AideRedaction from '@/components/cinema/AideRedaction';
 import ApercuExemple, { FenetreExemple, type Exemple } from '@/components/cinema/ApercuExemple';
+import WizardCinema, { TitreEtape, type EtapeWizard } from '@/components/cinema/WizardCinema';
+import { auditFidelite, ecartsScene, phrasesDeLaScene, resumeFidelite } from '@/lib/cinema/fidelite';
 import ChoixMouvements from '@/components/cinema/ChoixMouvements';
 import { MediaDuPlan, EmplacementVide, Storyboard, appliquerDemo, bilanMedias } from '@/components/cinema/ApercuStoryboard';
 
@@ -73,14 +75,6 @@ interface DevisApi { totalUsd: number | null; secondesAProduire: number; fournis
 const TITRE_EXEMPLE = 'Avant le jour';
 const HISTOIRE_EXEMPLE = "Nina entre dans la salle avant le lever du jour. Le tatami est encore froid et personne ne parle. Marco la regarde sans bouger. Nina sait que le combat a deja commence. Marco avance et le silence se brise. Nina tient bon jusqu au dernier instant. Le jour se leve sur la salle vide.";
 
-/** Rail visuel condense : les 7 sections reelles (voir panneaux) se regroupent en 5 etapes a l'ecran. */
-const ETAPES = [
-  { icone: Clapperboard, titre: 'Histoire' },
-  { icone: Users, titre: 'Personnages' },
-  { icone: Wand2, titre: 'Scenes' },
-  { icone: Play, titre: 'Apercu' },
-  { icone: Download, titre: 'Export' },
-];
 
 /** Detail replie derriere une icone — l'UI reste epuree, l'information reste accessible. */
 function Detail({ texte }: { texte: string }) {
@@ -105,51 +99,6 @@ function Detail({ texte }: { texte: string }) {
 /**
  * PANNEAU REPLIABLE — numerote, colonne de gauche. Ouvert par defaut (rien de
  * nouveau n'est cache au chargement), repliable au clic pour l'ecran epure.
- */
-/**
- * `ouvertControle`/`onChangerOuvert` sont optionnels : sans eux, le panneau gere son
- * propre etat (comportement d'origine). Le rail d'etapes a besoin d'OUVRIR un panneau
- * precis depuis l'exterieur (ex. cliquer « Personnages ») — d'ou ce controle optionnel,
- * plutot que de dupliquer tout le composant.
- */
-function CollapsiblePanel({ numero, titre, icone: Icone, badge, children, ouvertControle, onChangerOuvert }: {
-  numero: number; titre: string; icone: typeof Clapperboard; badge?: React.ReactNode; children: React.ReactNode;
-  ouvertControle?: boolean; onChangerOuvert?: (v: boolean) => void;
-}) {
-  const [ouvertInterne, setOuvertInterne] = useState(true);
-  const ouvert = ouvertControle ?? ouvertInterne;
-  const basculer = () => (onChangerOuvert ? onChangerOuvert(!ouvert) : setOuvertInterne((v) => !v));
-  const id = `panneau-cinema-${numero}`;
-  return (
-    // L'id est sur la SECTION (toujours montee), pas sur le contenu replie : le rail
-    // d'etapes doit pouvoir defiler vers un panneau meme ferme.
-    <section id={id} className="rounded-xl border border-slate-800 bg-slate-900/40 scroll-mt-4">
-      <button
-        type="button"
-        onClick={basculer}
-        aria-expanded={ouvert}
-        aria-controls={`${id}-contenu`}
-        className="w-full flex items-center gap-3 px-5 py-4 text-left"
-      >
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-500/15 text-xs font-semibold text-violet-300">{numero}</span>
-        <Icone className="w-4 h-4 text-violet-400 shrink-0" />
-        <span className="font-semibold flex-1">{titre}</span>
-        {badge}
-        <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform shrink-0 ${ouvert ? 'rotate-180' : ''}`} />
-      </button>
-      {ouvert && <div id={`${id}-contenu`} className="px-5 pb-5">{children}</div>}
-    </section>
-  );
-}
-
-/**
- * Vignette : le media REEL du plan, ou un repli sobre — jamais un media invente.
- *
- * ⚠️ `media.url` est la cle de STOCKAGE (prive), pas une URL navigable — c'est pour ca
- * que `Apercu` (plus haut dans l'arbre) ne l'affiche jamais directement non plus : il
- * recoit `segment.media.url` deja resolu par l'API montage. Ici, le media vient du FILM
- * (`plan.media`), jamais resolu : on passe par la MEME route authentifiee que le reste
- * de l'app (`/api/cinema/films/{filmId}/medias/{planId}`), proprietaire seulement.
  */
 function VignetteMedia({ media, filmId, planId, taille }: { media: MediaApi | null; filmId: string; planId: string; taille: 'petite' | 'grande' }) {
   const classe = taille === 'petite' ? 'w-16 h-16' : 'w-full h-40';
@@ -381,7 +330,6 @@ export default function CinemaPage() {
    * Un clic DIRECT sur l'en-tete d'un panneau (via `basculer` dans `CollapsiblePanel`)
    * reste independant de cette exclusivite : il ne touche qu'a sa propre cle.
    */
-  const [panneauxOuverts, setPanneauxOuverts] = useState<Record<number, boolean>>({ 1: true, 2: true, 3: true, 4: true });
   /**
    * Panneaux ouverts par etape du rail (les autres se referment) : « une seule
    * configuration principale a la fois ». Le panneau 3 (« Composer le scenario »)
@@ -389,16 +337,6 @@ export default function CinemaPage() {
    * Histoire et Personnages (il faut l'un ou l'autre avant de composer), donc il
    * reste visible pendant ces deux etapes et se referme des que des scenes existent.
    */
-  const PANNEAUX_PAR_ETAPE: number[][] = [[1, 3], [2, 3], [4], [], []];
-  /** Cible DOM de chaque etape du rail, dans l'ordre Histoire/Personnages/Scenes/Apercu/Export. */
-  const allerAEtape = (index: number) => {
-    const ouverts = new Set(PANNEAUX_PAR_ETAPE[index] ?? []);
-    setPanneauxOuverts({ 1: ouverts.has(1), 2: ouverts.has(2), 3: ouverts.has(3), 4: ouverts.has(4) });
-    const idCible = ['panneau-cinema-1', 'panneau-cinema-2', 'panneau-cinema-4', 'cinema-apercu', 'cinema-export'][index];
-    // Le panneau peut venir de s'ouvrir dans ce meme rendu : laisser le DOM se poser avant de defiler.
-    requestAnimationFrame(() => document.getElementById(idCible)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
-  };
-
   /**
    * Les champs portent-ils une saisie a proteger ? Non si ce sont encore ceux de
    * l'exemple d'origine, ou s'ils sont vides. Oui des qu'un film est charge : appliquer
@@ -423,7 +361,6 @@ export default function CinemaPage() {
     setCasting(m.valeurs.casting.map((c) => ({ ...c })));
     // Un exemple peut proposer un style (ex. science-fiction) : un simple choix d'ecran, rien n'est genere.
     if (m.valeurs.styleCinema) setStyleAvantFilm(m.valeurs.styleCinema);
-    setPanneauxOuverts((x) => ({ ...x, 1: true }));
   };
 
   /** Repartir d'une page blanche : les champs se vident, rien d'autre ne bouge. */
@@ -431,7 +368,6 @@ export default function CinemaPage() {
     setTitre('');
     setHistoire('');
     setCasting([{ nom: '', role: '', description: '', urlImage: '' }]);
-    setPanneauxOuverts((x) => ({ ...x, 1: true }));
   };
 
   const appliquer = useCallback((data: any) => {
@@ -804,18 +740,48 @@ export default function CinemaPage() {
     return () => { arrete = true; clearTimeout(minuteur); };
   }, [filmId, travailId, actif, rafraichirFilm]);
 
-  return (
-    <div className="max-w-7xl mx-auto px-4 py-8 text-slate-100">
-      <header className="mb-8">
-        <div className="flex items-center gap-3">
-          <Clapperboard className="w-7 h-7 text-violet-400" />
-          <h1 className="text-2xl font-bold">Cinema IA</h1>
-          <span className="text-xs px-2 py-1 rounded-full bg-violet-500/15 text-violet-300 border border-violet-500/30">prototype</span>
-        </div>
-        <p className="mt-2 text-sm text-slate-400">
-          Une histoire devient un film : scenes, personnages, plans, voix, puis un MP4.
-          <Detail texte="Le decoupage est local et deterministe : aucune IA generative n'est appelee, aucun fournisseur payant n'est actif. Les visuels sont des cartes de plan rendues par Remotion." />
-        </p>
+  /**
+   * L'ETAPE AFFICHEE. Une seule a la fois (maquette validee) : la page ne defile plus sur
+   * cinq formulaires empiles. Rien n'est perdu en naviguant — l'etat vit ici, pas dans le DOM.
+   */
+  const [etape, setEtape] = useState(0);
+  /** La scene dont les outils sont ouverts : une seule, et seulement a la demande. */
+  const [sceneOuverte, setSceneOuverte] = useState<string | null>(null);
+
+  /** Ce que le film a VRAIMENT garde de votre histoire (module pur, aucune ecriture). */
+  const fidelite = useMemo(() => (film ? auditFidelite(film as never) : null), [film]);
+  const mediasGeneres = film ? film.scenes.flatMap((s) => s.plans).filter((p) => p.media).length : 0;
+
+  const etapesWizard: EtapeWizard[] = [
+    { titre: 'Histoire', icone: Clapperboard, accessible: true },
+    { titre: 'Personnages', icone: Users, accessible: true },
+    { titre: 'Scenes', icone: Link2, accessible: !!film, empeche: 'Scenes — composez d’abord le scenario' },
+    { titre: 'Apercu', icone: Eye, accessible: !!film, empeche: 'Apercu — composez d’abord le scenario' },
+    { titre: 'Export', icone: Download, accessible: !!film, empeche: 'Export — composez d’abord le scenario' },
+  ];
+
+  const allerAEtape = (i: number) => {
+    if (i < 0 || i >= etapesWizard.length || !etapesWizard[i].accessible) return;
+    setEtape(i);
+  };
+
+  /**
+   * L'action primaire du pied de page — une seule par etape. A l'etape Personnages, elle
+   * COMPOSE le scenario : c'est un acte explicite, jamais un effet de bord de la navigation.
+   */
+  const actionEtape = etape === 4 ? null : etape === 1 && !film
+    ? { libelle: enCours === 'scenario' ? 'Composition…' : 'Composer le scenario', onClick: () => { void composer().then(() => setEtape(2)); }, desactive: enCours !== null, titre: 'Decouper votre histoire en scenes et en plans' }
+    : { libelle: 'Continuer', onClick: () => allerAEtape(etape + 1), desactive: !etapesWizard[Math.min(etape + 1, 4)].accessible };
+
+  const enteteWizard = (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <Clapperboard className="h-5 w-5 shrink-0 text-violet-400" aria-hidden="true" />
+        <h1 className="truncate text-base font-bold text-slate-50">Cinema IA</h1>
+        <span className="rounded-full border border-violet-500/30 bg-violet-500/15 px-2 py-0.5 text-[10px] text-violet-300">prototype</span>
+        <Detail texte="Le decoupage est local et deterministe : une phrase de votre histoire = un plan. Aucune IA generative n'est appelee pour composer le scenario, et votre texte d'origine est conserve tel quel." />
+      </div>
+      <div className="ml-auto flex flex-wrap items-center gap-3">
         {mesFilms.length > 0 && (
           <label className="mt-4 inline-flex items-center gap-2 text-xs text-slate-400">
             Reprendre un film
@@ -843,45 +809,72 @@ export default function CinemaPage() {
           filmId={film?.id ?? null}
           version={(film?.generations ?? []).map((g) => `${g.id}:${g.statut}`).join('|')}
         />
-      </header>
+      </div>
+    </div>
+  );
 
-      {/* Rail des etapes — raccourci de navigation ; les panneaux ci-dessous restent TOUS accessibles, rien n'est cache. */}
-      <ol className="flex flex-wrap gap-2 mb-8">
-        {ETAPES.map((e, i) => {
-          const Icone = e.icone;
-          const atteintes = [true, true, !!film, !!montage, !!film];
-          const atteinte = atteintes[i];
-          return (
-            <li key={e.titre}>
-              <button
-                type="button"
-                onClick={() => allerAEtape(i)}
-                aria-label={`Aller a l’etape ${e.titre}`}
-                title={e.titre}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors ${atteinte ? 'border-violet-500/40 bg-violet-500/10 text-violet-200 hover:border-violet-400/60' : 'border-slate-700 bg-slate-900/50 text-slate-500 hover:border-slate-600'}`}
-              >
-                <Icone className="w-4 h-4" />
-                <span>{i + 1}. {e.titre}</span>
-              </button>
-            </li>
-          );
-        })}
-      </ol>
-
+  return (
+    <div className="text-slate-100">
       {erreur && (
-        <div className="mb-6 flex items-start gap-3 rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200" role="alert">
+        <div className="mb-3 flex items-start gap-3 rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-200" role="alert">
           <AlertTriangle className="w-5 h-5 shrink-0" />
           <span>{erreur}</span>
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_380px] gap-6 items-start">
-        {/* Colonne de gauche — panneaux numerotes, repliables, defilement independant. */}
-        <div className="space-y-4 min-w-0 lg:max-h-[calc(100vh-180px)] lg:overflow-y-auto lg:pr-1 order-2 lg:order-1">
-          <CollapsiblePanel
-            numero={1} titre="Histoire" icone={Clapperboard}
-            ouvertControle={panneauxOuverts[1]} onChangerOuvert={(v) => setPanneauxOuverts((p) => ({ ...p, 1: v }))}
-          >
+      <WizardCinema
+        etapes={etapesWizard}
+        active={etape}
+        surAller={allerAEtape}
+        chargement={enCours !== null}
+        actionPrincipale={actionEtape}
+        entete={enteteWizard}
+        apercu={(
+          <div className="space-y-3">
+        <div id="cinema-apercu" className="scroll-mt-4">
+          {/* UN SEUL apercu : un exemple, ou le film de l'utilisateur — jamais les deux. */}
+          {exemple ? (
+            <ApercuExemple
+              exemple={exemple} format={format}
+              surRevenir={() => { setExemple(null); setExempleAgrandi(false); }}
+              surAgrandir={() => setExempleAgrandi(true)}
+            />
+          ) : montage ? (
+            <Apercu montage={montage} surPreparerVoix={preparerVoix} voixEnCours={enCours === 'voix'} />
+          ) : (
+            <ApercuVide format={format} />
+          )}
+          {/* Les quatre mouvements : ils alimentent le MEME apercu, sous lui. */}
+          <ChoixMouvements
+            actif={exemple?.type === 'mouvement' ? exemple.id : null}
+            surChoisir={(id) => { setExemple({ type: 'mouvement', id }); setExempleAgrandi(false); }}
+          />
+          {exemple && exempleAgrandi && (
+            <FenetreExemple exemple={exemple} surFermer={() => setExempleAgrandi(false)} />
+          )}
+        </div>
+        {film && film.scenes.length > 0 && (
+          <SceneCarousel
+            film={film}
+            surRelancer={(sceneId) => produire([sceneId])}
+            enCours={enCours !== null}
+            travailActif={ACTIF(travail)}
+            generationIa={generationIa}
+            generationMode={generationMode}
+            tarifs={tarifs}
+            enCoursTexte={enCours}
+            confirmation={confirmation}
+            surGenererMedia={genererMedia}
+            surImporterMedia={importerMedia}
+          />
+        )}
+          </div>
+        )}
+      >
+        {etape === 0 && (
+          <div>
+            <TitreEtape numero={1} total={5} icone={Clapperboard} titre="Racontez votre idee."
+              phrase="Un court resume suffit. Studiio vous guidera ensuite pour les personnages et les scenes, sans changer votre histoire." />
             <ModelesFilm
               aDesSaisies={aDesSaisies}
               surAppliquer={appliquerModele}
@@ -939,12 +932,13 @@ export default function CinemaPage() {
               surMontrerExemple={(id) => { setExemple({ type: 'style', id }); setExempleAgrandi(false); }}
               exempleVu={exemple?.type === 'style' ? exemple.id : null}
             />
-          </CollapsiblePanel>
+          </div>
+        )}
 
-          <CollapsiblePanel numero={2} titre="Personnages et references" icone={Users}
-            ouvertControle={panneauxOuverts[2]} onChangerOuvert={(v) => setPanneauxOuverts((p) => ({ ...p, 2: v }))}
-            badge={<Detail texte="Une apparence changee cree une VERSION de reference : les anciennes restent lisibles, et les scenes concernees sont marquees a reproduire. Aucune coherence visuelle en generation IA n'est promise : rien n'a encore ete teste avec un fournisseur." />}
-          >
+        {etape === 1 && (
+          <div>
+            <TitreEtape numero={2} total={5} icone={Users} titre="Qui joue dans votre film ?"
+              phrase="Gardez les memes personnages d’une scene a l’autre. Un personnage absent de cette liste n’apparaitra dans aucun plan." />
             <div className="space-y-3">
               {casting.map((p, i) => (
                 <div key={i} className="grid grid-cols-2 gap-2">
@@ -964,32 +958,36 @@ export default function CinemaPage() {
                 </button>
               )}
             </div>
-          </CollapsiblePanel>
-
-          <CollapsiblePanel
-            numero={3} titre="Scenario" icone={Wand2}
-            ouvertControle={panneauxOuverts[3]} onChangerOuvert={(v) => setPanneauxOuverts((p) => ({ ...p, 3: v }))}
-          >
-            <button onClick={composer} disabled={enCours !== null} className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium hover:bg-violet-500 disabled:opacity-50">
-              {enCours === 'scenario' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />}
-              Composer le scenario
-            </button>
-            {film && montage && (
-              <p className="mt-4 text-sm text-slate-300">
-                {film.scenes.length} scenes, {montage.segments.length} plans, {montage.dureeS.toFixed(1)} s, {montage.largeur}x{montage.hauteur}.
+            <div className="mt-5 rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+              <p className="text-xs text-slate-400">
+                Le decoupage est local et deterministe : une phrase = un plan, et votre texte reste la source de verite.
+                {film && montage && ` Scenario actuel : ${film.scenes.length} scenes, ${montage.segments.length} plans, ${montage.dureeS.toFixed(1)} s.`}
               </p>
-            )}
-          </CollapsiblePanel>
+              {film && (
+                <button
+                  onClick={() => { void composer(); }}
+                  disabled={enCours !== null}
+                  className="mt-3 inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:border-violet-500/50 disabled:opacity-50"
+                >
+                  {enCours === 'scenario' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
+                  Recomposer le scenario depuis mon texte
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
-          {film && (
-            <CollapsiblePanel numero={4} titre="Scenes, personnages, repliques" icone={Link2}
-              ouvertControle={panneauxOuverts[4]} onChangerOuvert={(v) => setPanneauxOuverts((p) => ({ ...p, 4: v }))}
-              badge={aProduire.length > 0 ? (
-                <span className="text-xs px-2 py-1 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                  {aProduire.length} scene(s) a reproduire
-                </span>
-              ) : undefined}
-            >
+        {etape === 2 && (
+          <div>
+            <TitreEtape numero={3} total={5} icone={Link2} titre="Une histoire, scene apres scene."
+              phrase="Chaque scene renvoie aux phrases de votre texte. Les outils d’une scene s’ouvrent au clic, jamais tous a la fois." />
+            {film ? (
+              <>
+                {aProduire.length > 0 && (
+                  <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/15 px-3 py-1 text-xs text-amber-300">
+                    <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /> {aProduire.length} scene(s) a reproduire
+                  </p>
+                )}
               <div className="mb-4">
                 <ResumeStyle
                   styleFilm={film.styleCinema ?? null}
@@ -1030,8 +1028,40 @@ export default function CinemaPage() {
                       >
                         <RefreshCw className="w-4 h-4" />
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => setSceneOuverte(sceneOuverte === scene.id ? null : scene.id)}
+                        aria-expanded={sceneOuverte === scene.id}
+                        aria-controls={`outils-${scene.id}`}
+                        aria-label={sceneOuverte === scene.id ? `Fermer les outils de la scene ${scene.index + 1}` : `Ouvrir les outils de la scene ${scene.index + 1}`}
+                        title={sceneOuverte === scene.id ? 'Fermer les outils' : 'Modifier cette scene'}
+                        className="rounded p-1.5 text-slate-500 transition-colors hover:text-violet-300"
+                      >
+                        {sceneOuverte === scene.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </button>
                     </div>
 
+                    {/* Ce que VOTRE texte dit de cette scene : le lien verifiable avec l'original. */}
+                    <ol className="mt-2 space-y-1">
+                      {phrasesDeLaScene(film as never, scene as never).map((ph, k) => (
+                        <li key={k} className="flex gap-2 text-[11px] leading-snug text-slate-400">
+                          <span className="shrink-0 text-slate-600">{k + 1}.</span><span>{ph}</span>
+                        </li>
+                      ))}
+                    </ol>
+                    {ecartsScene(film as never, scene as never).length > 0 && (
+                      <ul className="mt-2 space-y-1">
+                        {ecartsScene(film as never, scene as never).map((e, k) => (
+                          <li key={k} className="flex items-start gap-1.5 text-[11px] text-amber-300/90">
+                            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />{e.detail}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    {/* Outils de la scene : duree, camera, image, voix — uniquement a la demande. */}
+                    {sceneOuverte === scene.id && (
+                    <div id={`outils-${scene.id}`}>
                     <div className="mt-3 flex flex-wrap gap-2">
                       {film.personnages.map((p) => {
                         const present = scene.personnages.includes(p.id);
@@ -1171,72 +1201,113 @@ export default function CinemaPage() {
                         </div>
                       ))}
                     </div>
+                    </div>
+                    )}
                   </div>
                 ))}
               </div>
-            </CollapsiblePanel>
-          )}
-        </div>
-
-        {/* Colonne de droite — apercu video, scenes, export : visibles sans defiler. UNE SEULE instance d'Apercu. */}
-        <div className="space-y-4 lg:sticky lg:top-6 lg:self-start order-1 lg:order-2">
-          <div id="cinema-apercu" className="scroll-mt-4">
-            {/* UN SEUL apercu : un exemple, ou le film de l'utilisateur — jamais les deux. */}
-            {exemple ? (
-              <ApercuExemple
-                exemple={exemple} format={format}
-                surRevenir={() => { setExemple(null); setExempleAgrandi(false); }}
-                surAgrandir={() => setExempleAgrandi(true)}
-              />
-            ) : montage ? (
-              <Apercu montage={montage} surPreparerVoix={preparerVoix} voixEnCours={enCours === 'voix'} />
+              </>
             ) : (
-              <ApercuVide format={format} />
-            )}
-            {/* Les quatre mouvements : ils alimentent le MEME apercu, sous lui. */}
-            <ChoixMouvements
-              actif={exemple?.type === 'mouvement' ? exemple.id : null}
-              surChoisir={(id) => { setExemple({ type: 'mouvement', id }); setExempleAgrandi(false); }}
-            />
-            {exemple && exempleAgrandi && (
-              <FenetreExemple exemple={exemple} surFermer={() => setExempleAgrandi(false)} />
+              <p className="rounded-lg border border-dashed border-slate-700 p-4 text-sm text-slate-400">
+                Composez d’abord le scenario a l’etape Personnages : les scenes en decouleront, phrase par phrase.
+              </p>
             )}
           </div>
+        )}
 
-          {film && film.scenes.length > 0 && (
-            <SceneCarousel
-              film={film}
-              surRelancer={(sceneId) => produire([sceneId])}
-              enCours={enCours !== null}
-              travailActif={ACTIF(travail)}
-              generationIa={generationIa}
-              generationMode={generationMode}
-              tarifs={tarifs}
-              enCoursTexte={enCours}
-              confirmation={confirmation}
-              surGenererMedia={genererMedia}
-              surImporterMedia={importerMedia}
-            />
-          )}
+        {etape === 3 && (
+          <div>
+            <TitreEtape numero={4} total={5} icone={Eye} titre="Verifiez avant de generer."
+              phrase="Un seul apercu, et ce qu’il contient vraiment. Rien n’est facture tant que vous n’avez pas lance une generation." />
+            {film && fidelite ? (
+              <>
+                <div className="space-y-1.5">
+                  <p className="flex items-center gap-2 text-sm text-slate-200">
+                    {fidelite.fidele
+                      ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden="true" />
+                      : <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" aria-hidden="true" />}
+                    {resumeFidelite(fidelite)}
+                  </p>
+                  <p className="flex items-center gap-2 text-sm text-slate-300">
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden="true" />
+                    Personnages : {film.personnages.map((p) => p.nom).join(' · ') || 'aucun'}
+                  </p>
+                  <p className="flex items-center gap-2 text-sm text-slate-300">
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden="true" />
+                    {film.scenes.length} scenes, {montage ? `${montage.segments.length} plans, ${montage.dureeS.toFixed(1)} s` : 'montage a composer'}
+                  </p>
+                  <p className="flex items-center gap-2 text-sm text-slate-300">
+                    {mediasGeneres > 0
+                      ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden="true" />
+                      : <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" aria-hidden="true" />}
+                    {mediasGeneres > 0 ? `${mediasGeneres} media(s) sur vos plans` : 'Aucun media genere pour ce film'}
+                  </p>
+                </div>
 
-          {film && (
-            <section id="cinema-export" className="rounded-xl border border-slate-800 bg-slate-900/40 p-5 scroll-mt-4">
-              <h2 className="font-semibold mb-4 flex items-center gap-2"><Download className="w-4 h-4 text-violet-400" /> Export MP4</h2>
-              {devis && (
-                <p className="text-sm text-slate-300 mb-3">
-                  Devis : {devis.totalUsd === null ? 'cout inconnu (tarif non declare)' : devis.totalUsd === 0 ? 'gratuit (rendu local)' : `${devis.totalUsd.toFixed(4)} USD`} pour {devis.secondesAProduire.toFixed(1)} s a produire.
-                  <Detail texte="Le devis est etabli AVANT le rendu. Une scene inchangee n'est pas refaite : son MP4 est repris tel quel et recolle. Le plafond de depense est fixe par le serveur." />
-                </p>
-              )}
-              <button onClick={() => produire()} disabled={enCours !== null || ACTIF(travail)} className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium hover:bg-violet-500 disabled:opacity-50">
-                {enCours === 'lancement' || ACTIF(travail) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                {ACTIF(travail) ? 'Production en cours' : 'Exporter le film'}
-              </button>
-              {travail && film && <Production film={film} travail={travail} surArreter={arreterProduction} />}
-            </section>
-          )}
-        </div>
-      </div>
+                {fidelite.ecarts.length > 0 && (
+                  <section className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/5 p-4">
+                    <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-200">
+                      <AlertTriangle className="h-4 w-4" aria-hidden="true" /> A valider : {fidelite.ecarts.length} ecart(s) avec votre texte
+                    </h3>
+                    <ul className="space-y-1.5">
+                      {fidelite.ecarts.map((e, k) => (
+                        <li key={k} className="text-[11px] leading-snug text-amber-100/80">{e.detail}</li>
+                      ))}
+                    </ul>
+                    <p className="mt-2 text-[11px] text-slate-400">
+                      Studiio ne corrige rien tout seul : modifiez votre histoire ou vos personnages, puis recomposez le scenario.
+                    </p>
+                  </section>
+                )}
+
+                <section className="mt-4 rounded-lg border border-slate-800 bg-slate-900/40 p-4">
+                  <h3 className="mb-1 flex items-center gap-2 text-sm font-semibold text-slate-200">
+                    <Shield className="h-4 w-4 text-violet-300" aria-hidden="true" /> Cout annonce avant toute creation
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    {devis
+                      ? (devis.totalUsd === null ? 'Cout inconnu (tarif non declare) : rien ne sera lance sans prix.'
+                        : devis.totalUsd === 0 ? `Gratuit (rendu local) pour ${devis.secondesAProduire.toFixed(1)} s a produire.`
+                        : `${devis.totalUsd.toFixed(4)} USD pour ${devis.secondesAProduire.toFixed(1)} s a produire.`)
+                      : 'Le devis s’affiche des que le scenario est compose.'}
+                  </p>
+                </section>
+              </>
+            ) : (
+              <p className="rounded-lg border border-dashed border-slate-700 p-4 text-sm text-slate-400">
+                Composez le scenario pour verifier la fidelite a votre histoire.
+              </p>
+            )}
+          </div>
+        )}
+
+        {etape === 4 && (
+          <div>
+            <TitreEtape numero={5} total={5} icone={Download} titre="Votre film, pret a partager."
+              phrase="Le MP4 se telecharge ici, et nulle part ailleurs : les extraits d’exemple ne sont jamais exportes comme votre film." />
+            {film ? (
+              <section id="cinema-export" className="rounded-xl border border-slate-800 bg-slate-900/40 p-5 scroll-mt-4">
+                <h2 className="font-semibold mb-4 flex items-center gap-2"><Download className="w-4 h-4 text-violet-400" /> Export MP4</h2>
+                {devis && (
+                  <p className="text-sm text-slate-300 mb-3">
+                    Devis : {devis.totalUsd === null ? 'cout inconnu (tarif non declare)' : devis.totalUsd === 0 ? 'gratuit (rendu local)' : `${devis.totalUsd.toFixed(4)} USD`} pour {devis.secondesAProduire.toFixed(1)} s a produire.
+                    <Detail texte="Le devis est etabli AVANT le rendu. Une scene inchangee n'est pas refaite : son MP4 est repris tel quel et recolle. Le plafond de depense est fixe par le serveur." />
+                  </p>
+                )}
+                <button onClick={() => produire()} disabled={enCours !== null || ACTIF(travail)} className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium hover:bg-violet-500 disabled:opacity-50">
+                  {enCours === 'lancement' || ACTIF(travail) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                  {ACTIF(travail) ? 'Production en cours' : 'Exporter le film'}
+                </button>
+                {travail && film && <Production film={film} travail={travail} surArreter={arreterProduction} />}
+              </section>
+            ) : (
+              <p className="rounded-lg border border-dashed border-slate-700 p-4 text-sm text-slate-400">
+                Composez d’abord le scenario : l’export viendra de votre film, pas d’un exemple.
+              </p>
+            )}
+          </div>
+        )}
+      </WizardCinema>
     </div>
   );
 }
@@ -1425,7 +1496,7 @@ function ApercuVide({ format }: { format: string }) {
   return (
     <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
       <h2 className="font-semibold mb-4 flex items-center gap-2">
-        <Play className="w-4 h-4 text-violet-400" /> 6. Apercu
+        <Play className="w-4 h-4 text-violet-400" /> Apercu permanent
       </h2>
       {/* La hauteur suit le CONTENU : un cadre vide n'a pas a occuper un ecran de film. */}
       <div
@@ -1661,7 +1732,7 @@ function Apercu({ montage, surPreparerVoix, voixEnCours }: { montage: MontageApi
   return (
     <section className="mb-8 rounded-xl border border-slate-800 bg-slate-900/40 p-5">
       <h2 className="font-semibold mb-1 flex items-center gap-2">
-        <Play className="w-4 h-4 text-violet-400" /> {bilan.aucun && !demo ? '6. Prévisualisation du scénario' : '6. Apercu'}
+        <Play className="w-4 h-4 text-violet-400" /> {bilan.aucun && !demo ? 'Prévisualisation du scénario' : 'Apercu permanent'}
         <Detail texte="Meme chronologie que le MP4 : les debuts et durees viennent du montage renvoye par l'API. Un plan sans media est un emplacement de storyboard, pas une video." />
       </h2>
       <p className="mb-3 text-xs text-slate-400" data-apercu="bilan">

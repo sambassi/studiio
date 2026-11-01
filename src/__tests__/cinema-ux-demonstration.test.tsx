@@ -22,6 +22,8 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 const ouvrir = async () => { render(<CinemaPage />); await screen.findByText(/Partir d’un exemple/i); };
+/** Le parcours montre une etape a la fois : les personnages vivent a l'etape 2. */
+const allerPersonnages = async () => fireEvent.click(await screen.findByRole('button', { name: /^Etape 2 sur 5/ }));
 const ecritures = () => appels.filter((a) => a.method !== 'GET');
 
 describe('un seul aperçu : les mouvements s’affichent dedans, sans scénario', () => {
@@ -91,6 +93,7 @@ describe('responsive : styles, exemples et personnages', () => {
 
   it('personnages : nom et rôle sur une ligne, apparence sur toute la largeur', async () => {
     await ouvrir();
+    await allerPersonnages();
     const ligne = screen.getAllByPlaceholderText('Nom')[0].parentElement as HTMLElement;
     expect(ligne.className).toContain('grid-cols-2');
     expect(ligne.className).not.toContain('md:grid-cols-4');
@@ -105,8 +108,11 @@ describe('exemple science-fiction', () => {
     fireEvent.click(screen.getByRole('button', { name: /Utiliser l’exemple Signal perdu \(Science-fiction\)/ }));
     expect((screen.getByPlaceholderText('Titre du film') as HTMLInputElement).value).toBe('Signal perdu');
     expect((screen.getByPlaceholderText(/Une phrase par plan/) as HTMLTextAreaElement).value).toMatch(/Ada se reveille seule/);
-    expect(screen.getAllByPlaceholderText('Nom').map((i) => (i as HTMLInputElement).value)).toEqual(['Ada', 'Orion']);
+    // Le style propose par l'exemple est choisi des l'etape Histoire…
     expect(screen.getByRole('radio', { name: /Science-fiction/ }).getAttribute('aria-checked')).toBe('true');
+    // …et le casting est rempli a l'etape Personnages, sans perte en changeant d'etape.
+    await allerPersonnages();
+    expect(screen.getAllByPlaceholderText('Nom').map((i) => (i as HTMLInputElement).value)).toEqual(['Ada', 'Orion']);
     expect(ecritures()).toEqual([]);
   });
 

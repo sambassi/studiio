@@ -54,14 +54,15 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 async function ouvrir() {
   render(<CinemaPage />);
   fireEvent.change(await screen.findByLabelText(/reprendre un film/i), { target: { value: courant.id } });
-  await screen.findByText(/Export MP4/);
+  await screen.findByRole('button', { name: /^Etape 5 sur 5/ });
 }
+
 const zone = () => document.querySelector('[aria-label="Storyboard du film"]') as HTMLElement;
 
 describe('sans aucun média : un storyboard honnête, jamais une fausse vidéo', () => {
   it('titre « Prévisualisation du scénario », dit que ce n’est pas un film, aucun dégradé violet', async () => {
     await ouvrir();
-    expect(screen.getByText(/6\. Prévisualisation du scénario/)).toBeTruthy();
+    expect(screen.getByText(/Prévisualisation du scénario/)).toBeTruthy();
     expect(screen.getByText(/pas un film/)).toBeTruthy();
     expect(screen.getByText('Média manquant')).toBeTruthy();
     expect(screen.getAllByText('Prévisualisation').length).toBeGreaterThan(0);

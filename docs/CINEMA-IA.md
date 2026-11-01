@@ -833,3 +833,39 @@ Plus aucune illustration dessinee dans Cinema IA.
 Licence identique pour tout (Pexels, usage commercial gratuit, credits affiches, mention
 « pas une video produite par Studiio »). Chargement differe partout : aucune video n'est
 chargee avant un clic.
+
+## 23. Le parcours : une etape a la fois, un apercu permanent, une histoire respectee
+
+Refonte d'apres la maquette validee par le proprietaire (`studiio_cinema_design/index.html`).
+La page empilait cinq formulaires ouverts : on defilait pour tout, et l'apercu disparaissait
+des qu'on ecrivait.
+
+**La coque** (`components/cinema/WizardCinema.tsx`) : en-tete, barre des 5 etapes
+(Histoire / Personnages / Scenes / Apercu / Export), zone de travail qui rend SEULE l'etape
+active et defile SEULE, apercu permanent a droite (compact en haut sur mobile, 190 px max),
+pied fixe Retour / Continuer avec UNE seule action primaire. La hauteur est bornee a l'ecran
+par une regle CSS reelle (`.cinema-wizard`), pas par une classe Tailwind arbitraire — celles-ci
+sont purgees en production. Eprouve en 1440x900, 820x1180, 390x844 et 1280x620.
+
+**Composer le scenario** est l'action primaire de l'etape Personnages : un acte explicite,
+jamais un effet de bord de la navigation. Les etapes qui en dependent sont desactivees et
+disent pourquoi. Naviguer ne perd aucune saisie (l'etat vit dans la page, pas dans le DOM).
+
+**Scenes** : une carte compacte par scene, avec les PHRASES DE VOTRE TEXTE qu'elle porte ; les
+outils d'un plan (camera, duree, media, voix) s'ouvrent au clic, pour une seule scene a la fois.
+
+### Fidelite a l'histoire — un audit, pas un interrupteur
+
+`lib/cinema/fidelite.ts` relit le film contre `film.histoire` (conserve intact) avec la meme
+segmentation que le decoupage, et DIT ce que le moteur a fait :
+
+| Ce qui est verifie | Ce qui est signale |
+|---|---|
+| chaque phrase devient la description d'un plan, dans l'ordre | `phrase_absente`, `ordre_change` |
+| le plan d'ensemble ouvrant chaque scene est FABRIQUE | `plan_ajoute` (« ne vient pas de votre texte ») |
+| aucun lieu reconnu ⇒ « un decor neutre » | `lieu_substitue` |
+| une replique sans prenom ⇒ locuteur attribue par rotation | `locuteur_devine` (avec le prenom choisi) |
+| un prenom de l'histoire absent du casting | `personnage_hors_casting` |
+
+L'etape Apercu affiche ce rapport, l'etat reel des medias et le cout AVANT toute generation.
+Studiio ne corrige rien de lui-meme : les ecarts sont des choix a valider, pas des erreurs.
