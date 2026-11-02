@@ -233,14 +233,68 @@ describe('mouvements de camera : l’extrait reel s’affiche tout de suite dans
     expect(appels.some((a) => /generation|produire/.test(a.url))).toBe(false);
   });
 
-  it('un mouvement sans plan filme (ex. fixe) ne remplace PAS l’apercu par une demonstration inventee', async () => {
+  it('un mouvement sans plan filme : « Exemple indisponible », ni lecteur vide ni faux mouvement', async () => {
     await ouvrir();
     fireEvent.click(etape(3));
     fireEvent.click(screen.getByLabelText(/Ouvrir les outils de la scene 1/));
     const select = document.querySelector('select[aria-label="Mouvement de camera de ce plan"]') as HTMLSelectElement;
-    const sansDemo = Array.from(select.options).map((o) => o.value).find((v) => v !== 'auto' && !['travelling_avant', 'pano_droite', 'suivi_lateral', 'orbite'].includes(v))!;
-    fireEvent.change(select, { target: { value: sansDemo } });
+    for (const id of ['fixe', 'travelling_arriere', 'pano_gauche']) {
+      fireEvent.change(select, { target: { value: id } });
+      const apercu = document.querySelector('[data-apercu="exemple"]') as HTMLElement;
+      expect(apercu.getAttribute('data-exemple'), id).toBe('indisponible');
+      expect(apercu.textContent).toMatch(/Exemple indisponible/);
+      expect(apercu.querySelector('video')).toBeNull();
+      expect(apercu.querySelector('[data-lecteur]')).toBeNull();
+      expect(apercu.querySelector('[data-ratio-exemple]')).not.toBeNull();
+    }
+    // Revenir au film : l'apercu retrouve le film de l'utilisateur.
+    fireEvent.click(within(document.querySelector('[data-apercu="exemple"]') as HTMLElement).getByRole('button', { name: /revenir à mon film/i }));
     expect(document.querySelector('[data-apercu="exemple"]')).toBeNull();
+  });
+
+  it('« Automatique » n’est pas un mouvement : il ne remplace pas l’apercu', async () => {
+    await ouvrir();
+    fireEvent.click(etape(3));
+    fireEvent.click(screen.getByLabelText(/Ouvrir les outils de la scene 1/));
+    const select = document.querySelector('select[aria-label="Mouvement de camera de ce plan"]') as HTMLSelectElement;
+    fireEvent.change(select, { target: { value: 'auto' } });
+    expect(document.querySelector('[data-apercu="exemple"]')).toBeNull();
+  });
+});
+
+describe('pied de page : la bulle de chat ne recouvre jamais « Continuer »', () => {
+  it('le pied reserve la place de la bulle, en CSS reel et a specificite suffisante', () => {
+    const src = readFileSync('src/components/cinema/WizardCinema.tsx', 'utf8');
+    expect(src).toMatch(/\.cinema-wizard \.cinema-pied\{padding-right:5\.25rem\}/);
+    expect(src).toMatch(/<footer className="cinema-pied /);
+  });
+
+  it('la bulle (StudiioAssistant) n’est pas modifiee : le chat reste identique ailleurs', () => {
+    const src = readFileSync('src/components/chat/StudiioAssistant.tsx', 'utf8');
+    expect(src).toMatch(/bottom-4 right-4/);
+  });
+});
+
+describe('narration : un reglage par film, a l’etape Apercu', () => {
+  it('propose Avec / Sans narration, dit que les repliques restent lues, et envoie le choix au PATCH', async () => {
+    await ouvrir();
+    fireEvent.click(etape(4));
+    const bloc = document.querySelector('[data-reglage="narration"]') as HTMLElement;
+    expect(bloc).not.toBeNull();
+    expect(within(bloc).getByRole('button', { name: /avec narration/i }).getAttribute('aria-pressed')).toBe('true');
+    expect(within(bloc).getByRole('button', { name: /sans narration/i }).getAttribute('aria-pressed')).toBe('false');
+    expect(bloc.textContent).toMatch(/repliques des personnages sont lues a part/);
+    fireEvent.click(within(bloc).getByRole('button', { name: /sans narration/i }));
+    const patch = appels.find((a) => a.method === 'PATCH' && 'narration' in (a.corps ?? {}));
+    expect(patch!.corps).toEqual({ narration: false });
+  });
+
+  it('cliquer sur le choix deja actif n’envoie rien', async () => {
+    await ouvrir();
+    fireEvent.click(etape(4));
+    const bloc = document.querySelector('[data-reglage="narration"]') as HTMLElement;
+    fireEvent.click(within(bloc).getByRole('button', { name: /avec narration/i }));
+    expect(appels.some((a) => a.method === 'PATCH')).toBe(false);
   });
 });
 

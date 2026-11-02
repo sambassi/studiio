@@ -17,7 +17,7 @@ import {
   Clapperboard, Users, Wand2, Link2, Play, Pause, Download,
   Info, Loader2, Plus, Trash2, RefreshCw, CheckCircle2, AlertTriangle,
   ImageIcon, Film, Volume2, VolumeX, Upload, Sparkles, X, Check, Circle,
-  ChevronUp, ChevronLeft, ChevronRight, Maximize2, Minimize2, Eye, Shield, Pencil, SlidersHorizontal,
+  ChevronUp, ChevronLeft, ChevronRight, Maximize2, Minimize2, Eye, Shield, Pencil, SlidersHorizontal, Mic, MicOff,
 } from 'lucide-react';
 import { useTarifs, libellePrix, type TarifsEcran } from '@/lib/tarifs/client';
 import { ratioCadre } from '@/lib/ui/lecteur-generation';
@@ -32,7 +32,6 @@ import ApercuExemple, { FenetreExemple, type Exemple } from '@/components/cinema
 import WizardCinema, { TitreEtape, type EtapeWizard } from '@/components/cinema/WizardCinema';
 import { auditFidelite, ecartsBloquants, ecartsScene, phrasesDeLaScene, resumeFidelite } from '@/lib/cinema/fidelite';
 import ChoixMouvements from '@/components/cinema/ChoixMouvements';
-import { mouvementDemo } from '@/lib/cinema/mouvements-camera';
 import { MediaDuPlan, EmplacementVide, Storyboard, appliquerDemo, bilanMedias } from '@/components/cinema/ApercuStoryboard';
 
 interface SegmentApi {
@@ -47,7 +46,7 @@ interface SegmentApi {
 }
 interface MediaApi { url: string; genre: 'image' | 'video'; largeur: number; hauteur: number; dureeS: number | null; octets: number; origine: string; sonActif?: boolean; direction?: string }
 interface MontageApi { filmId: string; titre: string; format: string; largeur: number; hauteur: number; fps: number; segments: SegmentApi[]; dureeS: number }
-interface PlanApi { id: string; cadre: string; description: string; personnages: string[]; dialogue: { personnageId: string | null; texte: string } | null; dureeS: number; media: MediaApi | null; camera?: IdCameraCinema }
+interface PlanApi { id: string; cadre: string; description: string; personnages: string[]; dialogue: { personnageId: string | null; texte: string; genre?: string } | null; dureeS: number; media: MediaApi | null; camera?: IdCameraCinema }
 interface SceneApi { id: string; index: number; titre: string; lieu: string; intention: string; personnages: string[]; plans: PlanApi[]; etat: string; coutUsd: number; styleCinema?: IdStyleCinema }
 interface PersonnageApi { id: string; nom: string; role: string; voix: string; references: Array<{ id: string; version: number; description: string }>; referenceActiveId: string | null }
 interface GenerationApi {
@@ -55,7 +54,7 @@ interface GenerationApi {
   statut: 'en_cours' | 'reussie' | 'echouee' | 'interrompue'; creeLe: string; majLe: string;
   erreur?: string | null; creditsPris?: number; creditsRembourses?: boolean;
 }
-interface FilmApi { id: string; titre: string; histoire?: string; format: string; qualite: string; personnages: PersonnageApi[]; scenes: SceneApi[]; generations?: GenerationApi[]; styleCinema?: IdStyleCinema; directionActive?: boolean; ecartsAcceptes?: string[] }
+interface FilmApi { narration?: boolean; id: string; titre: string; histoire?: string; format: string; qualite: string; personnages: PersonnageApi[]; scenes: SceneApi[]; generations?: GenerationApi[]; styleCinema?: IdStyleCinema; directionActive?: boolean; ecartsAcceptes?: string[] }
 /** La generation active du film (une seule a la fois, decide par le serveur). */
 const generationActiveDe = (f: FilmApi | null) => f?.generations?.find((g) => g.statut === 'en_cours') ?? null;
 /** La derniere generation d'un plan, quelle qu'en soit l'issue. */
@@ -1184,8 +1183,8 @@ export default function CinemaPage() {
                               automatique={cameraEffective({ ...plan, camera: undefined, cadre: plan.cadre as never }, scene as never).effective}
                               surChoisir={(id) => {
                                 enregistrer({ plans: [{ id: plan.id, camera: id }] });
-                                // Un mouvement qui a son plan filme : l'apercu le montre tout de suite (aucun appel IA).
-                                if (mouvementDemo(id)) { setExemple({ type: 'mouvement', id }); setExempleAgrandi(false); }
+                                // L'apercu montre tout de suite le plan filme du mouvement, ou dit « Exemple indisponible » (aucun appel IA).
+                                if (id !== 'auto') { setExemple({ type: 'mouvement', id }); setExempleAgrandi(false); }
                               }}
                             />
                             {plan.media && aRegenerer.has(plan.id) && <PlanAregenerer genre={plan.media.genre} />}
@@ -1372,6 +1371,38 @@ export default function CinemaPage() {
                     </p>
                   </section>
                 )}
+
+                {(() => {
+                  const nbRecit = film.scenes.reduce((n, sc) => n + sc.plans.filter((pl) => pl.dialogue?.genre === 'narration').length, 0);
+                  const avec = film.narration !== false;
+                  return (
+                    <section className="mt-4 rounded-lg border border-slate-800 bg-slate-900/40 p-4" data-reglage="narration">
+                      <h3 className="mb-1 flex items-center gap-2 text-sm font-semibold text-slate-200">
+                        <Mic className="h-4 w-4 text-violet-300" aria-hidden="true" /> Narration
+                        <span title="Les phrases de recit (sans guillemets) sont lues par une voix de narrateur. Les repliques des personnages restent lues dans les deux cas." className="text-slate-500">
+                          <Info className="h-3.5 w-3.5" aria-label="Les repliques des personnages restent lues dans les deux cas" />
+                        </span>
+                      </h3>
+                      <div role="group" aria-label="Narration du film" className="flex items-center gap-2">
+                        <button type="button" aria-pressed={avec} onClick={() => !avec && enregistrer({ narration: true })}
+                          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs ${avec ? 'border-violet-500/70 bg-violet-500/15 text-violet-100' : 'border-slate-700 text-slate-300 hover:border-violet-500/40'}`}>
+                          <Mic className="h-3.5 w-3.5" aria-hidden="true" /> Avec narration
+                        </button>
+                        <button type="button" aria-pressed={!avec} onClick={() => avec && enregistrer({ narration: false })}
+                          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs ${!avec ? 'border-violet-500/70 bg-violet-500/15 text-violet-100' : 'border-slate-700 text-slate-300 hover:border-violet-500/40'}`}>
+                          <MicOff className="h-3.5 w-3.5" aria-hidden="true" /> Sans narration
+                        </button>
+                      </div>
+                      <p className="mt-2 text-[11px] text-slate-400">
+                        {nbRecit === 0
+                          ? 'Votre histoire n’a aucune phrase de recit : seules vos repliques sont lues.'
+                          : avec
+                            ? `${nbRecit} phrase(s) de recit sont lues en narration ; les repliques des personnages sont lues a part.`
+                            : `${nbRecit} phrase(s) de recit restent affichees mais ne sont pas lues ; les repliques des personnages restent lues.`}
+                      </p>
+                    </section>
+                  );
+                })()}
 
                 <section className="mt-4 rounded-lg border border-slate-800 bg-slate-900/40 p-4">
                   <h3 className="mb-1 flex items-center gap-2 text-sm font-semibold text-slate-200">

@@ -224,6 +224,12 @@ export interface Film {
    * critique subsiste.
    */
   ecartsAcceptes?: string[];
+  /**
+   * Narration des phrases de recit (celles SANS guillemets). `false` = film sans narration : ces
+   * phrases restent affichees mais ne sont pas lues. Absent = avec narration (comportement
+   * d'avant). Les repliques des personnages ne dependent JAMAIS de ce reglage.
+   */
+  narration?: boolean;
 }
 
 export interface BudgetApprouve {

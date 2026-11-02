@@ -22,7 +22,8 @@ import type { IdCameraCinema, IdStyleCinema } from '@/lib/cinema/types';
 
 /** Une erreur DE L'APPELANT, rendue en 400 telle quelle. */
 export function erreurPatch(corps: unknown): string | null {
-  const c = corps as { plans?: unknown[]; scenes?: unknown[]; style?: unknown; reference?: { urlImage?: unknown } } | null;
+  const c = corps as { plans?: unknown[]; scenes?: unknown[]; style?: unknown; narration?: unknown; reference?: { urlImage?: unknown } } | null;
+  if (c && 'narration' in c && typeof c.narration !== 'boolean') return 'narration : vrai ou faux attendu';
   // Direction artistique : `null` efface le choix, toute autre valeur doit etre connue.
   if (c && 'style' in c && c.style !== null && !estStyleCinema(c.style)) return 'style de film inconnu';
   if (Array.isArray(c?.scenes)) {
@@ -53,11 +54,20 @@ type PatchPlan = { id?: unknown; texte?: unknown; dureeS?: unknown; media?: null
 type PatchScene = { id?: unknown; personnages?: unknown; etat?: unknown; style?: unknown };
 
 export function appliquerPatch(film: Film, corps: unknown): Film {
-  const c = corps as { plans?: PatchPlan[]; scenes?: PatchScene[]; style?: unknown; accepter?: unknown; reference?: { personnageId?: unknown; description?: unknown; urlImage?: unknown } } | null;
+  const c = corps as { plans?: PatchPlan[]; scenes?: PatchScene[]; style?: unknown; accepter?: unknown; narration?: unknown; reference?: { personnageId?: unknown; description?: unknown; urlImage?: unknown } } | null;
   let suivant = film;
 
   // Style GLOBAL : `null` (ou absent du corps) → inchange ; `null` explicite → efface.
   if (c && 'style' in c) suivant = avecChamp(suivant, 'styleCinema', c.style === null ? undefined : (estStyleCinema(c.style) ? c.style : suivant.styleCinema));
+
+  // Narration : un seul reglage par film. Le changer rend « a reproduire » les scenes qui ont
+  // des phrases de recit (leur son change) ; les repliques ne bougent pas.
+  if (c && typeof c.narration === 'boolean' && (suivant.narration !== false) !== c.narration) {
+    suivant = {
+      ...avecChamp(suivant, 'narration', c.narration ? undefined : false),
+      scenes: suivant.scenes.map((sc) => (sc.plans.some((p) => p.dialogue?.genre === 'narration') ? { ...sc, empreinte: '' } : sc)),
+    };
+  }
 
   // Ecarts de fidelite acceptes : la liste ENTIERE est remplacee (accepter puis retirer son choix).
   if (c && Array.isArray(c.accepter)) {

@@ -73,6 +73,10 @@ export default function WizardCinema({
         /* L'extrait d'exemple y reste ENTIER (16:9, jamais rogne) : un cadre de 262 px de large
            fait 147 px de haut, il tient dans la bande sans qu'on ait a la faire defiler. */
         .cinema-apercu [data-ratio-exemple]{width:min(100%,262px);margin-inline:auto}
+        /* La bulle de chat du tableau de bord est fixe (bas droite, 56 px + 16 px de marge) : le pied
+           de page lui laisse sa place, sinon elle recouvre « Continuer ». Specificite 0,2,0 pour
+           l'emporter sur les classes de marge d'utilite. */
+        .cinema-wizard .cinema-pied{padding-right:5.25rem}
         @media(min-width:1024px){.cinema-wizard{height:calc(100vh - 8rem)}.cinema-apercu{max-height:none}.cinema-apercu [data-ratio-exemple]{width:100%}}
       `}</style>
       <header className="shrink-0 border-b border-slate-800 px-4 py-3 sm:px-6">{entete}</header>
@@ -131,7 +135,7 @@ export default function WizardCinema({
         </aside>
       </div>
 
-      <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-800 bg-slate-950/80 px-4 py-2.5 sm:px-6">
+      <footer className="cinema-pied flex shrink-0 items-center justify-between gap-3 border-t border-slate-800 bg-slate-950/80 px-4 py-2.5 sm:px-6">
         <p className="min-w-0 truncate text-[11px] text-slate-400">
           Etape {active + 1} sur {etapes.length} · <span className="font-semibold text-slate-200">{etape?.titre}</span>
         </p>

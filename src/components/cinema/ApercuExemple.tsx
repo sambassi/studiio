@@ -20,6 +20,7 @@ import LecteurVideo from '@/components/cinema/LecteurVideo';
 import { EXTRAITS_STYLES, MENTION_EXTRAITS } from '@/lib/cinema/extraits-styles';
 import { MENTION_MOUVEMENTS, mouvementDemo } from '@/lib/cinema/mouvements-camera';
 import { styleCinema } from '@/lib/cinema/direction/styles';
+import { cameraCinema, estCameraCinema } from '@/lib/cinema/direction/camera';
 import type { IdStyleCinema } from '@/lib/cinema/types';
 
 /**
@@ -75,6 +76,7 @@ export default function ApercuExemple({ exemple, format, surRevenir, surAgrandir
   surAgrandir: () => void;
 }) {
   const v = vueExemple(exemple);
+  const sansExtrait = !v && exemple.type === 'mouvement' && estCameraCinema(exemple.id) && exemple.id !== 'auto';
   const section = useRef<HTMLElement | null>(null);
   // Choisir un exemple (un mouvement sous l'apercu, une vignette de style) le MONTRE tout de suite :
   // la colonne remonte en haut, sinon sur mobile l'extrait resterait au-dessus de la zone visible.
@@ -82,6 +84,28 @@ export default function ApercuExemple({ exemple, format, surRevenir, surAgrandir
     const colonne = section.current?.closest('aside');
     if (colonne) colonne.scrollTop = 0;
   }, [exemple.type, exemple.id]);
+  // Un mouvement sans plan filme : on le DIT, sans lecteur vide ni faux mouvement.
+  if (!v && sansExtrait) {
+    const m = cameraCinema(exemple.id as never);
+    return (
+      <section ref={section} className="rounded-xl border border-slate-800 bg-slate-900/40 p-3 lg:p-5" data-apercu="exemple" data-exemple="indisponible">
+        <div className="mb-2 flex min-w-0 flex-wrap items-center gap-2">
+          <h2 className="flex min-w-0 flex-1 items-center gap-2 text-sm font-semibold lg:basis-full lg:text-base">
+            <Video className="h-4 w-4 shrink-0 text-violet-400" aria-hidden="true" /> <span className="truncate">{m.libelle}</span>
+          </h2>
+          <span className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-200">Exemple</span>
+          <button type="button" onClick={surRevenir} aria-label="Revenir à mon film" title="Revenir à mon film"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-700 px-2 py-1.5 text-xs text-slate-200 transition-colors hover:border-violet-500/60 hover:text-violet-200">
+            <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" /> <span className="hidden sm:inline">Revenir à mon film</span>
+          </button>
+        </div>
+        <div className="mx-auto flex w-full flex-col items-center justify-center rounded-lg border border-dashed border-slate-700 px-3 text-center" style={{ aspectRatio: RATIO_NATIF_EXEMPLE }} data-ratio-exemple="16:9">
+          <p className="text-sm font-semibold text-slate-200">Exemple indisponible</p>
+          <p className="mt-1 text-[11px] leading-snug text-slate-400">Aucun extrait filmé n’existe pour ce mouvement. Il sera appliqué à votre film, sans démonstration.</p>
+        </div>
+      </section>
+    );
+  }
   if (!v) return null;
   const portrait = format === '9:16';
   const Icone = v.icone === 'style' ? Palette : Video;

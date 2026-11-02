@@ -895,3 +895,19 @@ lieu devine, locuteur devine, personnage hors casting, scene inventee) ou remarq
 ajoute, narration). Une generation PAYANTE est refusee (409, cote serveur dans
 `films/[id]/generation`) tant qu'un ecart critique n'est ni corrige ni accepte (`film.ecartsAcceptes`,
 via `PATCH {accepter: [cles]}`). Le mode simule (gratuit) n'est pas concerne. Le texte n'est jamais modifie.
+
+## 25. Finition : bulle de chat, narration par film, exemples indisponibles
+
+**Bulle de chat.** Le composant global `StudiioAssistant` n'est pas modifie. Le pied de page du parcours
+reserve la place de la bulle (`.cinema-wizard .cinema-pied{padding-right:5.25rem}`) : « Continuer » reste
+visible et le clic l'atteint, de 360 a 1440 px.
+
+**Narration.** `film.narration` (absent = avec, comme avant ; `false` = sans). Reglage a l'etape Apercu,
+via `PATCH {narration: boolean}`. Meme moteur de voix : `synthetiserFilm` saute les plans de genre
+`narration` quand le reglage est `false` (une ligne), `monterFilm` les rend muets (le texte reste affiche).
+Les repliques ne dependent jamais du reglage. Changer le reglage rend « a reproduire » les scenes qui ont
+du recit, rien d'autre. Aucun changement du moteur audio ni de la qualite sonore.
+
+**Mouvements sans extrait.** Quatre mouvements ont un plan filme. Les autres (camera fixe, travelling arriere,
+panoramique gauche) affichent « Exemple indisponible » dans le meme cadre 16:9, sans lecteur ni faux mouvement.
+« Automatique » n'est pas un mouvement : il ne change pas l'apercu.
