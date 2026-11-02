@@ -16,10 +16,10 @@ import { createPortal } from 'react-dom';
 import {
   Clapperboard, Users, Wand2, Link2, Play, Pause, Download,
   Info, Loader2, Plus, Trash2, RefreshCw, CheckCircle2, AlertTriangle,
-  ImageIcon, Film, Volume2, VolumeX, Upload, Sparkles, X, Check, Circle,
-  ChevronUp, ChevronLeft, ChevronRight, Maximize2, Minimize2, Eye, Shield, Pencil, SlidersHorizontal, Mic, MicOff,
+  ImageIcon, Film, Volume2, VolumeX, Sparkles, X, Check, Circle,
+  ChevronUp, Maximize2, Minimize2, Eye, Shield, Pencil, SlidersHorizontal, Mic, MicOff, ImagePlus,
 } from 'lucide-react';
-import { useTarifs, libellePrix, type TarifsEcran } from '@/lib/tarifs/client';
+import { useTarifs, libellePrix } from '@/lib/tarifs/client';
 import { ratioCadre } from '@/lib/ui/lecteur-generation';
 import QuotaCinema from '@/components/cinema/QuotaCinema';
 import { SelecteurStyleFilm, ExceptionStyleScene, SelecteurCamera, ResumeStyle, PlanAregenerer } from '@/components/cinema/DirectionCinema';
@@ -32,6 +32,8 @@ import ApercuExemple, { FenetreExemple, type Exemple } from '@/components/cinema
 import WizardCinema, { TitreEtape, type EtapeWizard } from '@/components/cinema/WizardCinema';
 import { auditFidelite, ecartsBloquants, ecartsScene, phrasesDeLaScene, resumeFidelite } from '@/lib/cinema/fidelite';
 import ChoixMouvements from '@/components/cinema/ChoixMouvements';
+import ApercuScene, { provenanceMedia, urlMediaPlan } from '@/components/cinema/ApercuScene';
+import PortraitPersonnage, { aUnePhoto } from '@/components/cinema/PortraitPersonnage';
 import { MediaDuPlan, EmplacementVide, Storyboard, appliquerDemo, bilanMedias } from '@/components/cinema/ApercuStoryboard';
 
 interface SegmentApi {
@@ -44,11 +46,11 @@ interface SegmentApi {
   /** Mode demonstration : le media affiche est un clip d'exemple, pas celui du film. */
   demo?: boolean;
 }
-interface MediaApi { url: string; genre: 'image' | 'video'; largeur: number; hauteur: number; dureeS: number | null; octets: number; origine: string; sonActif?: boolean; direction?: string }
+interface MediaApi { fournisseurGeneration?: string; url: string; genre: 'image' | 'video'; largeur: number; hauteur: number; dureeS: number | null; octets: number; origine: string; sonActif?: boolean; direction?: string }
 interface MontageApi { filmId: string; titre: string; format: string; largeur: number; hauteur: number; fps: number; segments: SegmentApi[]; dureeS: number }
 interface PlanApi { id: string; cadre: string; description: string; personnages: string[]; dialogue: { personnageId: string | null; texte: string; genre?: string } | null; dureeS: number; media: MediaApi | null; camera?: IdCameraCinema }
 interface SceneApi { id: string; index: number; titre: string; lieu: string; intention: string; personnages: string[]; plans: PlanApi[]; etat: string; coutUsd: number; styleCinema?: IdStyleCinema }
-interface PersonnageApi { id: string; nom: string; role: string; voix: string; references: Array<{ id: string; version: number; description: string }>; referenceActiveId: string | null }
+interface PersonnageApi { id: string; nom: string; role: string; voix: string; references: Array<{ id: string; version: number; description: string; urlImage?: string | null }>; referenceActiveId: string | null }
 interface GenerationApi {
   id: string; planId: string; operation: 'image' | 'video'; mode: 'reelle' | 'simulee';
   statut: 'en_cours' | 'reussie' | 'echouee' | 'interrompue'; creeLe: string; majLe: string;
@@ -61,8 +63,6 @@ const generationActiveDe = (f: FilmApi | null) => f?.generations?.find((g) => g.
 const derniereGenerationDuPlan = (f: FilmApi | null, planId: string) =>
   [...(f?.generations ?? [])].reverse().find((g) => g.planId === planId) ?? null;
 /** Les medias sont stockes en chemin relatif : meme regle de normalisation partout (voir `Apercu`). */
-/** Le plan « representatif » d'une scene pour la vignette et le panneau de droite : celui qui a deja un media, sinon le premier. Une scene a plusieurs plans ; l'ecran n'en resume qu'un seul media, comme la maquette. */
-const planRepresentatifDeScene = (scene: SceneApi) => scene.plans.find((p) => p.media) ?? scene.plans[0] ?? null;
 type StatutTravailApi = 'en_attente' | 'en_cours' | 'termine' | 'echec' | 'annule';
 interface TravailApi {
   id: string; filmId: string; statut: StatutTravailApi; erreur: string | null; reference: string | null; annulationDemandee: boolean;
@@ -96,194 +96,8 @@ function Detail({ texte }: { texte: string }) {
   );
 }
 
-/**
- * PANNEAU REPLIABLE — numerote, colonne de gauche. Ouvert par defaut (rien de
- * nouveau n'est cache au chargement), repliable au clic pour l'ecran epure.
- */
-function VignetteMedia({ media, filmId, planId, taille }: { media: MediaApi | null; filmId: string; planId: string; taille: 'petite' | 'grande' }) {
-  const classe = taille === 'petite' ? 'w-16 h-16' : 'w-full h-40';
-  if (!media) {
-    return (
-      <span className={`${classe} flex shrink-0 items-center justify-center rounded-lg bg-slate-800 text-slate-600`}>
-        <ImageIcon className="w-5 h-5" />
-      </span>
-    );
-  }
-  const url = `/api/cinema/films/${filmId}/medias/${planId}`;
-  return media.genre === 'image' ? (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={url} alt="" className={`${classe} shrink-0 rounded-lg object-cover`} />
-  ) : (
-    <video src={url} className={`${classe} shrink-0 rounded-lg object-cover`} muted playsInline preload="metadata" />
-  );
-}
-
-/**
- * CARROUSEL DE SCENES — colonne de droite. Navigation de confort (scroll vers
- * la scene dans la liste de gauche) : aucune donnee n'est dupliquee ni
- * mutee ici, la liste de gauche reste la seule source d'edition.
- *
- * Le bloc « details de la scene » (media, etat de generation, actions) agit sur le
- * plan REPRESENTATIF de la scene (`planRepresentatifDeScene`) : une scene a plusieurs
- * plans dans le modele actuel, cet ecran compact n'en resume qu'un seul, comme la
- * maquette. L'edition complete, plan par plan, reste dans le panneau 4 a gauche.
- */
-function SceneCarousel({
-  film, surRelancer, enCours, travailActif,
-  generationIa, generationMode, tarifs, enCoursTexte,
-  confirmation, surGenererMedia, surImporterMedia,
-}: {
-  film: FilmApi; surRelancer: (sceneId: string) => void; enCours: boolean; travailActif: boolean;
-  generationIa: boolean; generationMode: 'simulee' | 'reelle' | null; tarifs: TarifsEcran; enCoursTexte: string | null;
-  confirmation: { planId: string; operation: 'image' | 'video' } | null;
-  surGenererMedia: (planId: string, operation: 'image' | 'video') => void;
-  surImporterMedia: (planId: string, fichier: File) => void;
-}) {
-  const [index, setIndex] = useState(0);
-  const scenes = film.scenes;
-  const i = Math.min(index, Math.max(0, scenes.length - 1));
-  const scene = scenes[i];
-  if (!scene) return null;
-  const plan = planRepresentatifDeScene(scene);
-
-  const allerA = (k: number) => {
-    const cible = scenes[k];
-    if (!cible) return;
-    setIndex(k);
-    document.getElementById(`scene-cinema-${cible.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  };
-
-  return (
-    <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-4">
-      <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Scenes ({scenes.length})</h3>
-      <div className="flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label="Choisir une scene">
-        {scenes.map((s, k) => {
-          const planVignette = planRepresentatifDeScene(s);
-          return (
-            <button
-              key={s.id}
-              type="button"
-              role="tab"
-              aria-selected={k === i}
-              onClick={() => allerA(k)}
-              title={s.titre}
-              className={`relative shrink-0 overflow-hidden rounded-lg border ${k === i ? 'border-violet-500/70 ring-2 ring-violet-500/40' : 'border-slate-700 hover:border-slate-600'}`}
-            >
-              <VignetteMedia media={planVignette?.media ?? null} filmId={film.id} planId={planVignette?.id ?? ''} taille="petite" />
-              <span className="absolute bottom-0 inset-x-0 bg-slate-950/80 text-center text-[10px] leading-4 text-slate-200">{k + 1}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="mt-3 rounded-lg border border-slate-800/80 bg-slate-950/60 p-3">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => allerA(i - 1)}
-            disabled={i === 0}
-            aria-label="Scene precedente"
-            title="Scene precedente"
-            className="rounded p-1 text-slate-500 hover:text-violet-300 disabled:opacity-30 transition-colors"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <span className="flex-1 text-sm font-semibold truncate">{i + 1}/{scenes.length} · {scene.titre}</span>
-          <button
-            type="button"
-            onClick={() => allerA(i + 1)}
-            disabled={i === scenes.length - 1}
-            aria-label="Scene suivante"
-            title="Scene suivante"
-            className="rounded p-1 text-slate-500 hover:text-violet-300 disabled:opacity-30 transition-colors"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-        <p className="mt-1 text-xs text-slate-400">{scene.lieu} · {scene.intention}</p>
-        {scene.plans[0] && (
-          <p className="mt-2 text-xs text-slate-300 line-clamp-2">{scene.plans[0].dialogue?.texte ?? scene.plans[0].description}</p>
-        )}
-
-        {/* Details de la scene : le media REEL du plan representatif, son etat de generation reel, et les deux actions distinctes.
-            ⚠️ Le suivi INTERACTIF (confirmation payante, « en cours ») reste UNIQUEMENT dans le panneau 4 a
-            gauche (`SuiviGenerationPlan`) : deux confirmations actives pour le MEME plan violeraient la regle
-            « une seule action principale » et rendaient `findByRole('group', ...)`/`findByText` ambigus (tests
-            cinema-page.test.tsx). Ici, uniquement un reflet non-interactif, en texte distinct. */}
-        {plan && (
-          <div className="mt-3 space-y-2">
-            <VignetteMedia media={plan.media} filmId={film.id} planId={plan.id} taille="grande" />
-            <div className="min-w-0 space-y-2">
-              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
-                {(() => {
-                  const generation = derniereGenerationDuPlan(film, plan.id);
-                  const enAttenteConfirmation = confirmation?.planId === plan.id;
-                  if (enAttenteConfirmation) return <span className="text-amber-300">confirmation en attente dans le panneau Scenes (a gauche)</span>;
-                  if (generation?.statut === 'en_cours') return <span className="inline-flex items-center gap-1 text-violet-300"><Loader2 className="w-3 h-3 animate-spin" /> generation en cours…</span>;
-                  if (generation?.statut === 'echouee' || generation?.statut === 'interrompue') return <span className="inline-flex items-center gap-1 text-rose-300"><AlertTriangle className="w-3 h-3" /> derniere generation en echec</span>;
-                  return <span>{plan.media ? 'media importe' : 'aucun media pour ce plan'}</span>;
-                })()}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <label
-                  title={plan.media ? 'Remplacer le media de ce plan' : 'Importer un media pour ce plan'}
-                  className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 text-xs cursor-pointer hover:border-violet-500/50"
-                >
-                  {enCoursTexte === `media:${plan.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
-                  {plan.media ? 'Remplacer' : 'Importer'}
-                  <input
-                    type="file"
-                    accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.webm,.m4v"
-                    className="hidden"
-                    aria-label={plan.media ? 'Remplacer le media de ce plan' : 'Importer un media pour ce plan'}
-                    onChange={(e) => { const f = e.target.files?.[0]; if (f) surImporterMedia(plan.id, f); e.target.value = ''; }}
-                  />
-                </label>
-                {generationIa && !plan.media && (
-                  <button
-                    type="button"
-                    onClick={() => surGenererMedia(plan.id, 'image')}
-                    disabled={enCours || !!generationActiveDe(film)}
-                    aria-label="Regenerer l’image de ce plan par IA"
-                    title="Regenerer l’image de ce plan par IA"
-                    className="inline-flex items-center gap-1 rounded border border-violet-700/60 px-2 py-1 text-xs hover:border-violet-400 disabled:opacity-50"
-                  >
-                    {enCoursTexte === `generation:${plan.id}:image` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                    Regenerer (IA)
-                    {generationMode === 'reelle' && <span className="text-violet-300/80">· {libellePrix(tarifs, 'ai.generate_background')}</span>}
-                  </button>
-                )}
-                {generationIa && plan.media?.genre === 'image' && (
-                  <button
-                    type="button"
-                    onClick={() => surGenererMedia(plan.id, 'video')}
-                    disabled={enCours || !!generationActiveDe(film)}
-                    aria-label="Animer ce plan en video par IA"
-                    title="Animer ce plan en video par IA"
-                    className="inline-flex items-center gap-1 rounded border border-violet-700/60 px-2 py-1 text-xs hover:border-violet-400 disabled:opacity-50"
-                  >
-                    {enCoursTexte === `generation:${plan.id}:video` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                    Regenerer en video (IA)
-                    {generationMode === 'reelle' && <span className="text-violet-300/80">· {libellePrix(tarifs, 'ai.image_to_video')}</span>}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={() => surRelancer(scene.id)}
-          disabled={enCours || travailActif}
-          className="mt-3 inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-1.5 text-xs hover:border-violet-500/50 disabled:opacity-50"
-        >
-          <RefreshCw className="w-3 h-3" /> Relancer le rendu de la scene affichee
-        </button>
-      </div>
-    </section>
-  );
-}
+/** Le bouton-icone commun de l'editeur de scene : petit, carre, toujours nomme (infobulle + libelle accessible). */
+const BOUTON_ICONE = 'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-700 text-slate-300 transition-colors hover:border-violet-500/60 hover:text-violet-200 disabled:opacity-40';
 
 export default function CinemaPage() {
   const [titre, setTitre] = useState(TITRE_EXEMPLE);
@@ -468,6 +282,26 @@ export default function CinemaPage() {
       appliquer(data);
     } catch (e) {
       setErreur(e instanceof Error ? e.message : 'echec de l import');
+    } finally {
+      setEnCours(null);
+    }
+  };
+
+  /** Importe la photo de reference d'un personnage (octets, mesures par le serveur). Gratuit : aucune IA. */
+  const importerReference = async (personnageId: string, fichier: File) => {
+    if (!film) return;
+    setEnCours(`reference:${personnageId}`);
+    setErreur(null);
+    try {
+      const formulaire = new FormData();
+      formulaire.append('personnageId', personnageId);
+      formulaire.append('fichier', fichier);
+      const r = await fetch(`/api/cinema/films/${film.id}/references`, { method: 'POST', body: formulaire });
+      const data = await r.json();
+      if (!r.ok || data?.ok === false) throw new Error(data?.erreur ?? `echec (${r.status})`);
+      appliquer(data);
+    } catch (e) {
+      setErreur(e instanceof Error ? e.message : 'echec de l import de la photo');
     } finally {
       setEnCours(null);
     }
@@ -750,14 +584,29 @@ export default function CinemaPage() {
    * cinq formulaires empiles. Rien n'est perdu en naviguant — l'etat vit ici, pas dans le DOM.
    */
   const [etape, setEtape] = useState(0);
-  /** La scene dont les outils sont ouverts : une seule, et seulement a la demande. */
-  const [sceneOuverte, setSceneOuverte] = useState<string | null>(null);
+  /**
+   * LA SCENE SELECTIONNEE : elle pilote l'apercu unique a droite ET les outils a gauche. Une seule
+   * a la fois ; `null` = la premiere. Selectionner ne lance AUCUN appel : c'est un simple affichage.
+   */
+  const [sceneSelId, setSceneSelId] = useState<string | null>(null);
+  /** Les outils de la scene selectionnee sont deplies a la demande (clic sur la scene ou le crayon). */
+  const [outilsOuverts, setOutilsOuverts] = useState(false);
+  /** Le plan affiche, PAR scene : changer de scene ne modifie jamais le plan courant d'une autre. */
+  const [planParScene, setPlanParScene] = useState<Record<string, number>>({});
+  const [mediaAgrandi, setMediaAgrandi] = useState(false);
+  const [retraitEnAttente, setRetraitEnAttente] = useState<string | null>(null);
 
   /** Ce que le film a VRAIMENT garde de votre histoire (module pur, aucune ecriture). */
   const fidelite = useMemo(() => (film ? auditFidelite(film as never) : null), [film]);
   // Les ecarts critiques ni corriges ni acceptes : ils bloquent toute generation payante.
   const bloquants = useMemo(() => (film && fidelite ? ecartsBloquants(film as never, fidelite) : []), [film, fidelite]);
   const acceptes = useMemo(() => new Set(film?.ecartsAcceptes ?? []), [film]);
+  const sceneSel = film ? (film.scenes.find((x) => x.id === sceneSelId) ?? film.scenes[0] ?? null) : null;
+  const selectionnerScene = (id: string, ouvrir: boolean) => {
+    setSceneSelId(id); setOutilsOuverts(ouvrir); setMediaAgrandi(false); setRetraitEnAttente(null);
+    // Un exemple (style, mouvement) laisse la place au media de la scene choisie.
+    setExemple(null); setExempleAgrandi(false);
+  };
   const accepterEcart = (cle: string) => film && enregistrer({ accepter: [...new Set([...(film.ecartsAcceptes ?? []), cle])] });
   const retirerAcceptation = (cle: string) => film && enregistrer({ accepter: (film.ecartsAcceptes ?? []).filter((k: string) => k !== cle) });
   const mediasGeneres = film ? film.scenes.flatMap((s) => s.plans).filter((p) => p.media).length : 0;
@@ -849,6 +698,16 @@ export default function CinemaPage() {
               surRevenir={() => { setExemple(null); setExempleAgrandi(false); }}
               surAgrandir={() => setExempleAgrandi(true)}
             />
+          ) : film && sceneSel && etape < 3 ? (
+            // UN SEUL apercu a l'etape Scenes (et avant) : le media de la scene selectionnee.
+            <ApercuScene
+              filmId={film.id} formatProjet={format}
+              scene={sceneSel as never}
+              planIndex={planParScene[sceneSel.id] ?? 0}
+              surPlan={(k) => setPlanParScene((m) => ({ ...m, [sceneSel.id]: k }))}
+              agrandi={mediaAgrandi}
+              surAgrandir={() => setMediaAgrandi(true)} surReduire={() => setMediaAgrandi(false)}
+            />
           ) : montage ? (
             <Apercu montage={montage} surPreparerVoix={preparerVoix} voixEnCours={enCours === 'voix'} />
           ) : (
@@ -863,21 +722,6 @@ export default function CinemaPage() {
             <FenetreExemple exemple={exemple} surFermer={() => setExempleAgrandi(false)} />
           )}
         </div>
-        {film && film.scenes.length > 0 && (
-          <SceneCarousel
-            film={film}
-            surRelancer={(sceneId) => produire([sceneId])}
-            enCours={enCours !== null}
-            travailActif={ACTIF(travail)}
-            generationIa={generationIa}
-            generationMode={generationMode}
-            tarifs={tarifs}
-            enCoursTexte={enCours}
-            confirmation={confirmation}
-            surGenererMedia={genererMedia}
-            surImporterMedia={importerMedia}
-          />
-        )}
           </div>
         )}
       >
@@ -1004,286 +848,315 @@ export default function CinemaPage() {
                   exceptions={film.scenes.filter((x) => x.styleCinema && x.styleCinema !== film.styleCinema).length}
                 />
               </div>
-              <div className="space-y-2" data-storyboard="scenes">
+              <div className="space-y-1.5" data-storyboard="scenes">
                 {film.scenes.map((scene) => {
-                  const ouverte = sceneOuverte === scene.id;
+                  const selectionnee = sceneSel?.id === scene.id;
+                  const ouverte = selectionnee && outilsOuverts;
                   const ecarts = ecartsScene(film as never, scene as never);
-                  const premierMedia = scene.plans.find((pl) => pl.media)?.media ?? null;
+                  const planVignette = scene.plans.find((pl) => pl.media) ?? null;
                   const nbMedias = scene.plans.filter((pl) => pl.media).length;
                   const aRefaire = aProduire.includes(scene.id);
                   const etatScene = scene.etat === 'validee' ? 'Validee' : aRefaire ? 'A reproduire' : 'Brouillon';
+                  const indexPlan = Math.min(planParScene[scene.id] ?? 0, Math.max(0, scene.plans.length - 1));
+                  const plan = scene.plans[indexPlan];
                   return (
-                  <div key={scene.id} id={`scene-cinema-${scene.id}`}
-                    className={`rounded-lg border bg-slate-950/60 p-2.5 scroll-mt-4 ${ouverte ? 'border-violet-500/60' : 'border-slate-800'}`}>
-                    {/* La carte de storyboard : vignette, numero, titre court, etat, une icone de modification. */}
-                    <div className="flex items-center gap-3">
-                      <span className="relative block shrink-0 overflow-hidden rounded-md border border-slate-800 bg-slate-900" style={{ width: 72, aspectRatio: '16 / 9' }} data-vignette={premierMedia ? 'media' : 'vide'}>
-                        {premierMedia?.genre === 'image' ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={premierMedia.url} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-contain" />
-                        ) : premierMedia ? (
-                          <video src={`${premierMedia.url}#t=0.1`} preload="metadata" muted playsInline aria-hidden="true" tabIndex={-1} className="absolute inset-0 h-full w-full object-contain" />
-                        ) : (
-                          <span className="absolute inset-0 flex items-center justify-center text-slate-600"><Film className="h-4 w-4" aria-hidden="true" /></span>
-                        )}
-                        <span className="absolute left-1 top-1 rounded bg-slate-950/80 px-1 text-[10px] font-semibold tabular-nums text-slate-200">{String(scene.index + 1).padStart(2, '0')}</span>
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[10px] font-semibold uppercase tracking-widest text-pink-400">Scene {scene.index + 1} · {scene.intention}</p>
-                        <p className="truncate text-sm font-semibold text-slate-100" title={scene.titre}>{scene.titre}</p>
-                        <p className="flex items-center gap-2 truncate text-[11px] text-slate-400">
-                          {scene.etat === 'validee' ? <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-400" aria-hidden="true" /> : <Circle className="h-3 w-3 shrink-0 text-slate-600" aria-hidden="true" />}
-                          <span>{etatScene}</span>
-                          <span aria-hidden="true">·</span>
-                          <span>{nbMedias}/{scene.plans.length} media</span>
-                          {ecarts.length > 0 && (
-                            <span className="inline-flex items-center gap-1 text-amber-300" title={`${ecarts.length} point(s) a valider dans cette scene`}>
-                              <AlertTriangle className="h-3 w-3" aria-hidden="true" />{ecarts.length}
-                            </span>
-                          )}
-                        </p>
-                      </div>
+                  <div key={scene.id} id={`scene-cinema-${scene.id}`} data-selectionnee={selectionnee ? 'oui' : 'non'}
+                    className={`scroll-mt-4 rounded-lg border p-2 ${selectionnee ? 'border-violet-500/70 bg-violet-500/5 ring-1 ring-violet-500/30' : 'border-slate-800 bg-slate-950/60 hover:border-slate-700'}`}>
+                    {/* La liste compacte : miniature (VRAI media, sinon emplacement neutre), numero, titre court, statut. */}
+                    <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => setSceneOuverte(ouverte ? null : scene.id)}
+                        onClick={() => selectionnerScene(scene.id, true)}
+                        aria-label={`Selectionner la scene ${scene.index + 1} : ${scene.titre}`}
+                        aria-current={selectionnee ? 'true' : undefined}
+                        className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                      >
+                        <span className="relative block shrink-0 overflow-hidden rounded-md border border-slate-800 bg-slate-900" style={{ width: 64, height: 40 }} data-vignette={planVignette?.media ? 'media' : 'vide'}>
+                          {planVignette?.media?.genre === 'image' ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={urlMediaPlan(film.id, planVignette.id)} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-cover" />
+                          ) : planVignette?.media ? (
+                            <video src={`${urlMediaPlan(film.id, planVignette.id)}#t=0.1`} preload="metadata" muted playsInline aria-hidden="true" tabIndex={-1} className="absolute inset-0 h-full w-full object-cover" />
+                          ) : (
+                            <span className="absolute inset-0 flex items-center justify-center text-slate-600"><ImageIcon className="h-4 w-4" aria-hidden="true" /></span>
+                          )}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold text-slate-100" title={scene.titre}>
+                            <span className="tabular-nums text-violet-300">{String(scene.index + 1).padStart(2, '0')}</span> · {scene.titre}
+                          </span>
+                          <span className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                            {scene.etat === 'validee' ? <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-400" aria-hidden="true" />
+                              : aRefaire ? <RefreshCw className="h-3 w-3 shrink-0 text-amber-300" aria-hidden="true" />
+                              : <Circle className="h-3 w-3 shrink-0 text-slate-600" aria-hidden="true" />}
+                            <span>{etatScene}</span>
+                            <span aria-hidden="true">·</span>
+                            <span>{nbMedias}/{scene.plans.length} media</span>
+                            {ecarts.some((e) => e.critique) && (
+                              <span className="inline-flex items-center gap-0.5 text-amber-300" title="Point a valider dans cette scene">
+                                <AlertTriangle className="h-3 w-3" aria-hidden="true" />{ecarts.filter((e) => e.critique).length}
+                              </span>
+                            )}
+                          </span>
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => (selectionnee ? setOutilsOuverts(!outilsOuverts) : selectionnerScene(scene.id, true))}
                         aria-expanded={ouverte}
                         aria-controls={`outils-${scene.id}`}
                         aria-label={ouverte ? `Fermer les outils de la scene ${scene.index + 1}` : `Ouvrir les outils de la scene ${scene.index + 1}`}
-                        title={ouverte ? 'Fermer' : 'Modifier cette scene'}
-                        className={`shrink-0 rounded-lg border p-2 transition-colors ${ouverte ? 'border-violet-500/60 text-violet-200' : 'border-slate-800 text-slate-400 hover:border-violet-500/40 hover:text-violet-200'}`}
+                        title={ouverte ? 'Fermer les outils' : 'Modifier cette scene'}
+                        className={`${BOUTON_ICONE} ${ouverte ? 'border-violet-500/60 text-violet-200' : ''}`}
                       >
                         {ouverte ? <ChevronUp className="h-4 w-4" aria-hidden="true" /> : <Pencil className="h-4 w-4" aria-hidden="true" />}
                       </button>
                     </div>
 
-                    {/* Le detail n'existe QUE pour la scene selectionnee. */}
-                    {ouverte && (
-                    <div className="mt-3 border-t border-slate-800 pt-3">
-                    <div className="mb-2 flex items-center gap-1">
-                      <span className="text-xs text-slate-400">{scene.lieu}</span>
-                      <button
-                        type="button"
-                        onClick={() => enregistrer({ scenes: [{ id: scene.id, etat: scene.etat === 'validee' ? 'brouillon' : 'validee' }] })}
-                        aria-label={scene.etat === 'validee' ? 'Repasser la scene en brouillon' : 'Valider la scene'}
-                        aria-pressed={scene.etat === 'validee'}
-                        title={scene.etat === 'validee' ? 'Repasser en brouillon' : 'Valider la scene'}
-                        className="ml-auto rounded p-1.5 text-slate-500 hover:text-emerald-300 transition-colors"
-                      >
-                        <CheckCircle2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => produire([scene.id])}
-                        disabled={enCours !== null || ACTIF(travail)}
-                        aria-label="Regenerer cette scene"
-                        title="Regenerer cette scene"
-                        className="rounded p-1.5 text-slate-500 hover:text-violet-300 transition-colors disabled:opacity-40"
-                      >
-                        <RefreshCw className="w-4 h-4" />
-                      </button>
-                    </div>
+                    {/* Les outils n'existent QUE pour la scene selectionnee, et seulement pour son plan courant. */}
+                    {ouverte && plan && (
+                    <div id={`outils-${scene.id}`} className="mt-3 space-y-3 border-t border-slate-800 pt-3">
+                      <div className="flex items-center gap-1">
+                        <span className="min-w-0 flex-1 truncate text-xs text-slate-400">{scene.lieu}</span>
+                        <button
+                          type="button"
+                          onClick={() => enregistrer({ scenes: [{ id: scene.id, etat: scene.etat === 'validee' ? 'brouillon' : 'validee' }] })}
+                          aria-label={scene.etat === 'validee' ? 'Repasser la scene en brouillon' : 'Valider la scene'}
+                          aria-pressed={scene.etat === 'validee'}
+                          title={scene.etat === 'validee' ? 'Repasser en brouillon' : 'Valider la scene'}
+                          className={BOUTON_ICONE}
+                        >
+                          <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => produire([scene.id])}
+                          disabled={enCours !== null || ACTIF(travail)}
+                          aria-label="Regenerer cette scene"
+                          title="Regenerer cette scene"
+                          className={BOUTON_ICONE}
+                        >
+                          <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                      </div>
 
-                    {/* Ce que VOTRE texte dit de cette scene : le lien verifiable avec l'original. */}
-                    <ol className="mt-2 space-y-1">
-                      {phrasesDeLaScene(film as never, scene as never).map((ph, k) => (
-                        <li key={k} className="flex gap-2 text-[11px] leading-snug text-slate-400">
-                          <span className="shrink-0 text-slate-600">{k + 1}.</span><span>{ph}</span>
-                        </li>
-                      ))}
-                    </ol>
-                    {ecarts.length > 0 && (
-                      <ul className="mt-2 space-y-1">
-                        {ecarts.map((e, k) => (
-                          <li key={k} className={`flex items-start gap-1.5 text-[11px] ${e.critique ? 'text-amber-300/90' : 'text-slate-400'}`}>
-                            {e.critique
-                              ? <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
-                              : <Info className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />}
-                            <span className="min-w-0 flex-1">{e.detail}</span>
-                            {e.critique && (acceptes.has(e.cle) ? (
-                              <span className="shrink-0 text-emerald-300">accepte</span>
-                            ) : (
-                              <button type="button" onClick={() => accepterEcart(e.cle)} aria-label="Accepter cet ecart" title="Accepter cet ecart"
-                                className="shrink-0 rounded border border-amber-500/40 p-0.5 text-amber-200 hover:bg-amber-500/10">
-                                <Check className="h-3 w-3" aria-hidden="true" />
-                              </button>
-                            ))}
+                      {/* Ce que VOTRE texte dit de cette scene : le lien verifiable avec l'original. */}
+                      <ol className="space-y-1">
+                        {phrasesDeLaScene(film as never, scene as never).map((ph, k) => (
+                          <li key={k} className="flex gap-2 text-[11px] leading-snug text-slate-400">
+                            <span className="shrink-0 text-slate-600">{k + 1}.</span><span className="min-w-0">{ph}</span>
                           </li>
                         ))}
-                      </ul>
-                    )}
-
-                    {/* Options avancees : l'exception de style, masquee par defaut, jamais appliquee sans validation. */}
-                    <details className="mt-3 rounded-lg border border-slate-800/80 px-3 py-2" data-avance="style-scene">
-                      <summary className="flex cursor-pointer list-none items-center gap-2 text-xs text-slate-400 hover:text-slate-200">
-                        <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" /> Options avancees
-                        {scene.styleCinema && scene.styleCinema !== film.styleCinema && <span className="text-violet-300">· style different du film</span>}
-                      </summary>
-                      <div className="mt-2">
-                        <ExceptionStyleScene
-                          key={`${scene.id}:${scene.styleCinema ?? ''}`}
-                          valeur={scene.styleCinema ?? null}
-                          styleFilm={film.styleCinema ?? null}
-                          surValider={(id) => enregistrer({ scenes: [{ id: scene.id, style: id }] })}
-                        />
-                      </div>
-                    </details>
-                    </div>
-                    )}
-
-                    {/* Outils de la scene : duree, camera, image, voix — uniquement a la demande. */}
-                    {sceneOuverte === scene.id && (
-                    <div id={`outils-${scene.id}`}>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {film.personnages.map((p) => {
-                        const present = scene.personnages.includes(p.id);
-                        return (
-                          <button
-                            key={p.id}
-                            onClick={() => enregistrer({ scenes: [{ id: scene.id, personnages: present ? scene.personnages.filter((x) => x !== p.id) : [...scene.personnages, p.id] }] })}
-                            className={`text-xs rounded-full px-3 py-1 border ${present ? 'border-violet-500/50 bg-violet-500/15 text-violet-200' : 'border-slate-700 text-slate-400'}`}
-                          >
-                            {p.nom}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    <div className="mt-3 space-y-2">
-                      {scene.plans.map((plan) => (
-                        <div key={plan.id} className="rounded border border-slate-800/80 bg-slate-900/40 p-2">
-                          <div className="flex min-w-0 flex-col gap-1.5">
-                            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
-                              <span className="shrink-0">{plan.cadre} · {plan.dureeS.toFixed(1)} s</span>
-                              {plan.dialogue && (
-                                <span
-                                  className="inline-flex min-w-0 max-w-full items-center rounded-full border border-pink-500/30 px-2 py-0.5 text-[11px] text-pink-300"
-                                  title={plan.dialogue.personnageId ? undefined : 'Phrase de recit : lue en narration, attribuee a aucun personnage'}
-                                >
-                                  <span className="truncate">
-                                    {film.personnages.find((p) => p.id === plan.dialogue?.personnageId)?.nom ?? 'Narration'}
-                                  </span>
-                                </span>
-                              )}
-                            </div>
-                            <input
-                              defaultValue={plan.dialogue?.texte ?? plan.description}
-                              onBlur={(e) => {
-                                const texte = e.target.value;
-                                if (texte !== (plan.dialogue?.texte ?? plan.description)) enregistrer({ plans: [{ id: plan.id, texte }] });
-                              }}
-                              aria-label={`Texte du plan ${plan.cadre}`}
-                              className="w-full min-w-0 rounded bg-slate-950 border border-slate-800 px-3 py-2 text-sm"
-                            />
-                          </div>
-
-                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                            <SelecteurCamera
-                              valeur={plan.camera ?? 'auto'}
-                              ancien={film.directionActive !== true}
-                              automatique={cameraEffective({ ...plan, camera: undefined, cadre: plan.cadre as never }, scene as never).effective}
-                              surChoisir={(id) => {
-                                enregistrer({ plans: [{ id: plan.id, camera: id }] });
-                                // L'apercu montre tout de suite le plan filme du mouvement, ou dit « Exemple indisponible » (aucun appel IA).
-                                if (id !== 'auto') { setExemple({ type: 'mouvement', id }); setExempleAgrandi(false); }
-                              }}
-                            />
-                            {plan.media && aRegenerer.has(plan.id) && <PlanAregenerer genre={plan.media.genre} />}
-                            {/* Media du plan : importe en octets, mesure par le serveur. */}
-                            {plan.media ? (
-                              <>
-                                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-1 text-emerald-200">
-                                  {plan.media.genre === 'image' ? <ImageIcon className="w-3 h-3" /> : <Film className="w-3 h-3" />}
-                                  {plan.media.largeur}x{plan.media.hauteur}
-                                  {plan.media.dureeS !== null && ` · ${plan.media.dureeS.toFixed(1)} s`}
-                                  {` · ${(plan.media.octets / 1_000_000).toFixed(1)} Mo`}
-                                </span>
-                                {plan.media.genre === 'video' && (
-                                  <button
-                                    onClick={() => enregistrer({ plans: [{ id: plan.id, sonMedia: !plan.media?.sonActif }] })}
-                                    className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 hover:border-violet-500/50"
-                                  >
-                                    {plan.media.sonActif ? <Volume2 className="w-3 h-3" /> : <VolumeX className="w-3 h-3" />}
-                                    {plan.media.sonActif ? 'son du rush garde' : 'son du rush coupe'}
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => enregistrer({ plans: [{ id: plan.id, media: null }] })}
-                                  className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 hover:border-red-500/50"
-                                >
-                                  <Trash2 className="w-3 h-3" /> retirer
+                      </ol>
+                      {ecarts.length > 0 && (
+                        <ul className="space-y-1">
+                          {ecarts.map((e, k) => (
+                            <li key={k} className={`flex items-start gap-1.5 text-[11px] ${e.critique ? 'text-amber-300/90' : 'text-slate-400'}`}>
+                              {e.critique
+                                ? <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+                                : <Info className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />}
+                              <span className="min-w-0 flex-1">{e.detail}</span>
+                              {e.critique && (acceptes.has(e.cle) ? (
+                                <span className="shrink-0 text-emerald-300">accepte</span>
+                              ) : (
+                                <button type="button" onClick={() => accepterEcart(e.cle)} aria-label="Accepter cet ecart" title="Accepter cet ecart"
+                                  className="shrink-0 rounded border border-amber-500/40 p-0.5 text-amber-200 hover:bg-amber-500/10">
+                                  <Check className="h-3 w-3" aria-hidden="true" />
                                 </button>
-                              </>
-                            ) : (
-                              <>
-                                <label className="inline-flex items-center gap-1 rounded border border-slate-700 px-2 py-1 cursor-pointer hover:border-violet-500/50">
-                                  {enCours === `media:${plan.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
-                                  Importer une image ou une video
-                                  <input
-                                    type="file"
-                                    accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.webm,.m4v"
-                                    className="hidden"
-                                    onChange={(e) => { const f = e.target.files?.[0]; if (f) importerMedia(plan.id, f); e.target.value = ''; }}
-                                  />
-                                </label>
-                                {generationIa && (
-                                  <button
-                                    onClick={() => genererMedia(plan.id, 'image')}
-                                    disabled={enCours !== null || !!generationActiveDe(film)}
-                                    data-cinema-generation="image"
-                                    className="inline-flex items-center gap-1 rounded border border-violet-700/60 px-2 py-1 hover:border-violet-400 disabled:opacity-50"
-                                  >
-                                    {enCours === `generation:${plan.id}:image` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                                    {generationMode === 'simulee' ? 'Generer (IA, simule)' : 'Generer l’image (IA)'}
-                                    {generationMode === 'reelle' && (
-                                      <span className="text-violet-300/80">· {libellePrix(tarifs, 'ai.generate_background')}</span>
-                                    )}
-                                  </button>
-                                )}
-                              </>
-                            )}
-                            {generationIa && plan.media?.genre === 'image' && (
-                              <button
-                                onClick={() => genererMedia(plan.id, 'video')}
-                                disabled={enCours !== null || !!generationActiveDe(film)}
-                                data-cinema-generation="video"
-                                className="inline-flex items-center gap-1 rounded border border-violet-700/60 px-2 py-1 hover:border-violet-400 disabled:opacity-50"
-                              >
-                                {enCours === `generation:${plan.id}:video` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                                {generationMode === 'simulee' ? 'Animer en video (IA, simule)' : 'Animer en video (IA)'}
-                                {generationMode === 'reelle' && (
-                                  <span className="text-violet-300/80">· {libellePrix(tarifs, 'ai.image_to_video')}</span>
-                                )}
-                              </button>
-                            )}
+                              ))}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
 
-                            <SuiviGenerationPlan
-                              generation={derniereGenerationDuPlan(film, plan.id)}
-                              confirmation={confirmation?.planId === plan.id ? confirmation.operation : null}
-                              prix={confirmation?.planId === plan.id
-                                ? libellePrix(tarifs, confirmation.operation === 'video' ? 'ai.image_to_video' : 'ai.generate_background')
-                                : ''}
-                              surConfirmer={() => confirmation && lancerGenerationIa(confirmation.planId, confirmation.operation)}
-                              surAnnuler={() => setConfirmation(null)}
-                            />
-
-                            {/* Personnages presents DANS CE PLAN. */}
-                            <span className="text-slate-600">|</span>
-                            {film.personnages.map((p) => {
-                              const present = plan.personnages.includes(p.id);
-                              return (
-                                <button
-                                  key={p.id}
-                                  onClick={() => enregistrer({ plans: [{ id: plan.id, personnages: present ? plan.personnages.filter((x) => x !== p.id) : [...plan.personnages, p.id] }] })}
-                                  className={`rounded-full px-2 py-1 border ${present ? 'border-violet-500/50 bg-violet-500/15 text-violet-200' : 'border-slate-800 text-slate-500'}`}
-                                >
-                                  {p.nom}
+                      {/* LE PLAN COURANT : un seul editeur, jamais un formulaire par plan. */}
+                      <div className="space-y-2.5 rounded-lg border border-slate-800/80 bg-slate-900/40 p-2.5" data-plan-editeur={plan.id}>
+                        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+                          {scene.plans.length > 1 && (
+                            <span className="inline-flex items-center gap-1" role="group" aria-label="Choisir le plan">
+                              {scene.plans.map((pl, k) => (
+                                <button key={pl.id} type="button" onClick={() => setPlanParScene((m) => ({ ...m, [scene.id]: k }))}
+                                  aria-pressed={k === indexPlan} aria-label={`Modifier le plan ${k + 1}`} title={`Plan ${k + 1}`}
+                                  className={`h-6 min-w-6 rounded border px-1 text-[11px] tabular-nums ${k === indexPlan ? 'border-violet-400 bg-violet-500/20 text-violet-100' : 'border-slate-700 text-slate-400 hover:border-violet-500/50'}`}>
+                                  {k + 1}
                                 </button>
-                              );
-                            })}
-                          </div>
+                              ))}
+                            </span>
+                          )}
+                          <span className="shrink-0">Plan {indexPlan + 1}/{scene.plans.length} · {plan.cadre}</span>
+                          {plan.dialogue && (
+                            <span className="inline-flex min-w-0 max-w-full items-center rounded-full border border-pink-500/30 px-2 py-0.5 text-[11px] text-pink-300"
+                              title={plan.dialogue.personnageId ? undefined : 'Phrase de recit : lue en narration, attribuee a aucun personnage'}>
+                              <span className="truncate">{film.personnages.find((pp) => pp.id === plan.dialogue?.personnageId)?.nom ?? 'Narration'}</span>
+                            </span>
+                          )}
                         </div>
-                      ))}
-                    </div>
+
+                        <input
+                          key={plan.id}
+                          defaultValue={plan.dialogue?.texte ?? plan.description}
+                          onBlur={(e) => {
+                            const texte = e.target.value;
+                            if (texte !== (plan.dialogue?.texte ?? plan.description)) enregistrer({ plans: [{ id: plan.id, texte }] });
+                          }}
+                          aria-label={`Description du plan ${indexPlan + 1}`}
+                          className="w-full min-w-0 rounded bg-slate-950 border border-slate-800 px-3 py-2 text-sm"
+                        />
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <SelecteurCamera
+                            valeur={plan.camera ?? 'auto'}
+                            ancien={film.directionActive !== true}
+                            automatique={cameraEffective({ ...plan, camera: undefined, cadre: plan.cadre as never }, scene as never).effective}
+                            surChoisir={(id) => {
+                              enregistrer({ plans: [{ id: plan.id, camera: id }] });
+                              // L'apercu unique montre tout de suite le plan filme du mouvement, ou dit « Exemple indisponible » (aucun appel IA).
+                              if (id !== 'auto') { setExemple({ type: 'mouvement', id }); setExempleAgrandi(false); }
+                            }}
+                          />
+                          {plan.media && aRegenerer.has(plan.id) && <PlanAregenerer genre={plan.media.genre} />}
+                        </div>
+
+                        {/* Les actions : de petites icones, toutes nommees (infobulle + libelle accessible). */}
+                        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Media du plan">
+                          <label title={plan.media ? 'Remplacer le media de ce plan' : 'Importer une image ou une video'} className={`${BOUTON_ICONE} cursor-pointer`}>
+                            {enCours === `media:${plan.id}` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <ImagePlus className="h-4 w-4" aria-hidden="true" />}
+                            <input
+                              type="file"
+                              accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.webm,.m4v"
+                              className="sr-only"
+                              aria-label={plan.media ? 'Remplacer le media de ce plan' : 'Importer une image ou une video'}
+                              onChange={(e) => { const f = e.target.files?.[0]; if (f) importerMedia(plan.id, f); e.target.value = ''; }}
+                            />
+                          </label>
+                          {generationIa && !plan.media && (
+                            <button
+                              type="button" onClick={() => genererMedia(plan.id, 'image')}
+                              disabled={enCours !== null || !!generationActiveDe(film)}
+                              data-cinema-generation="image"
+                              aria-label={generationMode === 'simulee' ? 'Generer l’image (IA, simule)' : 'Generer l’image (IA)'}
+                              title={generationMode === 'simulee' ? 'Generer l’image (simulation locale gratuite)' : 'Generer l’image par IA'}
+                              className={`${BOUTON_ICONE} ${generationMode === 'reelle' ? 'w-auto gap-1 px-2' : ''}`}
+                            >
+                              {enCours === `generation:${plan.id}:image` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Sparkles className="h-4 w-4" aria-hidden="true" />}
+                              {generationMode === 'reelle' && <span className="text-[11px] text-violet-300/90">{libellePrix(tarifs, 'ai.generate_background')}</span>}
+                            </button>
+                          )}
+                          {generationIa && plan.media?.genre === 'image' && (
+                            <button
+                              type="button" onClick={() => genererMedia(plan.id, 'video')}
+                              disabled={enCours !== null || !!generationActiveDe(film)}
+                              data-cinema-generation="video"
+                              aria-label={generationMode === 'simulee' ? 'Animer en video (IA, simule)' : 'Animer en video (IA)'}
+                              title={generationMode === 'simulee' ? 'Animer en video (simulation locale gratuite)' : 'Animer cette image en video par IA'}
+                              className={`${BOUTON_ICONE} ${generationMode === 'reelle' ? 'w-auto gap-1 px-2' : ''}`}
+                            >
+                              {enCours === `generation:${plan.id}:video` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Clapperboard className="h-4 w-4" aria-hidden="true" />}
+                              {generationMode === 'reelle' && <span className="text-[11px] text-violet-300/90">{libellePrix(tarifs, 'ai.image_to_video')}</span>}
+                            </button>
+                          )}
+                          {plan.media && (retraitEnAttente === plan.id ? (
+                            <span className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/40 px-2 py-1 text-[11px] text-rose-200" role="group" aria-label="Confirmer le retrait du media">
+                              Retirer ce media ?
+                              <button type="button" onClick={() => { setRetraitEnAttente(null); enregistrer({ plans: [{ id: plan.id, media: null }] }); }} aria-label="Confirmer le retrait" className="underline">Oui</button>
+                              <button type="button" onClick={() => setRetraitEnAttente(null)} aria-label="Annuler le retrait" className="underline">Non</button>
+                            </span>
+                          ) : (
+                            <button type="button" onClick={() => setRetraitEnAttente(plan.id)} aria-label="Retirer le media de ce plan" title="Retirer le media de ce plan (le fichier d’origine n’est pas supprime)" className={BOUTON_ICONE}>
+                              <Trash2 className="h-4 w-4" aria-hidden="true" />
+                            </button>
+                          ))}
+                          <span className="min-w-0 truncate text-[11px] text-slate-500" data-provenance-plan>
+                            {provenanceMedia(plan.media as never).libelle}
+                          </span>
+                        </div>
+
+                        <SuiviGenerationPlan
+                          generation={derniereGenerationDuPlan(film, plan.id)}
+                          confirmation={confirmation?.planId === plan.id ? confirmation.operation : null}
+                          prix={confirmation?.planId === plan.id
+                            ? libellePrix(tarifs, confirmation.operation === 'video' ? 'ai.image_to_video' : 'ai.generate_background')
+                            : ''}
+                          surConfirmer={() => confirmation && lancerGenerationIa(confirmation.planId, confirmation.operation)}
+                          surAnnuler={() => setConfirmation(null)}
+                        />
+
+                        {/* Les personnages DE CE PLAN : leurs portraits (vraie photo de reference, sinon icone neutre). */}
+                        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Personnages de ce plan">
+                          {film.personnages.map((pp) => {
+                            const present = plan.personnages.includes(pp.id);
+                            return (
+                              <PortraitPersonnage key={pp.id} filmId={film.id} personnage={pp} selectionne={present} taille={34}
+                                surClic={() => enregistrer({ plans: [{ id: plan.id, personnages: present ? plan.personnages.filter((x) => x !== pp.id) : [...plan.personnages, pp.id] }] })} />
+                            );
+                          })}
+                          <span className="min-w-0 truncate text-[11px] text-slate-500">
+                            {film.personnages.filter((pp) => plan.personnages.includes(pp.id)).map((pp) => pp.nom).join(', ') || 'Aucun personnage'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Reglages secondaires : un seul panneau, replie. */}
+                      <details className="rounded-lg border border-slate-800/80 px-3 py-2" data-avance="scene">
+                        <summary className="flex cursor-pointer list-none items-center gap-2 text-xs text-slate-400 hover:text-slate-200">
+                          <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" /> Options avancees
+                          {scene.styleCinema && scene.styleCinema !== film.styleCinema && <span className="text-violet-300">· style different du film</span>}
+                        </summary>
+                        <div className="mt-3 space-y-3 text-xs text-slate-400">
+                          <p data-info-technique>
+                            Duree {plan.dureeS.toFixed(1)} s
+                            {plan.media && ` · ${plan.media.largeur}x${plan.media.hauteur}`}
+                            {plan.media?.dureeS != null && ` · ${plan.media.dureeS.toFixed(1)} s`}
+                            {plan.media && ` · ${(plan.media.octets / 1_000_000).toFixed(1)} Mo`}
+                          </p>
+                          {plan.media?.genre === 'video' && (
+                            <button type="button" onClick={() => enregistrer({ plans: [{ id: plan.id, sonMedia: !plan.media?.sonActif }] })}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-2 py-1 hover:border-violet-500/50">
+                              {plan.media.sonActif ? <Volume2 className="h-3.5 w-3.5" aria-hidden="true" /> : <VolumeX className="h-3.5 w-3.5" aria-hidden="true" />}
+                              {plan.media.sonActif ? 'Son du rush garde' : 'Son du rush coupe'}
+                            </button>
+                          )}
+                          <div>
+                            <p className="mb-1 text-slate-500">Personnages de la scene</p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {film.personnages.map((pp) => {
+                                const present = scene.personnages.includes(pp.id);
+                                return (
+                                  <button key={pp.id} type="button"
+                                    onClick={() => enregistrer({ scenes: [{ id: scene.id, personnages: present ? scene.personnages.filter((x) => x !== pp.id) : [...scene.personnages, pp.id] }] })}
+                                    aria-pressed={present}
+                                    className={`rounded-full border px-2.5 py-0.5 ${present ? 'border-violet-500/50 bg-violet-500/15 text-violet-200' : 'border-slate-700 text-slate-400'}`}>
+                                    {pp.nom}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          <div>
+                            <p className="mb-1 text-slate-500">Photos de reference</p>
+                            <ul className="space-y-1.5">
+                              {film.personnages.map((pp) => (
+                                <li key={pp.id} className="flex items-center gap-2">
+                                  <PortraitPersonnage filmId={film.id} personnage={pp} selectionne taille={28} />
+                                  <span className="min-w-0 flex-1 truncate">{pp.nom}{aUnePhoto(pp) ? '' : ' — aucune photo'}</span>
+                                  <label title={aUnePhoto(pp) ? `Remplacer la photo de ${pp.nom}` : `Ajouter une photo de reference pour ${pp.nom}`} className={`${BOUTON_ICONE} cursor-pointer`}>
+                                    {enCours === `reference:${pp.id}` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <ImagePlus className="h-4 w-4" aria-hidden="true" />}
+                                    <input type="file" accept=".jpg,.jpeg,.png,.webp" className="sr-only"
+                                      aria-label={aUnePhoto(pp) ? `Remplacer la photo de ${pp.nom}` : `Ajouter une photo de reference pour ${pp.nom}`}
+                                      onChange={(e) => { const f = e.target.files?.[0]; if (f) importerReference(pp.id, f); e.target.value = ''; }} />
+                                  </label>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                          <ExceptionStyleScene
+                            key={`${scene.id}:${scene.styleCinema ?? ''}`}
+                            valeur={scene.styleCinema ?? null}
+                            styleFilm={film.styleCinema ?? null}
+                            surValider={(id) => enregistrer({ scenes: [{ id: scene.id, style: id }] })}
+                          />
+                        </div>
+                      </details>
                     </div>
                     )}
                   </div>

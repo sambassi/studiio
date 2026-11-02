@@ -8,8 +8,8 @@
  * explique un vocabulaire, il ne regle pas le projet — le mouvement d'un plan se choisit
  * plan par plan, a l'etape Scenes. Aucun appel, aucun credit.
  */
-import { Video } from 'lucide-react';
-import { MENTION_MOUVEMENTS, MOUVEMENTS_CAMERA } from '@/lib/cinema/mouvements-camera';
+import { Info, Video } from 'lucide-react';
+import { MOUVEMENTS_CAMERA } from '@/lib/cinema/mouvements-camera';
 import { ratioCadre } from '@/lib/ui/lecteur-generation';
 
 export default function ChoixMouvements({ actif, surChoisir }: {
@@ -18,12 +18,12 @@ export default function ChoixMouvements({ actif, surChoisir }: {
 }) {
   return (
     <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-4" data-bloc="mouvements">
-      <h3 className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
+      <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
         <Video className="h-3.5 w-3.5 text-violet-400" aria-hidden="true" /> Mouvements de caméra
+        <span title="Quatre plans filmés (Pexels), un par mouvement : un clic les montre dans l’aperçu. Ce ne sont pas des vidéos produites par Studiio." className="text-slate-500">
+          <Info className="h-3.5 w-3.5" aria-label="Quatre plans filmés, un par mouvement : un clic les montre dans l’aperçu" />
+        </span>
       </h3>
-      <p className="mb-2 text-[11px] text-slate-500">
-        Quatre plans filmés, un par mouvement : ils s’affichent dans l’aperçu ci-dessus.
-      </p>
       <div role="group" aria-label="Mouvements de caméra" className="grid grid-cols-2 gap-2">
         {MOUVEMENTS_CAMERA.map((m) => (
           <button
@@ -45,7 +45,6 @@ export default function ChoixMouvements({ actif, surChoisir }: {
           </button>
         ))}
       </div>
-      <p className="mt-2 text-[10px] text-slate-500">{MENTION_MOUVEMENTS}</p>
     </section>
   );
 }

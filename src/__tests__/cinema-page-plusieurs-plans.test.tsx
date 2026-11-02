@@ -58,7 +58,10 @@ describe('page Cinema IA — plusieurs scenes, beaucoup de plans', () => {
 
     fireEvent.click(await screen.findByLabelText(/Ouvrir les outils de la scene 1/));
     const duree = performance.now() - t0;
-    expect(document.querySelectorAll('[data-cinema-generation="image"]').length).toBe(film.scenes[0].plans.length);
+    // UN SEUL plan est edite a la fois ; les autres plans de la scene se choisissent par leur numero.
+    expect(document.querySelectorAll('[data-plan-editeur]').length).toBe(1);
+    expect(document.querySelectorAll('[data-cinema-generation="image"]').length).toBe(1);
+    expect(screen.getAllByRole('button', { name: /^Modifier le plan \d+$/ }).length).toBe(film.scenes[0].plans.length);
     expect(duree).toBeLessThan(5000); // jsdom, machine partagee : marge large, mais finie
   });
 
@@ -73,6 +76,7 @@ describe('page Cinema IA — plusieurs scenes, beaucoup de plans', () => {
     const spy = vi.spyOn(globalThis, 'setInterval');
     await ouvrir();
     await ouvrirScene(2);
+    fireEvent.click(await screen.findByRole('button', { name: /^Modifier le plan 2$/ }));
     await screen.findByText(/generation video en cours/i);
     expect(spy.mock.calls.filter(([, ms]) => ms === 1000)).toHaveLength(1);
     expect(document.querySelectorAll('[data-cinema-generation-statut="en_cours"]')).toHaveLength(1);

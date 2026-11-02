@@ -84,6 +84,9 @@ async function ouvrir() {
  * l'export doit s'y rendre, comme un utilisateur. `ouvrir()` charge le film et reste a
  * l'etape Histoire ; `allerA(n)` clique sur l'etape voulue.
  */
+/** Le montage (lecture, agrandissement, voix) se previsualise a l'etape Apercu. */
+async function allerApercu() { fireEvent.click(await screen.findByRole('button', { name: /^Etape 4 sur 5/ })); }
+
 async function ouvrirScene1() {
   await allerA(3);
   fireEvent.click(await screen.findByLabelText(/Ouvrir les outils de la scene 1/));
@@ -196,7 +199,7 @@ describe('page Cinema IA — production asynchrone', () => {
   it('génération éteinte par le serveur (production) : AUCUN bouton de génération proposé', async () => {
     await ouvrir();
     await ouvrirScene1();
-    expect(screen.queryAllByRole('button', { name: /generer \(ia, simule\)/i })).toHaveLength(0);
+    expect(screen.queryAllByRole('button', { name: /generer l’image \(ia, simule\)/i })).toHaveLength(0);
     expect(document.querySelectorAll('[data-cinema-generation]')).toHaveLength(0);
   });
 
@@ -204,9 +207,9 @@ describe('page Cinema IA — production asynchrone', () => {
     generationIaActive = true;
     await ouvrir();
     await ouvrirScene1();
-    const boutons = screen.getAllByRole('button', { name: /generer \(ia, simule\)/i });
+    const boutons = screen.getAllByRole('button', { name: /generer l’image \(ia, simule\)/i });
     expect(boutons.length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/animer en video|generer \(ia, simule\)/i).length).toBeGreaterThan(0);
+    expect(document.querySelectorAll('[data-cinema-generation="image"]').length).toBeGreaterThan(0);
   });
 
   describe('mode RÉEL (de vrais crédits sont en jeu)', () => {
@@ -434,6 +437,7 @@ describe('l’aperçu s’agrandit sans rien perdre', () => {
 
     const titre = () => screen.getByPlaceholderText('Titre du film') as HTMLInputElement;
     fireEvent.change(titre(), { target: { value: 'Mon titre a moi' } });
+    await allerApercu();
 
     const agrandir = screen.getByLabelText(/Agrandir/i);
     fireEvent.click(agrandir);
@@ -449,11 +453,13 @@ describe('l’aperçu s’agrandit sans rien perdre', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();
     // La saisie du formulaire n'a pas bougé : la fenêtre vit dans le même arbre React.
+    fireEvent.click(screen.getByRole('button', { name: /^Etape 1 sur 5/ }));
     expect(titre().value).toBe('Mon titre a moi');
   });
 
   it('le bouton de retour referme aussi, et le défilement de la page est rendu', async () => {
     await ouvrir();
+    await allerApercu();
     fireEvent.click(screen.getByLabelText(/Agrandir/i));
     expect(document.body.style.overflow).toBe('hidden');
     fireEvent.click(within(screen.getByRole('dialog')).getByLabelText(/Reduire/i));
@@ -497,6 +503,7 @@ describe('l’aperçu s’agrandit sans rien perdre', () => {
 describe('l’aperçu agrandi sort du contexte d’empilement de la colonne', () => {
   it('la fenetre est rendue directement dans <body>, pas dans la colonne collante', async () => {
     await ouvrir();
+    await allerApercu();
     fireEvent.click(screen.getByLabelText(/Agrandir/i));
     const fenetre = screen.getByRole('dialog');
     expect(fenetre.parentElement).toBe(document.body);
@@ -528,6 +535,7 @@ describe('le bouton d’agrandissement est toujours visible', () => {
 
   it('avec un montage : le bouton actif remplace le bouton desactive, au meme endroit', async () => {
     await ouvrir();
+    await allerApercu();
     expect(screen.queryByLabelText(/agrandi sera disponible/i)).toBeNull();
     const actif = screen.getByLabelText('Agrandir l’apercu');
     expect(actif.getAttribute('aria-disabled')).toBeNull();

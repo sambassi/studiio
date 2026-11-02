@@ -36,7 +36,9 @@ describe('un seul aperçu : les mouvements s’affichent dedans, sans scénario'
     expect(imgs).toHaveLength(4);
     expect(new Set(imgs.map((i) => i.getAttribute('src'))).size).toBe(4);
     for (const i of imgs) expect(i.getAttribute('loading')).toBe('lazy');
-    expect(bloc.textContent).toMatch(/mouvement réel, pas une simulation/);
+    // Le texte long est derriere une icone d'information (infobulle), jamais sous le lecteur.
+    expect(bloc.querySelector('[title]')!.getAttribute('title')).toMatch(/Quatre plans filmés \(Pexels\).*pas des vidéos produites par Studiio/);
+    expect(bloc.querySelectorAll('p')).toHaveLength(0);
   });
 
   it('un clic montre le plan dans l’APERÇU, pas dans un second lecteur — et aucun appel', async () => {

@@ -69,7 +69,7 @@ export default function WizardCinema({
         .cinema-wizard{height:calc(100vh - 6rem);min-height:420px}
         /* Mobile : l'apercu reste visible en haut, mais COMPACT — sinon il mange l'ecran et
            recouvre la barre des etapes. Il defile chez lui ; « Agrandir » donne le plein ecran. */
-        .cinema-apercu{max-height:235px}
+        .cinema-apercu{max-height:235px;--hauteur-cadre:140px}
         /* L'extrait d'exemple y reste ENTIER (16:9, jamais rogne) : un cadre de 262 px de large
            fait 147 px de haut, il tient dans la bande sans qu'on ait a la faire defiler. */
         .cinema-apercu [data-ratio-exemple]{width:min(100%,262px);margin-inline:auto}
@@ -77,7 +77,7 @@ export default function WizardCinema({
            de page lui laisse sa place, sinon elle recouvre « Continuer ». Specificite 0,2,0 pour
            l'emporter sur les classes de marge d'utilite. */
         .cinema-wizard .cinema-pied{padding-right:5.25rem}
-        @media(min-width:1024px){.cinema-wizard{height:calc(100vh - 8rem)}.cinema-apercu{max-height:none}.cinema-apercu [data-ratio-exemple]{width:100%}}
+        @media(min-width:1024px){.cinema-wizard{height:calc(100vh - 8rem)}.cinema-apercu{max-height:none;width:clamp(360px,36vw,520px);--hauteur-cadre:min(52vh,520px)}.cinema-apercu [data-ratio-exemple]{width:100%}}
       `}</style>
       <header className="shrink-0 border-b border-slate-800 px-4 py-3 sm:px-6">{entete}</header>
 
@@ -128,7 +128,7 @@ export default function WizardCinema({
 
         <aside
           aria-label="Apercu permanent"
-          className="cinema-apercu shrink-0 overflow-y-auto border-b border-slate-800 px-4 py-3 lg:w-[360px] lg:border-b-0 lg:border-l lg:px-5 lg:py-5"
+          className="cinema-apercu shrink-0 overflow-y-auto border-b border-slate-800 px-4 py-3 lg:border-b-0 lg:border-l lg:px-5 lg:py-5"
           style={{ background: 'radial-gradient(circle at 67% 15%, rgba(24,26,49,0.9) 0%, rgba(11,16,28,0.9) 52%, rgba(10,14,24,0.95) 100%)' }}
         >
           {apercu}

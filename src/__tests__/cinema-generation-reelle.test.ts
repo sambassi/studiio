@@ -180,7 +180,7 @@ describe('c’est le SERVEUR qui choisit le fournisseur', () => {
     const p = src('src/app/dashboard/cinema/page.tsx');
     expect(p).not.toContain("fournisseurId: 'simule'");
     expect(p).toContain("JSON.stringify({ planId, operation })");
-    expect(p).toContain("generationMode === 'simulee' ? 'Generer (IA, simule)' : 'Generer l’image (IA)'");
+    expect(p).toContain("generationMode === 'simulee' ? 'Generer l’image (IA, simule)' : 'Generer l’image (IA)'");
   });
 });
 

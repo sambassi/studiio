@@ -54,7 +54,9 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 async function ouvrir() {
   render(<CinemaPage />);
   fireEvent.change(await screen.findByLabelText(/reprendre un film/i), { target: { value: courant.id } });
-  await screen.findByRole('button', { name: /^Etape 5 sur 5/ });
+  // Le montage (storyboard, lecture, voix) se previsualise a l'etape Apercu ; l'etape Scenes,
+  // elle, montre le media de la scene selectionnee (voir `cinema-scenes-apercu.test.tsx`).
+  fireEvent.click(await screen.findByRole('button', { name: /^Etape 4 sur 5/ }));
 }
 
 const zone = () => document.querySelector('[aria-label="Storyboard du film"]') as HTMLElement;

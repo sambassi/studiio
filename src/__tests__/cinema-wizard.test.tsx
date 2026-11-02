@@ -130,7 +130,7 @@ describe('scenes : cartes compactes, outils a la demande, phrases d’origine', 
     expect(cartes.length).toBeGreaterThan(1);
     const premiere = cartes[0] as HTMLElement;
     expect(premiere.querySelector('[data-vignette]')).not.toBeNull();
-    expect(premiere.textContent).toMatch(/Scene 1/);
+    expect(premiere.textContent).toMatch(/01 · /);
     expect(premiere.textContent).toMatch(/Brouillon|Validee/);
     expect(zone().textContent).not.toContain('Nina entre dans la salle avant le lever du jour.');
     // La modification est une petite icone SVG : aucun texte, juste un nom accessible.
@@ -154,7 +154,7 @@ describe('scenes : cartes compactes, outils a la demande, phrases d’origine', 
     expect(document.querySelectorAll('select[aria-label="Style de cette scene"]')).toHaveLength(0);
     fireEvent.click(screen.getByRole('button', { name: /ouvrir les outils de la scene 1/i }));
     // Meme ouverte, l'exception reste derriere « Options avancees » et exige une validation.
-    const avance = document.querySelector('details[data-avance="style-scene"]') as HTMLDetailsElement;
+    const avance = document.querySelector('details[data-avance="scene"]') as HTMLDetailsElement;
     expect(avance).not.toBeNull();
     expect(avance.open).toBe(false);
     expect(within(avance).getByRole('button', { name: /valider l.exception de style/i })).toBeDisabled();
@@ -165,9 +165,11 @@ describe('scenes : cartes compactes, outils a la demande, phrases d’origine', 
     fireEvent.click(etape(3));
     const plansOuverts = () => document.querySelectorAll('select[aria-label="Mouvement de camera de ce plan"]').length;
     fireEvent.click(screen.getByLabelText(/Ouvrir les outils de la scene 1/));
-    expect(plansOuverts()).toBe(film.scenes[0].plans.length);
+    // UN seul plan est edite a la fois (le plan courant de la scene).
+    expect(plansOuverts()).toBe(1);
     fireEvent.click(screen.getByLabelText(/Ouvrir les outils de la scene 2/));
-    expect(plansOuverts()).toBe(film.scenes[1].plans.length);
+    expect(plansOuverts()).toBe(1);
+    expect(document.querySelectorAll('[id^="outils-"]')).toHaveLength(1);
     fireEvent.click(screen.getByLabelText(/Fermer les outils de la scene 2/));
     expect(plansOuverts()).toBe(0);
   });
@@ -197,7 +199,10 @@ describe('la coque respecte les contraintes de la maquette', () => {
   it('hauteur bornee a l’ecran et apercu compact sur mobile — en CSS reel, pas en classe purgeable', () => {
     const src = readFileSync('src/components/cinema/WizardCinema.tsx', 'utf8');
     expect(src).toMatch(/\.cinema-wizard\{height:calc\(100vh - 6rem\);min-height:420px\}/);
-    expect(src).toMatch(/\.cinema-apercu\{max-height:235px\}/);
+    expect(src).toMatch(/\.cinema-apercu\{max-height:235px;--hauteur-cadre:140px\}/);
+    // Sur ordinateur, l'apercu unique est plus large (borne) et son cadre plus haut.
+    expect(src).toMatch(/width:clamp\(360px,36vw,520px\)/);
+    expect(src).not.toMatch(/lg:w-\[360px\]/);
     // L'extrait d'exemple garde son ratio natif 16:9 dans la bande compacte du mobile.
     expect(src).toMatch(/\.cinema-apercu \[data-ratio-exemple\]\{width:min\(100%,262px\)/);
     expect(src).toMatch(/@media\(min-width:1024px\)/);

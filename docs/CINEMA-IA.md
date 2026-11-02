@@ -911,3 +911,31 @@ du recit, rien d'autre. Aucun changement du moteur audio ni de la qualite sonore
 **Mouvements sans extrait.** Quatre mouvements ont un plan filme. Les autres (camera fixe, travelling arriere,
 panoramique gauche) affichent « Exemple indisponible » dans le meme cadre 16:9, sans lecteur ni faux mouvement.
 « Automatique » n'est pas un mouvement : il ne change pas l'apercu.
+
+## 26. L'etape Scenes : un apercu unique, des miniatures, un editeur par plan
+
+**Un seul apercu.** La colonne de droite n'a qu'un lecteur (`ApercuScene`) : le media du plan de la scene
+selectionnee. La grande carte media secondaire (`SceneCarousel`) et ses miniatures en double sont supprimees ;
+ses actions existent a gauche (importer, generer, animer, regenerer). Un exemple (mouvement, style)
+REMPLACE l'apercu dans le meme cadre, avec la mention « Exemple » ; choisir une autre scene ou « Revenir a mon
+film » rend le media de l'utilisateur. A l'etape Apercu, le meme emplacement porte le montage (lecture, voix).
+
+**Selection.** `sceneSelId` (apercu) + `outilsOuverts` (editeur) + `planParScene` (plan courant PAR scene). Cliquer
+une miniature selectionne et ouvre ses outils : aucun appel reseau. Visiter une scene ne modifie jamais une autre.
+
+**Miniatures.** Une liste compacte : vrai media par l'API (jamais le chemin brut), sinon emplacement neutre ;
+numero, titre court, statut. Pas de miniature en double a droite.
+
+**Editeur du plan.** Un seul plan a la fois (numeros pour naviguer), description courte, mouvement, icones nommees
+(ImagePlus, Sparkles, Clapperboard, Trash2 avec confirmation), portraits, et un seul panneau « Options avancees »
+(duree, infos techniques, son du rush, personnages de la scene, photos de reference, exception de style). Le suivi de
+generation et la confirmation payante restent visibles : on ne masque jamais un cout.
+
+**Portraits.** Photo de reference ACTIVE (`/references/:personnageId`), sinon icone neutre : jamais de faux visage.
+Les ajouter est un import de fichier gratuit. Cliquer un portrait lie / delie le personnage au plan.
+
+**Le « media rose ».** C'etait l'aplat du fournisseur SIMULE, libelle a tort « media importe ». `provenanceMedia()` lit
+`origine` et `fournisseurGeneration` : importe / simulation locale / genere. La simulation porte le badge « Simulation ».
+
+**Cadre.** Il suit le VRAI format du media (`object-fit: contain`) : une video 16:9 reste entiere dans un projet 9:16.
+Sur ordinateur, la colonne grandit (36 vw, 360 a 520 px) ; sur mobile elle reste une bande compacte.
