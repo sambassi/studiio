@@ -833,3 +833,109 @@ Plus aucune illustration dessinee dans Cinema IA.
 Licence identique pour tout (Pexels, usage commercial gratuit, credits affiches, mention
 « pas une video produite par Studiio »). Chargement differe partout : aucune video n'est
 chargee avant un clic.
+
+## 23. Le parcours : une etape a la fois, un apercu permanent, une histoire respectee
+
+Refonte d'apres la maquette validee par le proprietaire (`studiio_cinema_design/index.html`).
+La page empilait cinq formulaires ouverts : on defilait pour tout, et l'apercu disparaissait
+des qu'on ecrivait.
+
+**La coque** (`components/cinema/WizardCinema.tsx`) : en-tete, barre des 5 etapes
+(Histoire / Personnages / Scenes / Apercu / Export), zone de travail qui rend SEULE l'etape
+active et defile SEULE, apercu permanent a droite (compact en haut sur mobile, 190 px max),
+pied fixe Retour / Continuer avec UNE seule action primaire. La hauteur est bornee a l'ecran
+par une regle CSS reelle (`.cinema-wizard`), pas par une classe Tailwind arbitraire — celles-ci
+sont purgees en production. Eprouve en 1440x900, 820x1180, 390x844 et 1280x620.
+
+**Composer le scenario** est l'action primaire de l'etape Personnages : un acte explicite,
+jamais un effet de bord de la navigation. Les etapes qui en dependent sont desactivees et
+disent pourquoi. Naviguer ne perd aucune saisie (l'etat vit dans la page, pas dans le DOM).
+
+**Scenes** : une carte compacte par scene, avec les PHRASES DE VOTRE TEXTE qu'elle porte ; les
+outils d'un plan (camera, duree, media, voix) s'ouvrent au clic, pour une seule scene a la fois.
+
+### Fidelite a l'histoire — un audit, pas un interrupteur
+
+`lib/cinema/fidelite.ts` relit le film contre `film.histoire` (conserve intact) avec la meme
+segmentation que le decoupage, et DIT ce que le moteur a fait :
+
+| Ce qui est verifie | Ce qui est signale |
+|---|---|
+| chaque phrase devient la description d'un plan, dans l'ordre | `phrase_absente`, `ordre_change` |
+| le plan d'ensemble ouvrant chaque scene est FABRIQUE | `plan_ajoute` (« ne vient pas de votre texte ») |
+| aucun lieu reconnu ⇒ « un decor neutre » | `lieu_substitue` |
+| une replique sans prenom ⇒ locuteur attribue par rotation | `locuteur_devine` (avec le prenom choisi) |
+| un prenom de l'histoire absent du casting | `personnage_hors_casting` |
+
+L'etape Apercu affiche ce rapport, l'etat reel des medias et le cout AVANT toute generation.
+Studiio ne corrige rien de lui-meme : les ecarts sont des choix a valider, pas des erreurs.
+
+## 24. Formats des exemples, style global, storyboard et blocage de fidelite
+
+**Format.** Le format du PROJET (9:16 ou 16:9) ne s'applique qu'au film de l'utilisateur et a son
+export. Tout extrait d'exemple (6 styles, 4 mouvements, tous en 1280x720) garde son ratio natif :
+cadre 16:9, `object-fit: contain`, bandes sombres si besoin, y compris en plein ecran. En 9:16,
+une note le dit (« l'exemple reste en 16:9 pour etre vu en entier »). Sur mobile, le cadre fait
+262 px de large (147 px de haut) et tient entier dans la bande d'apercu.
+
+**Style global.** Choisi une fois a l'etape Histoire (`film.styleCinema`) ; chaque scene l'herite,
+et il part dans les prompts image ET video (`direction/prompt.ts`, teste sur les 6 styles x 4 scenes).
+Aucun selecteur de style dans les cartes : l'exception artistique vit dans « Options avancees » de la
+scene ouverte et n'est appliquee qu'apres un clic sur « Valider ».
+
+**Storyboard.** Une carte par scene : vignette (media reel, sinon icone vide — jamais une fausse
+image), numero, titre court, etat, une icone de modification. Une seule scene ouverte a la fois ;
+ses phrases d'origine, ses ecarts et ses outils n'existent que la.
+
+**Mouvements.** Choisir un mouvement sur un plan, ou cliquer sa vignette, montre aussitot l'extrait
+filme dans l'apercu (la colonne remonte en haut). Un mouvement sans plan filme ne montre rien.
+
+**Fidelite bloquante.** `fidelite.ts` classe les ecarts : critiques (phrase perdue, ordre change,
+lieu devine, locuteur devine, personnage hors casting, scene inventee) ou remarques (plan d'ensemble
+ajoute, narration). Une generation PAYANTE est refusee (409, cote serveur dans
+`films/[id]/generation`) tant qu'un ecart critique n'est ni corrige ni accepte (`film.ecartsAcceptes`,
+via `PATCH {accepter: [cles]}`). Le mode simule (gratuit) n'est pas concerne. Le texte n'est jamais modifie.
+
+## 25. Finition : bulle de chat, narration par film, exemples indisponibles
+
+**Bulle de chat.** Le composant global `StudiioAssistant` n'est pas modifie. Le pied de page du parcours
+reserve la place de la bulle (`.cinema-wizard .cinema-pied{padding-right:5.25rem}`) : « Continuer » reste
+visible et le clic l'atteint, de 360 a 1440 px.
+
+**Narration.** `film.narration` (absent = avec, comme avant ; `false` = sans). Reglage a l'etape Apercu,
+via `PATCH {narration: boolean}`. Meme moteur de voix : `synthetiserFilm` saute les plans de genre
+`narration` quand le reglage est `false` (une ligne), `monterFilm` les rend muets (le texte reste affiche).
+Les repliques ne dependent jamais du reglage. Changer le reglage rend « a reproduire » les scenes qui ont
+du recit, rien d'autre. Aucun changement du moteur audio ni de la qualite sonore.
+
+**Mouvements sans extrait.** Quatre mouvements ont un plan filme. Les autres (camera fixe, travelling arriere,
+panoramique gauche) affichent « Exemple indisponible » dans le meme cadre 16:9, sans lecteur ni faux mouvement.
+« Automatique » n'est pas un mouvement : il ne change pas l'apercu.
+
+## 26. L'etape Scenes : un apercu unique, des miniatures, un editeur par plan
+
+**Un seul apercu.** La colonne de droite n'a qu'un lecteur (`ApercuScene`) : le media du plan de la scene
+selectionnee. La grande carte media secondaire (`SceneCarousel`) et ses miniatures en double sont supprimees ;
+ses actions existent a gauche (importer, generer, animer, regenerer). Un exemple (mouvement, style)
+REMPLACE l'apercu dans le meme cadre, avec la mention « Exemple » ; choisir une autre scene ou « Revenir a mon
+film » rend le media de l'utilisateur. A l'etape Apercu, le meme emplacement porte le montage (lecture, voix).
+
+**Selection.** `sceneSelId` (apercu) + `outilsOuverts` (editeur) + `planParScene` (plan courant PAR scene). Cliquer
+une miniature selectionne et ouvre ses outils : aucun appel reseau. Visiter une scene ne modifie jamais une autre.
+
+**Miniatures.** Une liste compacte : vrai media par l'API (jamais le chemin brut), sinon emplacement neutre ;
+numero, titre court, statut. Pas de miniature en double a droite.
+
+**Editeur du plan.** Un seul plan a la fois (numeros pour naviguer), description courte, mouvement, icones nommees
+(ImagePlus, Sparkles, Clapperboard, Trash2 avec confirmation), portraits, et un seul panneau « Options avancees »
+(duree, infos techniques, son du rush, personnages de la scene, photos de reference, exception de style). Le suivi de
+generation et la confirmation payante restent visibles : on ne masque jamais un cout.
+
+**Portraits.** Photo de reference ACTIVE (`/references/:personnageId`), sinon icone neutre : jamais de faux visage.
+Les ajouter est un import de fichier gratuit. Cliquer un portrait lie / delie le personnage au plan.
+
+**Le « media rose ».** C'etait l'aplat du fournisseur SIMULE, libelle a tort « media importe ». `provenanceMedia()` lit
+`origine` et `fournisseurGeneration` : importe / simulation locale / genere. La simulation porte le badge « Simulation ».
+
+**Cadre.** Il suit le VRAI format du media (`object-fit: contain`) : une video 16:9 reste entiere dans un projet 9:16.
+Sur ordinateur, la colonne grandit (36 vw, 360 a 520 px) ; sur mobile elle reste une bande compacte.

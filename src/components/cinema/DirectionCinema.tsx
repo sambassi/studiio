@@ -11,7 +11,7 @@
  */
 import { useState } from 'react';
 import {
-  AlertCircle, ArrowLeft, ArrowRight, Info, Lock, MoveHorizontal, Orbit, Palette, RefreshCw, Sparkles, ZoomIn, ZoomOut,
+  AlertCircle, ArrowLeft, ArrowRight, Check, Info, Lock, MoveHorizontal, Orbit, Palette, RefreshCw, Sparkles, ZoomIn, ZoomOut,
   type LucideIcon,
 } from 'lucide-react';
 import { STYLES_CINEMA, styleCinema } from '@/lib/cinema/direction/styles';
@@ -132,6 +132,39 @@ export function SelecteurStyleScene({ valeur, styleFilm, surChoisir }: {
         {STYLES_CINEMA.map((s) => <option key={s.id} value={s.id}>{s.libelle}</option>)}
       </select>
     </label>
+  );
+}
+
+/**
+ * Exception artistique : une scene au style DIFFERENT de celui du film. Le style du film se
+ * choisit une fois, a l'etape Histoire, et toutes les scenes l'heritent ; ceci est reserve aux
+ * options avancees, et rien n'est applique sans validation explicite (choisir ne suffit pas).
+ */
+export function ExceptionStyleScene({ valeur, styleFilm, surValider }: {
+  valeur: IdStyleCinema | null; styleFilm: IdStyleCinema | null; surValider: (id: IdStyleCinema | null) => void;
+}) {
+  const [choix, setChoix] = useState<IdStyleCinema | null>(valeur);
+  const hereditaire = styleCinema(styleFilm);
+  const change = choix !== valeur;
+  return (
+    <div className="space-y-1.5" data-direction="exception-style">
+      <p className="text-[11px] text-slate-400">
+        Cette scene suit le style du film{hereditaire ? ` (${hereditaire.libelle})` : ''}. Une exception reste un choix artistique : elle n’est appliquee qu’apres validation.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <SelecteurStyleScene valeur={choix} styleFilm={styleFilm} surChoisir={setChoix} />
+        <button
+          type="button"
+          onClick={() => surValider(choix)}
+          disabled={!change}
+          aria-label="Valider l’exception de style pour cette scene"
+          title="Valider l’exception de style pour cette scene"
+          className="inline-flex items-center gap-1 rounded-lg border border-violet-500/50 px-2 py-1 text-xs text-violet-200 transition-colors hover:bg-violet-500/10 disabled:opacity-40"
+        >
+          <Check className="h-3.5 w-3.5" aria-hidden="true" /> Valider
+        </button>
+      </div>
+    </div>
   );
 }
 

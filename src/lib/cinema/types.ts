@@ -218,6 +218,18 @@ export interface Film {
    * payante hors regime credits.
    */
   budgetApprouve?: BudgetApprouve;
+  /**
+   * Ecarts de fidelite que l'utilisateur a ACCEPTES en connaissance de cause (cles de
+   * `fidelite.ts`). Absent = aucun : une generation payante est alors bloquee tant qu'un ecart
+   * critique subsiste.
+   */
+  ecartsAcceptes?: string[];
+  /**
+   * Narration des phrases de recit (celles SANS guillemets). `false` = film sans narration : ces
+   * phrases restent affichees mais ne sont pas lues. Absent = avec narration (comportement
+   * d'avant). Les repliques des personnages ne dependent JAMAIS de ce reglage.
+   */
+  narration?: boolean;
 }
 
 export interface BudgetApprouve {

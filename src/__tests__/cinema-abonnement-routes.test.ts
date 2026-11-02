@@ -57,7 +57,12 @@ beforeEach(async () => {
   e.regime = { type: 'credits' }; e.evaluation = { ok: true }; e.mode = 'reelle'; e.lancer.mockReset().mockResolvedValue('reussie');
   e.conso = { films: 3, secondes: 240, usdEngages: 2, tentatives: 7, film: { compte: false, secondes: 0 } };
   const depot = depotFilmsMemoire();
-  const film = { ...preparerFilm({ histoire: 'Nina entre. Marco la regarde.', personnages: [], idFilm: 'film-r', titre: 't' }), proprietaire: U };
+  // Un film FIDELE : lieu nomme, personnages au casting, aucun ecart critique (voir `fidelite.ts`).
+  const film = { ...preparerFilm({
+    histoire: 'Nina entre dans la salle. Marco la regarde dans la salle. Nina sourit dans la salle.',
+    personnages: [{ nom: 'Nina', role: 'protagoniste', description: '', urlImage: null }, { nom: 'Marco', role: 'antagoniste', description: '', urlImage: null }],
+    idFilm: 'film-r', titre: 't',
+  }), proprietaire: U };
   await depot.creer(film, U);
   planId = film.scenes[0].plans[0].id;
   e.depot = depot;
@@ -191,5 +196,53 @@ describe('GET quota : ce que chacun voit', () => {
   it('periode non verifiable : indisponible, avec le message', async () => {
     e.regime = { type: 'abonnement', planKey: 'pro', formule: FORMULE, periode: null };
     expect(await lire()).toMatchObject({ regime: 'indisponible', message: expect.stringMatching(/periode/) });
+  });
+});
+
+describe('POST generation : fidelite a l’histoire — aucun appel payant sur un film infidele', () => {
+  /** Remplace le film de la base par un film SANS lieu reconnu : le decoupage y met « un decor neutre ». */
+  async function filmSansLieu() {
+    const { modifierFilm } = await import('@/lib/cinema/stockage/depot-films');
+    const infidele = preparerFilm({
+      histoire: 'Nina sourit. Marco la regarde.',
+      personnages: [{ nom: 'Nina', role: 'protagoniste', description: '', urlImage: null }, { nom: 'Marco', role: 'antagoniste', description: '', urlImage: null }],
+      idFilm: 'film-r', titre: 't',
+    });
+    await modifierFilm(e.depot as ReturnType<typeof depotFilmsMemoire>, 'film-r', U, (f) => ({ ...f, histoire: infidele.histoire, scenes: infidele.scenes }));
+    planId = infidele.scenes[0].plans[0].id;
+    return infidele;
+  }
+
+  it('un ecart CRITIQUE non accepte (decor neutre) : 409 « fidelite », rien de reserve, rien de lance, rien de debite', async () => {
+    await filmSansLieu();
+    const res = await poster();
+    expect(res.status).toBe(409);
+    const corps = await res.json();
+    expect(corps).toMatchObject({ ok: false, fidelite: true, erreur: expect.stringMatching(/ecart/) });
+    expect(corps.ecarts[0].detail).toMatch(/decor neutre/);
+    expect(e.lancer).not.toHaveBeenCalled();
+    expect(await generationsEnBase()).toHaveLength(0);
+  });
+
+  it('le meme film, ecart ACCEPTE explicitement par l’utilisateur : la generation part (202)', async () => {
+    const { auditFidelite, ecartsBloquants } = await import('@/lib/cinema/fidelite');
+    const { modifierFilm } = await import('@/lib/cinema/stockage/depot-films');
+    await filmSansLieu();
+    const base = (await (e.depot as ReturnType<typeof depotFilmsMemoire>).lire('film-r', U))!.film;
+    const cles = ecartsBloquants(base, auditFidelite(base)).map((x) => x.cle);
+    expect(cles.length).toBeGreaterThan(0);
+    await modifierFilm(e.depot as ReturnType<typeof depotFilmsMemoire>, 'film-r', U, (f) => ({ ...f, ecartsAcceptes: cles }));
+    expect((await poster()).status).toBe(202);
+    expect(e.lancer).toHaveBeenCalledTimes(1);
+  });
+
+  it('mode SIMULE (gratuit) : pas de blocage, le brouillon reste possible', async () => {
+    await filmSansLieu();
+    e.mode = 'simulee';
+    expect((await poster()).status).toBe(202);
+  });
+
+  it('un film fidele n’est jamais bloque (le plan d’ensemble et la narration ne sont que signales)', async () => {
+    expect((await poster()).status).toBe(202);
   });
 });

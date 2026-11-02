@@ -84,6 +84,8 @@ export function monterFilm(film: Film, voix: VoixParPlan = {}): MontageFilm {
       // La duree tient compte du media : une video sans parole epouse sa
       // propre duree (voir `dureePlanAvecMedia`).
       const duree = Math.max(0.5, Math.round(dureePlanAvecMedia(plan, plan.media) * 10) / 10);
+      // Sans narration, une phrase de recit reste affichee mais muette : ni voix, ni genre « narration ».
+      const sansVoix = film.narration === false && plan.dialogue?.genre === 'narration';
       segments.push({
         sceneId: scene.id,
         sceneIndex: scene.index,
@@ -94,14 +96,14 @@ export function monterFilm(film: Film, voix: VoixParPlan = {}): MontageFilm {
         intention: scene.intention,
         texte: plan.dialogue?.texte ?? plan.description,
         locuteur: parlant?.nom ?? null,
-        genre: plan.dialogue ? plan.dialogue.genre : 'muet',
+        genre: plan.dialogue && !sansVoix ? plan.dialogue.genre : 'muet',
         apparence,
         debutS: Math.round(curseur * 10) / 10,
         finS: Math.round((curseur + duree) * 10) / 10,
         dureeS: duree,
         media: plan.media,
         cadrage: plan.media ? cadrage(plan.media, { w: taille.w, h: taille.h }) : null,
-        voixUrl: voix[plan.id] ?? null,
+        voixUrl: sansVoix ? null : (voix[plan.id] ?? null),
         couleurs: PALETTE[scene.index % PALETTE.length],
       });
       curseur += duree;

@@ -210,6 +210,8 @@ export async function synthetiserFilm(
     for (const plan of scene.plans) {
       const replique = plan.dialogue?.texte?.trim();
       if (!replique) continue;
+      // Film SANS narration : les phrases de recit ne sont pas lues. Les repliques, si.
+      if (film.narration === false && plan.dialogue?.genre === 'narration') continue;
       const fichierAttendu = path.join(dossier, `${plan.id}.mp3`);
       const urlAttendue = path.posix.join(relatif.split(path.sep).join('/'), `${plan.id}.mp3`);
       // Un fichier deja la est repris tel quel : resynthetiser une replique

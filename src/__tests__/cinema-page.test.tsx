@@ -10,6 +10,7 @@ import { render, screen, waitFor, within, fireEvent, cleanup } from '@testing-li
 import CinemaPage from '@/app/dashboard/cinema/page';
 import { preparerFilm } from '@/lib/cinema/atelier';
 import { monterFilm } from '@/lib/cinema/montage';
+import { ecartsBloquants } from '@/lib/cinema/fidelite';
 import { presenterMontage } from '@/lib/cinema/stockage/presentation';
 import { devisFilm } from '@/lib/cinema/couts';
 
@@ -76,13 +77,33 @@ async function ouvrir() {
   render(<CinemaPage />);
   const select = await screen.findByLabelText(/reprendre un film/i);
   fireEvent.change(select, { target: { value: film.id } });
-  await screen.findByText(/Export MP4/);
+  await screen.findByRole('button', { name: /^Etape 5 sur 5/ });
 }
+/**
+ * Le parcours affiche UNE etape a la fois : un test qui vise les scenes, l'apercu ou
+ * l'export doit s'y rendre, comme un utilisateur. `ouvrir()` charge le film et reste a
+ * l'etape Histoire ; `allerA(n)` clique sur l'etape voulue.
+ */
+/** Le montage (lecture, agrandissement, voix) se previsualise a l'etape Apercu. */
+async function allerApercu() { fireEvent.click(await screen.findByRole('button', { name: /^Etape 4 sur 5/ })); }
+
+async function ouvrirScene1() {
+  await allerA(3);
+  fireEvent.click(await screen.findByLabelText(/Ouvrir les outils de la scene 1/));
+}
+
+async function allerA(n: number) {
+  const bouton = await screen.findByRole('button', { name: new RegExp(`^Etape ${n} sur 5`) });
+  fireEvent.click(bouton);
+  return bouton;
+}
+
 
 describe('page Cinema IA — production asynchrone', () => {
   it('retrouve un film apres rechargement, et la production en cours avec sa vraie progression', async () => {
     etatTravail = travail({});
     await ouvrir();
+    await allerA(5);
     const barre = await screen.findByRole('progressbar', { name: /progression de la production/i });
     expect(barre.getAttribute('aria-valuenow')).toBe('40');
     expect(screen.getByText('40 %')).toBeTruthy();
@@ -106,6 +127,8 @@ describe('page Cinema IA — production asynchrone', () => {
     });
     const { container } = render(<CinemaPage />);
     fireEvent.change(await screen.findByLabelText(/reprendre un film/i), { target: { value: film.id } });
+    // Le MP4 vit a l'etape Export : on s'y rend, comme l'utilisateur.
+    fireEvent.click(await screen.findByRole('button', { name: /^Etape 5 sur 5/ }));
     await waitFor(() => expect(container.querySelector('video')).toBeTruthy());
     const attendu = `/api/cinema/films/${film.id}/travaux/${etatTravail.id}/export`;
     expect(container.querySelector('video')!.getAttribute('src')).toBe(attendu);
@@ -117,6 +140,7 @@ describe('page Cinema IA — production asynchrone', () => {
   it('un echec reste VISIBLE avec sa reference, et propose de relancer sans perdre les scenes', async () => {
     etatTravail = travail({ statut: 'echec', erreur: 'echec de production (reference ab12cd34)', reference: 'ab12cd34' });
     await ouvrir();
+    await allerA(5);
     const alerte = await screen.findByRole('alert');
     expect(alerte.textContent).toContain('reference ab12cd34');
     const relancer = screen.getByRole('button', { name: /exporter le film/i }) as HTMLButtonElement;
@@ -124,7 +148,8 @@ describe('page Cinema IA — production asynchrone', () => {
   });
 
   it('exporter lance un travail en arriere-plan et affiche la progression sans bloquer', async () => {
-    await ouvrir();                                   // aucun travail : bouton actif
+    await ouvrir();
+    await allerA(5);                                   // aucun travail : bouton actif
     etatTravail = travail({ statut: 'en_attente', progression: { etape: 'preparation', scenes: scenes([]), pourcent: 0, message: 'Preparation' } });
     fireEvent.click(screen.getByRole('button', { name: /exporter le film/i }));
     await waitFor(() => expect(appels.some((a) => a.url.endsWith('/produire') && a.method === 'POST')).toBe(true));
@@ -138,6 +163,7 @@ describe('page Cinema IA — production asynchrone', () => {
   it('le sondage suit l\'etat reel jusqu\'a la fin, puis relit le film', async () => {
     etatTravail = travail({});
     await ouvrir();
+    await allerA(5);
     await screen.findByRole('progressbar');
     etatTravail = travail({
       statut: 'termine', progression: { etape: 'termine', scenes: scenes(['faite', 'faite', 'faite']), pourcent: 100, message: null },
@@ -153,6 +179,7 @@ describe('page Cinema IA — production asynchrone', () => {
   it('arreter est une ICONE avec son libelle accessible, et appelle la route d\'annulation', async () => {
     etatTravail = travail({});
     await ouvrir();
+    await allerA(5);
     const arreter = await screen.findByRole('button', { name: /arreter la production/i });
     expect(arreter.textContent?.trim()).toBe('');          // icone seule, pas de gros bouton texte
     fireEvent.click(arreter);
@@ -161,30 +188,55 @@ describe('page Cinema IA — production asynchrone', () => {
 
   it('les actions secondaires d\'une scene sont des icones accessibles', async () => {
     await ouvrir();
+    await ouvrirScene1();
     const regenerer = screen.getAllByRole('button', { name: /regenerer cette scene/i });
-    expect(regenerer.length).toBe(film.scenes.length);
+    // UNE seule scene est ouverte a la fois : ses outils sont les seuls montres.
+    expect(regenerer.length).toBe(1);
     expect(regenerer[0].textContent?.trim()).toBe('');
-    expect(screen.getAllByRole('button', { name: /valider la scene/i }).length).toBe(film.scenes.length);
+    expect(screen.getAllByRole('button', { name: /valider la scene/i }).length).toBe(1);
   });
 
   it('génération éteinte par le serveur (production) : AUCUN bouton de génération proposé', async () => {
     await ouvrir();
-    expect(screen.queryAllByRole('button', { name: /generer \(ia, simule\)/i })).toHaveLength(0);
+    await ouvrirScene1();
+    expect(screen.queryAllByRole('button', { name: /generer l’image \(ia, simule\)/i })).toHaveLength(0);
     expect(document.querySelectorAll('[data-cinema-generation]')).toHaveLength(0);
   });
 
   it('génération autorisée par le serveur : les boutons reviennent, clairement identifiés comme SIMULÉS', async () => {
     generationIaActive = true;
     await ouvrir();
-    const boutons = screen.getAllByRole('button', { name: /generer \(ia, simule\)/i });
+    await ouvrirScene1();
+    const boutons = screen.getAllByRole('button', { name: /generer l’image \(ia, simule\)/i });
     expect(boutons.length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/animer en video|generer \(ia, simule\)/i).length).toBeGreaterThan(0);
+    expect(document.querySelectorAll('[data-cinema-generation="image"]').length).toBeGreaterThan(0);
   });
 
   describe('mode RÉEL (de vrais crédits sont en jeu)', () => {
+    // Le film de test comporte des ecarts avec son texte (lieu, locuteur) : en mode reel ils
+    // bloquent toute generation payante tant qu'ils ne sont pas acceptes (voir `fidelite.ts`).
+    const accepterLesEcarts = () => {
+      (film as { ecartsAcceptes?: string[] }).ecartsAcceptes = ecartsBloquants(film as never).map((e) => e.cle);
+    };
+    beforeEach(accepterLesEcarts);
+    afterEach(() => { delete (film as { ecartsAcceptes?: string[] }).ecartsAcceptes; });
+
+    it('un ecart critique NON accepte : le bouton paye n’ouvre aucune confirmation et dit pourquoi', async () => {
+      delete (film as { ecartsAcceptes?: string[] }).ecartsAcceptes;
+      expect(ecartsBloquants(film as never).length).toBeGreaterThan(0);
+      generationModeForce = 'reelle';
+      await ouvrir();
+      await ouvrirScene1();
+      fireEvent.click(document.querySelector('[data-cinema-generation="image"]') as HTMLButtonElement);
+      expect(screen.queryByRole('group', { name: /confirmer la generation payante/i })).toBeNull();
+      expect(document.body.textContent).toMatch(/ecart\(s\) avec votre histoire a valider avant toute generation payante/);
+      expect(appels.some((a) => a.url.includes('/generation'))).toBe(false);
+    });
+
     it('le coût en crédits est affiché SUR le bouton, avant tout clic', async () => {
       generationModeForce = 'reelle';
       await ouvrir();
+    await ouvrirScene1();
       // Le prix vient de `/api/tarifs` (5 crédits/image dans ce test), jamais inventé par l'écran.
       expect(screen.getAllByText(/5 crédits?/i).length).toBeGreaterThan(0);
     });
@@ -193,6 +245,7 @@ describe('page Cinema IA — production asynchrone', () => {
       generationModeForce = 'reelle';
       const confirmSpy = vi.spyOn(window, 'confirm');
       await ouvrir();
+    await ouvrirScene1();
       const bouton = document.querySelector('[data-cinema-generation="image"]') as HTMLButtonElement;
       expect(bouton).toBeTruthy();
       fireEvent.click(bouton);
@@ -208,6 +261,7 @@ describe('page Cinema IA — production asynchrone', () => {
     it('annuler la confirmation n’envoie AUCUNE requête — rien n’est dépensé', async () => {
       generationModeForce = 'reelle';
       await ouvrir();
+    await ouvrirScene1();
       const bouton = document.querySelector('[data-cinema-generation="image"]') as HTMLButtonElement;
       fireEvent.click(bouton);
       const groupe = await screen.findByRole('group', { name: /confirmer la generation payante/i });
@@ -235,6 +289,7 @@ describe('page Cinema IA — production asynchrone', () => {
     generationIaActive = true; // mode 'simulee'
     const confirmSpy = vi.spyOn(window, 'confirm');
     await ouvrir();
+    await ouvrirScene1();
     const bouton = document.querySelector('[data-cinema-generation="image"]') as HTMLButtonElement;
     fireEvent.click(bouton);
     await waitFor(() => expect(appels.some((a) => a.url.includes('/generation') && a.method === 'POST')).toBe(true));
@@ -248,6 +303,7 @@ describe('page Cinema IA — production asynchrone', () => {
     const ecoute = vi.fn();
     window.addEventListener('studiio:credits-changed', ecoute);
     await ouvrir();
+    await ouvrirScene1();
     const bouton = document.querySelector('[data-cinema-generation="image"]') as HTMLButtonElement;
     fireEvent.click(bouton);
     await screen.findByText(/generation image en cours/i);
@@ -260,6 +316,7 @@ describe('page Cinema IA — production asynchrone', () => {
   it('un echec de generation qui a quand meme pris des credits le DIT, rembourses ou non', async () => {
     generationIaActive = true;
     await ouvrir();
+    await ouvrirScene1();
     fireEvent.click(document.querySelector('[data-cinema-generation="image"]') as HTMLButtonElement);
     await screen.findByText(/generation image en cours/i);
     generationsFilm = [{ ...generationsFilm[0], statut: 'echouee', erreur: 'Replicate (image) : generation refusee par le fournisseur', creditsPris: 5, creditsRembourses: true }];
@@ -277,6 +334,7 @@ describe('page Cinema IA — production asynchrone', () => {
     const planId = film.scenes[0].plans[0].id;
     generationsFilm = [{ id: 'gen-9', planId, operation: 'image', mode: 'simulee', statut: 'en_cours', creeLe: new Date(Date.now() - 42_000).toISOString(), majLe: new Date().toISOString() }];
     await ouvrir();
+    await ouvrirScene1();
     expect(await screen.findByText(/generation image en cours · 4\d s/i)).toBeTruthy();
     const boutons = [...document.querySelectorAll('[data-cinema-generation]')] as HTMLButtonElement[];
     expect(boutons.length).toBeGreaterThan(0);
@@ -290,12 +348,14 @@ describe('page Cinema IA — production asynchrone', () => {
     generationIaActive = true;
     reponses['/generation'] = () => ({ ok: false, enCours: true, erreur: 'une generation est deja en cours', generation: { id: 'gen-x', planId: film.scenes[0].plans[0].id, operation: 'image', mode: 'simulee', statut: 'en_cours', creeLe: new Date().toISOString(), majLe: new Date().toISOString() } });
     await ouvrir();
+    await ouvrirScene1();
     fireEvent.click(document.querySelector('[data-cinema-generation="image"]') as HTMLButtonElement);
     expect(await screen.findByText(/generation image en cours/i)).toBeTruthy();
   });
 
   it('une erreur de lancement (plafond) est affichee telle quelle', async () => {
     await ouvrir();
+    await allerA(5);
     reponses['/produire'] = () => ({ ok: false, erreur: 'plafond depasse : 2.00 $' });
     fireEvent.click(screen.getByRole('button', { name: /exporter le film/i }));
     await waitFor(() => expect(screen.getByText(/plafond depasse/)).toBeTruthy());
@@ -322,6 +382,7 @@ describe('suppression d\'un film — deux gestes, erreur visible', () => {
     reponses.delete = () => ({ ok: false, erreur: 'un rendu est en cours : arretez-le avant de supprimer le film' });
     reponses.deleteStatus = () => 409;
     await ouvrir();
+    await allerA(5);
     fireEvent.click(screen.getByRole('button', { name: /supprimer ce film/i }));
     fireEvent.click(screen.getByRole('button', { name: /confirmer la suppression/i }));
     expect((await screen.findByRole('alert')).textContent).toMatch(/un rendu est en cours/);
@@ -376,6 +437,7 @@ describe('l’aperçu s’agrandit sans rien perdre', () => {
 
     const titre = () => screen.getByPlaceholderText('Titre du film') as HTMLInputElement;
     fireEvent.change(titre(), { target: { value: 'Mon titre a moi' } });
+    await allerApercu();
 
     const agrandir = screen.getByLabelText(/Agrandir/i);
     fireEvent.click(agrandir);
@@ -391,11 +453,13 @@ describe('l’aperçu s’agrandit sans rien perdre', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).toBeNull();
     // La saisie du formulaire n'a pas bougé : la fenêtre vit dans le même arbre React.
+    fireEvent.click(screen.getByRole('button', { name: /^Etape 1 sur 5/ }));
     expect(titre().value).toBe('Mon titre a moi');
   });
 
   it('le bouton de retour referme aussi, et le défilement de la page est rendu', async () => {
     await ouvrir();
+    await allerApercu();
     fireEvent.click(screen.getByLabelText(/Agrandir/i));
     expect(document.body.style.overflow).toBe('hidden');
     fireEvent.click(within(screen.getByRole('dialog')).getByLabelText(/Reduire/i));
@@ -439,6 +503,7 @@ describe('l’aperçu s’agrandit sans rien perdre', () => {
 describe('l’aperçu agrandi sort du contexte d’empilement de la colonne', () => {
   it('la fenetre est rendue directement dans <body>, pas dans la colonne collante', async () => {
     await ouvrir();
+    await allerApercu();
     fireEvent.click(screen.getByLabelText(/Agrandir/i));
     const fenetre = screen.getByRole('dialog');
     expect(fenetre.parentElement).toBe(document.body);
@@ -470,6 +535,7 @@ describe('le bouton d’agrandissement est toujours visible', () => {
 
   it('avec un montage : le bouton actif remplace le bouton desactive, au meme endroit', async () => {
     await ouvrir();
+    await allerApercu();
     expect(screen.queryByLabelText(/agrandi sera disponible/i)).toBeNull();
     const actif = screen.getByLabelText('Agrandir l’apercu');
     expect(actif.getAttribute('aria-disabled')).toBeNull();

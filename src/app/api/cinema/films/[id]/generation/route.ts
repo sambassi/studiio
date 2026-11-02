@@ -30,6 +30,7 @@ import { devisGeneration } from '@/lib/cinema/generation/couts';
 import { regimeCinema, evaluerQuota } from '@/lib/cinema/abonnement/regime';
 import { messageRefus } from '@/lib/cinema/abonnement/quotas';
 import { refusBudgetProjet } from '@/lib/cinema/abonnement/devis';
+import { auditFidelite, ecartsBloquants } from '@/lib/cinema/fidelite';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -65,6 +66,20 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       { ok: false, erreur: 'la generation de medias par IA n’est pas disponible sur ce serveur' },
       { status: 409 },
     );
+  }
+
+  // Fidelite a l'histoire : aucune generation PAYANTE tant qu'un ecart critique (phrase perdue,
+  // lieu ou locuteur devine, personnage hors casting) n'est ni corrige ni accepte par
+  // l'utilisateur. Cote serveur : l'ecran peut etre contourne, pas ce garde-fou. Le mode simule
+  // est gratuit et n'est pas concerne.
+  if (choix.mode === 'reelle') {
+    const bloquants = ecartsBloquants(film as never, auditFidelite(film as never));
+    if (bloquants.length > 0) {
+      return NextResponse.json({
+        ok: false, fidelite: true, ecarts: bloquants.map((e) => ({ cle: e.cle, detail: e.detail })),
+        erreur: `${bloquants.length} ecart(s) avec votre histoire a valider avant toute generation payante — rien n’a ete lance ni debite`,
+      }, { status: 409 });
+    }
   }
 
   // Le client peut rabaisser le plafond, jamais le relever.
