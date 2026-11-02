@@ -40,6 +40,8 @@ let generationModeForce: 'reelle' | null;
 
 beforeEach(() => {
   appels = [];
+  // La methode (IA / mes medias) se choisit a l'etape Scenes ; ces tests partent d'un film dont elle est deja choisie.
+  try { localStorage.clear(); localStorage.setItem('studiio.cinema.methode.' + film.id, 'ia'); } catch { /* sans stockage */ }
   generationsFilm = [];
   etatTravail = null;
   reponses = {};
@@ -229,7 +231,7 @@ describe('page Cinema IA — production asynchrone', () => {
       await ouvrirScene1();
       fireEvent.click(document.querySelector('[data-cinema-generation="image"]') as HTMLButtonElement);
       expect(screen.queryByRole('group', { name: /confirmer la generation payante/i })).toBeNull();
-      expect(document.body.textContent).toMatch(/ecart\(s\) avec votre histoire a valider avant toute generation payante/);
+      expect(document.body.textContent).toMatch(/point à vérifier dans ton histoire avant de créer des images payantes/);
       expect(appels.some((a) => a.url.includes('/generation'))).toBe(false);
     });
 

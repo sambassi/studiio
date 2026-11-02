@@ -15,6 +15,8 @@ const film = { ...preparerFilm({ histoire: PHRASES.join(' '), nbScenes: 5, perso
 let generations: Array<Record<string, unknown>> = [];
 
 beforeEach(() => {
+  // La methode (IA / mes medias) se choisit a l'etape Scenes ; ces tests partent d'un film dont elle est deja choisie.
+  try { localStorage.clear(); localStorage.setItem('studiio.cinema.methode.' + film.id, 'ia'); } catch { /* sans stockage */ }
   generations = [];
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);

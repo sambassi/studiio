@@ -82,8 +82,8 @@ describe('câblage : le serveur refuse, l’écran ne propose pas', () => {
   it('l’écran n’affiche AUCUN bouton « Generer » tant que le serveur ne l’autorise pas', () => {
     const p = src('src/app/dashboard/cinema/page.tsx');
     expect(p).toContain('setGenerationIa(data.generationIa === true)');
-    expect(p).toContain('{generationIa && !plan.media && (');
-    expect(p).toContain("{generationIa && plan.media?.genre === 'image' && (");
+    expect(p).toContain("{generationIa && methode === 'ia' && !plan.media && (");
+    expect(p).toContain("{generationIa && methode === 'ia' && plan.media?.genre === 'image' && (");
     // Aucun bouton de génération hors de cette condition.
     for (const m of p.matchAll(/Generer l’image \(IA, simule\)|Animer en video \(IA, simule\)/g)) {
       expect(p.slice(Math.max(0, m.index! - 900), m.index!)).toContain('generationIa &&');

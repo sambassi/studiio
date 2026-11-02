@@ -939,3 +939,26 @@ Les ajouter est un import de fichier gratuit. Cliquer un portrait lie / delie le
 
 **Cadre.** Il suit le VRAI format du media (`object-fit: contain`) : une video 16:9 reste entiere dans un projet 9:16.
 Sur ordinateur, la colonne grandit (36 vw, 360 a 520 px) ; sur mobile elle reste une bande compacte.
+
+
+## 27. Etape 3 « Donnons vie a ton histoire » : deux choix, un parcours
+
+**Le choix.** A l'arrivee, deux cartes seulement : « Creer les images avec l'IA » (Sparkles) et « Utiliser mes images ou
+videos » (Upload). Ni scene ni reglage avant le choix. Choisir une methode est un affichage (`methode`, retenue par film
+dans le navigateur ; un film qui a deja des medias retrouve la sienne) : AUCUNE requete, AUCUNE depense au clic.
+
+**IA.** Pas de generation groupee : le moteur genere un visuel a la fois, le parcours aussi. Le panneau annonce le nombre de
+visuels, le cout previsionnel (nombre x prix, jamais debite avant confirmation de chaque image), les points a verifier
+(ecarts critiques, qui bloquent toujours cote serveur) et guide vers « le premier visuel ». En mode simule, il dit
+« demonstration gratuite : visuels de test, pas de vraies images ». Les icones de generation n'existent que dans cette methode.
+
+**Mes medias.** Le meme storyboard ; l'apercu vide propose « Ajouter une image ou une video » pour le visuel selectionne et
+l'image apparait aussitot dans le lecteur unique.
+
+**Langage.** « N visuels a preparer », « Visuels prets », « a mettre a jour » (avec le motif), « N points a verifier dans ton
+histoire ». « Image 2 sur 3 » n'apparait que dans Options avancees. Chaque point critique (`fidelite.ts`) a un `detail`
+(ce qui se passe et pourquoi), un `conseil` (que faire dans son histoire) et une `consequence` (ce qui arrive si on
+l'accepte) ; les boutons sont « Modifier mon histoire » et « Accepter ainsi » — jamais une acceptation aveugle.
+
+**Continuer.** Le pied de page dit ce qui manque (« N visuels a preparer · tu peux continuer » ou « N points a verifier »)
+et ne bloque pas la navigation ; il n'envoie rien.

@@ -35,6 +35,8 @@ let appels: Array<{ url: string; method: string; corps?: any }>;
 
 beforeEach(() => {
   film = fabriquer();
+  // La methode (IA / mes medias) se choisit a l'etape Scenes ; ces tests partent d'un film dont elle est deja choisie.
+  try { localStorage.clear(); localStorage.setItem('studiio.cinema.methode.' + film.id, 'import'); } catch { /* sans stockage */ }
   appels = [];
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input); const method = init?.method ?? 'GET';
@@ -108,7 +110,7 @@ describe('UN SEUL apercu, a droite', () => {
 
   it('une scene a plusieurs plans : un seul cadre, des numeros discrets pour naviguer', async () => {
     await ouvrirScenes();
-    const nav = within(apercu()).getByRole('group', { name: /Plans de la scene/ });
+    const nav = within(apercu()).getByRole('group', { name: /Visuels de la scene/ });
     const plans = within(nav).getAllByRole('button');
     expect(plans.length).toBe(film.scenes[0].plans.length);
     expect(plans.length).toBeGreaterThan(1);
@@ -117,12 +119,12 @@ describe('UN SEUL apercu, a droite', () => {
     expect(apercu().getAttribute('data-plan-id')).toBe(film.scenes[0].plans[1].id);
     // Le plan 2 n'a pas de media : etat neutre explicite, pas de couleur unie presentee comme un film.
     expect(apercu().querySelector('[data-etat="sans-media"]')).not.toBeNull();
-    expect(apercu().textContent).toMatch(/Aucun media pour ce plan/);
+    expect(apercu().textContent).toMatch(/Cette scène n’a pas encore d’image/);
   });
 
   it('le plan courant est propre a chaque scene', async () => {
     await ouvrirScenes();
-    fireEvent.click(within(apercu()).getAllByRole('button', { name: /^Plan 2 sur/ })[0]);
+    fireEvent.click(within(apercu()).getAllByRole('button', { name: /^Visuel 2$/ })[0]);
     fireEvent.click(screen.getByLabelText(/Selectionner la scene 2 :/));
     expect(apercu().getAttribute('data-plan-id')).toBe(film.scenes[1].plans[0].id);
     fireEvent.click(screen.getByLabelText(/Selectionner la scene 1 :/));
@@ -144,7 +146,8 @@ describe('miniatures a gauche', () => {
   it('une seule liste compacte, avec numero, titre court, statut', async () => {
     await ouvrirScenes();
     expect(carte(1).textContent).toMatch(/01 · /);
-    expect(carte(1).textContent).toMatch(/Brouillon|Validee|A reproduire/);
+    expect(carte(1).textContent).toMatch(/visuels? à préparer|Visuels prêts/);
+    expect(carte(1).textContent).not.toMatch(/\d\/\d media|Brouillon|A reproduire|Plan \d/);
     expect(document.querySelectorAll('[data-storyboard="scenes"]')).toHaveLength(1);
     // Aucun outil tant qu'on n'a pas clique : la liste reste compacte.
     expect(document.querySelectorAll('[id^="outils-"]')).toHaveLength(0);
@@ -153,7 +156,7 @@ describe('miniatures a gauche', () => {
 
 describe('un media dit d’ou il vient', () => {
   it('un fichier importe est « importe » ; le fournisseur simule est une SIMULATION, jamais « importe »', () => {
-    expect(provenanceMedia(MEDIA_IMPORT)).toMatchObject({ cle: 'import', libelle: 'Media importe' });
+    expect(provenanceMedia(MEDIA_IMPORT)).toMatchObject({ cle: 'import', libelle: 'Ton média importé' });
     expect(provenanceMedia(MEDIA_SIMULE).cle).toBe('simule');
     expect(provenanceMedia(MEDIA_SIMULE).libelle).toMatch(/Simulation locale/);
     expect(provenanceMedia(MEDIA_SIMULE).libelle).not.toMatch(/importe/i);
@@ -165,7 +168,7 @@ describe('un media dit d’ou il vient', () => {
     await ouvrirScenes();
     fireEvent.click(screen.getByLabelText(/Selectionner la scene 2 :/));
     expect(apercu().textContent).toMatch(/Simulation/);
-    expect(apercu().querySelector('[data-provenance="simule"]')!.textContent).toMatch(/Simulation locale \(aplat de couleur\)/);
+    expect(apercu().querySelector('[data-provenance="simule"]')!.textContent).toMatch(/Simulation locale \(aplat de couleur, pas une vraie image\)/);
     expect(apercu().querySelector('[data-provenance="import"]')).toBeNull();
     // Le cadre suit le VRAI format du media (9:16), pas celui du projet (16:9).
     expect(apercu().querySelector('[data-ratio-media]')!.getAttribute('data-ratio-media')).toBe('0.563');
@@ -182,7 +185,7 @@ describe('l’apercu de scene : cadre au format reel, jamais deforme', () => {
   it('sans media dans un projet 9:16 : cadre neutre 16:9 (pas un grand rectangle vertical), etat explicite', () => {
     render(<ApercuScene filmId="f" scene={{ ...scene, plans: [{ ...scene.plans[0], media: null }] }} planIndex={0} surPlan={() => {}} agrandi={false} surAgrandir={() => {}} surReduire={() => {}} />);
     expect(document.querySelector('[data-ratio-media]')!.getAttribute('data-ratio-media')).toBe('1.778');
-    expect(document.body.textContent).toMatch(/Aucun media pour ce plan/);
+    expect(document.body.textContent).toMatch(/Cette scène n’a pas encore d’image/);
     expect(document.querySelector('video, img')).toBeNull();
   });
   it('agrandi : une fenetre dans <body>, Echap referme, aucun menu de telechargement natif', () => {
@@ -293,7 +296,7 @@ describe('editeur du plan : peu d’outils, des icones nommees', () => {
     const avances = document.querySelectorAll('details[data-avance="scene"]');
     expect(avances).toHaveLength(1);
     expect((avances[0] as HTMLDetailsElement).open).toBe(false);
-    expect(avances[0].textContent).toMatch(/Duree/);
+    expect(avances[0].textContent).toMatch(/Image \d sur \d/);
     expect(avances[0].textContent).toMatch(/Photos de reference/);
   });
 

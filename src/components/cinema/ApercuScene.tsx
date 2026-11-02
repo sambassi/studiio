@@ -31,10 +31,10 @@ export interface SceneAffichee { id: string; index: number; titre: string; plans
 
 /** D'ou vient ce media, en un mot honnete. */
 export function provenanceMedia(m: MediaScene | null): { cle: 'aucun' | 'import' | 'simule' | 'genere'; libelle: string } {
-  if (!m) return { cle: 'aucun', libelle: 'Aucun media' };
-  if (m.origine !== 'genere') return { cle: 'import', libelle: 'Media importe' };
-  if (m.fournisseurGeneration === 'simule') return { cle: 'simule', libelle: 'Simulation locale (aplat de couleur)' };
-  return { cle: 'genere', libelle: 'Genere par IA' };
+  if (!m) return { cle: 'aucun', libelle: 'Pas encore d’image' };
+  if (m.origine !== 'genere') return { cle: 'import', libelle: 'Ton média importé' };
+  if (m.fournisseurGeneration === 'simule') return { cle: 'simule', libelle: 'Simulation locale (aplat de couleur, pas une vraie image)' };
+  return { cle: 'genere', libelle: 'Image créée par l’IA' };
 }
 
 export const urlMediaPlan = (filmId: string, planId: string) => `/api/cinema/films/${filmId}/medias/${planId}`;
@@ -66,7 +66,7 @@ function FenetreMedia({ titre, children, surFermer }: { titre: string; children:
 }
 
 export default function ApercuScene({
-  filmId, scene, planIndex, surPlan, agrandi, surAgrandir, surReduire,
+  filmId, scene, planIndex, surPlan, agrandi, surAgrandir, surReduire, actionVide,
 }: {
   filmId: string;
   scene: SceneAffichee;
@@ -75,6 +75,8 @@ export default function ApercuScene({
   agrandi: boolean;
   surAgrandir: () => void;
   surReduire: () => void;
+  /** Dans l'etat vide : l'action adaptee a la methode choisie (importer, preparer l'IA, choisir). */
+  actionVide?: React.ReactNode;
 }) {
   const i = Math.min(Math.max(0, planIndex), Math.max(0, scene.plans.length - 1));
   const plan = scene.plans[i];
@@ -119,11 +121,11 @@ export default function ApercuScene({
           <span className="tabular-nums text-violet-300">{String(scene.index + 1).padStart(2, '0')}</span> · {scene.titre}
         </h2>
         {scene.plans.length > 1 && (
-          <div role="group" aria-label="Plans de la scene" className="flex shrink-0 items-center gap-1">
+          <div role="group" aria-label="Visuels de la scene" className="flex shrink-0 items-center gap-1">
             {scene.plans.map((p, k) => (
               <button
                 key={p.id} type="button" onClick={() => surPlan(k)}
-                aria-pressed={k === i} aria-label={`Plan ${k + 1} sur ${scene.plans.length}`} title={`Plan ${k + 1}`}
+                aria-pressed={k === i} aria-label={`Visuel ${k + 1}`} title={`Visuel ${k + 1}`}
                 className={`h-6 min-w-6 rounded border px-1 text-[11px] tabular-nums transition-colors ${k === i ? 'border-violet-400 bg-violet-500/20 text-violet-100' : p.media ? 'border-slate-600 text-slate-300 hover:border-violet-500/50' : 'border-slate-800 text-slate-500 hover:border-slate-600'}`}
               >
                 {k + 1}
@@ -137,15 +139,14 @@ export default function ApercuScene({
         {media && src ? lecteur(false) : (
           <div className="flex h-full w-full flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-slate-700 bg-slate-950/60 px-3 text-center" data-etat="sans-media">
             <ImageOff className="h-5 w-5 text-slate-500" aria-hidden="true" />
-            <p className="text-sm font-medium text-slate-300">Aucun media pour ce plan</p>
+            <p className="text-sm font-medium text-slate-300">Cette scène n’a pas encore d’image.</p>
             <p className="line-clamp-2 text-[11px] text-slate-500">{plan?.dialogue?.texte ?? plan?.description}</p>
+            {actionVide}
           </div>
         )}
       </div>
 
-      <p className="mt-2 truncate text-[11px] text-slate-500" data-provenance={prov.cle}>
-        Plan {i + 1}/{scene.plans.length} · {prov.libelle}
-      </p>
+      <p className="mt-2 truncate text-[11px] text-slate-500" data-provenance={prov.cle}>{prov.libelle}</p>
 
       {agrandi && media && src && (
         <FenetreMedia titre={`${titre}, plan ${i + 1}`} surFermer={surReduire}>
