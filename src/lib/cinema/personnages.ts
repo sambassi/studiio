@@ -28,6 +28,18 @@ export const VOIX_PAR_DEFAUT = ['fr-FR-DeniseNeural', 'fr-FR-HenriNeural'] as co
 /** Voix du narrateur quand une replique n'appartient a personne. */
 export const VOIX_NARRATEUR = 'fr-FR-VivienneMultilingualNeural';
 
+/**
+ * Les voix que Cinema IA sait lire (les trois voix francaises DEJA VERIFIEES du projet, gratuites,
+ * celles de `voix.ts`). Un personnage = une voix, la meme dans toutes ses scenes.
+ */
+export const VOIX_FILM: ReadonlyArray<{ id: string; libelle: string }> = [
+  { id: 'fr-FR-DeniseNeural', libelle: 'Denise (voix féminine)' },
+  { id: 'fr-FR-HenriNeural', libelle: 'Henri (voix masculine)' },
+  { id: 'fr-FR-VivienneMultilingualNeural', libelle: 'Vivienne (voix féminine, posée)' },
+];
+/** Voix par defaut des NOUVEAUX films a modes audio : distinctes tant qu'il y a des voix libres. */
+export const voixDistincte = (index: number): string => VOIX_FILM[index % VOIX_FILM.length].id;
+
 export function creerPersonnage(
   entree: EntreePersonnage,
   index = 0,

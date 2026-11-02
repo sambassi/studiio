@@ -974,3 +974,29 @@ confirmation. Bloque (et dit pourquoi) : moteur indisponible, creation deja en c
 en mode reel. « Aucun style impose » n'est jamais bloquant. Le serveur re-verifie tout (plafonds, ecarts, solde) ; son message
 s'affiche dans la fenetre, qui reste ouverte. « Confirmer » s'eteint au 1er appel (double clic neutre). Mode simule : 0 credit,
 annonce comme demonstration.
+
+
+## 29. Deux modes audio exclusifs : « les personnages parlent » / « une voix raconte l'histoire »
+
+**Donnees.** `film.modeAudio` (`personnages` | `narrateur`) ; absent = film d'AVANT, qui garde son systeme historique (narration +
+repliques, reglage `narration`) tant que son proprietaire n'a pas choisi un mode. `dialogue.locuteurConfirme` : l'utilisateur a
+choisi qui dit la replique. `personnage.voix` existait deja (une voix par personnage, la meme dans toutes ses scenes).
+
+**La regle unique** (`audio.ts : voixAJouer`, pure, partagee par la synthese `voix.ts` et le montage) :
+- `personnages` : seules les repliques sont lues, avec la voix de LEUR personnage ; jamais de narrateur ; les actions restent muettes ;
+  une replique au locuteur ambigu n'est pas lue ;
+- `narrateur` : seules les phrases de recit sont lues (voix off) ; les repliques s'affichent mais ne sont pas lues ; aucun texte n'est ajoute ;
+- sans mode : comportement historique inchange.
+
+**Locuteur.** Le decoupage lit le locuteur HORS de la citation (`scenario.ts : locuteurNomme`) : « Karim répond : « Bonjour Maya » » est
+dit par Karim (un bug attribuait cette replique a Maya). Sans nom hors citation, la replique est AMBIGUE : l'ecran demande « Qui dit
+cette replique ? » (`PATCH plans[].locuteur`) ; jamais d'attribution au hasard.
+
+**Ecrans.** Etape Histoire : deux cartes (mode propose d'apres le texte tant qu'on n'a pas clique). Etape Personnages : une voix par
+personnage (liste de 3 voix francaises verifiees ; distinctes par defaut ; alerte si deux personnages partagent la meme). Etape
+Aperçu : mode affiche et modifiable (`PATCH modeAudio`, sans perte d'histoire/personnages/dialogues ; seules les scenes concernees
+deviennent « a reproduire »), problemes expliques (`fidelite.ts : diagnosticAudio`), ancien reglage Avec/Sans narration visible
+UNIQUEMENT pour un film d'avant.
+
+**Synchronisation labiale : non disponible dans Cinema IA.** Le pipeline (Remotion : media + texte + voix) ne fait pas bouger les
+levres ; les avatars synchronises existent ailleurs dans Studiio (Mon avatar) mais ne sont pas relies a Cinema IA. L'ecran le dit.

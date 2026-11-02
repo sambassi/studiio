@@ -21,7 +21,7 @@
  * Rien ici ne corrige le film : un audit propose, l'utilisateur decide. Aucun appel, aucun
  * cout. Les ecarts ne sont PAS des erreurs : ce sont des choix a valider.
  */
-import { personnagesCites, phrases } from '@/lib/cinema/scenario';
+import { locuteurNomme, phrases } from '@/lib/cinema/scenario';
 import { diagnostiquerProposition } from '@/lib/cinema/redaction';
 import type { Film, PlanCinema, SceneCinema } from '@/lib/cinema/types';
 
@@ -92,6 +92,20 @@ function ecart(e: { genre: GenreEcart; detail: string; conseil?: string; consequ
   return { ...e, critique: CRITIQUES.has(e.genre), cle: `${e.genre}|${e.sceneId ?? ''}|${e.planId ?? ''}|${e.detail}`.slice(0, 400) };
 }
 
+/**
+ * Cette replique a-t-elle un locuteur AMBIGU ? Oui quand le texte ne nomme personne HORS de la citation
+ * (ou en nomme un autre que celui attribue) et que l'utilisateur n'a pas choisi qui parle. Le moteur
+ * lui a donne un locuteur par defaut (rotation) : ce n'est qu'une valeur par defaut, jamais une
+ * attribution — elle n'est ni lue, ni presentee comme sure.
+ */
+export function locuteurAmbigu(film: Film, plan: PlanCinema): boolean {
+  const d = plan.dialogue;
+  if (!d || d.genre !== 'replique') return false;
+  if (d.locuteurConfirme) return false;
+  if (!d.personnageId) return true;
+  return locuteurNomme(plan.description, film.personnages) !== d.personnageId;
+}
+
 /** Les ecarts d'UNE scene — utilise par l'audit complet et par la carte de scene. */
 export function ecartsScene(film: Film, scene: SceneCinema): EcartFidelite[] {
   const out: EcartFidelite[] = [];
@@ -124,9 +138,10 @@ export function ecartsScene(film: Film, scene: SceneCinema): EcartFidelite[] {
       continue;
     }
     const d = plan.dialogue;
-    if (d && d.genre === 'replique' && d.personnageId) {
-      const nommes = personnagesCites(plan.description, film.personnages);
-      if (!nommes.includes(d.personnageId)) {
+    // Qui parle compte seulement si la replique est LUE avec une voix de personnage (film historique ou
+    // mode « les personnages parlent ») ; en mode « une voix raconte », les repliques ne sont pas lues.
+    if (d && d.genre === 'replique' && d.personnageId && film.modeAudio !== 'narrateur' && locuteurAmbigu(film, plan)) {
+      {
         const qui = film.personnages.find((p) => p.id === d.personnageId)?.nom ?? 'un personnage';
         out.push(ecart({
           genre: 'locuteur_devine', sceneId: scene.id, planId: plan.id,
@@ -140,7 +155,9 @@ export function ecartsScene(film: Film, scene: SceneCinema): EcartFidelite[] {
     if (d && d.genre === 'narration') {
       out.push(ecart({
         genre: 'narration', sceneId: scene.id, planId: plan.id,
-        detail: 'Cette phrase décrit une action : elle est lue en narration et n’est attribuée à aucun personnage.',
+        detail: film.modeAudio === 'personnages'
+          ? 'Cette phrase décrit une action : elle reste muette (aucun narrateur) et n’est attribuée à aucun personnage.'
+          : 'Cette phrase décrit une action : elle est lue en narration et n’est attribuée à aucun personnage.',
       }));
     }
   }
@@ -223,4 +240,66 @@ export function resumeFidelite(r: RapportFidelite): string {
   if (r.fidele && r.ecarts.length === 0) return `Vos ${r.total} phrases sont conservees, dans l’ordre.`;
   if (r.fidele) return `Vos ${r.total} phrases sont conservees, dans l’ordre · ${r.ecarts.length} point(s) a valider.`;
   return `${r.retrouvees} phrase(s) sur ${r.total} retrouvees — ${r.total - r.retrouvees} manquante(s).`;
+}
+
+
+/** Un probleme de voix, avec son explication et ce que l'utilisateur peut faire. */
+export interface ProblemeAudio {
+  code: 'aucune_replique' | 'aucun_recit' | 'locuteur_ambigu' | 'voix_partagee';
+  /** Ce qui se passe, et pourquoi. */
+  message: string;
+  /** Ce que l'on peut faire. */
+  conseil: string;
+  /** Les plans concernes (repliques ambigues). */
+  planIds?: string[];
+}
+
+/**
+ * CE QUE LE MODE CHOISI PEUT LIRE — et ce qui l'en empeche. Pur, sans ecriture. Un film historique
+ * (sans `modeAudio`) n'a aucun diagnostic : son comportement audio n'est pas touche.
+ */
+export function diagnosticAudio(film: Film): ProblemeAudio[] {
+  const mode = film.modeAudio;
+  if (!mode) return [];
+  const plans = film.scenes.flatMap((s) => s.plans as PlanCinema[]);
+  const repliques = plans.filter((p) => p.dialogue?.genre === 'replique');
+  const recits = plans.filter((p) => p.dialogue?.genre === 'narration');
+  const out: ProblemeAudio[] = [];
+  if (mode === 'personnages') {
+    if (repliques.length === 0) {
+      out.push({
+        code: 'aucune_replique',
+        message: 'Ton histoire n’a aucune réplique entre guillemets : personne ne parlerait dans ce film.',
+        conseil: 'Ajoute des répliques entre guillemets (par exemple Maya dit : « Bonjour »), ou choisis « Une voix raconte l’histoire ».',
+      });
+    }
+    const ambigus = repliques.filter((p) => locuteurAmbigu(film, p));
+    if (ambigus.length > 0) {
+      out.push({
+        code: 'locuteur_ambigu',
+        message: `${ambigus.length === 1 ? 'Une réplique ne dit' : `${ambigus.length} répliques ne disent`} pas qui parle : ${ambigus.length === 1 ? 'elle ne sera pas lue' : 'elles ne seront pas lues'} tant que tu n’as pas choisi.`,
+        conseil: 'Choisis qui dit chaque réplique, ou écris le prénom devant elle dans ton histoire.',
+        planIds: ambigus.map((p) => p.id),
+      });
+    }
+    const parlants = new Set(repliques.filter((p) => !locuteurAmbigu(film, p)).map((p) => p.dialogue!.personnageId));
+    const voix = new Map<string, string[]>();
+    for (const p of film.personnages) if (parlants.has(p.id)) voix.set(p.voix, [...(voix.get(p.voix) ?? []), p.nom]);
+    for (const noms of voix.values()) {
+      if (noms.length > 1) {
+        out.push({
+          code: 'voix_partagee',
+          message: `${noms.join(' et ')} ont la même voix : on ne les distinguera pas à l’écoute.`,
+          conseil: 'Choisis une voix différente pour chacun à l’étape Personnages.',
+        });
+      }
+    }
+  } else if (recits.length === 0) {
+    out.push({
+      code: 'aucun_recit',
+      message: 'Ton histoire n’a aucune phrase de récit (sans guillemets) : la voix n’aurait rien à raconter.',
+      conseil: 'Ajoute des phrases qui décrivent l’action, ou choisis « Les personnages parlent ». Studiio n’écrit jamais de texte à ta place.',
+    });
+  }
+  return out;
 }

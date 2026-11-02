@@ -30,10 +30,12 @@ import ModelesFilm, { type ModeleFilm } from '@/components/cinema/ModelesFilm';
 import AideRedaction from '@/components/cinema/AideRedaction';
 import ApercuExemple, { FenetreExemple, type Exemple } from '@/components/cinema/ApercuExemple';
 import WizardCinema, { TitreEtape, type EtapeWizard } from '@/components/cinema/WizardCinema';
-import { auditFidelite, ecartsBloquants, ecartsScene, phrasesDeLaScene, resumeFidelite, type EcartFidelite } from '@/lib/cinema/fidelite';
+import { auditFidelite, diagnosticAudio, ecartsBloquants, ecartsScene, phrasesDeLaScene, resumeFidelite, type EcartFidelite } from '@/lib/cinema/fidelite';
 import ChoixMouvements from '@/components/cinema/ChoixMouvements';
 import ApercuScene, { provenanceMedia, urlMediaPlan } from '@/components/cinema/ApercuScene';
 import PortraitPersonnage, { aUnePhoto } from '@/components/cinema/PortraitPersonnage';
+import ModeAudioCartes, { LIBELLES_MODE, type ModeAudio } from '@/components/cinema/ModeAudio';
+import { VOIX_FILM, voixDistincte } from '@/lib/cinema/personnages';
 import DialogueGenerationIA, { type DonneesDialogue, type Verification } from '@/components/cinema/DialogueGenerationIA';
 import { styleCinema as styleDe } from '@/lib/cinema/direction/styles';
 import { MediaDuPlan, EmplacementVide, Storyboard, appliquerDemo, bilanMedias } from '@/components/cinema/ApercuStoryboard';
@@ -58,7 +60,7 @@ interface GenerationApi {
   statut: 'en_cours' | 'reussie' | 'echouee' | 'interrompue'; creeLe: string; majLe: string;
   erreur?: string | null; creditsPris?: number; creditsRembourses?: boolean;
 }
-interface FilmApi { narration?: boolean; id: string; titre: string; histoire?: string; format: string; qualite: string; personnages: PersonnageApi[]; scenes: SceneApi[]; generations?: GenerationApi[]; styleCinema?: IdStyleCinema; directionActive?: boolean; ecartsAcceptes?: string[] }
+interface FilmApi { modeAudio?: ModeAudio; narration?: boolean; id: string; titre: string; histoire?: string; format: string; qualite: string; personnages: PersonnageApi[]; scenes: SceneApi[]; generations?: GenerationApi[]; styleCinema?: IdStyleCinema; directionActive?: boolean; ecartsAcceptes?: string[] }
 /** La generation active du film (une seule a la fois, decide par le serveur). */
 const generationActiveDe = (f: FilmApi | null) => f?.generations?.find((g) => g.statut === 'en_cours') ?? null;
 /** La derniere generation d'un plan, quelle qu'en soit l'issue. */
@@ -116,10 +118,17 @@ export default function CinemaPage() {
   const [exempleAgrandi, setExempleAgrandi] = useState(false);
   const [styleAvantFilm, setStyleAvantFilm] = useState<IdStyleCinema | null>(null);
   const [nbScenes, setNbScenes] = useState(4);
-  const [casting, setCasting] = useState([
+  const [casting, setCasting] = useState<Array<{ nom: string; role: string; description: string; urlImage: string; voix?: string }>>([
     { nom: 'Nina', role: 'protagoniste', description: 'cheveux courts, veste rouge', urlImage: '' },
     { nom: 'Marco', role: 'antagoniste', description: 'grand, barbe, ceinture noire', urlImage: '' },
   ]);
+  /**
+   * COMMENT LE FILM EST RACONTE (nouveaux films). `choixModeAudio` = ce que l'utilisateur a cliqué ;
+   * sans clic, le mode est PROPOSE d'apres le texte (des guillemets -> les personnages parlent ; sinon
+   * une voix raconte) et dit « propose d'apres ton texte ». Un film charge garde SON mode — ou n'en a
+   * pas (film d'avant) et garde alors son ancien comportement audio.
+   */
+  const [choixModeAudio, setChoixModeAudio] = useState<ModeAudio | null>(null);
 
   /**
    * LES CHAMPS SONT-ILS ENCORE CEUX DE L'EXEMPLE D'ORIGINE ?
@@ -249,6 +258,14 @@ export default function CinemaPage() {
 
   /** Le style montre a l'ecran : celui du film ouvert, sinon celui choisi avant sa creation. */
   const styleAffiche: IdStyleCinema | null = film ? (film.styleCinema ?? null) : styleAvantFilm;
+  // Le mode propose d'apres le texte : des guillemets -> « les personnages parlent » ; sinon « une voix raconte ».
+  const modeAuto: ModeAudio = /[«"\u201C][^»"\u201D]{2,}[»"\u201D]/.test(histoire) ? 'personnages' : 'narrateur';
+  /** Le mode AFFICHE : celui du film charge (ou aucun : film d'avant), sinon le choix / la proposition. */
+  const modeAudioAffiche: ModeAudio | null = film ? (film.modeAudio ?? null) : (choixModeAudio ?? modeAuto);
+  const choisirModeAudio = (m: ModeAudio) => {
+    // Sur un film existant, c'est un reglage enregistre (l'histoire et le casting ne bougent pas).
+    if (film) void enregistrer({ modeAudio: m }); else setChoixModeAudio(m);
+  };
   /** Plans dont le media genere ne suit plus le style/la camera actuels (le media est conserve). */
   const aRegenerer = new Set(film ? plansARegenerer(film as never).map((x) => x.planId) : []);
   const choisirStyleFilm = (id: IdStyleCinema | null) => {
@@ -259,7 +276,7 @@ export default function CinemaPage() {
   const composer = async () => {
     const data = await appel('/api/cinema/films', {
       method: 'POST',
-      body: JSON.stringify({ titre, histoire, format, qualite, nbScenes, personnages: casting, styleCinema: styleAffiche }),
+      body: JSON.stringify({ titre, histoire, format, qualite, nbScenes, personnages: casting.map((c, i) => ({ ...c, voix: c.voix ?? voixDistincte(i) })), styleCinema: styleAffiche, modeAudio: modeAudioAffiche }),
     }, 'scenario');
     if (data) { setTravail(null); chargerListe(); }
   };
@@ -484,7 +501,7 @@ export default function CinemaPage() {
       setFormat(data.film.format === '9:16' ? '9:16' : '16:9');
       setQualite(data.film.qualite);
       setCasting(data.film.personnages.map((p: PersonnageApi) => ({
-        nom: p.nom, role: p.role,
+        nom: p.nom, role: p.role, voix: p.voix,
         description: p.references.find((x) => x.id === p.referenceActiveId)?.description ?? p.references.at(-1)?.description ?? '',
         urlImage: '',
       })));
@@ -661,6 +678,19 @@ export default function CinemaPage() {
    * normal reste de corriger SON histoire. Un point sans gravite (plan d'ensemble, narration) n'a
    * aucune action : il informe seulement.
    */
+  /** « Qui dit cette replique ? » : un clic pour CHOISIR (jamais d'attribution au hasard). */
+  const choixLocuteur = (planId: string) => film && (
+    <span className="inline-flex flex-wrap items-center gap-1.5" role="group" aria-label="Qui dit cette réplique ?" data-choix-locuteur>
+      <span className="text-slate-300">Qui dit cette réplique ?</span>
+      {film.personnages.map((pp) => (
+        <button key={pp.id} type="button" onClick={() => enregistrer({ plans: [{ id: planId, locuteur: pp.id }] })}
+          aria-label={`${pp.nom} dit cette réplique`}
+          className="rounded-full border border-violet-500/50 px-2.5 py-0.5 text-violet-100 hover:bg-violet-500/10">
+          {pp.nom}
+        </button>
+      ))}
+    </span>
+  );
   const carteEcart = (e: EcartFidelite) => (
     <li key={e.cle} className={`space-y-1 text-[11px] leading-snug ${e.critique ? 'text-amber-200/90' : 'text-slate-400'}`} data-ecart={e.genre}>
       <div className="flex items-start gap-1.5">
@@ -668,7 +698,13 @@ export default function CinemaPage() {
         <span className="min-w-0 flex-1">{e.detail}</span>
       </div>
       {e.critique && e.conseil && <p className="pl-[18px] text-slate-300">Pour le régler : {e.conseil}</p>}
-      {e.critique && (acceptes.has(e.cle) ? (
+      {e.genre === 'locuteur_devine' && e.planId && (
+        <div className="flex flex-wrap items-center gap-2 pl-[18px]">
+          {choixLocuteur(e.planId)}
+          <button type="button" onClick={() => setEtape(0)} className="rounded-lg border border-slate-600 px-2 py-1 text-slate-200 hover:border-violet-500/60">Modifier mon histoire</button>
+        </div>
+      )}
+      {e.critique && e.genre !== 'locuteur_devine' && (acceptes.has(e.cle) ? (
         <p className="flex flex-wrap items-center gap-2 pl-[18px] text-emerald-300">
           <Check className="h-3 w-3" aria-hidden="true" /> Accepté tel quel : {e.consequence}
           <button type="button" onClick={() => retirerAcceptation(e.cle)} aria-label="Retirer l’acceptation" className="underline">Annuler</button>
@@ -947,6 +983,12 @@ export default function CinemaPage() {
               surMontrerExemple={(id) => { setExemple({ type: 'style', id }); setExempleAgrandi(false); }}
               exempleVu={exemple?.type === 'style' ? exemple.id : null}
             />
+            <ModeAudioCartes
+              valeur={modeAudioAffiche}
+              surChoisir={choisirModeAudio}
+              historique={!!film && !film.modeAudio}
+              deduit={!film && choixModeAudio === null}
+            />
           </div>
         )}
 
@@ -960,6 +1002,29 @@ export default function CinemaPage() {
                   <input value={p.nom} onChange={(e) => setCasting(casting.map((c, k) => k === i ? { ...c, nom: e.target.value } : c))} placeholder="Nom" className="min-w-0 rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm" />
                   <input value={p.role} onChange={(e) => setCasting(casting.map((c, k) => k === i ? { ...c, role: e.target.value } : c))} placeholder="Role" className="min-w-0 rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm" />
                   <input value={p.description} onChange={(e) => setCasting(casting.map((c, k) => k === i ? { ...c, description: e.target.value } : c))} placeholder="Apparence (reference)" className="col-span-2 rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm" />
+                  {modeAudioAffiche === 'personnages' && (
+                    <label className="col-span-2 flex flex-wrap items-center gap-2 text-xs text-slate-400" data-voix-personnage>
+                      <Mic className="h-3.5 w-3.5 shrink-0 text-violet-300" aria-hidden="true" />
+                      <span>Voix de {p.nom || 'ce personnage'}</span>
+                      <select
+                        value={p.voix ?? voixDistincte(i)}
+                        aria-label={`Voix de ${p.nom || `personnage ${i + 1}`}`}
+                        onChange={(e) => {
+                          const voix = e.target.value;
+                          setCasting(casting.map((c, k) => k === i ? { ...c, voix } : c));
+                          // Un film existant : la voix est enregistree (la meme dans toutes ses scenes).
+                          const pf = film?.personnages[i];
+                          if (film && pf) void enregistrer({ voix: [{ personnageId: pf.id, voix }] });
+                        }}
+                        className="min-w-0 rounded bg-slate-950 border border-slate-700 px-2 py-1 text-slate-200"
+                      >
+                        {VOIX_FILM.map((v) => <option key={v.id} value={v.id}>{v.libelle}</option>)}
+                      </select>
+                      {casting.some((c, k) => k !== i && (c.voix ?? voixDistincte(k)) === (p.voix ?? voixDistincte(i)) && c.nom && p.nom) && (
+                        <span className="text-amber-300" data-voix-partagee>Même voix qu’un autre personnage : choisis-en une autre pour les distinguer.</span>
+                      )}
+                    </label>
+                  )}
                 </div>
               ))}
             </div>
@@ -1459,6 +1524,58 @@ export default function CinemaPage() {
                 )}
 
                 {(() => {
+                  const mode = film.modeAudio ?? null;
+                  const problemes = diagnosticAudio(film as never);
+                  const plansFilm = film.scenes.flatMap((sc) => sc.plans);
+                  return (
+                    <section className="mt-4 rounded-lg border border-slate-800 bg-slate-900/40 p-4" data-reglage="mode-audio">
+                      <h3 className="mb-1 flex items-center gap-2 text-sm font-semibold text-slate-200">
+                        <Mic className="h-4 w-4 text-violet-300" aria-hidden="true" /> Comment ton film est raconté
+                      </h3>
+                      <p className="text-xs text-slate-300" data-mode-actuel>
+                        {mode
+                          ? `${LIBELLES_MODE[mode].titre} — ${LIBELLES_MODE[mode].phrase}`
+                          : 'Ancien réglage : le récit et les répliques sont lus (film créé avant les deux nouveaux modes). Rien ne change tant que tu ne choisis pas un mode.'}
+                      </p>
+                      <div role="radiogroup" aria-label="Changer le mode audio" className="mt-2 flex flex-wrap gap-2">
+                        {(['personnages', 'narrateur'] as const).map((m) => (
+                          <button key={m} type="button" role="radio" aria-checked={mode === m}
+                            onClick={() => { if (mode !== m) void enregistrer({ modeAudio: m }); }}
+                            className={`rounded-lg border px-2.5 py-1.5 text-xs ${mode === m ? 'border-violet-500/70 bg-violet-500/15 text-violet-100' : 'border-slate-700 text-slate-300 hover:border-violet-500/40'}`}>
+                            {LIBELLES_MODE[m].titre}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="mt-1.5 text-[11px] text-slate-500">Changer de mode ne touche ni ton histoire, ni tes personnages, ni tes dialogues : seul le son des scènes concernées sera refait.</p>
+                      {mode === 'personnages' && (
+                        <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-slate-400" data-limite-labiale>
+                          <Info className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+                          Les personnages parlent avec leur voix, mais leurs lèvres ne bougent pas en synchronisation : Cinema IA ne fait pas de synchronisation labiale.
+                        </p>
+                      )}
+                      {problemes.length > 0 && (
+                        <ul className="mt-3 space-y-2" data-problemes-audio>
+                          {problemes.map((pb) => (
+                            <li key={pb.code} className="space-y-1 text-[11px] leading-snug text-amber-200/90" data-probleme-audio={pb.code}>
+                              <p className="flex items-start gap-1.5"><AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" /> {pb.message}</p>
+                              <p className="pl-[18px] text-slate-300">Pour le régler : {pb.conseil}</p>
+                              {pb.planIds?.map((id) => {
+                                const pl = plansFilm.find((x) => x.id === id);
+                                return pl ? (
+                                  <div key={id} className="flex flex-wrap items-center gap-2 pl-[18px] text-slate-300">
+                                    <span className="italic">« {pl.dialogue?.texte} »</span> {choixLocuteur(id)}
+                                  </div>
+                                ) : null;
+                              })}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </section>
+                  );
+                })()}
+
+                {!film.modeAudio && (() => {
                   const nbRecit = film.scenes.reduce((n, sc) => n + sc.plans.filter((pl) => pl.dialogue?.genre === 'narration').length, 0);
                   const avec = film.narration !== false;
                   return (

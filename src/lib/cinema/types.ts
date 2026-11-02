@@ -89,6 +89,12 @@ export interface Dialogue {
   texte: string;
   /** Duree ESTIMEE au debit de parole, jamais imposee a la voix. */
   dureeS: number;
+  /**
+   * L'utilisateur a CHOISI qui dit cette replique (ou confirme l'attribution). Sans cela, une
+   * replique dont le texte ne nomme pas le locuteur reste AMBIGUE : en mode « les personnages
+   * parlent », elle n'est pas lue tant qu'on n'a pas dit qui parle — jamais de voix au hasard.
+   */
+  locuteurConfirme?: true;
 }
 
 export type GenreMedia = 'image' | 'video';
@@ -230,6 +236,15 @@ export interface Film {
    * d'avant). Les repliques des personnages ne dependent JAMAIS de ce reglage.
    */
   narration?: boolean;
+  /**
+   * COMMENT LE FILM EST RACONTE — deux modes exclusifs, choisis a l'etape Histoire :
+   *   - `personnages` : chaque personnage dit ses repliques avec SA voix ; aucun narrateur, les actions
+   *     et descriptions restent muettes ;
+   *   - `narrateur` : une voix off lit le RECIT ecrit par l'utilisateur ; les repliques ne sont pas lues.
+   * ABSENT = film d'avant (systeme historique : narration + repliques, reglage `narration`) : il garde
+   * son comportement audio tant que son proprietaire n'a pas choisi explicitement l'un des deux modes.
+   */
+  modeAudio?: 'personnages' | 'narrateur';
 }
 
 export interface BudgetApprouve {

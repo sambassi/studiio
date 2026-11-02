@@ -120,6 +120,26 @@ export function citation(phrase: string): string | null {
   return m ? m[1].trim() : null;
 }
 
+/** La phrase SANS sa citation : « Karim répond : » — c'est la que se nomme celui qui parle. */
+export function horsCitation(phrase: string): string {
+  return phrase.replace(/[«"\u201C]\s*[^»"\u201D]{2,}\s*[»"\u201D]/, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Qui dit cette replique, d'apres le TEXTE : le premier personnage nomme HORS de la citation.
+ * Un nom qui n'apparait QUE dans la citation (« Bonjour Maya ») est celui a qui l'on parle, pas
+ * celui qui parle. Aucun nom hors citation : `null` — le locuteur est ambigu, on ne le devine pas.
+ */
+export function locuteurNomme(phrase: string, casting: readonly Personnage[]): string | null {
+  const reste = horsCitation(phrase);
+  let meilleur: { id: string; i: number } | null = null;
+  for (const p of casting) {
+    const m = new RegExp(`\\b${p.nom.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').exec(reste);
+    if (m && (meilleur === null || m.index < meilleur.i)) meilleur = { id: p.id, i: m.index };
+  }
+  return meilleur ? meilleur.id : null;
+}
+
 /** Les personnages cites dans un texte, dans l'ordre du casting. */
 export function personnagesCites(texte: string, casting: readonly Personnage[]): string[] {
   return casting
@@ -192,8 +212,10 @@ export function decouperHistoire(entree: EntreeScenario): Film {
       // personnage ne s'affiche au-dessus.
       const dite = citation(ligne);
       const nommes = personnagesCites(ligne, entree.casting);
+      // Le locuteur vient du texte HORS citation ; sans lui, l'attribution par rotation n'est qu'une
+      // VALEUR PAR DEFAUT du plan : elle est signalee comme ambigue (`fidelite.ts`) et jamais lue.
       const parlant = dite
-        ? (nommes[0] ?? (distribution.length ? distribution[k % distribution.length] : null))
+        ? (locuteurNomme(ligne, entree.casting) ?? (distribution.length ? distribution[k % distribution.length] : null))
         : null;
       const texte = dite ?? ligne;
       plans.push({
