@@ -14,6 +14,7 @@ import { modeGenerationAffiche } from '@/lib/cinema/garde';
 import { presenterMontage } from '@/lib/cinema/stockage/presentation';
 import type { FormatFilm, NiveauQualite } from '@/lib/cinema/types';
 import { estStyleCinema } from '@/lib/cinema/direction/styles';
+import { VOIX_FILM, voixDistincte } from '@/lib/cinema/personnages';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -53,6 +54,11 @@ export async function POST(req: NextRequest) {
   if (styleCinema !== null && !estStyleCinema(styleCinema)) {
     return NextResponse.json({ ok: false, erreur: 'style de film inconnu' }, { status: 400 });
   }
+  // Mode audio d'un NOUVEAU film : « personnages » ou « narrateur ». Absent = systeme historique.
+  const modeAudio = corps?.modeAudio === undefined || corps.modeAudio === null ? null : corps.modeAudio;
+  if (modeAudio !== null && modeAudio !== 'personnages' && modeAudio !== 'narrateur') {
+    return NextResponse.json({ ok: false, erreur: 'mode audio inconnu (personnages ou narrateur attendu)' }, { status: 400 });
+  }
   const personnages = Array.isArray(corps?.personnages) ? corps.personnages.slice(0, 6) : [];
   if (personnages.length === 0) {
     return NextResponse.json({ ok: false, erreur: 'au moins un personnage est requis' }, { status: 400 });
@@ -71,6 +77,8 @@ export async function POST(req: NextRequest) {
       nom: String(p?.nom ?? '').slice(0, 40),
       role: String(p?.role ?? '').slice(0, 40),
       description: String(p?.description ?? '').slice(0, 300),
+      // Voix : seulement celles de la liste du film ; en mode audio, distinctes par defaut (un personnage = une voix).
+      voix: VOIX_FILM.some((x) => x.id === p?.voix) ? p.voix : undefined,
       // Aucune adresse libre a la creation : l'image d'un personnage
       // s'importe ensuite par POST …/references.
       urlImage: null,
@@ -79,6 +87,14 @@ export async function POST(req: NextRequest) {
 
   // Le style n'entre PAS dans le decoupage du scenario : il se pose sur le film fini.
   if (styleCinema) film.styleCinema = styleCinema;
+  if (modeAudio) {
+    film.modeAudio = modeAudio;
+    // Voix distinctes par defaut pour ceux dont l'utilisateur n'a pas choisi la voix.
+    film.personnages = film.personnages.map((pp, i) => {
+      const choisie = personnages.filter((x: any) => String(x?.nom ?? '').trim().length > 0)[i]?.voix;
+      return VOIX_FILM.some((x) => x.id === choisie) ? pp : { ...pp, voix: voixDistincte(i) };
+    });
+  }
   // Film neuf : camera AUTOMATIQUE par defaut (un film d'avant n'a pas ce drapeau).
   film.directionActive = true;
 

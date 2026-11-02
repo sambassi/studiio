@@ -68,7 +68,7 @@ describe('les fabrications du moteur sont DITES, pas masquees', () => {
     for (const s of f.scenes) {
       const e = ecartsScene(f, s).filter((x) => x.genre === 'plan_ajoute');
       expect(e, s.id).toHaveLength(1);
-      expect(e[0].detail).toMatch(/ne vient pas de votre texte/);
+      expect(e[0].detail).toMatch(/ne vient pas de ton texte/);
       expect(e[0].planId).toBe(s.plans[0].id);
     }
   });
@@ -79,7 +79,10 @@ describe('les fabrications du moteur sont DITES, pas masquees', () => {
     expect(neutres.length).toBeGreaterThan(0);
     const r = auditFidelite(f);
     expect(r.ecarts.filter((e) => e.genre === 'lieu_substitue').length).toBe(neutres.length);
-    expect(r.ecarts.find((e) => e.genre === 'lieu_substitue')!.detail).toMatch(/Nommez un lieu/);
+    expect(r.ecarts.find((e) => e.genre === 'lieu_substitue')!.detail).toMatch(/ne dit pas où se passe cette scène/);
+    // Chaque point critique dit quoi faire et ce qui arrivera si on l'accepte tel quel.
+    expect(r.ecarts.find((e) => e.genre === 'lieu_substitue')!.conseil).toMatch(/Cite le lieu/);
+    expect(r.ecarts.find((e) => e.genre === 'lieu_substitue')!.consequence).toMatch(/décor neutre/);
   });
 
   it('une replique sans nom : le locuteur devine est signale, avec le prenom attribue', () => {
@@ -87,7 +90,9 @@ describe('les fabrications du moteur sont DITES, pas masquees', () => {
     const r = auditFidelite(f);
     const devine = r.ecarts.filter((e) => e.genre === 'locuteur_devine');
     expect(devine.length).toBeGreaterThan(0);
-    expect(devine[0].detail).toMatch(/Studiio l’a attribuee a (Nina|Marco)/);
+    expect(devine[0].detail).toMatch(/Studiio l’a attribuée à (Nina|Marco)/);
+    expect(devine[0].conseil).toMatch(/Écris le prénom/);
+    expect(devine[0].consequence).toMatch(/(Nina|Marco) dira cette réplique/);
     expect(devine[0].planId).toBeTruthy();
   });
 
@@ -102,7 +107,8 @@ describe('les fabrications du moteur sont DITES, pas masquees', () => {
     const hors = r.ecarts.filter((e) => e.genre === 'personnage_hors_casting');
     expect(hors).toHaveLength(1);
     expect(hors[0].detail).toMatch(/Sofia/);
-    expect(hors[0].detail).toMatch(/aucun plan/);
+    expect(hors[0].detail).toMatch(/n’apparaîtra dans aucune image/);
+    expect(hors[0].conseil).toMatch(/Ajoute-le à l’étape Personnages/);
   });
 
   it('l’audit ne modifie RIEN : c’est une lecture', () => {
@@ -123,7 +129,8 @@ describe('gravite des ecarts, scenes inventees, narration et acceptation explici
     expect(f.scenes.length).toBeGreaterThanOrEqual(3);
     expect(inventees.length).toBe(f.scenes.length - 1);
     expect(inventees.every((e) => e.critique)).toBe(true);
-    expect(inventees[0].detail).toMatch(/aucune phrase de votre texte/);
+    expect(inventees[0].detail).toMatch(/aucune phrase de ton texte/);
+    expect(inventees[0].conseil).toMatch(/Ajoute une ou deux phrases/);
   });
 
   it('une histoire assez longue, lieux nommes, personnages au casting : aucun ecart critique', () => {

@@ -16,6 +16,7 @@ import type { Cadrage, Film, FormatFilm, MediaPlan } from '@/lib/cinema/types';
 // qui ouvre des fichiers.
 import { TAILLES, cadrage, dureePlanAvecMedia } from '@/lib/cinema/types';
 import { apparencePourPrompt } from '@/lib/cinema/personnages';
+import { voixAJouer } from '@/lib/cinema/audio';
 
 /** Palette Studiio — violet primaire, rose accent. Aucune couleur d'une autre marque. */
 export const PALETTE: Array<[string, string]> = [
@@ -85,7 +86,7 @@ export function monterFilm(film: Film, voix: VoixParPlan = {}): MontageFilm {
       // propre duree (voir `dureePlanAvecMedia`).
       const duree = Math.max(0.5, Math.round(dureePlanAvecMedia(plan, plan.media) * 10) / 10);
       // Sans narration, une phrase de recit reste affichee mais muette : ni voix, ni genre « narration ».
-      const sansVoix = film.narration === false && plan.dialogue?.genre === 'narration';
+      const sansVoix = !!plan.dialogue && voixAJouer(film, plan) === null;
       segments.push({
         sceneId: scene.id,
         sceneIndex: scene.index,

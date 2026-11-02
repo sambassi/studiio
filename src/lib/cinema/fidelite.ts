@@ -21,7 +21,7 @@
  * Rien ici ne corrige le film : un audit propose, l'utilisateur decide. Aucun appel, aucun
  * cout. Les ecarts ne sont PAS des erreurs : ce sont des choix a valider.
  */
-import { personnagesCites, phrases } from '@/lib/cinema/scenario';
+import { locuteurNomme, phrases } from '@/lib/cinema/scenario';
 import { diagnostiquerProposition } from '@/lib/cinema/redaction';
 import type { Film, PlanCinema, SceneCinema } from '@/lib/cinema/types';
 
@@ -47,8 +47,12 @@ const CRITIQUES: ReadonlySet<GenreEcart> = new Set<GenreEcart>([
 
 export interface EcartFidelite {
   genre: GenreEcart;
-  /** Ce que l'utilisateur doit lire : une phrase, pas un code. */
+  /** Ce qui se passe, et pourquoi : une phrase, pas un code. */
   detail: string;
+  /** Ce que l'utilisateur peut faire pour regler le point a la source (dans son histoire). */
+  conseil?: string;
+  /** Ce qui arrivera s'il l'accepte tel quel : on n'accepte jamais « en aveugle ». */
+  consequence?: string;
   sceneId?: string;
   planId?: string;
   /** Vrai : bloque la generation payante tant que non resolu ni accepte. */
@@ -84,8 +88,22 @@ export const DECOR_NEUTRE = 'un decor neutre';
 const normaliser = (s: string) => s.replace(/\s+/g, ' ').trim();
 
 /** Construit un ecart avec sa gravite et sa cle : le seul endroit ou ils se decident. */
-function ecart(e: { genre: GenreEcart; detail: string; sceneId?: string; planId?: string }): EcartFidelite {
+function ecart(e: { genre: GenreEcart; detail: string; conseil?: string; consequence?: string; sceneId?: string; planId?: string }): EcartFidelite {
   return { ...e, critique: CRITIQUES.has(e.genre), cle: `${e.genre}|${e.sceneId ?? ''}|${e.planId ?? ''}|${e.detail}`.slice(0, 400) };
+}
+
+/**
+ * Cette replique a-t-elle un locuteur AMBIGU ? Oui quand le texte ne nomme personne HORS de la citation
+ * (ou en nomme un autre que celui attribue) et que l'utilisateur n'a pas choisi qui parle. Le moteur
+ * lui a donne un locuteur par defaut (rotation) : ce n'est qu'une valeur par defaut, jamais une
+ * attribution — elle n'est ni lue, ni presentee comme sure.
+ */
+export function locuteurAmbigu(film: Film, plan: PlanCinema): boolean {
+  const d = plan.dialogue;
+  if (!d || d.genre !== 'replique') return false;
+  if (d.locuteurConfirme) return false;
+  if (!d.personnageId) return true;
+  return locuteurNomme(plan.description, film.personnages) !== d.personnageId;
 }
 
 /** Les ecarts d'UNE scene — utilise par l'audit complet et par la carte de scene. */
@@ -97,32 +115,39 @@ export function ecartsScene(film: Film, scene: SceneCinema): EcartFidelite[] {
   if (plans.length > 0 && plans.every((p) => PLAN_AJOUTE.test(p.description))) {
     out.push(ecart({
       genre: 'scene_inventee', sceneId: scene.id,
-      detail: `Cette scene ne correspond a aucune phrase de votre texte : elle a ete ajoutee pour atteindre le minimum de scenes. Allongez votre histoire, ou acceptez cette scene generique.`,
+      detail: 'Cette scène ne correspond à aucune phrase de ton texte : Studiio l’a ajoutée pour avoir au moins 3 scènes.',
+      conseil: 'Ajoute une ou deux phrases à ton histoire, puis recompose le scénario.',
+      consequence: 'Cette scène sera une scène générique, sans rapport avec ton récit.',
     }));
     return out;
   }
   if (scene.lieu === DECOR_NEUTRE) {
     out.push(ecart({
       genre: 'lieu_substitue', sceneId: scene.id,
-      detail: 'Aucun lieu reconnu dans votre texte : le plan d’ensemble parle d’« un decor neutre ». Nommez un lieu pour l’imposer, ou acceptez ce decor.',
+      detail: 'Ton histoire ne dit pas où se passe cette scène : Studiio utiliserait « un decor neutre ».',
+      conseil: 'Cite le lieu dans la phrase (par exemple « dans la salle »), puis recompose le scénario.',
+      consequence: 'Les images de cette scène seront créées dans un décor neutre, choisi par Studiio.',
     }));
   }
   for (const plan of scene.plans as PlanCinema[]) {
     if (PLAN_AJOUTE.test(plan.description)) {
       out.push(ecart({
         genre: 'plan_ajoute', sceneId: scene.id, planId: plan.id,
-        detail: `Plan ajoute par Studiio pour ouvrir la scene : « ${plan.description} ». Il ne vient pas de votre texte.`,
+        detail: `Studiio ouvre chaque scène par un plan d’ensemble (« ${plan.description} »). Il ne vient pas de ton texte.`,
       }));
       continue;
     }
     const d = plan.dialogue;
-    if (d && d.genre === 'replique' && d.personnageId) {
-      const nommes = personnagesCites(plan.description, film.personnages);
-      if (!nommes.includes(d.personnageId)) {
+    // Qui parle compte seulement si la replique est LUE avec une voix de personnage (film historique ou
+    // mode « les personnages parlent ») ; en mode « une voix raconte », les repliques ne sont pas lues.
+    if (d && d.genre === 'replique' && d.personnageId && film.modeAudio !== 'narrateur' && locuteurAmbigu(film, plan)) {
+      {
         const qui = film.personnages.find((p) => p.id === d.personnageId)?.nom ?? 'un personnage';
         out.push(ecart({
           genre: 'locuteur_devine', sceneId: scene.id, planId: plan.id,
-          detail: `La replique n’indique pas qui parle : Studiio l’a attribuee a ${qui}. Ecrivez le prenom devant la replique pour decider, ou acceptez cette attribution.`,
+          detail: `La réplique n’indique pas qui parle : Studiio l’a attribuée à ${qui}.`,
+          conseil: 'Écris le prénom devant la réplique pour décider toi-même qui parle.',
+          consequence: `${qui} dira cette réplique dans le film.`,
         }));
       }
     }
@@ -130,7 +155,9 @@ export function ecartsScene(film: Film, scene: SceneCinema): EcartFidelite[] {
     if (d && d.genre === 'narration') {
       out.push(ecart({
         genre: 'narration', sceneId: scene.id, planId: plan.id,
-        detail: 'Cette phrase decrit une action : elle est lue en narration, et n’est attribuee a aucun personnage.',
+        detail: film.modeAudio === 'personnages'
+          ? 'Cette phrase décrit une action : elle reste muette (aucun narrateur) et n’est attribuée à aucun personnage.'
+          : 'Cette phrase décrit une action : elle est lue en narration et n’est attribuée à aucun personnage.',
       }));
     }
   }
@@ -154,7 +181,12 @@ export function auditFidelite(film: Film): RapportFidelite {
   const ecarts: EcartFidelite[] = [];
   for (const l of liens) {
     if (l.planId === null) {
-      ecarts.push(ecart({ genre: 'phrase_absente', detail: `Cette phrase n’apparait dans aucun plan : « ${l.phrase} ».` }));
+      ecarts.push(ecart({
+        genre: 'phrase_absente',
+        detail: `Cette phrase de ton histoire n’apparaît dans aucune scène : « ${l.phrase} ».`,
+        conseil: 'Recompose le scénario depuis ton texte pour la retrouver.',
+        consequence: 'Cette phrase ne sera pas dans le film.',
+      }));
     }
   }
 
@@ -162,7 +194,12 @@ export function auditFidelite(film: Film): RapportFidelite {
   const rangs = liens.map((l) => l.rang).filter((r): r is number => r !== null);
   const ordreRespecte = rangs.every((r, i) => i === 0 || r > rangs[i - 1]);
   if (!ordreRespecte) {
-    ecarts.push(ecart({ genre: 'ordre_change', detail: 'L’ordre des phrases a change entre votre texte et les plans.' }));
+    ecarts.push(ecart({
+      genre: 'ordre_change',
+      detail: 'L’ordre des phrases n’est plus celui de ton histoire.',
+      conseil: 'Recompose le scénario depuis ton texte pour retrouver l’ordre d’origine.',
+      consequence: 'Le film racontera les événements dans un autre ordre que ton texte.',
+    }));
   }
 
   for (const scene of film.scenes) ecarts.push(...ecartsScene(film, scene));
@@ -172,7 +209,9 @@ export function auditFidelite(film: Film): RapportFidelite {
   for (const nom of inconnus) {
     ecarts.push(ecart({
       genre: 'personnage_hors_casting',
-      detail: `« ${nom} » est nomme dans votre histoire mais absent du casting : il n’apparaitra dans aucun plan. Ajoutez-le a l’etape Personnages.`,
+      detail: `« ${nom} » est cité dans ton histoire mais n’est pas dans tes personnages : il n’apparaîtra dans aucune image.`,
+      conseil: 'Ajoute-le à l’étape Personnages, puis recompose le scénario.',
+      consequence: `${nom} sera absent du film.`,
     }));
   }
 
@@ -201,4 +240,66 @@ export function resumeFidelite(r: RapportFidelite): string {
   if (r.fidele && r.ecarts.length === 0) return `Vos ${r.total} phrases sont conservees, dans l’ordre.`;
   if (r.fidele) return `Vos ${r.total} phrases sont conservees, dans l’ordre · ${r.ecarts.length} point(s) a valider.`;
   return `${r.retrouvees} phrase(s) sur ${r.total} retrouvees — ${r.total - r.retrouvees} manquante(s).`;
+}
+
+
+/** Un probleme de voix, avec son explication et ce que l'utilisateur peut faire. */
+export interface ProblemeAudio {
+  code: 'aucune_replique' | 'aucun_recit' | 'locuteur_ambigu' | 'voix_partagee';
+  /** Ce qui se passe, et pourquoi. */
+  message: string;
+  /** Ce que l'on peut faire. */
+  conseil: string;
+  /** Les plans concernes (repliques ambigues). */
+  planIds?: string[];
+}
+
+/**
+ * CE QUE LE MODE CHOISI PEUT LIRE — et ce qui l'en empeche. Pur, sans ecriture. Un film historique
+ * (sans `modeAudio`) n'a aucun diagnostic : son comportement audio n'est pas touche.
+ */
+export function diagnosticAudio(film: Film): ProblemeAudio[] {
+  const mode = film.modeAudio;
+  if (!mode) return [];
+  const plans = film.scenes.flatMap((s) => s.plans as PlanCinema[]);
+  const repliques = plans.filter((p) => p.dialogue?.genre === 'replique');
+  const recits = plans.filter((p) => p.dialogue?.genre === 'narration');
+  const out: ProblemeAudio[] = [];
+  if (mode === 'personnages') {
+    if (repliques.length === 0) {
+      out.push({
+        code: 'aucune_replique',
+        message: 'Ton histoire n’a aucune réplique entre guillemets : personne ne parlerait dans ce film.',
+        conseil: 'Ajoute des répliques entre guillemets (par exemple Maya dit : « Bonjour »), ou choisis « Une voix raconte l’histoire ».',
+      });
+    }
+    const ambigus = repliques.filter((p) => locuteurAmbigu(film, p));
+    if (ambigus.length > 0) {
+      out.push({
+        code: 'locuteur_ambigu',
+        message: `${ambigus.length === 1 ? 'Une réplique ne dit' : `${ambigus.length} répliques ne disent`} pas qui parle : ${ambigus.length === 1 ? 'elle ne sera pas lue' : 'elles ne seront pas lues'} tant que tu n’as pas choisi.`,
+        conseil: 'Choisis qui dit chaque réplique, ou écris le prénom devant elle dans ton histoire.',
+        planIds: ambigus.map((p) => p.id),
+      });
+    }
+    const parlants = new Set(repliques.filter((p) => !locuteurAmbigu(film, p)).map((p) => p.dialogue!.personnageId));
+    const voix = new Map<string, string[]>();
+    for (const p of film.personnages) if (parlants.has(p.id)) voix.set(p.voix, [...(voix.get(p.voix) ?? []), p.nom]);
+    for (const noms of voix.values()) {
+      if (noms.length > 1) {
+        out.push({
+          code: 'voix_partagee',
+          message: `${noms.join(' et ')} ont la même voix : on ne les distinguera pas à l’écoute.`,
+          conseil: 'Choisis une voix différente pour chacun à l’étape Personnages.',
+        });
+      }
+    }
+  } else if (recits.length === 0) {
+    out.push({
+      code: 'aucun_recit',
+      message: 'Ton histoire n’a aucune phrase de récit (sans guillemets) : la voix n’aurait rien à raconter.',
+      conseil: 'Ajoute des phrases qui décrivent l’action, ou choisis « Les personnages parlent ». Studiio n’écrit jamais de texte à ta place.',
+    });
+  }
+  return out;
 }

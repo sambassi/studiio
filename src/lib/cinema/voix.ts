@@ -19,6 +19,9 @@ import os from 'os';
 import { mkdir, writeFile, stat } from 'fs/promises';
 import path from 'path';
 import type { Film } from '@/lib/cinema/types';
+import { voixAJouer } from '@/lib/cinema/audio';
+
+export { voixAJouer };
 import { VOIX_NARRATEUR } from '@/lib/cinema/personnages';
 
 /**
@@ -210,8 +213,9 @@ export async function synthetiserFilm(
     for (const plan of scene.plans) {
       const replique = plan.dialogue?.texte?.trim();
       if (!replique) continue;
-      // Film SANS narration : les phrases de recit ne sont pas lues. Les repliques, si.
-      if (film.narration === false && plan.dialogue?.genre === 'narration') continue;
+      // Qui lit ce plan ? Une seule regle (`voixAJouer`) : muet, voix du personnage ou voix off.
+      const voixPlan = voixAJouer(film, plan);
+      if (voixPlan === null) continue;
       const fichierAttendu = path.join(dossier, `${plan.id}.mp3`);
       const urlAttendue = path.posix.join(relatif.split(path.sep).join('/'), `${plan.id}.mp3`);
       // Un fichier deja la est repris tel quel : resynthetiser une replique
@@ -228,7 +232,7 @@ export async function synthetiserFilm(
       }
       if (filtre && !filtre.has(scene.id)) continue;
       try {
-        const audio = await produire(replique, voixDuPlan(film, plan.dialogue?.personnageId ?? null));
+        const audio = await produire(replique, voixPlan);
         const fichier = path.join(dossier, `${plan.id}.mp3`);
         await writeFile(fichier, audio);
         const url = path.posix.join(relatif.split(path.sep).join('/'), `${plan.id}.mp3`);

@@ -17,9 +17,9 @@ import {
   Clapperboard, Users, Wand2, Link2, Play, Pause, Download,
   Info, Loader2, Plus, Trash2, RefreshCw, CheckCircle2, AlertTriangle,
   ImageIcon, Film, Volume2, VolumeX, Sparkles, X, Check, Circle,
-  ChevronUp, Maximize2, Minimize2, Eye, Shield, Pencil, SlidersHorizontal, Mic, MicOff, ImagePlus,
+  ChevronUp, Maximize2, Minimize2, Eye, Shield, Pencil, SlidersHorizontal, Mic, MicOff, ImagePlus, Upload,
 } from 'lucide-react';
-import { useTarifs, libellePrix } from '@/lib/tarifs/client';
+import { useTarifs, libellePrix, libelleCredits } from '@/lib/tarifs/client';
 import { ratioCadre } from '@/lib/ui/lecteur-generation';
 import QuotaCinema from '@/components/cinema/QuotaCinema';
 import { SelecteurStyleFilm, ExceptionStyleScene, SelecteurCamera, ResumeStyle, PlanAregenerer } from '@/components/cinema/DirectionCinema';
@@ -30,10 +30,14 @@ import ModelesFilm, { type ModeleFilm } from '@/components/cinema/ModelesFilm';
 import AideRedaction from '@/components/cinema/AideRedaction';
 import ApercuExemple, { FenetreExemple, type Exemple } from '@/components/cinema/ApercuExemple';
 import WizardCinema, { TitreEtape, type EtapeWizard } from '@/components/cinema/WizardCinema';
-import { auditFidelite, ecartsBloquants, ecartsScene, phrasesDeLaScene, resumeFidelite } from '@/lib/cinema/fidelite';
+import { auditFidelite, diagnosticAudio, ecartsBloquants, ecartsScene, phrasesDeLaScene, resumeFidelite, type EcartFidelite } from '@/lib/cinema/fidelite';
 import ChoixMouvements from '@/components/cinema/ChoixMouvements';
 import ApercuScene, { provenanceMedia, urlMediaPlan } from '@/components/cinema/ApercuScene';
 import PortraitPersonnage, { aUnePhoto } from '@/components/cinema/PortraitPersonnage';
+import ModeAudioCartes, { LIBELLES_MODE, type ModeAudio } from '@/components/cinema/ModeAudio';
+import { VOIX_FILM, voixDistincte } from '@/lib/cinema/personnages';
+import DialogueGenerationIA, { type DonneesDialogue, type Verification } from '@/components/cinema/DialogueGenerationIA';
+import { styleCinema as styleDe } from '@/lib/cinema/direction/styles';
 import { MediaDuPlan, EmplacementVide, Storyboard, appliquerDemo, bilanMedias } from '@/components/cinema/ApercuStoryboard';
 
 interface SegmentApi {
@@ -56,7 +60,7 @@ interface GenerationApi {
   statut: 'en_cours' | 'reussie' | 'echouee' | 'interrompue'; creeLe: string; majLe: string;
   erreur?: string | null; creditsPris?: number; creditsRembourses?: boolean;
 }
-interface FilmApi { narration?: boolean; id: string; titre: string; histoire?: string; format: string; qualite: string; personnages: PersonnageApi[]; scenes: SceneApi[]; generations?: GenerationApi[]; styleCinema?: IdStyleCinema; directionActive?: boolean; ecartsAcceptes?: string[] }
+interface FilmApi { modeAudio?: ModeAudio; narration?: boolean; id: string; titre: string; histoire?: string; format: string; qualite: string; personnages: PersonnageApi[]; scenes: SceneApi[]; generations?: GenerationApi[]; styleCinema?: IdStyleCinema; directionActive?: boolean; ecartsAcceptes?: string[] }
 /** La generation active du film (une seule a la fois, decide par le serveur). */
 const generationActiveDe = (f: FilmApi | null) => f?.generations?.find((g) => g.statut === 'en_cours') ?? null;
 /** La derniere generation d'un plan, quelle qu'en soit l'issue. */
@@ -114,10 +118,17 @@ export default function CinemaPage() {
   const [exempleAgrandi, setExempleAgrandi] = useState(false);
   const [styleAvantFilm, setStyleAvantFilm] = useState<IdStyleCinema | null>(null);
   const [nbScenes, setNbScenes] = useState(4);
-  const [casting, setCasting] = useState([
+  const [casting, setCasting] = useState<Array<{ nom: string; role: string; description: string; urlImage: string; voix?: string }>>([
     { nom: 'Nina', role: 'protagoniste', description: 'cheveux courts, veste rouge', urlImage: '' },
     { nom: 'Marco', role: 'antagoniste', description: 'grand, barbe, ceinture noire', urlImage: '' },
   ]);
+  /**
+   * COMMENT LE FILM EST RACONTE (nouveaux films). `choixModeAudio` = ce que l'utilisateur a cliqué ;
+   * sans clic, le mode est PROPOSE d'apres le texte (des guillemets -> les personnages parlent ; sinon
+   * une voix raconte) et dit « propose d'apres ton texte ». Un film charge garde SON mode — ou n'en a
+   * pas (film d'avant) et garde alors son ancien comportement audio.
+   */
+  const [choixModeAudio, setChoixModeAudio] = useState<ModeAudio | null>(null);
 
   /**
    * LES CHAMPS SONT-ILS ENCORE CEUX DE L'EXEMPLE D'ORIGINE ?
@@ -247,6 +258,14 @@ export default function CinemaPage() {
 
   /** Le style montre a l'ecran : celui du film ouvert, sinon celui choisi avant sa creation. */
   const styleAffiche: IdStyleCinema | null = film ? (film.styleCinema ?? null) : styleAvantFilm;
+  // Le mode propose d'apres le texte : des guillemets -> « les personnages parlent » ; sinon « une voix raconte ».
+  const modeAuto: ModeAudio = /[«"\u201C][^»"\u201D]{2,}[»"\u201D]/.test(histoire) ? 'personnages' : 'narrateur';
+  /** Le mode AFFICHE : celui du film charge (ou aucun : film d'avant), sinon le choix / la proposition. */
+  const modeAudioAffiche: ModeAudio | null = film ? (film.modeAudio ?? null) : (choixModeAudio ?? modeAuto);
+  const choisirModeAudio = (m: ModeAudio) => {
+    // Sur un film existant, c'est un reglage enregistre (l'histoire et le casting ne bougent pas).
+    if (film) void enregistrer({ modeAudio: m }); else setChoixModeAudio(m);
+  };
   /** Plans dont le media genere ne suit plus le style/la camera actuels (le media est conserve). */
   const aRegenerer = new Set(film ? plansARegenerer(film as never).map((x) => x.planId) : []);
   const choisirStyleFilm = (id: IdStyleCinema | null) => {
@@ -257,7 +276,7 @@ export default function CinemaPage() {
   const composer = async () => {
     const data = await appel('/api/cinema/films', {
       method: 'POST',
-      body: JSON.stringify({ titre, histoire, format, qualite, nbScenes, personnages: casting, styleCinema: styleAffiche }),
+      body: JSON.stringify({ titre, histoire, format, qualite, nbScenes, personnages: casting.map((c, i) => ({ ...c, voix: c.voix ?? voixDistincte(i) })), styleCinema: styleAffiche, modeAudio: modeAudioAffiche }),
     }, 'scenario');
     if (data) { setTravail(null); chargerListe(); }
   };
@@ -338,9 +357,8 @@ export default function CinemaPage() {
    * Un second clic, un second onglet ou un rechargement retrouvent la MEME generation :
    * le serveur n'en accepte qu'une a la fois par film, et ne debite qu'une fois.
    */
-  const lancerGenerationIa = async (planId: string, operation: 'image' | 'video') => {
-    if (!film) return;
-    setConfirmation(null);
+  const lancerGenerationIa = async (planId: string, operation: 'image' | 'video'): Promise<boolean> => {
+    if (!film) return false;
     setEnCours(`generation:${planId}:${operation}`);
     setErreur(null);
     const ctrl = new AbortController();
@@ -359,28 +377,34 @@ export default function CinemaPage() {
         setFilm((f) => (f ? { ...f, generations: [...(f.generations ?? []).filter((g) => g.id !== data.generation.id), data.generation] } : f));
       }
       if (!r.ok && !data?.enCours) throw new Error(data?.erreur ?? `echec (${r.status})`);
+      return true;
     } catch (e) {
       // Un delai ici ne veut PAS dire que rien n'est parti : le sondage dira l'etat reel.
       setErreur(e instanceof Error && e.name === 'AbortError'
         ? 'le serveur tarde a repondre — l’etat de la generation va s’afficher, ne relancez pas'
         : (e instanceof Error ? e.message : 'echec'));
       if (film) rafraichirFilmRef.current?.(film.id);
+      return false;
     } finally {
       clearTimeout(minuteur);
       setEnCours(null);
     }
   };
 
+  /**
+   * « Preparer l'image avec l'IA » / l'etoile d'un visuel : ouvre TOUJOURS la fenetre de preparation
+   * (verifications, cout, confirmation). Rien n'est lance ici ; la fenetre dit aussi POURQUOI elle
+   * bloque, quand elle bloque — un bouton ne reste jamais sans reaction.
+   */
   const genererMedia = (planId: string, operation: 'image' | 'video') => {
-    if (!film || generationActiveDe(film)) return;
-    // Fidelite : aucune generation payante tant qu'un ecart critique n'est pas resolu ou accepte.
-    if (generationMode === 'reelle' && bloquants.length > 0) {
-      setErreur(`${bloquants.length} ecart(s) avec votre histoire a valider avant toute generation payante (etape Apercu).`);
-      return;
-    }
-    // Une generation REELLE depense : deux gestes. La SIMULEE est gratuite : un seul.
-    if (generationMode === 'reelle') { setConfirmation({ planId, operation }); return; }
-    lancerGenerationIa(planId, operation);
+    if (!film) return;
+    setErreur(null);
+    setConfirmation({ planId, operation });
+  };
+  const confirmerDialogueIA = async () => {
+    if (!confirmation) return;
+    const ok = await lancerGenerationIa(confirmation.planId, confirmation.operation);
+    if (ok) setConfirmation(null);
   };
 
   /**
@@ -477,7 +501,7 @@ export default function CinemaPage() {
       setFormat(data.film.format === '9:16' ? '9:16' : '16:9');
       setQualite(data.film.qualite);
       setCasting(data.film.personnages.map((p: PersonnageApi) => ({
-        nom: p.nom, role: p.role,
+        nom: p.nom, role: p.role, voix: p.voix,
         description: p.references.find((x) => x.id === p.referenceActiveId)?.description ?? p.references.at(-1)?.description ?? '',
         urlImage: '',
       })));
@@ -607,8 +631,98 @@ export default function CinemaPage() {
     // Un exemple (style, mouvement) laisse la place au media de la scene choisie.
     setExemple(null); setExempleAgrandi(false);
   };
+
+  /**
+   * LA METHODE choisie a l'etape Scenes : creer avec l'IA, ou utiliser ses propres medias. Un simple
+   * choix d'affichage (rien n'est lance, rien n'est facture) ; il se souvient par film. Un film qui a
+   * deja des medias retrouve sa methode (importes -> « mes medias », generes -> « IA »).
+   */
+  const [methode, setMethode] = useState<'ia' | 'import' | null>(null);
+  const filmIdMethode = film?.id ?? null;
+  useEffect(() => {
+    if (!film) { setMethode(null); return; }
+    let m: 'ia' | 'import' | null = null;
+    try {
+      const v = window.localStorage.getItem(`studiio.cinema.methode.${film.id}`);
+      if (v === 'ia' || v === 'import') m = v;
+    } catch { /* stockage indisponible : on retombe sur le choix explicite */ }
+    if (!m) {
+      const medias = film.scenes.flatMap((sc) => sc.plans).map((pl) => pl.media).filter((x): x is MediaApi => !!x);
+      m = medias.some((x) => x.origine === 'genere') ? 'ia' : medias.length > 0 ? 'import' : null;
+    }
+    setMethode(m);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filmIdMethode]);
+  /** Les visuels (un par plan) qui n'ont pas encore d'image ou de video. */
+  const visuelsAPreparer = film ? film.scenes.reduce((n, sc) => n + sc.plans.filter((pl) => !pl.media).length, 0) : 0;
+  const scenesSansVisuel = film ? film.scenes.filter((sc) => sc.plans.some((pl) => !pl.media)).length : 0;
+  const choisirMethode = (m: 'ia' | 'import' | null) => {
+    setMethode(m);
+    try {
+      if (film) { if (m) window.localStorage.setItem(`studiio.cinema.methode.${film.id}`, m); else window.localStorage.removeItem(`studiio.cinema.methode.${film.id}`); }
+    } catch { /* sans consequence */ }
+  };
+  /** Ouvre le premier visuel qui manque : une selection, jamais une generation. */
+  const allerAuPremierVisuel = () => {
+    if (!film) return;
+    for (const sc of film.scenes) {
+      const k = sc.plans.findIndex((pl) => !pl.media);
+      if (k >= 0) { selectionnerScene(sc.id, true); setPlanParScene((m) => ({ ...m, [sc.id]: k })); return; }
+    }
+  };
   const accepterEcart = (cle: string) => film && enregistrer({ accepter: [...new Set([...(film.ecartsAcceptes ?? []), cle])] });
   const retirerAcceptation = (cle: string) => film && enregistrer({ accepter: (film.ecartsAcceptes ?? []).filter((k: string) => k !== cle) });
+  /**
+   * UN POINT A VERIFIER, en trois temps : ce qui se passe, pourquoi (le constat), ce qu'on peut faire.
+   * On n'accepte jamais « en aveugle » : le bouton dit ce qui arrivera (`consequence`), et le chemin
+   * normal reste de corriger SON histoire. Un point sans gravite (plan d'ensemble, narration) n'a
+   * aucune action : il informe seulement.
+   */
+  /** « Qui dit cette replique ? » : un clic pour CHOISIR (jamais d'attribution au hasard). */
+  const choixLocuteur = (planId: string) => film && (
+    <span className="inline-flex flex-wrap items-center gap-1.5" role="group" aria-label="Qui dit cette réplique ?" data-choix-locuteur>
+      <span className="text-slate-300">Qui dit cette réplique ?</span>
+      {film.personnages.map((pp) => (
+        <button key={pp.id} type="button" onClick={() => enregistrer({ plans: [{ id: planId, locuteur: pp.id }] })}
+          aria-label={`${pp.nom} dit cette réplique`}
+          className="rounded-full border border-violet-500/50 px-2.5 py-0.5 text-violet-100 hover:bg-violet-500/10">
+          {pp.nom}
+        </button>
+      ))}
+    </span>
+  );
+  const carteEcart = (e: EcartFidelite) => (
+    <li key={e.cle} className={`space-y-1 text-[11px] leading-snug ${e.critique ? 'text-amber-200/90' : 'text-slate-400'}`} data-ecart={e.genre}>
+      <div className="flex items-start gap-1.5">
+        {e.critique ? <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" /> : <Info className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />}
+        <span className="min-w-0 flex-1">{e.detail}</span>
+      </div>
+      {e.critique && e.conseil && <p className="pl-[18px] text-slate-300">Pour le régler : {e.conseil}</p>}
+      {e.genre === 'locuteur_devine' && e.planId && (
+        <div className="flex flex-wrap items-center gap-2 pl-[18px]">
+          {choixLocuteur(e.planId)}
+          <button type="button" onClick={() => setEtape(0)} className="rounded-lg border border-slate-600 px-2 py-1 text-slate-200 hover:border-violet-500/60">Modifier mon histoire</button>
+        </div>
+      )}
+      {e.critique && e.genre !== 'locuteur_devine' && (acceptes.has(e.cle) ? (
+        <p className="flex flex-wrap items-center gap-2 pl-[18px] text-emerald-300">
+          <Check className="h-3 w-3" aria-hidden="true" /> Accepté tel quel : {e.consequence}
+          <button type="button" onClick={() => retirerAcceptation(e.cle)} aria-label="Retirer l’acceptation" className="underline">Annuler</button>
+        </p>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2 pl-[18px]">
+          <button type="button" onClick={() => setEtape(0)} className="rounded-lg border border-slate-600 px-2 py-1 text-slate-200 hover:border-violet-500/60">
+            Modifier mon histoire
+          </button>
+          <button type="button" onClick={() => accepterEcart(e.cle)} aria-label={`Accepter cet ecart : ${e.consequence ?? ''}`}
+            title={e.consequence} className="rounded-lg border border-amber-500/40 px-2 py-1 text-amber-200 hover:bg-amber-500/10">
+            Accepter ainsi
+          </button>
+          {e.consequence && <span className="text-slate-500">→ {e.consequence}</span>}
+        </div>
+      ))}
+    </li>
+  );
   const mediasGeneres = film ? film.scenes.flatMap((s) => s.plans).filter((p) => p.media).length : 0;
 
   const etapesWizard: EtapeWizard[] = [
@@ -672,6 +786,60 @@ export default function CinemaPage() {
     </div>
   );
 
+  /** Les donnees de la fenetre de preparation : tout ce qui a ete verifie, et le cout. */
+  const donneesDialogueIA: DonneesDialogue | null = (() => {
+    if (!confirmation || !film) return null;
+    const scene = film.scenes.find((sc) => sc.plans.some((pl) => pl.id === confirmation.planId));
+    const plan = scene?.plans.find((pl) => pl.id === confirmation.planId);
+    if (!scene || !plan) return null;
+    const video = confirmation.operation === 'video';
+    const cle = video ? 'ai.image_to_video' : 'ai.generate_background';
+    const reelle = generationMode === 'reelle';
+    const fermerEtAller = (etapeCible: number) => () => { setConfirmation(null); setEtape(etapeCible); };
+    const v: Verification[] = [];
+    // Le moteur
+    if (!generationIa) v.push({ etat: 'bloque', texte: 'La génération IA est indisponible pour le moment. Tu peux ajouter ton propre média à la place.' });
+    else if (reelle) v.push({ etat: 'ok', texte: 'Le moteur de génération est disponible.' });
+    else v.push({ etat: 'info', texte: 'Mode démonstration : ce visuel de test est gratuit (un aplat de couleur), ce n’est pas une vraie image.' });
+    // Une seule creation a la fois par film
+    if (generationActiveDe(film)) v.push({ etat: 'bloque', texte: 'Une création est déjà en cours pour ce film. Attends qu’elle se termine, puis recommence.' });
+    if (video && plan.media?.genre !== 'image') v.push({ etat: 'bloque', texte: 'Pour animer ce visuel, il faut d’abord une image.' });
+    // Le style
+    const style = film.styleCinema ? styleDe(film.styleCinema)?.libelle : null;
+    v.push(style
+      ? { etat: 'ok', texte: `Style du film : ${style}.` }
+      : { etat: 'info', texte: 'Aucun style imposé : l’image suivra ta description.', action: { libelle: 'Choisir un style', surClic: fermerEtAller(0) } });
+    // Les personnages et leurs photos de reference
+    const presents = film.personnages.filter((pp) => plan.personnages.includes(pp.id));
+    if (presents.length === 0) v.push({ etat: 'info', texte: 'Aucun personnage dans ce visuel.' });
+    else {
+      const sansPhoto = presents.filter((pp) => !aUnePhoto(pp));
+      v.push(sansPhoto.length === 0
+        ? { etat: 'ok', texte: `Personnages : ${presents.map((pp) => pp.nom).join(', ')} (photos de référence utilisées).` }
+        : { etat: 'info', texte: `Personnages : ${presents.map((pp) => pp.nom).join(', ')}. Sans photo de référence : ${sansPhoto.map((pp) => pp.nom).join(', ')} (décrits seulement par leur texte).` });
+    }
+    // Les points a verifier dans l'histoire
+    const nb = bloquants.length;
+    if (nb === 0) v.push({ etat: 'ok', texte: 'Aucun point critique à vérifier dans ton histoire.' });
+    else if (reelle) {
+      v.push({ etat: 'bloque', texte: `${nb === 1 ? 'Un point' : `${nb} points`} de ton histoire ${nb === 1 ? 'doit' : 'doivent'} être vérifié${nb > 1 ? 's' : ''} avant la génération.`, action: { libelle: 'Voir les points', surClic: fermerEtAller(3) } });
+    } else {
+      v.push({ etat: 'info', texte: `${nb === 1 ? 'Un point' : `${nb} points`} à vérifier dans ton histoire : ${nb === 1 ? 'il bloquerait' : 'ils bloqueraient'} une création payante, pas cette démonstration.`, action: { libelle: 'Voir les points', surClic: fermerEtAller(3) } });
+    }
+    const prix = tarifs.prix[cle];
+    return {
+      titre: video ? 'Animer ce visuel en vidéo' : 'Préparer l’image avec l’IA',
+      cible: `Scène ${scene.index + 1} · ${scene.titre} — visuel ${scene.plans.indexOf(plan) + 1}`,
+      description: plan.dialogue?.texte ?? plan.description,
+      verifications: v,
+      cout: reelle
+        ? `Coût estimé : ${libellePrix(tarifs, cle)}. Rien n’est débité avant ton accord, et le serveur applique tes plafonds.`
+        : 'Coût : 0 crédit (démonstration gratuite).',
+      payant: reelle,
+      libelleConfirmer: reelle ? `Confirmer et créer · ${libelleCredits(prix)}` : 'Créer le visuel de démonstration',
+    };
+  })();
+
   return (
     <div className="text-slate-100">
       {erreur && (
@@ -687,6 +855,11 @@ export default function CinemaPage() {
         surAller={allerAEtape}
         chargement={enCours !== null}
         actionPrincipale={actionEtape}
+        indice={etape === 2 && film && methode
+          ? (bloquants.length > 0
+            ? `${bloquants.length} point${bloquants.length > 1 ? 's' : ''} à vérifier dans ton histoire`
+            : visuelsAPreparer > 0 ? `${visuelsAPreparer} visuel${visuelsAPreparer > 1 ? 's' : ''} à préparer · tu peux continuer` : null)
+          : null}
         entete={enteteWizard}
         apercu={(
           <div className="space-y-3">
@@ -707,6 +880,30 @@ export default function CinemaPage() {
               surPlan={(k) => setPlanParScene((m) => ({ ...m, [sceneSel.id]: k }))}
               agrandi={mediaAgrandi}
               surAgrandir={() => setMediaAgrandi(true)} surReduire={() => setMediaAgrandi(false)}
+              actionVide={(() => {
+                const pl = sceneSel.plans[Math.min(planParScene[sceneSel.id] ?? 0, Math.max(0, sceneSel.plans.length - 1))];
+                if (!pl) return null;
+                if (methode === 'import') {
+                  return (
+                    <label className="mt-1 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-violet-500/60 px-3 py-1.5 text-xs text-violet-100 hover:bg-violet-500/10" data-action-vide="import">
+                      {enCours === `media:${pl.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <ImagePlus className="h-3.5 w-3.5" aria-hidden="true" />}
+                      Ajouter une image ou une vidéo
+                      <input type="file" accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.webm,.m4v" className="sr-only"
+                        aria-label="Ajouter une image ou une vidéo à cette scène"
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) importerMedia(pl.id, f); e.target.value = ''; }} />
+                    </label>
+                  );
+                }
+                if (methode === 'ia') {
+                  return generationIa ? (
+                    <button type="button" onClick={() => genererMedia(pl.id, 'image')} data-action-vide="ia"
+                      className="mt-1 inline-flex items-center gap-1.5 rounded-lg border border-violet-500/60 px-3 py-1.5 text-xs text-violet-100 hover:bg-violet-500/10">
+                      <Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> Préparer l’image avec l’IA
+                    </button>
+                  ) : <p className="text-[11px] text-slate-500">La création d’images par IA n’est pas disponible pour le moment.</p>;
+                }
+                return <p className="text-[11px] text-slate-500" data-action-vide="choisir">Choisis d’abord comment créer tes images.</p>;
+              })()}
             />
           ) : montage ? (
             <Apercu montage={montage} surPreparerVoix={preparerVoix} voixEnCours={enCours === 'voix'} />
@@ -786,6 +983,12 @@ export default function CinemaPage() {
               surMontrerExemple={(id) => { setExemple({ type: 'style', id }); setExempleAgrandi(false); }}
               exempleVu={exemple?.type === 'style' ? exemple.id : null}
             />
+            <ModeAudioCartes
+              valeur={modeAudioAffiche}
+              surChoisir={choisirModeAudio}
+              historique={!!film && !film.modeAudio}
+              deduit={!film && choixModeAudio === null}
+            />
           </div>
         )}
 
@@ -799,6 +1002,29 @@ export default function CinemaPage() {
                   <input value={p.nom} onChange={(e) => setCasting(casting.map((c, k) => k === i ? { ...c, nom: e.target.value } : c))} placeholder="Nom" className="min-w-0 rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm" />
                   <input value={p.role} onChange={(e) => setCasting(casting.map((c, k) => k === i ? { ...c, role: e.target.value } : c))} placeholder="Role" className="min-w-0 rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm" />
                   <input value={p.description} onChange={(e) => setCasting(casting.map((c, k) => k === i ? { ...c, description: e.target.value } : c))} placeholder="Apparence (reference)" className="col-span-2 rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm" />
+                  {modeAudioAffiche === 'personnages' && (
+                    <label className="col-span-2 flex flex-wrap items-center gap-2 text-xs text-slate-400" data-voix-personnage>
+                      <Mic className="h-3.5 w-3.5 shrink-0 text-violet-300" aria-hidden="true" />
+                      <span>Voix de {p.nom || 'ce personnage'}</span>
+                      <select
+                        value={p.voix ?? voixDistincte(i)}
+                        aria-label={`Voix de ${p.nom || `personnage ${i + 1}`}`}
+                        onChange={(e) => {
+                          const voix = e.target.value;
+                          setCasting(casting.map((c, k) => k === i ? { ...c, voix } : c));
+                          // Un film existant : la voix est enregistree (la meme dans toutes ses scenes).
+                          const pf = film?.personnages[i];
+                          if (film && pf) void enregistrer({ voix: [{ personnageId: pf.id, voix }] });
+                        }}
+                        className="min-w-0 rounded bg-slate-950 border border-slate-700 px-2 py-1 text-slate-200"
+                      >
+                        {VOIX_FILM.map((v) => <option key={v.id} value={v.id}>{v.libelle}</option>)}
+                      </select>
+                      {casting.some((c, k) => k !== i && (c.voix ?? voixDistincte(k)) === (p.voix ?? voixDistincte(i)) && c.nom && p.nom) && (
+                        <span className="text-amber-300" data-voix-partagee>Même voix qu’un autre personnage : choisis-en une autre pour les distinguer.</span>
+                      )}
+                    </label>
+                  )}
                 </div>
               ))}
             </div>
@@ -833,30 +1059,112 @@ export default function CinemaPage() {
 
         {etape === 2 && (
           <div>
-            <TitreEtape numero={3} total={5} icone={Link2} titre="Une histoire, scene apres scene."
-              phrase="Chaque scene renvoie aux phrases de votre texte. Les outils d’une scene s’ouvrent au clic, jamais tous a la fois." />
+            <TitreEtape numero={3} total={5} icone={Link2} titre="Donnons vie à ton histoire"
+              phrase="Tes scènes sont préparées. Choisis comment créer les images de ton film." />
             {film ? (
               <>
-                {aProduire.length > 0 && (
-                  <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/15 px-3 py-1 text-xs text-amber-300">
-                    <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /> {aProduire.length} scene(s) a reproduire
-                  </p>
+                {!methode ? (
+                  /* LE CHOIX : deux cartes, rien d'autre. Cliquer ne lance AUCUNE generation et ne coute rien. */
+                  <div className="grid gap-3 sm:grid-cols-2" role="group" aria-label="Comment créer les images de ton film ?" data-choix-methode>
+                    <button
+                      type="button"
+                      onClick={() => { choisirMethode('ia'); }}
+                      disabled={!generationIa}
+                      aria-disabled={!generationIa}
+                      title={generationIa ? 'Studiio crée les images, un visuel à la fois, après ta confirmation' : 'La création d’images par IA n’est pas disponible pour le moment'}
+                      className="rounded-xl border border-slate-700 bg-slate-900/50 p-4 text-left transition-colors hover:border-violet-500/60 disabled:cursor-not-allowed disabled:opacity-50"
+                      data-methode="ia"
+                    >
+                      <span className="mb-2 flex h-9 w-9 items-center justify-center rounded-lg bg-violet-500/15 text-violet-300"><Sparkles className="h-5 w-5" aria-hidden="true" /></span>
+                      <span className="block text-sm font-semibold text-slate-50">Créer les images avec l’IA</span>
+                      <span className="mt-1 block text-xs leading-relaxed text-slate-400">
+                        {!generationIa
+                          ? 'Pas disponible pour le moment.'
+                          : generationMode === 'simulee'
+                            ? 'Mode démonstration gratuit : des visuels de test (un aplat de couleur), pas de vraies images.'
+                            : 'Studiio prépare les images de ton film. Tu vois le coût et tu confirmes avant chaque création.'}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { choisirMethode('import'); }}
+                      title="Tu ajoutes tes propres images ou vidéos, scène par scène"
+                      className="rounded-xl border border-slate-700 bg-slate-900/50 p-4 text-left transition-colors hover:border-violet-500/60"
+                      data-methode="import"
+                    >
+                      <span className="mb-2 flex h-9 w-9 items-center justify-center rounded-lg bg-violet-500/15 text-violet-300"><Upload className="h-5 w-5" aria-hidden="true" /></span>
+                      <span className="block text-sm font-semibold text-slate-50">Utiliser mes images ou vidéos</span>
+                      <span className="mt-1 block text-xs leading-relaxed text-slate-400">Tu ajoutes tes propres médias, une scène après l’autre. Gratuit.</span>
+                    </button>
+                  </div>
+                ) : (
+                  /* LA METHODE CHOISIE : un panneau court, puis les scenes au second niveau. */
+                  <section className="mb-3 space-y-2 rounded-lg border border-slate-800 bg-slate-900/40 p-3" data-methode-active={methode}>
+                    <div className="flex items-center gap-2">
+                      {methode === 'ia' ? <Sparkles className="h-4 w-4 shrink-0 text-violet-300" aria-hidden="true" /> : <Upload className="h-4 w-4 shrink-0 text-violet-300" aria-hidden="true" />}
+                      <h3 className="min-w-0 flex-1 text-sm font-semibold text-slate-100">{methode === 'ia' ? 'Créer les images avec l’IA' : 'Utiliser mes images ou vidéos'}</h3>
+                      <button type="button" onClick={() => choisirMethode(null)} className="shrink-0 text-xs text-slate-400 underline hover:text-slate-200">Changer de méthode</button>
+                    </div>
+                    <p className="text-xs text-slate-300" data-visuels>
+                      {visuelsAPreparer > 0
+                        ? `${visuelsAPreparer} visuel${visuelsAPreparer > 1 ? 's' : ''} à préparer dans ${scenesSansVisuel} scène${scenesSansVisuel > 1 ? 's' : ''}.`
+                        : 'Tous les visuels de ton film sont prêts.'}
+                    </p>
+                    {methode === 'ia' ? (
+                      <>
+                        <p className="text-xs leading-relaxed text-slate-400" data-cout-previsionnel>
+                          {generationMode === 'simulee'
+                            ? 'Démonstration gratuite : aucun crédit n’est utilisé, mais ce sont des visuels de test (un aplat de couleur), pas de vraies images.'
+                            : visuelsAPreparer > 0
+                              ? `Coût prévisionnel : ${libelleCredits(visuelsAPreparer * tarifs.prix['ai.generate_background'])} pour ${visuelsAPreparer} image${visuelsAPreparer > 1 ? 's' : ''} (${libellePrix(tarifs, 'ai.generate_background')} chacune). Rien n’est débité tant que tu n’as pas confirmé chaque image.`
+                              : 'Rien à créer : tous les visuels existent déjà.'}
+                        </p>
+                        <p className="text-xs leading-relaxed text-slate-400">
+                          Studiio crée un visuel à la fois : choisis une scène, puis l’étoile ✦ du visuel.
+                        </p>
+                      </>
+                    ) : (
+                      <p className="text-xs leading-relaxed text-slate-400">Choisis une scène, puis ajoute ton image ou ta vidéo avec l’icône d’import.</p>
+                    )}
+                    {bloquants.length > 0 && (
+                      <p className="flex flex-wrap items-center gap-2 text-xs text-amber-200" data-points-a-verifier>
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                        {bloquants.length} point{bloquants.length > 1 ? 's' : ''} à vérifier dans ton histoire
+                        {methode === 'ia' && generationMode === 'reelle' ? ' avant de créer des images payantes' : ''}.
+                        <button type="button" onClick={() => allerAEtape(3)} className="underline">Voir les points</button>
+                      </p>
+                    )}
+                    {aProduire.length > 0 && (
+                      <p className="flex items-start gap-2 text-xs text-slate-300" data-a-mettre-a-jour>
+                        <RefreshCw className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-300" aria-hidden="true" />
+                        <span>{aProduire.length === 1 ? 'Une scène doit être mise à jour' : `${aProduire.length} scènes doivent être mises à jour`} : son contenu a changé depuis la dernière version de la vidéo. Elle sera refaite à l’export.</span>
+                      </p>
+                    )}
+                    {visuelsAPreparer > 0 && (
+                      <button type="button" onClick={allerAuPremierVisuel} className="rounded-lg border border-violet-500/50 px-3 py-1.5 text-xs text-violet-100 hover:bg-violet-500/10">
+                        {methode === 'ia' ? 'Commencer par le premier visuel' : 'Ajouter au premier visuel manquant'}
+                      </button>
+                    )}
+                  </section>
                 )}
-              <div className="mb-4">
-                <ResumeStyle
-                  styleFilm={film.styleCinema ?? null}
-                  exceptions={film.scenes.filter((x) => x.styleCinema && x.styleCinema !== film.styleCinema).length}
-                />
-              </div>
+                {methode && (
+                  <div className="mb-3">
+                    <ResumeStyle
+                      styleFilm={film.styleCinema ?? null}
+                      exceptions={film.scenes.filter((x) => x.styleCinema && x.styleCinema !== film.styleCinema).length}
+                    />
+                  </div>
+                )}
+                {methode && (
               <div className="space-y-1.5" data-storyboard="scenes">
                 {film.scenes.map((scene) => {
                   const selectionnee = sceneSel?.id === scene.id;
                   const ouverte = selectionnee && outilsOuverts;
                   const ecarts = ecartsScene(film as never, scene as never);
                   const planVignette = scene.plans.find((pl) => pl.media) ?? null;
-                  const nbMedias = scene.plans.filter((pl) => pl.media).length;
+                  const aPreparer = scene.plans.filter((pl) => !pl.media).length;
                   const aRefaire = aProduire.includes(scene.id);
-                  const etatScene = scene.etat === 'validee' ? 'Validee' : aRefaire ? 'A reproduire' : 'Brouillon';
+                  const pointsCritiques = ecarts.filter((e) => e.critique && !acceptes.has(e.cle)).length;
                   const indexPlan = Math.min(planParScene[scene.id] ?? 0, Math.max(0, scene.plans.length - 1));
                   const plan = scene.plans[indexPlan];
                   return (
@@ -885,16 +1193,18 @@ export default function CinemaPage() {
                           <span className="block truncate text-sm font-semibold text-slate-100" title={scene.titre}>
                             <span className="tabular-nums text-violet-300">{String(scene.index + 1).padStart(2, '0')}</span> · {scene.titre}
                           </span>
-                          <span className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                          <span className="flex flex-wrap items-center gap-x-1.5 text-[11px] text-slate-400" data-statut-scene>
                             {scene.etat === 'validee' ? <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-400" aria-hidden="true" />
                               : aRefaire ? <RefreshCw className="h-3 w-3 shrink-0 text-amber-300" aria-hidden="true" />
+                              : aPreparer === 0 ? <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-400/70" aria-hidden="true" />
                               : <Circle className="h-3 w-3 shrink-0 text-slate-600" aria-hidden="true" />}
-                            <span>{etatScene}</span>
-                            <span aria-hidden="true">·</span>
-                            <span>{nbMedias}/{scene.plans.length} media</span>
-                            {ecarts.some((e) => e.critique) && (
-                              <span className="inline-flex items-center gap-0.5 text-amber-300" title="Point a valider dans cette scene">
-                                <AlertTriangle className="h-3 w-3" aria-hidden="true" />{ecarts.filter((e) => e.critique).length}
+                            <span>{aPreparer === 0 ? 'Visuels prêts' : `${aPreparer} visuel${aPreparer > 1 ? 's' : ''} à préparer`}</span>
+                            {aRefaire && (
+                              <span className="text-amber-300" title="Tu as changé le contenu de cette scène depuis la dernière version de la vidéo : elle sera refaite à l’export.">· à mettre à jour</span>
+                            )}
+                            {pointsCritiques > 0 && (
+                              <span className="inline-flex items-center gap-0.5 text-amber-300" title="Points à vérifier dans ton histoire pour cette scène">
+                                <AlertTriangle className="h-3 w-3" aria-hidden="true" />{pointsCritiques} point{pointsCritiques > 1 ? 's' : ''} à vérifier
                               </span>
                             )}
                           </span>
@@ -949,23 +1259,8 @@ export default function CinemaPage() {
                         ))}
                       </ol>
                       {ecarts.length > 0 && (
-                        <ul className="space-y-1">
-                          {ecarts.map((e, k) => (
-                            <li key={k} className={`flex items-start gap-1.5 text-[11px] ${e.critique ? 'text-amber-300/90' : 'text-slate-400'}`}>
-                              {e.critique
-                                ? <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
-                                : <Info className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />}
-                              <span className="min-w-0 flex-1">{e.detail}</span>
-                              {e.critique && (acceptes.has(e.cle) ? (
-                                <span className="shrink-0 text-emerald-300">accepte</span>
-                              ) : (
-                                <button type="button" onClick={() => accepterEcart(e.cle)} aria-label="Accepter cet ecart" title="Accepter cet ecart"
-                                  className="shrink-0 rounded border border-amber-500/40 p-0.5 text-amber-200 hover:bg-amber-500/10">
-                                  <Check className="h-3 w-3" aria-hidden="true" />
-                                </button>
-                              ))}
-                            </li>
-                          ))}
+                        <ul className="space-y-2" data-ecarts-scene>
+                          {ecarts.map((e) => carteEcart(e))}
                         </ul>
                       )}
 
@@ -976,14 +1271,13 @@ export default function CinemaPage() {
                             <span className="inline-flex items-center gap-1" role="group" aria-label="Choisir le plan">
                               {scene.plans.map((pl, k) => (
                                 <button key={pl.id} type="button" onClick={() => setPlanParScene((m) => ({ ...m, [scene.id]: k }))}
-                                  aria-pressed={k === indexPlan} aria-label={`Modifier le plan ${k + 1}`} title={`Plan ${k + 1}`}
+                                  aria-pressed={k === indexPlan} aria-label={`Modifier le plan ${k + 1}`} title={`Visuel ${k + 1}`}
                                   className={`h-6 min-w-6 rounded border px-1 text-[11px] tabular-nums ${k === indexPlan ? 'border-violet-400 bg-violet-500/20 text-violet-100' : 'border-slate-700 text-slate-400 hover:border-violet-500/50'}`}>
                                   {k + 1}
                                 </button>
                               ))}
                             </span>
                           )}
-                          <span className="shrink-0">Plan {indexPlan + 1}/{scene.plans.length} · {plan.cadre}</span>
                           {plan.dialogue && (
                             <span className="inline-flex min-w-0 max-w-full items-center rounded-full border border-pink-500/30 px-2 py-0.5 text-[11px] text-pink-300"
                               title={plan.dialogue.personnageId ? undefined : 'Phrase de recit : lue en narration, attribuee a aucun personnage'}>
@@ -1019,7 +1313,7 @@ export default function CinemaPage() {
 
                         {/* Les actions : de petites icones, toutes nommees (infobulle + libelle accessible). */}
                         <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Media du plan">
-                          <label title={plan.media ? 'Remplacer le media de ce plan' : 'Importer une image ou une video'} className={`${BOUTON_ICONE} cursor-pointer`}>
+                          <label title={plan.media ? 'Remplacer le media de ce plan' : 'Importer une image ou une video'} className={`${BOUTON_ICONE} cursor-pointer ${methode === 'import' && !plan.media ? 'border-violet-400 text-violet-200' : ''}`}>
                             {enCours === `media:${plan.id}` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <ImagePlus className="h-4 w-4" aria-hidden="true" />}
                             <input
                               type="file"
@@ -1029,7 +1323,7 @@ export default function CinemaPage() {
                               onChange={(e) => { const f = e.target.files?.[0]; if (f) importerMedia(plan.id, f); e.target.value = ''; }}
                             />
                           </label>
-                          {generationIa && !plan.media && (
+                          {generationIa && methode === 'ia' && !plan.media && (
                             <button
                               type="button" onClick={() => genererMedia(plan.id, 'image')}
                               disabled={enCours !== null || !!generationActiveDe(film)}
@@ -1042,7 +1336,7 @@ export default function CinemaPage() {
                               {generationMode === 'reelle' && <span className="text-[11px] text-violet-300/90">{libellePrix(tarifs, 'ai.generate_background')}</span>}
                             </button>
                           )}
-                          {generationIa && plan.media?.genre === 'image' && (
+                          {generationIa && methode === 'ia' && plan.media?.genre === 'image' && (
                             <button
                               type="button" onClick={() => genererMedia(plan.id, 'video')}
                               disabled={enCours !== null || !!generationActiveDe(film)}
@@ -1073,12 +1367,10 @@ export default function CinemaPage() {
 
                         <SuiviGenerationPlan
                           generation={derniereGenerationDuPlan(film, plan.id)}
-                          confirmation={confirmation?.planId === plan.id ? confirmation.operation : null}
-                          prix={confirmation?.planId === plan.id
-                            ? libellePrix(tarifs, confirmation.operation === 'video' ? 'ai.image_to_video' : 'ai.generate_background')
-                            : ''}
-                          surConfirmer={() => confirmation && lancerGenerationIa(confirmation.planId, confirmation.operation)}
-                          surAnnuler={() => setConfirmation(null)}
+                          confirmation={null}
+                          prix=""
+                          surConfirmer={() => {}}
+                          surAnnuler={() => {}}
                         />
 
                         {/* Les personnages DE CE PLAN : leurs portraits (vraie photo de reference, sinon icone neutre). */}
@@ -1104,7 +1396,7 @@ export default function CinemaPage() {
                         </summary>
                         <div className="mt-3 space-y-3 text-xs text-slate-400">
                           <p data-info-technique>
-                            Duree {plan.dureeS.toFixed(1)} s
+                            Image {indexPlan + 1} sur {scene.plans.length} · cadre {plan.cadre} · durée {plan.dureeS.toFixed(1)} s
                             {plan.media && ` · ${plan.media.largeur}x${plan.media.hauteur}`}
                             {plan.media?.dureeS != null && ` · ${plan.media.dureeS.toFixed(1)} s`}
                             {plan.media && ` · ${(plan.media.octets / 1_000_000).toFixed(1)} Mo`}
@@ -1163,6 +1455,7 @@ export default function CinemaPage() {
                   );
                 })}
               </div>
+                )}
               </>
             ) : (
               <p className="rounded-lg border border-dashed border-slate-700 p-4 text-sm text-slate-400">
@@ -1206,26 +1499,11 @@ export default function CinemaPage() {
                     <h3 className={`mb-2 flex items-center gap-2 text-sm font-semibold ${bloquants.length > 0 ? 'text-amber-200' : 'text-slate-200'}`}>
                       {bloquants.length > 0 ? <AlertTriangle className="h-4 w-4" aria-hidden="true" /> : <CheckCircle2 className="h-4 w-4 text-emerald-400" aria-hidden="true" />}
                       {bloquants.length > 0
-                        ? `${bloquants.length} ecart(s) a valider avant toute generation payante`
-                        : `${fidelite.ecarts.length} ecart(s) signales, aucun ne bloque`}
+                        ? `${bloquants.length} point${bloquants.length > 1 ? 's' : ''} à vérifier dans ton histoire avant toute génération payante`
+                        : `${fidelite.ecarts.length} remarque${fidelite.ecarts.length > 1 ? 's' : ''}, rien ne bloque`}
                     </h3>
-<ul className="space-y-1.5">
-                      {fidelite.ecarts.filter((e) => e.critique).map((e) => (
-                        <li key={e.cle} className="flex items-start gap-2 text-[11px] leading-snug text-slate-300">
-                          <span className="min-w-0 flex-1">{e.detail}</span>
-                          {e.critique && (acceptes.has(e.cle) ? (
-                            <button type="button" onClick={() => retirerAcceptation(e.cle)} aria-label="Retirer l’acceptation" title="Retirer l’acceptation"
-                              className="inline-flex shrink-0 items-center gap-1 rounded border border-emerald-500/40 px-1.5 py-0.5 text-emerald-300">
-                              <Check className="h-3 w-3" aria-hidden="true" /> accepte
-                            </button>
-                          ) : (
-                            <button type="button" onClick={() => accepterEcart(e.cle)} aria-label="Accepter cet ecart" title="Accepter cet ecart"
-                              className="inline-flex shrink-0 items-center gap-1 rounded border border-amber-500/40 px-1.5 py-0.5 text-amber-200 hover:bg-amber-500/10">
-                              <Check className="h-3 w-3" aria-hidden="true" /> accepter
-                            </button>
-                          ))}
-                        </li>
-                      ))}
+<ul className="space-y-2.5" data-ecarts-liste>
+                      {fidelite.ecarts.filter((e) => e.critique).map((e) => carteEcart(e))}
                     </ul>
                     {fidelite.ecarts.some((e) => !e.critique) && (
                       <details className="mt-2 text-[11px] text-slate-400" data-fidelite="remarques">
@@ -1246,6 +1524,58 @@ export default function CinemaPage() {
                 )}
 
                 {(() => {
+                  const mode = film.modeAudio ?? null;
+                  const problemes = diagnosticAudio(film as never);
+                  const plansFilm = film.scenes.flatMap((sc) => sc.plans);
+                  return (
+                    <section className="mt-4 rounded-lg border border-slate-800 bg-slate-900/40 p-4" data-reglage="mode-audio">
+                      <h3 className="mb-1 flex items-center gap-2 text-sm font-semibold text-slate-200">
+                        <Mic className="h-4 w-4 text-violet-300" aria-hidden="true" /> Comment ton film est raconté
+                      </h3>
+                      <p className="text-xs text-slate-300" data-mode-actuel>
+                        {mode
+                          ? `${LIBELLES_MODE[mode].titre} — ${LIBELLES_MODE[mode].phrase}`
+                          : 'Ancien réglage : le récit et les répliques sont lus (film créé avant les deux nouveaux modes). Rien ne change tant que tu ne choisis pas un mode.'}
+                      </p>
+                      <div role="radiogroup" aria-label="Changer le mode audio" className="mt-2 flex flex-wrap gap-2">
+                        {(['personnages', 'narrateur'] as const).map((m) => (
+                          <button key={m} type="button" role="radio" aria-checked={mode === m}
+                            onClick={() => { if (mode !== m) void enregistrer({ modeAudio: m }); }}
+                            className={`rounded-lg border px-2.5 py-1.5 text-xs ${mode === m ? 'border-violet-500/70 bg-violet-500/15 text-violet-100' : 'border-slate-700 text-slate-300 hover:border-violet-500/40'}`}>
+                            {LIBELLES_MODE[m].titre}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="mt-1.5 text-[11px] text-slate-500">Changer de mode ne touche ni ton histoire, ni tes personnages, ni tes dialogues : seul le son des scènes concernées sera refait.</p>
+                      {mode === 'personnages' && (
+                        <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-slate-400" data-limite-labiale>
+                          <Info className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+                          Les personnages parlent avec leur voix, mais leurs lèvres ne bougent pas en synchronisation : Cinema IA ne fait pas de synchronisation labiale.
+                        </p>
+                      )}
+                      {problemes.length > 0 && (
+                        <ul className="mt-3 space-y-2" data-problemes-audio>
+                          {problemes.map((pb) => (
+                            <li key={pb.code} className="space-y-1 text-[11px] leading-snug text-amber-200/90" data-probleme-audio={pb.code}>
+                              <p className="flex items-start gap-1.5"><AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" /> {pb.message}</p>
+                              <p className="pl-[18px] text-slate-300">Pour le régler : {pb.conseil}</p>
+                              {pb.planIds?.map((id) => {
+                                const pl = plansFilm.find((x) => x.id === id);
+                                return pl ? (
+                                  <div key={id} className="flex flex-wrap items-center gap-2 pl-[18px] text-slate-300">
+                                    <span className="italic">« {pl.dialogue?.texte} »</span> {choixLocuteur(id)}
+                                  </div>
+                                ) : null;
+                              })}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </section>
+                  );
+                })()}
+
+                {!film.modeAudio && (() => {
                   const nbRecit = film.scenes.reduce((n, sc) => n + sc.plans.filter((pl) => pl.dialogue?.genre === 'narration').length, 0);
                   const avec = film.narration !== false;
                   return (
@@ -1325,6 +1655,15 @@ export default function CinemaPage() {
           </div>
         )}
       </WizardCinema>
+      {donneesDialogueIA && confirmation && (
+        <DialogueGenerationIA
+          donnees={donneesDialogueIA}
+          enCours={enCours === `generation:${confirmation.planId}:${confirmation.operation}`}
+          erreur={erreur}
+          surConfirmer={confirmerDialogueIA}
+          surAnnuler={() => setConfirmation(null)}
+        />
+      )}
     </div>
   );
 }

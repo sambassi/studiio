@@ -34,7 +34,7 @@ export interface EtapeWizard {
 
 export default function WizardCinema({
   etapes, active, surAller, entete, apercu, children,
-  actionPrincipale, chargement = false,
+  actionPrincipale, chargement = false, indice,
 }: {
   etapes: readonly EtapeWizard[];
   active: number;
@@ -48,6 +48,8 @@ export default function WizardCinema({
    */
   actionPrincipale: { libelle: string; onClick: () => void; desactive?: boolean; titre?: string } | null;
   chargement?: boolean;
+  /** Une phrase courte a la place de « Etape x sur y » : ce qui manque, et si l'on peut continuer. */
+  indice?: string | null;
 }) {
   const zone = useRef<HTMLDivElement | null>(null);
 
@@ -136,9 +138,13 @@ export default function WizardCinema({
       </div>
 
       <footer className="cinema-pied flex shrink-0 items-center justify-between gap-3 border-t border-slate-800 bg-slate-950/80 px-4 py-2.5 sm:px-6">
-        <p className="min-w-0 truncate text-[11px] text-slate-400">
-          Etape {active + 1} sur {etapes.length} · <span className="font-semibold text-slate-200">{etape?.titre}</span>
-        </p>
+        {indice ? (
+          <p className="min-w-0 text-[11px] leading-snug text-slate-300" data-indice-pied title={indice}>{indice}</p>
+        ) : (
+          <p className="min-w-0 truncate text-[11px] text-slate-400">
+            Etape {active + 1} sur {etapes.length} · <span className="font-semibold text-slate-200">{etape?.titre}</span>
+          </p>
+        )}
         <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"

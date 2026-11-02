@@ -23,6 +23,8 @@ let filmsListes: Array<{ id: string; titre: string; majLe: string }>;
 
 beforeEach(() => {
   appels = [];
+  // La methode (IA / mes medias) se choisit a l'etape Scenes ; ces tests partent d'un film dont elle est deja choisie.
+  try { localStorage.clear(); localStorage.setItem('studiio.cinema.methode.' + film.id, 'import'); } catch { /* sans stockage */ }
   filmsListes = [{ id: film.id, titre: film.titre, majLe: film.majLe }];
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input); const method = init?.method ?? 'GET';
@@ -73,10 +75,10 @@ describe('une seule etape a la fois', () => {
 
   it('avec un film : chaque etape s’affiche seule, et la zone de travail est annoncee', async () => {
     await ouvrir();
-    for (const [n, titre] of [[1, /Racontez votre idee/], [2, /Qui joue dans votre film/], [3, /Une histoire, scene apres scene/], [4, /Verifiez avant de generer/], [5, /Votre film, pret a partager/]] as const) {
+    for (const [n, titre] of [[1, /Racontez votre idee/], [2, /Qui joue dans votre film/], [3, /Donnons vie à ton histoire/], [4, /Verifiez avant de generer/], [5, /Votre film, pret a partager/]] as const) {
       fireEvent.click(etape(n));
       expect(within(zone()).getByRole('heading', { name: titre }), `etape ${n}`).toBeTruthy();
-      expect(screen.getAllByRole('heading', { level: 2 }).filter((h) => /Racontez|Qui joue|scene apres scene|Verifiez avant|pret a partager/.test(h.textContent ?? ''))).toHaveLength(1);
+      expect(screen.getAllByRole('heading', { level: 2 }).filter((h) => /Racontez|Qui joue|Donnons vie|Verifiez avant|pret a partager/.test(h.textContent ?? ''))).toHaveLength(1);
     }
   });
 });
@@ -131,7 +133,9 @@ describe('scenes : cartes compactes, outils a la demande, phrases d’origine', 
     const premiere = cartes[0] as HTMLElement;
     expect(premiere.querySelector('[data-vignette]')).not.toBeNull();
     expect(premiere.textContent).toMatch(/01 · /);
-    expect(premiere.textContent).toMatch(/Brouillon|Validee/);
+    expect(premiere.textContent).toMatch(/visuels? à préparer|Visuels prêts/);
+    // Aucun jargon de moteur dans la carte.
+    expect(premiere.textContent).not.toMatch(/\d\/\d media|Brouillon|A reproduire/);
     expect(zone().textContent).not.toContain('Nina entre dans la salle avant le lever du jour.');
     // La modification est une petite icone SVG : aucun texte, juste un nom accessible.
     const edition = within(premiere).getByRole('button', { name: /ouvrir les outils de la scene 1/i });
@@ -145,7 +149,7 @@ describe('scenes : cartes compactes, outils a la demande, phrases d’origine', 
     fireEvent.click(screen.getByRole('button', { name: /ouvrir les outils de la scene 1/i }));
     const texte = zone().textContent ?? '';
     expect(texte).toContain('Nina entre dans la salle avant le lever du jour.');
-    expect(texte).toMatch(/Plan ajoute par Studiio/);
+    expect(texte).toMatch(/Studiio ouvre chaque scène par un plan d’ensemble/);
   });
 
   it('les cartes ne contiennent AUCUN selecteur de style : le style du film est choisi une fois, a l’etape Histoire', async () => {
@@ -190,7 +194,7 @@ describe('etape Apercu : fidelite et cout, avant toute generation', () => {
     await ouvrir();
     fireEvent.click(etape(4));
     const texte = zone().textContent ?? '';
-    expect(texte).toMatch(/\d+ ecart\(s\) a valider avant toute generation payante/);
+    expect(texte).toMatch(/\d+ points? à vérifier dans ton histoire avant toute génération payante/);
     expect(texte).toMatch(/Votre texte n’est jamais modifie/);
   });
 });
@@ -314,6 +318,6 @@ describe('fidelite : accepter un ecart est un geste explicite, enregistre cote s
     expect(patch).toBeTruthy();
     expect(patch!.corps.accepter).toHaveLength(1);
     expect(typeof patch!.corps.accepter[0]).toBe('string');
-    expect(JSON.stringify(patch!.corps)).not.toMatch(/histoire/);
+    expect(JSON.stringify(patch!.corps)).not.toMatch(/"histoire"/);
   });
 });
