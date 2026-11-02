@@ -24,6 +24,7 @@ const JARGON = [/\d\/\d media/i, /\d\/\d média/i, /scene\(s\) a reproduire/i, /
 let film: Film;
 let mode: 'reelle' | 'simulee' | null;
 let aReproduire: string[];
+let reponseGeneration: () => { status: number; corps: unknown };
 let appels: Array<{ url: string; method: string; corps?: any }>;
 const zone = () => screen.getByRole('region', { name: /^Etape/ }) as HTMLElement;
 const etape = (n: number) => screen.getByRole('button', { name: new RegExp(`^Etape ${n} sur 5`) });
@@ -33,6 +34,7 @@ beforeEach(() => {
   film = preparerFilm({ histoire: HISTOIRE, personnages: PERSOS, idFilm: 'film-guide', titre: 'Guide' });
   mode = 'simulee';
   aReproduire = [];
+  reponseGeneration = () => ({ status: 202, corps: { ok: true, generations: [{ id: 'g1', planId: film.scenes[0].plans[0].id, operation: 'image', mode: 'simulee', statut: 'en_cours', creeLe: new Date().toISOString(), majLe: new Date().toISOString() }] } });
   appels = [];
   try { localStorage.clear(); } catch { /* sans stockage */ }
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -45,6 +47,7 @@ beforeEach(() => {
     if (url === `/api/cinema/films/${film.id}`) return json(rep());
     if (url.includes('/travaux')) return json({ ok: true, travail: null });
     if (url.endsWith('/medias') && method === 'POST') return json(rep());
+    if (url.endsWith('/generation') && method === 'POST') { const r = reponseGeneration(); return json(r.corps, r.status); }
     return json({ ok: false, erreur: 'inattendu' }, 404);
   }));
 });
@@ -253,7 +256,7 @@ describe('le parcours « créer avec l’IA » : rien ne part sans confirmation'
     expect(ecritures().some((a) => /generation/.test(a.url))).toBe(false);
   });
 
-  it('mode REEL, ecarts critiques NON acceptes : le panneau les signale et la generation payante est refusee', async () => {
+  it('mode REEL, ecarts critiques NON acceptes : le panneau les signale ; la fenetre explique et bloque', async () => {
     mode = 'reelle';
     expect(ecartsBloquants(film).length).toBeGreaterThan(0);
     await choisirIA();
@@ -261,8 +264,9 @@ describe('le parcours « créer avec l’IA » : rien ne part sans confirmation'
     expect(note.textContent).toMatch(/\d points? à vérifier dans ton histoire avant de créer des images payantes/);
     fireEvent.click(screen.getByRole('button', { name: 'Commencer par le premier visuel' }));
     fireEvent.click(document.querySelector('[data-cinema-generation="image"]') as HTMLButtonElement);
-    expect(screen.queryByRole('group', { name: /confirmer la generation payante/i })).toBeNull();
-    expect(document.body.textContent).toMatch(/à vérifier dans ton histoire avant de créer des images payantes : ouvre l’étape Aperçu/);
+    const fenetre = screen.getByRole('dialog');
+    expect(fenetre.textContent).toMatch(/de ton histoire (doit|doivent) être vérifiés? avant la génération/);
+    expect((within(fenetre).getByRole('button', { name: /Confirmer et créer/ }) as HTMLButtonElement).disabled).toBe(true);
     expect(appels.some((a) => /generation/.test(a.url))).toBe(false);
   });
 
@@ -274,12 +278,17 @@ describe('le parcours « créer avec l’IA » : rien ne part sans confirmation'
     expect(zone().querySelector('[data-ecarts-liste]')).not.toBeNull();
   });
 
-  it('l’apercu vide propose « Préparer l’image avec l’IA » : une selection, pas une generation', async () => {
+  it('l’apercu vide propose « Préparer l’image avec l’IA » : la FENETRE s’ouvre a chaque clic, rien n’est genere', async () => {
     await choisirIA();
     const avant = appels.length;
     fireEvent.click(document.querySelector('[data-action-vide="ia"]') as HTMLElement);
-    expect(document.querySelectorAll('[id^="outils-"]')).toHaveLength(1);
+    expect(screen.getByRole('dialog', { name: 'Préparer l’image avec l’IA' })).toBeTruthy();
     expect(appels.length).toBe(avant);
+    fireEvent.click(screen.getByRole('button', { name: 'Annuler' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    // le bouton ne reste jamais muet : un 2e clic rouvre la fenetre
+    fireEvent.click(document.querySelector('[data-action-vide="ia"]') as HTMLElement);
+    expect(screen.getByRole('dialog')).toBeTruthy();
   });
 });
 
@@ -339,5 +348,93 @@ describe('F. « Continuer » : on voit ce qui manque, on n’est jamais bloque, 
     await ouvrirScenes();
     expect(document.querySelector('[data-indice-pied]')).toBeNull();
     expect(screen.getByText(/Etape 3 sur 5/)).toBeTruthy();
+  });
+});
+
+
+describe('BUG « le bouton ne fait rien » : la fenetre de preparation, les protections, les erreurs', () => {
+  async function ouvrirFenetre() {
+    await ouvrirScenes();
+    fireEvent.click(document.querySelector('[data-methode="ia"]') as HTMLElement);
+    fireEvent.click(document.querySelector('[data-action-vide="ia"]') as HTMLElement);
+    return screen.getByRole('dialog');
+  }
+  const posts = () => appels.filter((a) => a.method === 'POST' && a.url.endsWith('/generation'));
+
+  it('la fenetre dit quoi, pour quel visuel, ce qui a ete verifie et le cout', async () => {
+    const f = await ouvrirFenetre();
+    expect(f.querySelector('[data-cible]')!.textContent).toMatch(/^Scène 1 · .+ — visuel 1$/);
+    expect(f.textContent).toMatch(/Aucun style imposé : l’image suivra ta description/);
+    expect(f.textContent).toMatch(/Personnages : Maya, Karim/);
+    expect(f.textContent).toMatch(/Sans photo de référence : Maya, Karim/);
+    expect(f.textContent).toMatch(/Mode démonstration : ce visuel de test est gratuit/);
+    expect(f.textContent).toMatch(/Coût : 0 crédit/);
+    expect(posts()).toHaveLength(0);
+  });
+
+  it('« Aucun style imposé » n’est PAS bloquant (le moteur n’exige aucun style) : « Créer » reste actif', async () => {
+    const f = await ouvrirFenetre();
+    expect((within(f).getByRole('button', { name: /Créer le visuel de démonstration/ }) as HTMLButtonElement).disabled).toBe(false);
+    expect(film.styleCinema).toBeUndefined();
+  });
+
+  it('le double clic sur « Créer » ne lance qu’UNE generation', async () => {
+    const f = await ouvrirFenetre();
+    const creer = within(f).getByRole('button', { name: /Créer le visuel de démonstration/ });
+    fireEvent.click(creer); fireEvent.click(creer);
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    expect(posts()[0].corps).toEqual({ planId: film.scenes[0].plans[0].id, operation: 'image' });
+  });
+
+  it('le plan envoye est EXACTEMENT celui annonce (le visuel 2 de la scene 2, pas le premier)', async () => {
+    await ouvrirScenes();
+    fireEvent.click(document.querySelector('[data-methode="ia"]') as HTMLElement);
+    fireEvent.click(screen.getByLabelText(/Selectionner la scene 2 :/));
+    fireEvent.click(screen.getByRole('button', { name: /Modifier le plan 2$/ }));
+    fireEvent.click(document.querySelector('[data-cinema-generation="image"]') as HTMLButtonElement);
+    const f = screen.getByRole('dialog');
+    expect(f.querySelector('[data-cible]')!.textContent).toMatch(/^Scène 2 · .+ — visuel 2$/);
+    fireEvent.click(within(f).getByRole('button', { name: /Créer le visuel de démonstration/ }));
+    await waitFor(() => expect(posts()).toHaveLength(1));
+    expect(posts()[0].corps.planId).toBe(film.scenes[1].plans[1].id);
+  });
+
+  it('une erreur de l’API est VISIBLE dans la fenetre, qui reste ouverte (aucune fausse generation)', async () => {
+    reponseGeneration = () => ({ status: 409, corps: { ok: false, erreur: 'plafond de depense atteint' } });
+    const f = await ouvrirFenetre();
+    fireEvent.click(within(f).getByRole('button', { name: /Créer le visuel de démonstration/ }));
+    const alerte = await waitFor(() => { const a = f.querySelector('[data-erreur-dialogue]'); expect(a).toBeTruthy(); return a as HTMLElement; });
+    expect(alerte.textContent).toMatch(/plafond de depense atteint/);
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(film.scenes[0].plans[0].media).toBeNull();
+    // on peut reessayer apres une erreur
+    await waitFor(() => expect((within(f).getByRole('button', { name: /Créer le visuel de démonstration/ }) as HTMLButtonElement).disabled).toBe(false));
+  });
+
+  it('Echap et « Annuler » ferment sans rien envoyer', async () => {
+    await ouvrirFenetre();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(posts()).toHaveLength(0);
+  });
+
+  it('une creation deja en cours : la fenetre l’explique et « Créer » est eteint', async () => {
+    // film avec une generation deja en cours (relue du serveur)
+    film.generations = [{ id: 'g0', planId: film.scenes[0].plans[1].id, operation: 'image', mode: 'simulee', statut: 'en_cours', creeLe: new Date().toISOString(), majLe: new Date().toISOString() }] as never;
+    const f = await ouvrirFenetre();
+    expect(f.textContent).toMatch(/Une création est déjà en cours pour ce film/);
+    expect((within(f).getByRole('button', { name: /Créer le visuel de démonstration/ }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('mode REEL : « Confirmer et créer » annonce le prix, et la fenetre est le groupe de confirmation payante', async () => {
+    mode = 'reelle';
+    film.ecartsAcceptes = ecartsBloquants(film).map((e) => e.cle);
+    const f = await ouvrirFenetre();
+    const groupe = within(f).getByRole('group', { name: /Confirmer la generation payante/ });
+    expect(groupe.textContent).toMatch(/Confirmer et créer · 5 crédits/);
+    expect(f.textContent).toMatch(/Coût estimé : 5 crédits/);
+    expect(posts()).toHaveLength(0);
+    fireEvent.click(within(groupe).getByRole('button', { name: /Confirmer et créer/ }));
+    await waitFor(() => expect(posts()).toHaveLength(1));
   });
 });

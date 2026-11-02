@@ -34,6 +34,8 @@ import { auditFidelite, ecartsBloquants, ecartsScene, phrasesDeLaScene, resumeFi
 import ChoixMouvements from '@/components/cinema/ChoixMouvements';
 import ApercuScene, { provenanceMedia, urlMediaPlan } from '@/components/cinema/ApercuScene';
 import PortraitPersonnage, { aUnePhoto } from '@/components/cinema/PortraitPersonnage';
+import DialogueGenerationIA, { type DonneesDialogue, type Verification } from '@/components/cinema/DialogueGenerationIA';
+import { styleCinema as styleDe } from '@/lib/cinema/direction/styles';
 import { MediaDuPlan, EmplacementVide, Storyboard, appliquerDemo, bilanMedias } from '@/components/cinema/ApercuStoryboard';
 
 interface SegmentApi {
@@ -338,9 +340,8 @@ export default function CinemaPage() {
    * Un second clic, un second onglet ou un rechargement retrouvent la MEME generation :
    * le serveur n'en accepte qu'une a la fois par film, et ne debite qu'une fois.
    */
-  const lancerGenerationIa = async (planId: string, operation: 'image' | 'video') => {
-    if (!film) return;
-    setConfirmation(null);
+  const lancerGenerationIa = async (planId: string, operation: 'image' | 'video'): Promise<boolean> => {
+    if (!film) return false;
     setEnCours(`generation:${planId}:${operation}`);
     setErreur(null);
     const ctrl = new AbortController();
@@ -359,28 +360,34 @@ export default function CinemaPage() {
         setFilm((f) => (f ? { ...f, generations: [...(f.generations ?? []).filter((g) => g.id !== data.generation.id), data.generation] } : f));
       }
       if (!r.ok && !data?.enCours) throw new Error(data?.erreur ?? `echec (${r.status})`);
+      return true;
     } catch (e) {
       // Un delai ici ne veut PAS dire que rien n'est parti : le sondage dira l'etat reel.
       setErreur(e instanceof Error && e.name === 'AbortError'
         ? 'le serveur tarde a repondre — l’etat de la generation va s’afficher, ne relancez pas'
         : (e instanceof Error ? e.message : 'echec'));
       if (film) rafraichirFilmRef.current?.(film.id);
+      return false;
     } finally {
       clearTimeout(minuteur);
       setEnCours(null);
     }
   };
 
+  /**
+   * « Preparer l'image avec l'IA » / l'etoile d'un visuel : ouvre TOUJOURS la fenetre de preparation
+   * (verifications, cout, confirmation). Rien n'est lance ici ; la fenetre dit aussi POURQUOI elle
+   * bloque, quand elle bloque — un bouton ne reste jamais sans reaction.
+   */
   const genererMedia = (planId: string, operation: 'image' | 'video') => {
-    if (!film || generationActiveDe(film)) return;
-    // Fidelite : aucune generation payante tant qu'un ecart critique n'est pas resolu ou accepte.
-    if (generationMode === 'reelle' && bloquants.length > 0) {
-      setErreur(`${bloquants.length} point${bloquants.length > 1 ? 's' : ''} à vérifier dans ton histoire avant de créer des images payantes : ouvre l’étape Aperçu pour les voir.`);
-      return;
-    }
-    // Une generation REELLE depense : deux gestes. La SIMULEE est gratuite : un seul.
-    if (generationMode === 'reelle') { setConfirmation({ planId, operation }); return; }
-    lancerGenerationIa(planId, operation);
+    if (!film) return;
+    setErreur(null);
+    setConfirmation({ planId, operation });
+  };
+  const confirmerDialogueIA = async () => {
+    if (!confirmation) return;
+    const ok = await lancerGenerationIa(confirmation.planId, confirmation.operation);
+    if (ok) setConfirmation(null);
   };
 
   /**
@@ -743,6 +750,60 @@ export default function CinemaPage() {
     </div>
   );
 
+  /** Les donnees de la fenetre de preparation : tout ce qui a ete verifie, et le cout. */
+  const donneesDialogueIA: DonneesDialogue | null = (() => {
+    if (!confirmation || !film) return null;
+    const scene = film.scenes.find((sc) => sc.plans.some((pl) => pl.id === confirmation.planId));
+    const plan = scene?.plans.find((pl) => pl.id === confirmation.planId);
+    if (!scene || !plan) return null;
+    const video = confirmation.operation === 'video';
+    const cle = video ? 'ai.image_to_video' : 'ai.generate_background';
+    const reelle = generationMode === 'reelle';
+    const fermerEtAller = (etapeCible: number) => () => { setConfirmation(null); setEtape(etapeCible); };
+    const v: Verification[] = [];
+    // Le moteur
+    if (!generationIa) v.push({ etat: 'bloque', texte: 'La génération IA est indisponible pour le moment. Tu peux ajouter ton propre média à la place.' });
+    else if (reelle) v.push({ etat: 'ok', texte: 'Le moteur de génération est disponible.' });
+    else v.push({ etat: 'info', texte: 'Mode démonstration : ce visuel de test est gratuit (un aplat de couleur), ce n’est pas une vraie image.' });
+    // Une seule creation a la fois par film
+    if (generationActiveDe(film)) v.push({ etat: 'bloque', texte: 'Une création est déjà en cours pour ce film. Attends qu’elle se termine, puis recommence.' });
+    if (video && plan.media?.genre !== 'image') v.push({ etat: 'bloque', texte: 'Pour animer ce visuel, il faut d’abord une image.' });
+    // Le style
+    const style = film.styleCinema ? styleDe(film.styleCinema)?.libelle : null;
+    v.push(style
+      ? { etat: 'ok', texte: `Style du film : ${style}.` }
+      : { etat: 'info', texte: 'Aucun style imposé : l’image suivra ta description.', action: { libelle: 'Choisir un style', surClic: fermerEtAller(0) } });
+    // Les personnages et leurs photos de reference
+    const presents = film.personnages.filter((pp) => plan.personnages.includes(pp.id));
+    if (presents.length === 0) v.push({ etat: 'info', texte: 'Aucun personnage dans ce visuel.' });
+    else {
+      const sansPhoto = presents.filter((pp) => !aUnePhoto(pp));
+      v.push(sansPhoto.length === 0
+        ? { etat: 'ok', texte: `Personnages : ${presents.map((pp) => pp.nom).join(', ')} (photos de référence utilisées).` }
+        : { etat: 'info', texte: `Personnages : ${presents.map((pp) => pp.nom).join(', ')}. Sans photo de référence : ${sansPhoto.map((pp) => pp.nom).join(', ')} (décrits seulement par leur texte).` });
+    }
+    // Les points a verifier dans l'histoire
+    const nb = bloquants.length;
+    if (nb === 0) v.push({ etat: 'ok', texte: 'Aucun point critique à vérifier dans ton histoire.' });
+    else if (reelle) {
+      v.push({ etat: 'bloque', texte: `${nb === 1 ? 'Un point' : `${nb} points`} de ton histoire ${nb === 1 ? 'doit' : 'doivent'} être vérifié${nb > 1 ? 's' : ''} avant la génération.`, action: { libelle: 'Voir les points', surClic: fermerEtAller(3) } });
+    } else {
+      v.push({ etat: 'info', texte: `${nb === 1 ? 'Un point' : `${nb} points`} à vérifier dans ton histoire : ${nb === 1 ? 'il bloquerait' : 'ils bloqueraient'} une création payante, pas cette démonstration.`, action: { libelle: 'Voir les points', surClic: fermerEtAller(3) } });
+    }
+    const prix = tarifs.prix[cle];
+    return {
+      titre: video ? 'Animer ce visuel en vidéo' : 'Préparer l’image avec l’IA',
+      cible: `Scène ${scene.index + 1} · ${scene.titre} — visuel ${scene.plans.indexOf(plan) + 1}`,
+      description: plan.dialogue?.texte ?? plan.description,
+      verifications: v,
+      cout: reelle
+        ? `Coût estimé : ${libellePrix(tarifs, cle)}. Rien n’est débité avant ton accord, et le serveur applique tes plafonds.`
+        : 'Coût : 0 crédit (démonstration gratuite).',
+      payant: reelle,
+      libelleConfirmer: reelle ? `Confirmer et créer · ${libelleCredits(prix)}` : 'Créer le visuel de démonstration',
+    };
+  })();
+
   return (
     <div className="text-slate-100">
       {erreur && (
@@ -799,7 +860,7 @@ export default function CinemaPage() {
                 }
                 if (methode === 'ia') {
                   return generationIa ? (
-                    <button type="button" onClick={() => selectionnerScene(sceneSel.id, true)} data-action-vide="ia"
+                    <button type="button" onClick={() => genererMedia(pl.id, 'image')} data-action-vide="ia"
                       className="mt-1 inline-flex items-center gap-1.5 rounded-lg border border-violet-500/60 px-3 py-1.5 text-xs text-violet-100 hover:bg-violet-500/10">
                       <Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> Préparer l’image avec l’IA
                     </button>
@@ -1241,12 +1302,10 @@ export default function CinemaPage() {
 
                         <SuiviGenerationPlan
                           generation={derniereGenerationDuPlan(film, plan.id)}
-                          confirmation={confirmation?.planId === plan.id ? confirmation.operation : null}
-                          prix={confirmation?.planId === plan.id
-                            ? libellePrix(tarifs, confirmation.operation === 'video' ? 'ai.image_to_video' : 'ai.generate_background')
-                            : ''}
-                          surConfirmer={() => confirmation && lancerGenerationIa(confirmation.planId, confirmation.operation)}
-                          surAnnuler={() => setConfirmation(null)}
+                          confirmation={null}
+                          prix=""
+                          surConfirmer={() => {}}
+                          surAnnuler={() => {}}
                         />
 
                         {/* Les personnages DE CE PLAN : leurs portraits (vraie photo de reference, sinon icone neutre). */}
@@ -1479,6 +1538,15 @@ export default function CinemaPage() {
           </div>
         )}
       </WizardCinema>
+      {donneesDialogueIA && confirmation && (
+        <DialogueGenerationIA
+          donnees={donneesDialogueIA}
+          enCours={enCours === `generation:${confirmation.planId}:${confirmation.operation}`}
+          erreur={erreur}
+          surConfirmer={confirmerDialogueIA}
+          surAnnuler={() => setConfirmation(null)}
+        />
+      )}
     </div>
   );
 }

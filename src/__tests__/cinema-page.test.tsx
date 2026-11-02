@@ -223,15 +223,17 @@ describe('page Cinema IA — production asynchrone', () => {
     beforeEach(accepterLesEcarts);
     afterEach(() => { delete (film as { ecartsAcceptes?: string[] }).ecartsAcceptes; });
 
-    it('un ecart critique NON accepte : le bouton paye n’ouvre aucune confirmation et dit pourquoi', async () => {
+    it('un ecart critique NON accepte : la fenêtre s’ouvre, dit pourquoi, et « Confirmer » reste éteint', async () => {
       delete (film as { ecartsAcceptes?: string[] }).ecartsAcceptes;
       expect(ecartsBloquants(film as never).length).toBeGreaterThan(0);
       generationModeForce = 'reelle';
       await ouvrir();
       await ouvrirScene1();
       fireEvent.click(document.querySelector('[data-cinema-generation="image"]') as HTMLButtonElement);
-      expect(screen.queryByRole('group', { name: /confirmer la generation payante/i })).toBeNull();
-      expect(document.body.textContent).toMatch(/point à vérifier dans ton histoire avant de créer des images payantes/);
+      const fenetre = await screen.findByRole('dialog', { name: /Préparer l’image avec l’IA/ });
+      expect(fenetre.textContent).toMatch(/de ton histoire (doit|doivent) être vérifiés? avant la génération/);
+      expect((within(fenetre).getByRole('button', { name: /Confirmer et créer/ }) as HTMLButtonElement).disabled).toBe(true);
+      fireEvent.click(within(fenetre).getByRole('button', { name: /Confirmer et créer/ }));
       expect(appels.some((a) => a.url.includes('/generation'))).toBe(false);
     });
 
@@ -281,21 +283,25 @@ describe('page Cinema IA — production asynchrone', () => {
       // interaction juste au-dessus.
       const fs = require('fs') as typeof import('fs');
       const p = fs.readFileSync('src/app/dashboard/cinema/page.tsx', 'utf-8');
-      expect(p).toMatch(/operation === 'video' \? 'ai\.image_to_video' : 'ai\.generate_background'/);
+      expect(p).toMatch(/video \? 'ai\.image_to_video' : 'ai\.generate_background'/);
       expect(p).toContain("libellePrix(tarifs, 'ai.generate_background')");
       expect(p).toContain("libellePrix(tarifs, 'ai.image_to_video')");
     });
   });
 
-  it('en mode SIMULÉ (gratuit), aucune confirmation n’est demandée — rien n’est débité', async () => {
+  it('en mode SIMULÉ (gratuit), le clic ouvre la fenêtre de préparation (0 crédit) ; rien ne part avant « Créer »', async () => {
     generationIaActive = true; // mode 'simulee'
     const confirmSpy = vi.spyOn(window, 'confirm');
     await ouvrir();
     await ouvrirScene1();
     const bouton = document.querySelector('[data-cinema-generation="image"]') as HTMLButtonElement;
     fireEvent.click(bouton);
+    const fenetre = await screen.findByRole('dialog', { name: /Préparer l’image avec l’IA/ });
+    expect(fenetre.textContent).toMatch(/Coût : 0 crédit \(démonstration gratuite\)/);
+    expect(appels.some((a) => a.url.includes('/generation') && a.method === 'POST')).toBe(false);
+    fireEvent.click(within(fenetre).getByRole('button', { name: /Créer le visuel de démonstration/ }));
     await waitFor(() => expect(appels.some((a) => a.url.includes('/generation') && a.method === 'POST')).toBe(true));
-    expect(confirmSpy).not.toHaveBeenCalled();
+    expect(confirmSpy).not.toHaveBeenCalled(); // jamais la boite native
   });
 
   it('une generation termine annonce que le solde a pu changer — la barre laterale peut se rafraichir', async () => {
@@ -308,6 +314,7 @@ describe('page Cinema IA — production asynchrone', () => {
     await ouvrirScene1();
     const bouton = document.querySelector('[data-cinema-generation="image"]') as HTMLButtonElement;
     fireEvent.click(bouton);
+    fireEvent.click(await screen.findByRole('button', { name: /Créer le visuel de démonstration/ }));
     await screen.findByText(/generation image en cours/i);
     // Le serveur termine : le sondage le voit, et previent la barre laterale.
     generationsFilm = [{ ...generationsFilm[0], statut: 'reussie' }];
@@ -320,6 +327,7 @@ describe('page Cinema IA — production asynchrone', () => {
     await ouvrir();
     await ouvrirScene1();
     fireEvent.click(document.querySelector('[data-cinema-generation="image"]') as HTMLButtonElement);
+    fireEvent.click(await screen.findByRole('button', { name: /Créer le visuel de démonstration/ }));
     await screen.findByText(/generation image en cours/i);
     generationsFilm = [{ ...generationsFilm[0], statut: 'echouee', erreur: 'Replicate (image) : generation refusee par le fournisseur', creditsPris: 5, creditsRembourses: true }];
     const statut = await waitFor(() => {
@@ -352,6 +360,7 @@ describe('page Cinema IA — production asynchrone', () => {
     await ouvrir();
     await ouvrirScene1();
     fireEvent.click(document.querySelector('[data-cinema-generation="image"]') as HTMLButtonElement);
+    fireEvent.click(await screen.findByRole('button', { name: /Créer le visuel de démonstration/ }));
     expect(await screen.findByText(/generation image en cours/i)).toBeTruthy();
   });
 

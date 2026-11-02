@@ -962,3 +962,15 @@ l'accepte) ; les boutons sont « Modifier mon histoire » et « Accepter ainsi �
 
 **Continuer.** Le pied de page dit ce qui manque (« N visuels a preparer · tu peux continuer » ou « N points a verifier »)
 et ne bloque pas la navigation ; il n'envoie rien.
+
+
+## 28. La fenetre « Preparer l'image avec l'IA »
+
+Cause du bug « le bouton ne fait rien » : l'action de l'apercu vide ne faisait que `selectionnerScene()` (ouvrir l'editeur de
+la scene, hors de vue) et `genererMedia()` revenait silencieusement si une creation etait deja en cours. Desormais, ce bouton et
+l'etoile/clap d'un visuel ouvrent la MEME fenetre (`DialogueGenerationIA`) : scene et visuel concernes, verifications (moteur,
+creation deja en cours, style, personnages et photos de reference, points critiques de l'histoire), cout estime et bouton de
+confirmation. Bloque (et dit pourquoi) : moteur indisponible, creation deja en cours, image absente pour animer, points critiques
+en mode reel. « Aucun style impose » n'est jamais bloquant. Le serveur re-verifie tout (plafonds, ecarts, solde) ; son message
+s'affiche dans la fenetre, qui reste ouverte. « Confirmer » s'eteint au 1er appel (double clic neutre). Mode simule : 0 credit,
+annonce comme demonstration.
