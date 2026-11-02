@@ -701,7 +701,7 @@ export default function CinemaPage() {
           ) : film && sceneSel && etape < 3 ? (
             // UN SEUL apercu a l'etape Scenes (et avant) : le media de la scene selectionnee.
             <ApercuScene
-              filmId={film.id} formatProjet={format}
+              filmId={film.id}
               scene={sceneSel as never}
               planIndex={planParScene[sceneSel.id] ?? 0}
               surPlan={(k) => setPlanParScene((m) => ({ ...m, [sceneSel.id]: k }))}

@@ -202,6 +202,7 @@ describe('la coque respecte les contraintes de la maquette', () => {
     expect(src).toMatch(/\.cinema-apercu\{max-height:235px;--hauteur-cadre:140px\}/);
     // Sur ordinateur, l'apercu unique est plus large (borne) et son cadre plus haut.
     expect(src).toMatch(/width:clamp\(360px,36vw,520px\)/);
+    expect(src).toMatch(/--hauteur-cadre:clamp\(160px,calc\(100vh - 26rem\),520px\)/);
     expect(src).not.toMatch(/lg:w-\[360px\]/);
     // L'extrait d'exemple garde son ratio natif 16:9 dans la bande compacte du mobile.
     expect(src).toMatch(/\.cinema-apercu \[data-ratio-exemple\]\{width:min\(100%,262px\)/);

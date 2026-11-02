@@ -175,19 +175,19 @@ describe('un media dit d’ou il vient', () => {
 describe('l’apercu de scene : cadre au format reel, jamais deforme', () => {
   const scene: SceneAffichee = { id: 's', index: 0, titre: 'T', plans: [{ id: 'p', cadre: 'moyen', description: 'd', dialogue: null, media: { ...MEDIA_IMPORT, genre: 'video' } }] };
   it('une video 16:9 dans un projet 9:16 garde son ratio 16:9 et object-fit: contain', () => {
-    render(<ApercuScene filmId="f" formatProjet="9:16" scene={scene} planIndex={0} surPlan={() => {}} agrandi={false} surAgrandir={() => {}} surReduire={() => {}} />);
+    render(<ApercuScene filmId="f" scene={scene} planIndex={0} surPlan={() => {}} agrandi={false} surAgrandir={() => {}} surReduire={() => {}} />);
     expect(document.querySelector('[data-ratio-media]')!.getAttribute('data-ratio-media')).toBe('1.778');
     expect((document.querySelector('video') as HTMLVideoElement).style.objectFit).toBe('contain');
   });
-  it('sans media dans un projet 9:16 : cadre vide 9:16, etat neutre explicite', () => {
-    render(<ApercuScene filmId="f" formatProjet="9:16" scene={{ ...scene, plans: [{ ...scene.plans[0], media: null }] }} planIndex={0} surPlan={() => {}} agrandi={false} surAgrandir={() => {}} surReduire={() => {}} />);
-    expect(document.querySelector('[data-ratio-media]')!.getAttribute('data-ratio-media')).toBe('0.563');
+  it('sans media dans un projet 9:16 : cadre neutre 16:9 (pas un grand rectangle vertical), etat explicite', () => {
+    render(<ApercuScene filmId="f" scene={{ ...scene, plans: [{ ...scene.plans[0], media: null }] }} planIndex={0} surPlan={() => {}} agrandi={false} surAgrandir={() => {}} surReduire={() => {}} />);
+    expect(document.querySelector('[data-ratio-media]')!.getAttribute('data-ratio-media')).toBe('1.778');
     expect(document.body.textContent).toMatch(/Aucun media pour ce plan/);
     expect(document.querySelector('video, img')).toBeNull();
   });
   it('agrandi : une fenetre dans <body>, Echap referme, aucun menu de telechargement natif', () => {
     const reduire = vi.fn();
-    render(<ApercuScene filmId="f" formatProjet="16:9" scene={scene} planIndex={0} surPlan={() => {}} agrandi surAgrandir={() => {}} surReduire={reduire} />);
+    render(<ApercuScene filmId="f" scene={scene} planIndex={0} surPlan={() => {}} agrandi surAgrandir={() => {}} surReduire={reduire} />);
     const fenetre = screen.getByRole('dialog');
     expect(fenetre.parentElement).toBe(document.body);
     fireEvent.keyDown(document, { key: 'Escape' });

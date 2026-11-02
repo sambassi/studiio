@@ -77,7 +77,7 @@ export default function WizardCinema({
            de page lui laisse sa place, sinon elle recouvre « Continuer ». Specificite 0,2,0 pour
            l'emporter sur les classes de marge d'utilite. */
         .cinema-wizard .cinema-pied{padding-right:5.25rem}
-        @media(min-width:1024px){.cinema-wizard{height:calc(100vh - 8rem)}.cinema-apercu{max-height:none;width:clamp(360px,36vw,520px);--hauteur-cadre:min(52vh,520px)}.cinema-apercu [data-ratio-exemple]{width:100%}}
+        @media(min-width:1024px){.cinema-wizard{height:calc(100vh - 8rem)}.cinema-apercu{max-height:none;width:clamp(360px,36vw,520px);--hauteur-cadre:clamp(160px,calc(100vh - 26rem),520px)}.cinema-apercu [data-ratio-exemple]{width:100%}}
       `}</style>
       <header className="shrink-0 border-b border-slate-800 px-4 py-3 sm:px-6">{entete}</header>
 

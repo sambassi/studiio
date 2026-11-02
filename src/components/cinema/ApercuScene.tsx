@@ -66,11 +66,9 @@ function FenetreMedia({ titre, children, surFermer }: { titre: string; children:
 }
 
 export default function ApercuScene({
-  filmId, formatProjet, scene, planIndex, surPlan, agrandi, surAgrandir, surReduire,
+  filmId, scene, planIndex, surPlan, agrandi, surAgrandir, surReduire,
 }: {
   filmId: string;
-  /** Le format du PROJET : il ne sert qu'au cadre vide, jamais a deformer un media. */
-  formatProjet: string;
   scene: SceneAffichee;
   planIndex: number;
   surPlan: (i: number) => void;
@@ -83,7 +81,8 @@ export default function ApercuScene({
   const media = plan?.media ?? null;
   const prov = provenanceMedia(media);
   const src = media && plan ? urlMediaPlan(filmId, plan.id) : null;
-  const ratioMedia = media && media.largeur > 0 && media.hauteur > 0 ? media.largeur / media.hauteur : formatProjet === '9:16' ? 9 / 16 : 16 / 9;
+  // Sans media, un cadre vide en 16:9 : l'etat neutre n'a pas a etre un grand rectangle vertical (le format du projet ne vaut que pour le film).
+  const ratioMedia = media && media.largeur > 0 && media.hauteur > 0 ? media.largeur / media.hauteur : 16 / 9;
   const style = {
     aspectRatio: `${ratioMedia}`,
     width: `min(100%, calc(var(--hauteur-cadre, 300px) * ${ratioMedia}))`,
