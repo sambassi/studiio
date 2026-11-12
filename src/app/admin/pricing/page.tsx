@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Loader2, Save, Download, RefreshCw, ChevronDown, Target } from 'lucide-react';
-import type { AnalyseFormule } from '@/lib/stripe/formules-proposees';
+import type { AnalyseFormule, MargeAbonnement } from '@/lib/stripe/formules-proposees';
 
 interface Plan {
   key: string; name: string; price_cents: number; yearly_price_cents: number;
@@ -23,6 +23,7 @@ export default function PricingAdminPage() {
   const [synchro, setSynchro] = useState<null | { lignes: any[]; erreurs: string[]; aEcrire: number }>(null);
   const [synchronising, setSynchronising] = useState(false);
   const [formules, setFormules] = useState<AnalyseFormule[] | null>(null);
+  const [marges, setMarges] = useState<MargeAbonnement[]>([]);
   const [formulesOuvert, setFormulesOuvert] = useState(false);
 
   // 1er clic : diff proposé (rien n'est écrit). 2e clic : confirmation.
@@ -79,6 +80,7 @@ export default function PricingAdminPage() {
       const res = await fetch('/api/admin/pricing/formules', { cache: 'no-store' });
       const data = await res.json();
       if (res.ok && Array.isArray(data.formules)) setFormules(data.formules as AnalyseFormule[]);
+      if (res.ok && Array.isArray(data.marges)) setMarges(data.marges as MargeAbonnement[]);
     } catch { /* panneau simplement vide */ }
   };
 
@@ -179,6 +181,7 @@ export default function PricingAdminPage() {
                 rend faux le prix unitaire de chaque opération.
               </p>
               {formules.map((f) => {
+                const marge = marges.find((m) => m.cle === f.cle);
                 const style = f.verdict === 'dilue'
                   ? 'border-red-500/40 bg-red-500/10 text-red-300'
                   : f.verdict === 'inconnu'
@@ -194,6 +197,18 @@ export default function PricingAdminPage() {
                       {f.verdict === 'dilue' ? 'Dilue le crédit' : f.verdict === 'inconnu' ? 'À vérifier' : 'Tenable'}
                     </span>
                     <span className="min-w-0 flex-1 text-gray-500">{f.motif}</span>
+                    {marge && (
+                      <span className="w-full text-gray-500" data-testid={`marge-${f.cle}`}>
+                        Prix de vente {marge.prixVenteChf.toFixed(2)} CHF · {marge.creditsOfferts} crédits offerts ·
+                        {' '}coût d’usage au pire {marge.coutUsageMaxChf === null ? 'inconnu' : `${marge.coutUsageMaxChf.toFixed(2)} CHF`} ·
+                        {' '}marge réelle{' '}
+                        <b className={typeof marge.margeReelleChf === 'number' && marge.margeReelleChf < 0 ? 'text-red-400' : 'text-green-400'}>
+                          {marge.margeReelleChf === null ? 'inconnue' : `${marge.margeReelleChf.toFixed(2)} CHF`}
+                        </b>
+                        <br />
+                        <span className="text-gray-600">{marge.motif}</span>
+                      </span>
+                    )}
                   </div>
                 );
               })}

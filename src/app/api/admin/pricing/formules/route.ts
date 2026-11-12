@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin';
 import { lireTarifs } from '@/lib/tarifs/serveur';
-import { analyserFormulesProposees } from '@/lib/stripe/formules-proposees';
+import {
+  FORMULES_PROPOSEES, analyserFormulesProposees, margeAbonnement, type LigneCoutParCredit,
+} from '@/lib/stripe/formules-proposees';
+import { CATALOGUE_TARIFS } from '@/lib/tarifs/catalogue';
+import { analyserGrille } from '@/lib/tarifs/rentabilite';
 
 /**
  * FORMULES PROPOSÉES — `GET /api/admin/pricing/formules`, ADMIN SEULEMENT.
@@ -17,8 +21,36 @@ export async function GET() {
   const { error } = await requireAdmin();
   if (error) return error;
   const config = await lireTarifs();
+
+  // Le coût d'usage d'une formule se déduit de la GRILLE RÉELLE : à crédits
+  // égaux, une opération peut coûter cent fois plus qu'une autre. On passe
+  // donc les coûts par tarif, convertis en CHF avec le taux enregistré.
+  const lignes = analyserGrille({
+    prix: config.prix,
+    valeurCreditChf: config.valeurCreditChf,
+    coutsFournisseur: config.coutsFournisseur,
+    tauxChfParUsd: config.change?.chfParUsd ?? null,
+    margeCible: config.margeCible,
+  });
+  const libelle = new Map(CATALOGUE_TARIFS.map((e) => [e.cle as string, e.libelle]));
+  const coutsParCredit: LigneCoutParCredit[] = lignes.map((l) => ({
+    cle: l.cle,
+    libelle: libelle.get(l.cle) ?? l.cle,
+    prixCredits: l.prixCredits,
+    coutChf: l.coutAdminChf !== null
+      ? l.coutAdminChf
+      : l.coutUsd !== null && config.change
+        ? Math.round(l.coutUsd * config.change.chfParUsd * 10_000) / 10_000
+        : null,
+  }));
+
   return NextResponse.json(
-    { success: true, valeurCreditChf: config.valeurCreditChf, formules: analyserFormulesProposees(config.valeurCreditChf) },
+    {
+      success: true,
+      valeurCreditChf: config.valeurCreditChf,
+      formules: analyserFormulesProposees(config.valeurCreditChf),
+      marges: FORMULES_PROPOSEES.map((f) => margeAbonnement(f, coutsParCredit)),
+    },
     { headers: { 'Cache-Control': 'private, no-store' } },
   );
 }

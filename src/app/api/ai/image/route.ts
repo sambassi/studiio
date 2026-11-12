@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { MESSAGE_IMAGE_IA_NON_CONFIGUREE } from '@/lib/fournisseurs/messages-neutres';
+import { operationAutorisee } from '@/lib/tarifs/garde-cout';
+import { lireTarifs } from '@/lib/tarifs/serveur';
 import { randomUUID } from 'crypto';
 import { auth } from '@/lib/auth/config';
 import { deductCredits, getUserCredits } from '@/lib/credits/system';
@@ -368,6 +370,24 @@ export async function POST(req: NextRequest) {
     // Check credits — le prix est lu UNE fois, ici : le 402, le débit et
     // `creditsUsed` utilisent ce même nombre.
     const cost = await prixDe(CLE_ACTION_IA[action]);
+
+    // Pas de vente à l'aveugle : une opération PAYANTE dont le coût
+    // fournisseur n'est pas vérifié est refusée AVANT tout appel et tout
+    // débit. Aucun tarif actuel n'est concerné — la garde vise un tarif
+    // ajouté plus tard sans son coût. Une opération à 0 crédit passe.
+    const garde = operationAutorisee({
+      cle: CLE_ACTION_IA[action],
+      credits: cost,
+      blocage: (await lireTarifs()).bloquerSiCoutInconnu,
+    });
+    if (!garde.autorisee) {
+      console.error('[ai/image]', garde.detail);
+      return NextResponse.json(
+        { success: false, error: garde.message, code: garde.motif },
+        { status: 503 },
+      );
+    }
+
     const credits = await getUserCredits(session.user.id);
     if (credits < cost) {
       return NextResponse.json({

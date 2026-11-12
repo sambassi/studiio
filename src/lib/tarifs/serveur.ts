@@ -38,6 +38,7 @@ import {
 } from './catalogue';
 import { normaliserTaux, normaliserTauxEur, tauxValide, type TauxChange, type TauxEur } from './change';
 import { MARGE_CIBLE_DEFAUT, margeValide } from './rentabilite';
+import { BLOCAGE_COUT_INCONNU_DEFAUT } from './garde-cout';
 
 export const CLE_REGLAGE_TARIFS = 'tarifs_credits';
 export const ACTION_AUDIT_TARIFS = 'update_pricing';
@@ -62,6 +63,12 @@ export interface ConfigurationTarifs {
   changeEur: TauxEur | null;
   /** Marge brute visée au-dessus du coût fournisseur, pour le prix conseillé. */
   margeCible: number;
+  /**
+   * Refuser une opération payante dont le coût fournisseur est inconnu.
+   * Actif par défaut : aucun tarif actuel n'est concerné, la garde vise les
+   * tarifs ajoutés plus tard sans leur coût.
+   */
+  bloquerSiCoutInconnu: boolean;
   /** `defaut` : rien n'a pu être lu, prix codés. */
   source: 'configuration' | 'defaut';
 }
@@ -112,7 +119,7 @@ async function charger(): Promise<ConfigurationTarifs> {
   // configuration valide (5 s de cache), et `ecrireTarifs` réécrirait ces
   // replis par-dessus la configuration de l'admin.
   if (reglage.error) throw new Error('tarifs illisibles');
-  const brut = (lireJson(reglage.data?.value) ?? {}) as { prix?: unknown; valeurCreditChf?: unknown; coutsFournisseur?: unknown; change?: unknown; changeEur?: unknown; margeCible?: unknown };
+  const brut = (lireJson(reglage.data?.value) ?? {}) as { prix?: unknown; valeurCreditChf?: unknown; coutsFournisseur?: unknown; change?: unknown; changeEur?: unknown; margeCible?: unknown; bloquerSiCoutInconnu?: unknown };
   const prix = normaliserGrille(brut.prix);
   // Les rendus : la table que lit le débit SQL fait foi.
   for (const ligne of (Array.isArray(rendus.data) ? rendus.data : []) as Array<{ format?: unknown; credits?: unknown }>) {
@@ -125,6 +132,7 @@ async function charger(): Promise<ConfigurationTarifs> {
     change: normaliserTaux(brut.change),
     changeEur: normaliserTauxEur(brut.changeEur),
     margeCible: margeValide(brut.margeCible) ? brut.margeCible : MARGE_CIBLE_DEFAUT,
+    bloquerSiCoutInconnu: typeof brut.bloquerSiCoutInconnu === 'boolean' ? brut.bloquerSiCoutInconnu : BLOCAGE_COUT_INCONNU_DEFAUT,
     source: 'configuration',
   };
 }
@@ -137,7 +145,7 @@ export async function lireTarifs(): Promise<ConfigurationTarifs> {
     .then((v) => { etat.valeur = v; etat.luA = horloge(); return v; })
     .catch((e) => {
       console.error('[tarifs] lecture impossible — repli :', e instanceof Error ? e.message : e);
-      return etat.valeur ?? { prix: { ...TARIFS_DEFAUT }, valeurCreditChf: null, coutsFournisseur: {}, change: null, changeEur: null, margeCible: MARGE_CIBLE_DEFAUT, source: 'defaut' as const };
+      return etat.valeur ?? { prix: { ...TARIFS_DEFAUT }, valeurCreditChf: null, coutsFournisseur: {}, change: null, changeEur: null, margeCible: MARGE_CIBLE_DEFAUT, bloquerSiCoutInconnu: BLOCAGE_COUT_INCONNU_DEFAUT, source: 'defaut' as const };
     })
     .finally(() => { if (etat.enVol === promesse) etat.enVol = null; });
   etat.enVol = promesse;
@@ -161,6 +169,7 @@ export interface ModificationTarifs {
   change?: unknown;
   changeEur?: unknown;
   margeCible?: unknown;
+  bloquerSiCoutInconnu?: unknown;
 }
 
 export type ErreurValidation = { champ: string; message: string };
@@ -184,6 +193,9 @@ export function validerModification(m: ModificationTarifs): ErreurValidation[] {
   }
   if (m.changeEur !== undefined && m.changeEur !== null && normaliserTauxEur(m.changeEur) === null) {
     erreurs.push({ champ: 'changeEur', message: 'Taux CHF → EUR invalide, ou date manquante (AAAA-MM-JJ).' });
+  }
+  if (m.bloquerSiCoutInconnu !== undefined && typeof m.bloquerSiCoutInconnu !== 'boolean') {
+    erreurs.push({ champ: 'bloquerSiCoutInconnu', message: 'Valeur vrai/faux attendue.' });
   }
   if (m.margeCible !== undefined && !margeValide(m.margeCible)) {
     erreurs.push({ champ: 'margeCible', message: 'Marge entre 0 et 10 attendue (0,4 = 40 %).' });
@@ -238,6 +250,11 @@ export async function ecrireTarifs(m: ModificationTarifs, adminEmail: string): P
       changeEur = demande;
     }
   }
+  let bloquerSiCoutInconnu = actuelle.bloquerSiCoutInconnu;
+  if (m.bloquerSiCoutInconnu !== undefined && m.bloquerSiCoutInconnu !== bloquerSiCoutInconnu) {
+    changements.push({ cle: 'pricing.blocage_cout_inconnu', ancien: bloquerSiCoutInconnu, nouveau: m.bloquerSiCoutInconnu });
+    bloquerSiCoutInconnu = m.bloquerSiCoutInconnu as boolean;
+  }
   let margeCible = actuelle.margeCible;
   if (m.margeCible !== undefined && m.margeCible !== margeCible) {
     changements.push({ cle: 'pricing.marge_cible', ancien: margeCible, nouveau: m.margeCible });
@@ -269,7 +286,7 @@ export async function ecrireTarifs(m: ModificationTarifs, adminEmail: string): P
   // l'écrire ferait échouer chaque enregistrement). L'auteur va à `audit_log`.
   const { error } = await supabaseAdmin.from('app_settings').upsert({
     key: CLE_REGLAGE_TARIFS,
-    value: { prix, valeurCreditChf, coutsFournisseur, change, changeEur, margeCible },
+    value: { prix, valeurCreditChf, coutsFournisseur, change, changeEur, margeCible, bloquerSiCoutInconnu },
     updated_at: new Date().toISOString(),
   });
   if (error) throw new Error(`app_settings : ${error.message}`);

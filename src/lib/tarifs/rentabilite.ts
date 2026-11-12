@@ -29,13 +29,101 @@ import { AVATAR_MAX_SCRIPT_CHARS } from '@/lib/stripe/constants';
 import { SPEECH_CHARS_PER_SECOND } from '@/lib/creer/voiceFit';
 import { TARIFS_HEYGEN_USD_PAR_MIN, moteurFacture } from '@/lib/fournisseurs/tarifs-heygen';
 import { SOURCE_TARIFS_HEYGEN } from '@/lib/fournisseurs/devis-fournisseur';
-import { coutUniteGeneration } from '@/lib/cinema/generation/couts';
 
 export type VerdictRentabilite = 'rentable' | 'perte' | 'inconnu';
 
 export const MESSAGE_COUT_NON_VERIFIE =
   'Coût fournisseur non vérifié pour ce tarif : rentabilité inconnue, pas nulle.';
 export const SOURCE_RENDU_LOCAL = 'rendu local (serveur Studiio), aucun appel fournisseur sortant';
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────
+ * COÛTS UNITAIRES RELEVÉS SUR LES GRILLES PUBLIQUES, LE 2026-11-12
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Chaque montant vient d'une page tarifaire PUBLIQUE, lisible sans compte et
+ * sans appel payant. Deux disciplines, les mêmes que pour HeyGen :
+ *
+ *   - LE PIRE CAS, jamais la moyenne. Un modèle facturé par palier (selon la
+ *     résolution ou la durée) est tarifé au palier le plus cher : un devis ne
+ *     doit pas sous-estimer.
+ *   - LA SOURCE ET LA DATE accompagnent le chiffre. Un montant sans source est
+ *     un montant inventé, et six mois plus tard personne ne peut le vérifier.
+ *
+ * Correspondance action → modèle relevée dans `src/app/api/ai/image/route.ts`
+ * (constante `MODELS` et les `case` de chaque action).
+ */
+const LU_LE = '2026-11-12';
+
+interface CoutReleve {
+  usd: number;
+  unite: string;
+  source: string;
+}
+
+const C = (usd: number, unite: string, source: string): CoutReleve => ({ usd, unite, source });
+
+/** Les grilles publiques, par clé tarifaire. */
+const COUTS_RELEVES: Partial<Record<CleTarif, CoutReleve>> = {
+  // ── Audio ───────────────────────────────────────────────────────────────
+  // Trois moteurs de voix coexistent : Edge (gratuit), la voix naturelle
+  // ($0,03 / 1000 car.) et la voix premium ($0,08 / 1000 car. en multilingue).
+  // Le plancher est posé sur LE PLUS CHER : c'est celui que l'utilisateur peut
+  // choisir, donc celui qu'il faut couvrir.
+  'audio.full_1000_chars': C(
+    0.08, '1000 caractères (moteur le plus cher)',
+    `grille API publique du moteur de voix premium, lue le ${LU_LE} : « Text to Speech $0.08 per 1,000 characters (multilingual models) », facturé au caractère`,
+  ),
+
+  // ── Rendus : locaux, aucun appel sortant ───────────────────────────────
+  'render.reel': C(0, '1 rendu', SOURCE_RENDU_LOCAL),
+  'render.tv': C(0, '1 rendu', SOURCE_RENDU_LOCAL),
+  'render.infographic': C(0, '1 rendu', SOURCE_RENDU_LOCAL),
+
+  // ── IA image ───────────────────────────────────────────────────────────
+  'ai.remove_background': C(
+    0.0038, '1 image',
+    `grille publique du modèle de détourage, lue le ${LU_LE} : « approximately $0.0038 to run », GPU L40S, ~4 s`,
+  ),
+  'ai.magic_layers': C(
+    0.0038, '1 image',
+    `même modèle de détourage que la suppression d'arrière-plan (route IA image), lu le ${LU_LE} : « approximately $0.0038 to run »`,
+  ),
+  'ai.upscale': C(
+    0.002, '1 image',
+    `grille publique du modèle d'agrandissement, lue le ${LU_LE} : « $2 per thousand output images »`,
+  ),
+  'ai.ocr': C(
+    0.0021, '1 image',
+    `grille publique du modèle de reconnaissance de texte, lue le ${LU_LE} : « approximately $0.0021 to run », CPU, ~22 s`,
+  ),
+  // Gomme, édition, transfert de style et génération d'affiche passent tous
+  // par le MÊME modèle d'édition d'image.
+  'ai.magic_eraser': C(
+    0.04, '1 image',
+    `grille publique du modèle d'édition d'image, lue le ${LU_LE} : « $0.04 per output image, or 25 images for $1 »`,
+  ),
+  'ai.magic_edit': C(
+    0.04, '1 image',
+    `grille publique du modèle d'édition d'image, lue le ${LU_LE} : « $0.04 per output image »`,
+  ),
+  'ai.style_transfer': C(
+    0.04, '1 image',
+    `grille publique du modèle d'édition d'image, lue le ${LU_LE} : « $0.04 per output image »`,
+  ),
+  'ai.generate_background': C(
+    0.04, '1 image',
+    `grille publique du modèle d'édition d'image, lue le ${LU_LE} : « $0.04 per output image » — palier le plus cher des deux voies (texte seul : « $3.00 / thousand output images »)`,
+  ),
+  'autopilot.poster_reference': C(
+    0.04, '1 affiche',
+    `même voie que la génération d'arrière-plan (cf. lib/autopilot/produire.ts), palier le plus cher, lu le ${LU_LE} : « $0.04 per output image »`,
+  ),
+  'ai.image_to_video': C(
+    0.145, '1 vidéo courte (palier le plus cher)',
+    `grille publique du modèle image-vers-vidéo, lue le ${LU_LE} : paliers « $0.05 », « $0.11 » et « $0.145 per output video » selon résolution et durée — le plus cher est retenu`,
+  ),
+};
 
 /**
  * Durée de parole MAXIMALE qu'un avatar peut facturer : le plafond de script
@@ -81,27 +169,23 @@ function coutAvatar(moteur: string): CoutVerifieTarif {
  */
 export function coutVerifie(cle: CleTarif): CoutVerifieTarif {
   switch (cle) {
+    // L'avatar se calcule : son coût dépend du moteur et de la durée.
     case 'avatar.avatar_iii': return coutAvatar('avatar_iii');
     case 'avatar.avatar_iv': return coutAvatar('avatar_iv');
     case 'avatar.avatar_v': return coutAvatar('avatar_v');
-    // Jumeau : le moteur n'est pas envoyé, HeyGen applique son défaut.
+    // Jumeau : le moteur n'est pas envoyé, le fournisseur applique son défaut.
     case 'avatar.jumeau': return coutAvatar(moteurFacture(null));
-    case 'ai.generate_background': {
-      const usd = coutUniteGeneration('replicate-flux-schnell', 'image');
-      return {
-        usd,
-        unite: '1 image',
-        source: usd === null ? MESSAGE_COUT_NON_VERIFIE
-          : 'https://replicate.com/pricing, lu le 2026-10-27 : « $3.00 / thousand output images » (flux-schnell)',
-      };
+    default: {
+      const releve = COUTS_RELEVES[cle];
+      if (!releve) return { usd: null, unite: '', source: MESSAGE_COUT_NON_VERIFIE };
+      return { usd: releve.usd, unite: releve.unite, source: releve.source };
     }
-    case 'render.reel':
-    case 'render.tv':
-    case 'render.infographic':
-      return { usd: 0, unite: '1 rendu', source: SOURCE_RENDU_LOCAL };
-    default:
-      return { usd: null, unite: '', source: MESSAGE_COUT_NON_VERIFIE };
   }
+}
+
+/** Les clés dont le coût fournisseur est relevé sur une grille publique. */
+export function clesAvecCoutReleve(): CleTarif[] {
+  return Object.keys(COUTS_RELEVES) as CleTarif[];
 }
 
 /**

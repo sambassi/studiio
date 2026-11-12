@@ -8,8 +8,10 @@
  */
 import { describe, expect, it } from 'vitest';
 import { TARIFS_DEFAUT } from '@/lib/tarifs/catalogue';
+import { CLES_TARIF } from '@/lib/tarifs/catalogue';
 import {
   MESSAGE_COUT_NON_VERIFIE,
+  clesAvecCoutReleve,
   SECONDES_AVATAR_PIRE_CAS,
   analyserGrille,
   analyserTarif,
@@ -35,11 +37,30 @@ describe('coût fournisseur vérifié', () => {
     expect(coutVerifie('avatar.avatar_v').usd).toBeCloseTo((86 / 60) * 7.2, 3);
   });
 
-  it('ne déclare JAMAIS zéro un coût non vérifié', () => {
-    // wan-2.2-i2v-fast n'a pas de prix sur la grille publique Replicate.
-    expect(coutVerifie('ai.image_to_video').usd).toBeNull();
-    expect(coutVerifie('ai.image_to_video').source).toBe(MESSAGE_COUT_NON_VERIFIE);
-    expect(coutVerifie('audio.full_1000_chars').usd).toBeNull();
+  it('chaque tarif du catalogue a un coût relevé sur une grille publique, daté et sourcé', () => {
+    for (const cle of CLES_TARIF) {
+      const c = coutVerifie(cle);
+      expect(c.usd, cle).not.toBeNull();
+      expect(c.source, cle).not.toBe(MESSAGE_COUT_NON_VERIFIE);
+      expect(c.unite, cle).not.toBe('');
+      // Un coût payant porte sa date de relevé ; un rendu local dit qu'il est local.
+      // La date du relevé, en ISO ou en jour/mois/année selon la source.
+      if ((c.usd as number) > 0) expect(c.source, cle).toMatch(/lu(e)? le (\d{4}-\d{2}-\d{2}|\d{2}\/\d{2}\/\d{4})/);
+    }
+    expect(clesAvecCoutReleve().length + 4).toBe(CLES_TARIF.length); // + les 4 avatars, calculés
+  });
+
+  it('retient le palier le PLUS CHER quand le modèle est facturé par palier', () => {
+    // Image-vers-vidéo : paliers 0,05 / 0,11 / 0,145 $ selon résolution et durée.
+    expect(coutVerifie('ai.image_to_video').usd).toBe(0.145);
+    // Voix : trois moteurs, du gratuit à 0,08 $ les 1000 caractères.
+    expect(coutVerifie('audio.full_1000_chars').usd).toBe(0.08);
+  });
+
+  it('une clé sans relevé rend `null` et le message, jamais 0', () => {
+    const inconnue = coutVerifie('cle.inexistante' as never);
+    expect(inconnue.usd).toBeNull();
+    expect(inconnue.source).toBe(MESSAGE_COUT_NON_VERIFIE);
   });
 
   it('reconnaît les rendus locaux comme réellement sans coût fournisseur', () => {
@@ -152,10 +173,22 @@ describe('état économique de la grille codée', () => {
     expect(apres.verdict).toBe('perte');
   });
 
-  it('le résumé nomme les tarifs à perte et ceux vendus à l’aveugle', () => {
+  it('le résumé nomme les tarifs à perte, et plus aucun n’est vendu à l’aveugle', () => {
     const r = resumeRentabilite(analyserGrille({ prix: TARIFS_DEFAUT, valeurCreditChf: VALEUR_PRO, tauxChfParUsd: taux }));
     expect(r.clesEnPerte).toContain('avatar.avatar_v');
-    expect(r.clesSansCout).toContain('audio.full_1000_chars');
+    // ⚠️ Était « contient audio.full_1000_chars » : les 14 coûts manquants ont
+    // été relevés sur les grilles publiques des fournisseurs.
+    expect(r.clesSansCout).toEqual([]);
     expect(r.pertes + r.inconnus + r.rentables).toBe(analyserGrille({ prix: TARIFS_DEFAUT, valeurCreditChf: VALEUR_PRO }).length);
+  });
+
+  it('hors avatars, toute la grille est rentable à l’échelle conservée', () => {
+    const lignes = analyserGrille({ prix: TARIFS_DEFAUT, valeurCreditChf: VALEUR_PRO, tauxChfParUsd: taux });
+    const horsAvatar = lignes.filter((l) => !l.cle.startsWith('avatar.'));
+    expect(horsAvatar.map((l) => l.verdict)).toEqual(horsAvatar.map(() => 'rentable'));
+    // Le plus serré : l'audio complet, 1 crédit pour 0,08 $ de voix premium.
+    const audio = lignes.find((l) => l.cle === 'audio.full_1000_chars')!;
+    expect(audio.margeChf).toBeGreaterThan(0);
+    expect(audio.margeChf).toBeLessThan(0.02);
   });
 });
