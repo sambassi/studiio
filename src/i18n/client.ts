@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext } from 'react';
-import type { Locale } from './config';
+import { localeIntl, type Locale } from './config';
 
 type Messages = Record<string, unknown>;
 
@@ -77,8 +77,7 @@ export function useFormattedDate() {
 
   return (date: Date | string, options?: Intl.DateTimeFormatOptions): string => {
     const d = typeof date === 'string' ? new Date(date) : date;
-    const localeMap: Record<string, string> = { fr: 'fr-FR', en: 'en-GB', de: 'de-DE' };
-    return d.toLocaleDateString(localeMap[locale] || 'fr-FR', options || {
+    return d.toLocaleDateString(localeIntl[locale] || 'fr-FR', options || {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
@@ -93,7 +92,6 @@ export function useFormattedNumber() {
   const { locale } = useContext(I18nContext);
 
   return (num: number, options?: Intl.NumberFormatOptions): string => {
-    const localeMap: Record<string, string> = { fr: 'fr-FR', en: 'en-GB', de: 'de-DE' };
-    return num.toLocaleString(localeMap[locale] || 'fr-FR', options);
+    return num.toLocaleString(localeIntl[locale] || 'fr-FR', options);
   };
 }

@@ -3,12 +3,19 @@
 import { useState, useEffect, useCallback, ReactNode } from 'react';
 import { I18nContext } from './client';
 import { defaultLocale, locales, type Locale } from './config';
+import { fusionnerMessages } from './fusion';
 
 // Lazy-load messages
 const messageLoaders: Record<Locale, () => Promise<Record<string, unknown>>> = {
   fr: () => import('../../messages/fr.json').then(m => m.default),
   en: () => import('../../messages/en.json').then(m => m.default),
   de: () => import('../../messages/de.json').then(m => m.default),
+  wo: () => import('../../messages/wo.json').then(m => m.default),
+  ln: () => import('../../messages/ln.json').then(m => m.default),
+  sw: () => import('../../messages/sw.json').then(m => m.default),
+  bm: () => import('../../messages/bm.json').then(m => m.default),
+  bas: () => import('../../messages/bas.json').then(m => m.default),
+  ht: () => import('../../messages/ht.json').then(m => m.default),
 };
 
 function getStoredLocale(): Locale {
@@ -29,9 +36,15 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const [messages, setMessages] = useState<Record<string, unknown>>({});
   const [ready, setReady] = useState(false);
 
+  /**
+   * Charge une langue EN LA POSANT SUR LE FRANÇAIS, clé par clé. Sans ce
+   * socle, une clé non traduite affichait son chemin technique à l'écran
+   * (`billing.transactionHistory`) : une langue partielle était inutilisable.
+   */
   const loadMessages = useCallback(async (loc: Locale) => {
     try {
-      const msgs = await messageLoaders[loc]();
+      const socle = await messageLoaders.fr();
+      const msgs = loc === defaultLocale ? socle : fusionnerMessages(socle, await messageLoaders[loc]());
       setMessages(msgs);
     } catch {
       // Fallback to French if load fails

@@ -764,10 +764,22 @@
       "upload": "Upload an image"
     },
     "suggestions": {
-      "0": { "title": "TRANSFORM YOUR BODY", "subtitle": "Dance is your secret weapon" },
-      "1": { "title": "LIMITLESS ENERGY", "subtitle": "Push your limits every day" },
-      "2": { "title": "DANCE & PERFORMANCE", "subtitle": "Reach your goals faster" },
-      "3": { "title": "TOTAL WELL-BEING", "subtitle": "Body and mind in harmony" }
+      "0": {
+        "title": "TRANSFORM YOUR BODY",
+        "subtitle": "Dance is your secret weapon"
+      },
+      "1": {
+        "title": "LIMITLESS ENERGY",
+        "subtitle": "Push your limits every day"
+      },
+      "2": {
+        "title": "DANCE & PERFORMANCE",
+        "subtitle": "Reach your goals faster"
+      },
+      "3": {
+        "title": "TOTAL WELL-BEING",
+        "subtitle": "Body and mind in harmony"
+      }
     },
     "nextStepMedia": "Next step: Media",
     "backButton": "Back",
@@ -889,7 +901,15 @@
       "scheduled": "Scheduled",
       "published": "Published"
     },
-    "dayHeaders": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    "dayHeaders": [
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri",
+      "Sat",
+      "Sun"
+    ],
     "selectDate": "Select a date",
     "clickDayToSee": "Click a day to view its posts",
     "noPosts": "No posts this day",
@@ -1192,7 +1212,9 @@
       "disconnectError": "Error during disconnection"
     },
     "comingSoonHint": "{platform} is coming soon. Connecting will reopen shortly.",
-    "voie": { "zernio": "your account" },
+    "voie": {
+      "zernio": "your account"
+    },
     "zernio": {
       "coupeCircuit": "Publishing to your own accounts is temporarily disabled.",
       "optionAbsente": "Enable the Publishing option to connect your own accounts."
@@ -1653,5 +1675,49 @@
     "rate_limit": "Rate limit reached (20 messages/hour). Try again later.",
     "close": "Close",
     "unauthorized": "Sign in to use the assistant."
+  },
+  "paiement": {
+    "titre": "Payments and credits",
+    "prix": "Price",
+    "credits": "Credits",
+    "solde": "Balance",
+    "soldeAvant": "Balance before",
+    "soldeApres": "Balance after",
+    "soldeInsuffisant": "Not enough credits",
+    "manque": "You need {count} more credits",
+    "recharger": "Top up",
+    "rechargeTitre": "Top up credits",
+    "rechargeSousTitre": "Purchased credits never expire and add to your plan’s credits.",
+    "montant": "Amount",
+    "devise": "Currency",
+    "frais": "Fees",
+    "aucunFrais": "No fees added",
+    "tauxDu": "Rate of {date}",
+    "creditsAchetes": "{count} credits purchased",
+    "confirmerPaiement": "Confirm payment",
+    "paiementConfirme": "Payment confirmed",
+    "paiementEnAttente": "Payment awaiting confirmation",
+    "paiementEchoue": "The payment did not go through. No credits were charged.",
+    "abonnement": "Subscription",
+    "formule": "Plan",
+    "formuleActuelle": "Current plan",
+    "changerFormule": "Change plan",
+    "annulerAbonnement": "Cancel subscription",
+    "renouvellement": "Renewal",
+    "creditsInclus": "{count} credits included",
+    "parMois": "per month",
+    "gratuit": "Free",
+    "factures": "Invoices",
+    "historique": "Transaction history",
+    "operationCout": "This operation costs {count} credits",
+    "operationGratuite": "This action is free",
+    "confirmerOperation": "Confirm and run",
+    "types": {
+      "achat": "Credit purchase",
+      "abonnement": "Plan credits",
+      "rendu": "Generation",
+      "remboursement": "Refund",
+      "bonus": "Bonus credits"
+    }
   }
 }

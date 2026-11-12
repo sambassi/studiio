@@ -1,0 +1,6 @@
+{
+  "_note": "Catalogue PARTIEL. Les clés absentes retombent sur le français (src/i18n/fusion.ts), elles n'affichent jamais leur chemin technique. Seuls les termes relus sont ici — repris du catalogue afroboost (hat, ISO 639-3). À compléter par un locuteur natif avant d'ouvrir la langue dans le sélecteur.",
+  "paiement": {
+    "prix": "Pri"
+  }
+}

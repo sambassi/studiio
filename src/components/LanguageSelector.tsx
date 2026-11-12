@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useLocale, useSetLocale } from '@/i18n/client';
-import { locales, localeNames, localeFlags, type Locale } from '@/i18n/config';
+import { localesProposees, localeNames, localeFlags, type Locale } from '@/i18n/config';
 
 interface LanguageSelectorProps {
   variant?: 'sidebar' | 'navbar' | 'footer';
@@ -32,7 +32,7 @@ export function LanguageSelector({ variant = 'sidebar' }: LanguageSelectorProps)
   if (variant === 'footer') {
     return (
       <div className="flex items-center gap-2">
-        {locales.map((loc) => (
+        {localesProposees.map((loc) => (
           <button
             key={loc}
             onClick={() => handleSelect(loc)}
@@ -70,7 +70,7 @@ export function LanguageSelector({ variant = 'sidebar' }: LanguageSelectorProps)
         <div className={`absolute z-50 mt-1 bg-gray-800 border border-gray-700 rounded-lg shadow-lg overflow-hidden ${
           variant === 'navbar' ? 'right-0 w-36' : 'left-0 right-0'
         }`}>
-          {locales.map((loc) => (
+          {localesProposees.map((loc) => (
             <button
               key={loc}
               onClick={() => handleSelect(loc)}
