@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Loader2, Save, Download, RefreshCw, ChevronDown, Target } from 'lucide-react';
 import type { AnalyseFormule, MargeAbonnement } from '@/lib/stripe/formules-proposees';
+import { BandeauDemo } from '@/components/ui/BandeauDemo';
 
 interface Plan {
   key: string; name: string; price_cents: number; yearly_price_cents: number;
@@ -131,7 +132,8 @@ export default function PricingAdminPage() {
   if (loading) return <div className="flex items-center justify-center h-[50vh]"><Loader2 className="animate-spin text-purple-400" size={32} /></div>;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-5">
+      <BandeauDemo />
       {toast && (
         <div className="fixed top-6 right-6 z-50 rounded-lg bg-green-600 px-4 py-3 text-sm font-medium text-white shadow-lg">
           {toast}
@@ -212,6 +214,39 @@ export default function PricingAdminPage() {
                   </div>
                 );
               })}
+
+              {/* ── Aperçu du rendu client ───────────────────────────────
+                  Montre à quoi ressemblerait la grille VUE PAR UN CLIENT.
+                  Aucun bouton d'achat : ces formules ne sont ni activées ni
+                  achetables, et la facturation réelle n'est pas touchée. */}
+              <div className="mt-3 space-y-2 border-t border-gray-800 pt-3">
+                <p className="text-xs font-semibold text-gray-300">Aperçu du rendu client</p>
+                <p className="text-[11px] text-gray-500">
+                  Simple rendu visuel. Aucune de ces formules n’est en vente : il n’y a pas de bouton
+                  d’achat, et les abonnements facturés restent ceux du tableau plus bas.
+                </p>
+                <div className="grid gap-2 sm:grid-cols-3" data-testid="apercu-client-formules">
+                  {formules.filter((f) => f.prixCentimes > 0).map((f) => (
+                    <div key={f.cle} className="relative rounded-xl border border-studiio-primary/30 bg-studiio-primary/5 p-3">
+                      <span className="absolute right-2 top-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] text-amber-300">
+                        non activée
+                      </span>
+                      <p className="text-sm font-semibold text-white">{f.nom}</p>
+                      <p className="mt-1 text-xl font-bold text-white">
+                        {(f.prixCentimes / 100).toLocaleString('fr-CH', { minimumFractionDigits: 2 })}
+                        <span className="text-xs font-normal text-gray-400"> CHF / mois</span>
+                      </p>
+                      <p className="mt-0.5 text-xs text-gray-300">{f.credits.toLocaleString('fr-CH')} crédits inclus</p>
+                      <p className="mt-2 text-[11px] text-gray-500">
+                        soit {((f.prixCentimes / 100) / f.credits).toFixed(4)} CHF le crédit
+                      </p>
+                      <div className="mt-2 cursor-not-allowed rounded-lg border border-gray-700 px-2 py-1.5 text-center text-[11px] text-gray-500">
+                        Achat indisponible
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
         </section>
@@ -342,9 +377,31 @@ export default function PricingAdminPage() {
                 </div>
               </div>
               <div>
-                <label className="text-[10px] text-gray-500 uppercase">Features (JSON)</label>
-                <textarea value={JSON.stringify(plan.features)} onChange={(e) => { try { setPlans(plans.map(p => p.key === plan.key ? { ...p, features: JSON.parse(e.target.value) } : p)); } catch {} }}
-                  className="w-full rounded bg-gray-700 border border-gray-600 px-2 py-1.5 text-xs text-white font-mono h-16 resize-none" />
+                {/*
+                  ⚠️ C'ÉTAIT UN CHAMP JSON BRUT. Il affichait
+                  `["150 credits/mois","Pas de watermark"]` et exigeait des
+                  crochets et des guillemets corrects ; une virgule oubliée
+                  faisait échouer `JSON.parse` EN SILENCE (le `catch {}`
+                  avalait la frappe) et le champ semblait ne plus répondre.
+                  Désormais : une fonctionnalité par ligne, rien à échapper.
+                */}
+                <label className="text-[10px] text-gray-500 uppercase" htmlFor={`fonctions-${plan.key}`}>
+                  Fonctionnalités affichées — une par ligne
+                </label>
+                <textarea
+                  id={`fonctions-${plan.key}`}
+                  value={(plan.features ?? []).join('\n')}
+                  onChange={(e) => setPlans(plans.map((p) => (p.key === plan.key
+                    ? { ...p, features: e.target.value.split('\n') }
+                    : p)))}
+                  onBlur={() => setPlans(plans.map((p) => (p.key === plan.key
+                    ? { ...p, features: (p.features ?? []).map((l) => l.trim()).filter(Boolean) }
+                    : p)))}
+                  placeholder={'150 crédits/mois\nPas de filigrane\n3 réseaux sociaux'}
+                  className="w-full rounded bg-gray-700 border border-gray-600 px-2 py-1.5 text-xs text-white h-20 resize-none" />
+                <p className="text-[9px] text-gray-500 mt-0.5">
+                  {(plan.features ?? []).filter((l) => l.trim()).length} fonctionnalité(s) · les lignes vides sont ignorées
+                </p>
               </div>
               <button onClick={() => savePlan(plan)} disabled={saving === plan.key}
                 className="flex items-center gap-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">

@@ -74,7 +74,13 @@ describe('/admin/tarifs', () => {
     expect(champ(/^Premium/).value).toBe('40');
     expect(champ(/^Valeur du crédit/).value).toBe('0.1');
     expect(screen.getByText('crédit(s) par 1000 caractères')).toBeInTheDocument();
-    expect(screen.getByText(/ne modifie pas les packs de paiement Stripe/)).toBeInTheDocument();
+    // ⚠️ La note « valeur indicative » est remplacée par trois lignes qui
+    // NOMMENT les trois notions qui se confondaient : ce que l'abonné paie
+    // réellement, la valeur enregistrée (la seule qui sert aux calculs), et
+    // les prix Stripe, que ce champ ne touche pas.
+    expect(screen.getByText(/Valeur du crédit retenue pour les calculs/)).toBeInTheDocument();
+    expect(screen.getByText(/la SEULE qui sert à calculer/)).toBeInTheDocument();
+    expect(screen.getByText(/Les prix de vente Stripe/)).toBeInTheDocument();
     expect(screen.getByText(/Pexels/)).toBeInTheDocument();
     expect(screen.getByText(/Pré-écoute voix/)).toBeInTheDocument();
     // 40 × 0,10 = 4 CHF client, coût 1,5 → marge 2,5

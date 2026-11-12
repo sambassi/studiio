@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Loader2, Zap } from 'lucide-react';
 import { useTranslations } from '@/i18n/client';
+import { BandeauDemo } from '@/components/ui/BandeauDemo';
 
 interface SubscriptionInfo {
   plan: string;
@@ -63,8 +64,12 @@ export function BillingContent() {
     : '—';
 
   return (
-    <div className="space-y-6">
-      <div className="grid md:grid-cols-3 gap-6">
+    <div className="space-y-5">
+      {/* Solde, abonnement et transactions viennent VRAIMENT de la base : le
+          bandeau n'apparaît que si cette base est un double de
+          prévisualisation. Absent en production. */}
+      <BandeauDemo />
+      <div className="grid md:grid-cols-3 gap-5">
         <Card className="md:col-span-1">
           <CardHeader className="border-b border-gray-800">
             <CardTitle>Crédits</CardTitle>

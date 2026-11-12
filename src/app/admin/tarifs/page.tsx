@@ -22,6 +22,7 @@ import {
   type CategorieTarif, type CleTarif, type CoutFournisseur, type EntreeCatalogue,
 } from '@/lib/tarifs/catalogue';
 import { ETAT_INTERACTIF_SANS_FOND } from '@/lib/ui/etats';
+import { BandeauDemo } from '@/components/ui/BandeauDemo';
 import type { LigneRentabilite, ResumeRentabilite } from '@/lib/tarifs/rentabilite';
 import type { TauxChange, TauxEur } from '@/lib/tarifs/change';
 
@@ -508,10 +509,11 @@ export default function TarifsAdminPage() {
   const erreurDe = (champ: string) => erreursClient[champ] ?? erreursServeur[champ];
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6 pb-4">
+    <div className="mx-auto w-full max-w-3xl space-y-4 pb-4">
+      <BandeauDemo />
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-bold text-white md:text-3xl">
-          <Coins className="text-orange-400" size={28} /> Tarifs &amp; crédits
+          <Coins className="text-studiio-primary" size={28} /> Tarifs &amp; crédits
         </h1>
         <p className="mt-1 text-sm text-gray-400">
           Combien de crédits coûte chaque opération. Les écrans et le débit lisent cette même grille.
@@ -536,7 +538,29 @@ export default function TarifsAdminPage() {
 
       {/* ── Valeur du crédit ─────────────────────────────────────────── */}
       <section className="card-base space-y-2" style={{ padding: 16 }}>
-        <label htmlFor="valeur-credit" className="block text-base font-semibold text-white">Valeur du crédit</label>
+        <label htmlFor="valeur-credit" className="block text-base font-semibold text-white">
+          Valeur du crédit retenue pour les calculs
+        </label>
+        {/*
+          ⚠️ TROIS NOTIONS SE CONFONDAIENT derrière un seul libellé
+          « Valeur du crédit » et une note « valeur indicative ». Elles sont
+          maintenant nommées, parce que la deuxième et la troisième sont la
+          même et que la première ne l'est pas.
+        */}
+        <ul className="space-y-0.5 text-xs text-gray-400">
+          <li>
+            <span className="text-gray-300">Ce que l’abonné paie réellement</span> : le prix de sa formule
+            divisé par ses crédits inclus. Il varie d’une formule à l’autre, et ce champ ne le change pas.
+          </li>
+          <li>
+            <span className="text-gray-300">La valeur enregistrée ici</span> : celle que tu décides, et
+            la SEULE qui sert à calculer recette, marge, plancher et prix conseillé ci-dessous.
+          </li>
+          <li>
+            <span className="text-gray-300">Les prix de vente Stripe</span> : inchangés. Ce champ ne touche
+            ni les abonnements, ni les packs de crédits.
+          </li>
+        </ul>
         <div className="flex flex-wrap items-center gap-2">
           <input
             id="valeur-credit"
@@ -554,7 +578,12 @@ export default function TarifsAdminPage() {
           <span className="text-sm text-gray-400">CHF par crédit</span>
         </div>
         {erreurDe(CHAMP_VALEUR_CREDIT) && <p className="text-xs text-red-400">{erreurDe(CHAMP_VALEUR_CREDIT)}</p>}
-        <p className="text-xs text-gray-500">Valeur indicative — ne modifie pas les packs de paiement Stripe.</p>
+        {donnees.valeurCreditChf === null && (
+          <p role="alert" className="text-xs text-amber-400" data-testid="manque-valeur-credit">
+            Donnée manquante : la valeur du crédit. Sans elle, aucune recette, aucune marge et aucun prix
+            conseillé ne peuvent être calculés — les verdicts restent « rentabilité inconnue ».
+          </p>
+        )}
       </section>
 
       {/* ── Rentabilité & taux de change ──────────────────────────────── */}
@@ -777,14 +806,53 @@ export default function TarifsAdminPage() {
                         const r = rentabiliteParCle.get(e.cle);
                         if (!r) return null;
                         const st = STYLE_VERDICT[r.verdict];
+                        /*
+                          Le verdict seul ne se vérifie pas : on affiche les
+                          QUATRE nombres qui le produisent. Chacun peut
+                          manquer, et dans ce cas on dit lequel — « inconnu »
+                          sans raison ne permet pas de corriger.
+                        */
+                        const manquantes = [
+                          donnees.valeurCreditChf === null ? 'valeur du crédit' : null,
+                          r.coutUsd === null && r.coutAdminChf === null ? 'coût fournisseur' : null,
+                          r.coutUsd !== null && r.coutUsd > 0 && r.coutAdminChf === null && !donnees.change ? 'taux USD → CHF' : null,
+                        ].filter(Boolean) as string[];
                         return (
-                          <p className="flex flex-wrap items-center gap-2 text-xs" data-testid={`verdict-${e.cle}`}>
-                            <span className={`rounded-full border px-2 py-0.5 ${st.classe}`}>{st.texte}</span>
-                            {r.prixPlancherCredits !== null && (
-                              <span className="text-gray-400">plancher {r.prixPlancherCredits}{r.prixConseilleCredits !== null ? ` · conseillé ${r.prixConseilleCredits}` : ''}</span>
+                          <div className="space-y-1 text-xs" data-testid={`verdict-${e.cle}`}>
+                            <p className="flex flex-wrap items-center gap-2">
+                              <span className={`rounded-full border px-2 py-0.5 ${st.classe}`}>{st.texte}</span>
+                              {r.prixPlancherCredits !== null && (
+                                <span className="text-gray-400">plancher {r.prixPlancherCredits}{r.prixConseilleCredits !== null ? ` · conseillé ${r.prixConseilleCredits}` : ''}</span>
+                              )}
+                            </p>
+                            <dl className="flex flex-wrap gap-x-4 gap-y-0.5 text-gray-400">
+                              <span><dt className="inline text-gray-500">Crédits facturés :</dt>{' '}<dd className="inline">{r.prixCredits}</dd></span>
+                              <span>
+                                <dt className="inline text-gray-500">Coût fournisseur :</dt>{' '}
+                                <dd className="inline">{r.coutAdminChf !== null ? `${r.coutAdminChf} CHF (saisi)` : r.coutUsd === null ? 'non vérifié' : r.coutUsd === 0 ? 'aucun (rendu local)' : `${r.coutUsd} USD`}</dd>
+                              </span>
+                              <span>
+                                <dt className="inline text-gray-500">Prix de revient :</dt>{' '}
+                                <dd className="inline">{r.coutAdminChf !== null ? chf(r.coutAdminChf) : r.coutUsd !== null && donnees.change ? chf(Math.round(r.coutUsd * donnees.change.chfParUsd * 10000) / 10000) : 'incalculable'}</dd>
+                              </span>
+                              <span>
+                                <dt className="inline text-gray-500">Recette :</dt>{' '}
+                                <dd className="inline">{r.revenuChf === null ? 'incalculable' : chf(r.revenuChf)}</dd>
+                              </span>
+                              <span>
+                                <dt className="inline text-gray-500">Marge :</dt>{' '}
+                                <dd className={`inline ${typeof r.margeChf === 'number' && r.margeChf < 0 ? 'text-red-400' : ''}`}>
+                                  {r.margeChf === null ? 'inconnue' : chf(r.margeChf)}
+                                </dd>
+                              </span>
+                            </dl>
+                            {manquantes.length > 0 && (
+                              <p className="text-amber-400" data-testid={`manque-${e.cle}`}>
+                                Donnée{manquantes.length > 1 ? 's' : ''} manquante{manquantes.length > 1 ? 's' : ''} : {manquantes.join(', ')}.
+                              </p>
                             )}
-                            <span className="min-w-0 flex-1 text-gray-500">{r.motif}</span>
-                          </p>
+                            <p className="text-gray-500">{r.motif}</p>
+                          </div>
                         );
                       })()}
                     </div>
