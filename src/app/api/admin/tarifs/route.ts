@@ -46,6 +46,7 @@ export async function PUT(req: NextRequest) {
     valeurCreditChf: corps.valeurCreditChf,
     coutsFournisseur: corps.coutsFournisseur,
     change: corps.change,
+    margeCible: corps.margeCible,
   };
   const erreurs = validerModification(m);
   if (erreurs.length) return NextResponse.json({ success: false, error: 'Tarifs invalides', erreurs }, { status: 400 });
@@ -70,6 +71,7 @@ function rentabilite(config: Awaited<ReturnType<typeof lireTarifs>>) {
     valeurCreditChf: config.valeurCreditChf,
     coutsFournisseur: config.coutsFournisseur,
     tauxChfParUsd: config.change?.chfParUsd ?? null,
+    margeCible: config.margeCible,
   });
   return {
     rentabilite: lignes,

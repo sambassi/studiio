@@ -41,6 +41,8 @@ interface ReponseTarifs {
   /** Rentabilité de la grille ENREGISTRÉE (pas de la saisie en cours). */
   rentabilite?: LigneRentabilite[];
   resumeRentabilite?: ResumeRentabilite;
+  /** Marge visée, en fraction (0,4 = 40 %). */
+  margeCible?: number;
   changeLibelle?: string;
   changePerime?: boolean;
 }
@@ -63,6 +65,17 @@ function erreurTaux(chfParUsd: string, le: string): string | null {
   const n = Number(brut.replace(',', '.'));
   if (!Number.isFinite(n) || n < TAUX_MIN || n > TAUX_MAX) return `Taux entre ${TAUX_MIN} et ${TAUX_MAX} attendu.`;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(le.trim())) return 'Date du taux requise (AAAA-MM-JJ).';
+  return null;
+}
+
+const CHAMP_MARGE = 'margeCible';
+
+/** Marge saisie en POURCENTAGE à l'écran, stockée en fraction côté serveur. */
+function erreurMarge(saisie: string): string | null {
+  const t = saisie.trim();
+  if (t === '') return null;
+  const n = Number(t.replace(',', '.'));
+  if (!Number.isFinite(n) || n < 0 || n > 1000) return 'Pourcentage entre 0 et 1000 attendu.';
   return null;
 }
 
@@ -229,6 +242,7 @@ export default function TarifsAdminPage() {
   const [couts, setCouts] = useState<Record<string, CoutSaisi>>({});
   const [taux, setTaux] = useState({ chfParUsd: '', le: '' });
   const [sourceTaux, setSourceTaux] = useState<string>('');
+  const [margeCible, setMargeCible] = useState('');
   const [lectureTaux, setLectureTaux] = useState(false);
 
   const [fermees, setFermees] = useState<Partial<Record<CategorieTarif, boolean>>>({});
@@ -249,6 +263,7 @@ export default function TarifsAdminPage() {
       return [e.cle, { chf: c ? String(c.chf) : '', unite: c?.unite ?? '' }];
     })));
     setTaux({ chfParUsd: d.change ? String(d.change.chfParUsd) : '', le: d.change?.le ?? '' });
+    setMargeCible(d.margeCible === undefined || d.margeCible === null ? '' : String(Math.round(d.margeCible * 100)));
     setSourceTaux(d.change?.source ?? '');
     setErreursServeur({});
   }, []);
@@ -312,8 +327,10 @@ export default function TarifsAdminPage() {
     if (mv) out[CHAMP_VALEUR_CREDIT] = mv;
     const mt = erreurTaux(taux.chfParUsd, taux.le);
     if (mt) out[CHAMP_CHANGE] = mt;
+    const mm = erreurMarge(margeCible);
+    if (mm) out[CHAMP_MARGE] = mm;
     return out;
-  }, [catalogue, prix, couts, valeurCredit, taux, max]);
+  }, [catalogue, prix, couts, valeurCredit, taux, margeCible, max]);
 
   // ── Ce qui a changé ────────────────────────────────────────────────────
   const diff = useMemo(() => {
@@ -322,6 +339,7 @@ export default function TarifsAdminPage() {
       valeurCreditChf?: number | null;
       coutsFournisseur?: Record<string, CoutFournisseur | null>;
       change?: TauxChange | null;
+      margeCible?: number;
     } = {};
     const lignes: Changement[] = [];
     if (!donnees) return { corps, lignes };
@@ -376,8 +394,18 @@ export default function TarifsAdminPage() {
           : `Enregistrer le taux 1 USD = ${apresTaux.chfParUsd} CHF (${apresTaux.le}) ?`,
       });
     }
+    const nMarge = lireDecimal(margeCible);
+    const apresMarge = nMarge === null || Number.isNaN(nMarge) ? null : Math.round(nMarge) / 100;
+    const avantMarge = donnees.margeCible ?? null;
+    if (apresMarge !== null && apresMarge !== avantMarge && !erreurMarge(margeCible)) {
+      corps.margeCible = apresMarge;
+      lignes.push({
+        champ: CHAMP_MARGE,
+        phrase: `Passer la marge visée de ${avantMarge === null ? 'non définie' : `${Math.round(avantMarge * 100)} %`} à ${Math.round(apresMarge * 100)} % ?`,
+      });
+    }
     return { corps, lignes };
-  }, [donnees, catalogue, prix, couts, valeurCredit, taux, sourceTaux]);
+  }, [donnees, catalogue, prix, couts, valeurCredit, taux, sourceTaux, margeCible]);
 
   const modifie = diff.lignes.length > 0;
   const bloque = Object.keys(erreursClient).length > 0;
@@ -419,10 +447,21 @@ export default function TarifsAdminPage() {
 
   const annulerConfirmation = useCallback(() => setConfirmation(false), []);
 
-  const appliquerProposes = () => {
+  /**
+   * Remplit les champs avec les prix CONSEILLÉS calculés (plancher + marge),
+   * sans rien enregistrer : la confirmation habituelle liste ensuite chaque
+   * changement. Ces montants viennent du coût fournisseur réel et du taux
+   * daté — plus d'un chiffre figé dans le catalogue, qui pouvait vendre à
+   * perte sans que personne le voie.
+   */
+  const appliquerConseilles = (cles: readonly string[]) => {
+    const conseils = donnees?.resumeRentabilite?.grilleConseillee ?? {};
     setPrix((p) => {
       const suite = { ...p };
-      for (const e of catalogue) if (e.propose !== undefined) suite[e.cle] = String(e.propose);
+      for (const cle of cles) {
+        const v = (conseils as Record<string, number | undefined>)[cle];
+        if (typeof v === 'number') suite[cle] = String(v);
+      }
       return suite;
     });
   };
@@ -448,8 +487,7 @@ export default function TarifsAdminPage() {
   }
 
   const valeurCreditNum = (() => { const n = lireDecimal(valeurCredit); return n !== null && !Number.isNaN(n) && n > 0 ? n : null; })();
-  const avatarsActuels = catalogue.filter((e) => e.categorie === 'avatar' && e.propose !== undefined).map((e) => donnees.prix?.[e.cle] ?? e.defaut);
-  const avatarUniforme = avatarsActuels.length > 0 && avatarsActuels.every((v) => v === avatarsActuels[0]) ? avatarsActuels[0] : null;
+  const grilleConseillee = (donnees.resumeRentabilite?.grilleConseillee ?? {}) as Record<string, number | undefined>;
   const erreurDe = (champ: string) => erreursClient[champ] ?? erreursServeur[champ];
 
   return (
@@ -568,6 +606,25 @@ export default function TarifsAdminPage() {
               className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-white focus:border-orange-500 focus:outline-none"
             />
           </div>
+          <div className="space-y-1">
+            <label htmlFor="marge-cible" className="block text-xs font-medium text-gray-300">Marge visée</label>
+            <div className="flex items-center gap-1">
+              <input
+                id="marge-cible"
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={1000}
+                step={5}
+                value={margeCible}
+                onChange={(e) => { setMargeCible(e.target.value); setErreursServeur((s2) => { const { [CHAMP_MARGE]: _, ...r } = s2; return r; }); }}
+                placeholder="40"
+                aria-invalid={!!erreurDe(CHAMP_MARGE)}
+                className="w-20 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-white focus:border-orange-500 focus:outline-none"
+              />
+              <span className="text-sm text-gray-400">%</span>
+            </div>
+          </div>
           <button
             type="button"
             onClick={lireTauxReference}
@@ -579,6 +636,7 @@ export default function TarifsAdminPage() {
           </button>
         </div>
         {erreurDe(CHAMP_CHANGE) && <p className="text-xs text-red-400">{erreurDe(CHAMP_CHANGE)}</p>}
+        {erreurDe(CHAMP_MARGE) && <p className="text-xs text-red-400">{erreurDe(CHAMP_MARGE)}</p>}
         <p className={`text-xs ${donnees?.changePerime ? 'text-amber-400' : 'text-gray-500'}`} data-testid="etat-taux">
           {donnees?.changeLibelle ?? 'Taux non chargé.'}
           {sourceTaux && <span className="text-gray-600"> · {sourceTaux}</span>}
@@ -608,25 +666,24 @@ export default function TarifsAdminPage() {
             </button>
             {ouverte && (
               <div id={idCorps} className="space-y-3 border-t border-gray-800 px-4 py-3">
-                {cat === 'avatar' && (
-                  <div className="space-y-2 rounded-lg border border-orange-500/20 bg-orange-500/5 p-3">
-                    <p className="text-xs text-orange-200/90">
-                      Tarifs proposés : {entrees.filter((e) => e.propose !== undefined).map((e) => `${e.libelle.split(' — ').pop()} ${e.propose}`).join(' · ')} crédits.
-                    </p>
-                    {avatarUniforme !== null && (
-                      <p className="text-xs text-gray-400">
-                        Actuellement {credits(avatarUniforme)} pour chaque moteur, tant que de nouveaux tarifs ne sont pas enregistrés.
+                {(() => {
+                  const aRelever = entrees.filter((e) => typeof grilleConseillee[e.cle] === 'number');
+                  if (aRelever.length === 0) return null;
+                  return (
+                    <div className="space-y-2 rounded-lg border border-orange-500/20 bg-orange-500/5 p-3" data-testid={`conseil-${cat}`}>
+                      <p className="text-xs text-orange-200/90">
+                        Sous le prix conseillé : {aRelever.map((e) => `${e.libelle} ${donnees.prix?.[e.cle] ?? e.defaut} → ${grilleConseillee[e.cle]}`).join(' · ')} crédits.
                       </p>
-                    )}
-                    <button
-                      type="button"
-                      onClick={appliquerProposes}
-                      className="flex items-center gap-1.5 rounded-lg border border-orange-500/40 px-3 py-1.5 text-xs font-semibold text-orange-300 hover:bg-orange-500/10"
-                    >
-                      <Sparkles size={14} /> Appliquer les tarifs proposés
-                    </button>
-                  </div>
-                )}
+                      <button
+                        type="button"
+                        onClick={() => appliquerConseilles(aRelever.map((e) => e.cle))}
+                        className="flex items-center gap-1.5 rounded-lg border border-orange-500/40 px-3 py-1.5 text-xs font-semibold text-orange-300 hover:bg-orange-500/10"
+                      >
+                        <Sparkles size={14} /> Appliquer les prix conseillés
+                      </button>
+                    </div>
+                  );
+                })()}
                 {entrees.map((e) => {
                   const erreur = erreurDe(e.cle);
                   const erreurC = erreurDe(champCout(e.cle));
@@ -701,6 +758,9 @@ export default function TarifsAdminPage() {
                         return (
                           <p className="flex flex-wrap items-center gap-2 text-xs" data-testid={`verdict-${e.cle}`}>
                             <span className={`rounded-full border px-2 py-0.5 ${st.classe}`}>{st.texte}</span>
+                            {r.prixPlancherCredits !== null && (
+                              <span className="text-gray-400">plancher {r.prixPlancherCredits}{r.prixConseilleCredits !== null ? ` · conseillé ${r.prixConseilleCredits}` : ''}</span>
+                            )}
                             <span className="min-w-0 flex-1 text-gray-500">{r.motif}</span>
                           </p>
                         );

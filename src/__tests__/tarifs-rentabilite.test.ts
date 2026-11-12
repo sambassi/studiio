@@ -74,6 +74,59 @@ describe('verdict suspendu plutôt que faux', () => {
   });
 });
 
+describe('prix plancher et prix conseillé', () => {
+  const taux = 0.83; // 1 USD = 0,83 CHF (taux de référence BCE du 11/11/2026)
+
+  it('le plancher ne descend jamais sous le coût : arrondi au crédit SUPÉRIEUR', () => {
+    const l = analyserTarif('avatar.avatar_iv', { prix: TARIFS_DEFAUT, valeurCreditChf: VALEUR_PRO, tauxChfParUsd: taux });
+    // 6,923 USD × 0,83 = 5,746 CHF ; à 0,08167 CHF le crédit → 70,35 → 71.
+    expect(l.prixPlancherCredits).toBe(71);
+    expect((l.prixPlancherCredits as number) * VALEUR_PRO).toBeGreaterThan(6.923 * taux);
+  });
+
+  it('le prix conseillé ajoute la marge visée, 40 % par défaut', () => {
+    const sansMarge = analyserTarif('avatar.avatar_iv', { prix: TARIFS_DEFAUT, valeurCreditChf: VALEUR_PRO, tauxChfParUsd: taux, margeCible: 0 });
+    const avecDefaut = analyserTarif('avatar.avatar_iv', { prix: TARIFS_DEFAUT, valeurCreditChf: VALEUR_PRO, tauxChfParUsd: taux });
+    expect(sansMarge.prixConseilleCredits).toBe(sansMarge.prixPlancherCredits);
+    // La marge s'applique au COÛT, pas au plancher déjà arrondi : 5,746 × 1,4
+    // = 8,044 CHF → 99 crédits (et non ⌈71 × 1,4⌉ = 100, qui majorerait deux fois).
+    expect(avecDefaut.prixConseilleCredits).toBe(99);
+    expect(avecDefaut.prixConseilleCredits).toBeGreaterThan(avecDefaut.prixPlancherCredits as number);
+  });
+
+  it('sans taux ni coût saisi, aucun plancher inventé', () => {
+    const l = analyserTarif('avatar.avatar_iv', { prix: TARIFS_DEFAUT, valeurCreditChf: VALEUR_PRO });
+    expect(l.prixPlancherCredits).toBeNull();
+    expect(l.prixConseilleCredits).toBeNull();
+  });
+
+  it('un coût saisi en CHF par l’admin suffit, sans taux', () => {
+    const l = analyserTarif('avatar.avatar_v', {
+      prix: TARIFS_DEFAUT, valeurCreditChf: 0.1,
+      coutsFournisseur: { 'avatar.avatar_v': { chf: 2, unite: '/ génération' } },
+    });
+    expect(l.prixPlancherCredits).toBe(20);
+    expect(l.prixConseilleCredits).toBe(28);
+  });
+
+  it('un rendu local reste à 0 de plancher — gratuit chez le fournisseur, vraiment', () => {
+    const l = analyserTarif('render.reel', { prix: TARIFS_DEFAUT, valeurCreditChf: VALEUR_PRO, tauxChfParUsd: taux });
+    expect(l.prixPlancherCredits).toBe(0);
+  });
+
+  it('la grille conseillée ne contient QUE les tarifs à relever', () => {
+    const lignes = analyserGrille({ prix: TARIFS_DEFAUT, valeurCreditChf: VALEUR_PRO, tauxChfParUsd: taux });
+    const { grilleConseillee } = resumeRentabilite(lignes);
+    for (const [cle, conseille] of Object.entries(grilleConseillee)) {
+      const ligne = lignes.find((l) => l.cle === cle)!;
+      expect(conseille, cle).toBeGreaterThan(ligne.prixCredits);
+    }
+    // Les avatars sous leur coût y sont ; un rendu local déjà rentable, non.
+    expect(Object.keys(grilleConseillee)).toContain('avatar.avatar_iv');
+    expect(Object.keys(grilleConseillee)).not.toContain('render.reel');
+  });
+});
+
 describe('état économique de la grille codée', () => {
   // Taux volontairement FAVORABLE à Studiio : 1 USD = 0,80 CHF. Les pertes
   // constatées ci-dessous tiennent donc a fortiori à un taux plus élevé.

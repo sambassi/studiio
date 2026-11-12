@@ -104,6 +104,21 @@ export function coutVerifie(cle: CleTarif): CoutVerifieTarif {
   }
 }
 
+/**
+ * Marge brute visée au-dessus du coût fournisseur, pour le PRIX CONSEILLÉ.
+ * 0,40 = « vendre 40 % au-dessus du coût ». C'est un point de départ, pas une
+ * vérité : la valeur réellement appliquée vient de la configuration admin.
+ */
+export const MARGE_CIBLE_DEFAUT = 0.4;
+
+/** Bornes de bon sens : une marge négative n'est pas une marge. */
+export const MARGE_MIN = 0;
+export const MARGE_MAX = 10;
+
+export function margeValide(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v) && v >= MARGE_MIN && v <= MARGE_MAX;
+}
+
 export interface LigneRentabilite {
   cle: CleTarif;
   prixCredits: number;
@@ -124,6 +139,14 @@ export interface LigneRentabilite {
   margeChf: number | null;
   verdict: VerdictRentabilite;
   motif: string;
+  /**
+   * Prix minimal en crédits pour ne PAS vendre à perte, arrondi au crédit
+   * SUPÉRIEUR (arrondir vers le bas vendrait sous le coût). `null` dès qu'un
+   * élément manque : coût inconnu, valeur du crédit ou taux non configurés.
+   */
+  prixPlancherCredits: number | null;
+  /** Plancher + marge visée, même arrondi. `null` aux mêmes conditions. */
+  prixConseilleCredits: number | null;
 }
 
 export interface EntreeAnalyse {
@@ -132,6 +155,18 @@ export interface EntreeAnalyse {
   coutsFournisseur?: Partial<Record<CleTarif, CoutFournisseur>>;
   /** Taux réel et daté, saisi par l'admin. Absent = aucun verdict en USD. */
   tauxChfParUsd?: number | null;
+  /** Marge visée pour le prix conseillé. Absente = `MARGE_CIBLE_DEFAUT`. */
+  margeCible?: number | null;
+}
+
+/**
+ * Du coût en CHF au prix en crédits. Arrondi au crédit SUPÉRIEUR, et au moins
+ * 1 crédit dès qu'il y a un coût : une opération qui coûte ne peut pas être
+ * facturée 0.
+ */
+function creditsPour(coutChf: number, valeurCreditChf: number): number {
+  if (coutChf <= 0) return 0;
+  return Math.max(1, Math.ceil(coutChf / valeurCreditChf));
 }
 
 function verdictDepuisMarge(margeChf: number): VerdictRentabilite {
@@ -145,17 +180,26 @@ export function analyserTarif(cle: CleTarif, e: EntreeAnalyse): LigneRentabilite
   const { usd, unite, source } = coutVerifie(cle);
   const coutAdminChf = e.coutsFournisseur?.[cle]?.chf ?? null;
   const taux = typeof e.tauxChfParUsd === 'number' && e.tauxChfParUsd > 0 ? e.tauxChfParUsd : null;
+  const marge = margeValide(e.margeCible) ? e.margeCible : MARGE_CIBLE_DEFAUT;
+
+  // Le coût de référence pour le plancher : celui saisi en CHF s'il existe,
+  // sinon le coût vérifié converti — et rien du tout sans taux.
+  const coutChf = coutAdminChf !== null ? coutAdminChf : (usd !== null && taux !== null ? usd * taux : null);
+  const prixPlancherCredits = valeur === null || coutChf === null ? null : creditsPour(coutChf, valeur);
+  const prixConseilleCredits = valeur === null || coutChf === null ? null : creditsPour(coutChf * (1 + marge), valeur);
+  const planchers = { prixPlancherCredits, prixConseilleCredits };
 
   // 1. Le coût saisi par l'admin est déjà en CHF : il tranche sans taux.
   if (revenuChf !== null && coutAdminChf !== null) {
-    const marge = arrondi(revenuChf - coutAdminChf);
+    const margeDirecte = arrondi(revenuChf - coutAdminChf);
     const ligne: LigneRentabilite = {
       cle, prixCredits, revenuChf, coutUsd: usd, uniteCout: unite, sourceCout: source,
       coutAdminChf,
+      ...planchers,
       tauxEquilibreChfParUsd: usd === null ? null : usd === 0 ? Infinity : arrondi(revenuChf / usd),
-      margeChf: marge,
-      verdict: verdictDepuisMarge(marge),
-      motif: marge < 0
+      margeChf: margeDirecte,
+      verdict: verdictDepuisMarge(margeDirecte),
+      motif: margeDirecte < 0
         ? `Vendu à perte : ${prixCredits} crédits = ${revenuChf} CHF pour ${coutAdminChf} CHF de coût saisi.`
         : 'Couvre le coût fournisseur saisi par l’administration.',
     };
@@ -167,21 +211,21 @@ export function analyserTarif(cle: CleTarif, e: EntreeAnalyse): LigneRentabilite
   if (revenuChf === null) {
     return {
       cle, prixCredits, revenuChf: null, coutUsd: usd, uniteCout: unite, sourceCout: source,
-      coutAdminChf, tauxEquilibreChfParUsd: null, margeChf: null, verdict: 'inconnu',
+      coutAdminChf, ...planchers, tauxEquilibreChfParUsd: null, margeChf: null, verdict: 'inconnu',
       motif: 'Valeur du crédit non configurée : aucune recette calculable.',
     };
   }
   if (usd === null) {
     return {
       cle, prixCredits, revenuChf, coutUsd: null, uniteCout: unite, sourceCout: source,
-      coutAdminChf, tauxEquilibreChfParUsd: null, margeChf: null, verdict: 'inconnu',
+      coutAdminChf, ...planchers, tauxEquilibreChfParUsd: null, margeChf: null, verdict: 'inconnu',
       motif: MESSAGE_COUT_NON_VERIFIE,
     };
   }
   if (usd === 0) {
     return {
       cle, prixCredits, revenuChf, coutUsd: 0, uniteCout: unite, sourceCout: source,
-      coutAdminChf, tauxEquilibreChfParUsd: Infinity, margeChf: revenuChf, verdict: 'rentable',
+      coutAdminChf, ...planchers, tauxEquilibreChfParUsd: Infinity, margeChf: revenuChf, verdict: 'rentable',
       motif: 'Aucun coût fournisseur : rendu local.',
     };
   }
@@ -189,16 +233,16 @@ export function analyserTarif(cle: CleTarif, e: EntreeAnalyse): LigneRentabilite
   if (taux === null) {
     return {
       cle, prixCredits, revenuChf, coutUsd: usd, uniteCout: unite, sourceCout: source,
-      coutAdminChf, tauxEquilibreChfParUsd: equilibre, margeChf: null, verdict: 'inconnu',
+      coutAdminChf, ...planchers, tauxEquilibreChfParUsd: equilibre, margeChf: null, verdict: 'inconnu',
       motif: `Rentable seulement si 1 USD vaut moins de ${equilibre} CHF. Taux non configuré : verdict suspendu.`,
     };
   }
-  const marge = arrondi(revenuChf - usd * taux);
+  const margeFinale = arrondi(revenuChf - usd * taux);
   return {
     cle, prixCredits, revenuChf, coutUsd: usd, uniteCout: unite, sourceCout: source,
-    coutAdminChf, tauxEquilibreChfParUsd: equilibre, margeChf: marge,
-    verdict: verdictDepuisMarge(marge),
-    motif: marge < 0
+    coutAdminChf, ...planchers, tauxEquilibreChfParUsd: equilibre, margeChf: margeFinale,
+    verdict: verdictDepuisMarge(margeFinale),
+    motif: margeFinale < 0
       ? `Vendu à perte : ${prixCredits} crédits = ${revenuChf} CHF pour ${usd} USD de coût (${unite}).`
       : `Couvre le coût fournisseur (${usd} USD, ${unite}).`,
   };
@@ -216,6 +260,11 @@ export interface ResumeRentabilite {
   clesEnPerte: CleTarif[];
   /** Les clés dont le coût fournisseur n'a jamais été vérifié. */
   clesSansCout: CleTarif[];
+  /**
+   * La grille rentable proposée : seulement les clés dont le prix actuel est
+   * sous le prix conseillé. Rien n'est appliqué — c'est une proposition.
+   */
+  grilleConseillee: Partial<Record<CleTarif, number>>;
 }
 
 export function resumeRentabilite(lignes: readonly LigneRentabilite[]): ResumeRentabilite {
@@ -225,5 +274,10 @@ export function resumeRentabilite(lignes: readonly LigneRentabilite[]): ResumeRe
     rentables: lignes.filter((l) => l.verdict === 'rentable').length,
     clesEnPerte: lignes.filter((l) => l.verdict === 'perte').map((l) => l.cle),
     clesSansCout: lignes.filter((l) => l.coutUsd === null && l.coutAdminChf === null).map((l) => l.cle),
+    grilleConseillee: Object.fromEntries(
+      lignes
+        .filter((l) => l.prixConseilleCredits !== null && l.prixConseilleCredits > l.prixCredits)
+        .map((l) => [l.cle, l.prixConseilleCredits as number]),
+    ),
   };
 }

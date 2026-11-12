@@ -262,8 +262,12 @@ describe('Default-safe : sans clé, rien ne se dégrade', () => {
     expect(get).toContain('configured: !!apiKey()');
   });
 
-  it('la synthèse, elle, le dit franchement', () => {
-    expect(route).toContain("{ error: 'ELEVENLABS_API_KEY not configured' }");
+  it('la synthèse, elle, le dit — sans nommer le prestataire', () => {
+    // Le nom du fournisseur ne part plus au navigateur (fuite fermée) : la
+    // route rend la constante neutre. Le contenu de la réponse est vérifié
+    // par APPEL dans `confidentialite-fournisseurs.test.ts`.
+    expect(route).toContain('{ error: MESSAGE_VOIX_NON_CONFIGUREE }');
+    expect(route).not.toContain("'ELEVENLABS_API_KEY not configured'");
   });
 
   it('une panne de liste ne vide pas le sélecteur pendant 5 minutes', () => {

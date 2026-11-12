@@ -166,7 +166,8 @@ describe('Garde-fous de la route (partages par tous les outils)', () => {
     const { status, body } = await post({ action: 'ocr', imageUrl: 'https://cdn.test/a.png' });
 
     expect(status).toBe(503);
-    expect(body.error).toContain('non configuré');
+    // Neutre : « images IA », pas le nom du prestataire.
+    expect(body.error).toContain('n’est pas configuré');
     expect(runMock).not.toHaveBeenCalled();
   });
 
