@@ -6,7 +6,7 @@ import { useSession } from 'next-auth/react';
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Check } from 'lucide-react';
-import { ETAT_INTERACTIF_SANS_FOND } from '@/lib/ui/etats';
+import { ETAT_INTERACTIF_SANS_FOND, classesSegment } from '@/lib/ui/etats';
 import { totalAnnuelCentimes } from '@/lib/stripe/constants';
 
 function centsToFr(cents: number): string {
@@ -21,17 +21,30 @@ interface Plan {
   watermark?: boolean; yearly_total?: number;
 }
 
-interface PricingCardsProps { onSelectPlan?: (plan: string) => void; }
+interface PricingCardsProps {
+  onSelectPlan?: (plan: string) => void;
+  /**
+   * L'abonnement en vigueur, lu par l'appelant dans la table de facturation.
+   *
+   * ⚠️ SOURCE UNIQUE. Sans cette entrée, la carte lisait le plan du JETON DE
+   * SESSION pendant que l'écran de facturation lisait l'abonnement en base :
+   * un compte pouvait voir « Abonnement actuel : Free » et, deux blocs plus
+   * bas, « Plan actuel » sur Pro. Un jeton peut être périmé — la table de
+   * facturation, non. L'appelant qui connaît l'abonnement doit donc le
+   * passer ; à défaut, on retombe sur la session, comportement d'avant.
+   */
+  planActuel?: string;
+}
 
 const PLAN_ORDER = ['free', 'starter', 'pro', 'enterprise'];
 
-export function PricingCards({ onSelectPlan }: PricingCardsProps) {
+export function PricingCards({ onSelectPlan, planActuel }: PricingCardsProps) {
   const router = useRouter();
   const { data: session } = useSession();
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
   const [loading, setLoading] = useState<string | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
-  const currentPlan = ((session?.user as any)?.plan as string) || 'free';
+  const currentPlan = (planActuel || ((session?.user as any)?.plan as string) || 'free').toLowerCase();
 
   useEffect(() => {
     fetch('/api/pricing', { cache: 'no-store' }).then(r => r.json()).then(d => {
@@ -69,12 +82,12 @@ export function PricingCards({ onSelectPlan }: PricingCardsProps) {
               volontaire (mise en avant tarifaire), les retours d'interaction
               viennent du module partagé. */}
           <button type="button" onClick={() => setBillingCycle('monthly')} aria-pressed={billingCycle === 'monthly'}
-            className={`inline-flex items-center gap-1 px-4 py-2 rounded-full text-sm font-semibold ${ETAT_INTERACTIF_SANS_FOND} ${billingCycle === 'monthly' ? 'bg-studiio-accent text-white' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>
+            className={`inline-flex items-center gap-1 px-4 py-2 rounded-full text-sm font-semibold ${ETAT_INTERACTIF_SANS_FOND} ${classesSegment(billingCycle === 'monthly')}`}>
             {billingCycle === 'monthly' && <Check size={14} aria-hidden />}
             Mensuel
           </button>
           <button type="button" onClick={() => setBillingCycle('yearly')} aria-pressed={billingCycle === 'yearly'}
-            className={`inline-flex items-center gap-1 px-4 py-2 rounded-full text-sm font-semibold ${ETAT_INTERACTIF_SANS_FOND} ${billingCycle === 'yearly' ? 'bg-studiio-accent text-white' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>
+            className={`inline-flex items-center gap-1 px-4 py-2 rounded-full text-sm font-semibold ${ETAT_INTERACTIF_SANS_FOND} ${classesSegment(billingCycle === 'yearly')}`}>
             {billingCycle === 'yearly' && <Check size={14} aria-hidden />}
             Annuel <span className="text-xs text-green-400 ml-1">-17%</span>
           </button>
@@ -88,9 +101,18 @@ export function PricingCards({ onSelectPlan }: PricingCardsProps) {
           const priceLabel = billingCycle === 'yearly' ? centsToFr(plan.yearly_price_cents || 0) : centsToFr(plan.price_cents);
           const period = plan.key === 'free' ? '' : '/mois';
           const features = typeof plan.features === 'string' ? JSON.parse(plan.features) : (plan.features || []);
-          const cta = plan.key === 'free'
-            ? (isCurrent || !!session ? 'Plan actuel' : 'Commencer gratuitement')
-            : (isCurrent ? 'Plan actuel' : "S'abonner");
+          /*
+            ⚠️ DEUX CARTES POUVAIENT PORTER « PLAN ACTUEL ». La carte Gratuit
+            l'affichait dès qu'une session existait (`isCurrent || !!session`),
+            quel que soit l'abonnement réel : un abonné Pro voyait donc la
+            mention sur Gratuit ET sur Pro. Une seule formule est l'actuelle,
+            et c'est `isCurrent` qui le dit — lui seul.
+          */
+          const cta = isCurrent
+            ? 'Plan actuel'
+            : plan.key === 'free'
+              ? (session ? 'Revenir au gratuit' : 'Commencer gratuitement')
+              : "S'abonner";
 
           return (
             <Card key={plan.key} className={isPopular ? 'border-studiio-accent border-2 relative' : 'relative'}>

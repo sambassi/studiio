@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Loader2, Zap } from 'lucide-react';
 import { useTranslations } from '@/i18n/client';
 import { BandeauDemo } from '@/components/ui/BandeauDemo';
+import { libelleTransaction, montantAffiche, sensTransaction } from '@/lib/credits/libelles-transaction';
 
 interface SubscriptionInfo {
   plan: string;
@@ -142,15 +143,26 @@ export function BillingContent() {
                 {transactions.length === 0 && (
                   <tr><td colSpan={3} className="py-6 text-center text-gray-500">Aucune transaction</td></tr>
                 )}
-                {transactions.map((tx) => (
-                  <tr key={tx.id} className="border-b border-gray-800 last:border-0">
-                    <td className="py-3 text-gray-300">{new Date(tx.created_at).toLocaleDateString('fr-FR')}</td>
-                    <td className="py-3 text-gray-300">{tx.type}</td>
-                    <td className={`text-right py-3 font-semibold ${tx.amount > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {tx.amount > 0 ? '+' : ''}{tx.amount}
-                    </td>
-                  </tr>
-                ))}
+                {/*
+                  ⚠️ LE SIGNE NE VIENT PLUS DE LA COLONNE. `amount` porte deux
+                  conventions selon l'appelant : une génération de 40 crédits
+                  pouvait y être stockée en positif et s'affichait donc
+                  « +40 » en vert, comme un achat. Le sens est porté par le
+                  TYPE (`lib/credits/libelles-transaction`), et c'est la même
+                  lecture que le bilan administrateur.
+                */}
+                {transactions.map((tx) => {
+                  const debit = sensTransaction(tx.type) === 'debit';
+                  return (
+                    <tr key={tx.id} className="border-b border-gray-800 last:border-0" data-testid={`transaction-${tx.id}`}>
+                      <td className="py-3 text-gray-300">{new Date(tx.created_at).toLocaleDateString('fr-FR')}</td>
+                      <td className="py-3 text-gray-300">{libelleTransaction(tx.type)}</td>
+                      <td className={`text-right py-3 font-semibold ${debit ? 'text-red-400' : 'text-green-400'}`}>
+                        {montantAffiche(tx.type, tx.amount)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -159,7 +171,12 @@ export function BillingContent() {
 
       <div>
         <h2 className="text-2xl font-bold text-white mb-6">{t('changePlan')}</h2>
-        <PricingCards />
+        {/* ⚠️ UNE SEULE SOURCE pour « Plan actuel ». La carte lisait le plan
+            de la SESSION pendant que l'encadré ci-dessus lisait l'abonnement
+            en base : le compte s'affichait « Free » tout en voyant « Plan
+            actuel » sur Pro. L'abonnement en base fait foi — un jeton de
+            session peut être périmé, pas la table de facturation. */}
+        <PricingCards planActuel={planName} />
       </div>
 
       <BuyCreditsModal isOpen={showBuy} onClose={() => setShowBuy(false)} />

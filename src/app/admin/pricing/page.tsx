@@ -25,7 +25,9 @@ export default function PricingAdminPage() {
   const [synchronising, setSynchronising] = useState(false);
   const [formules, setFormules] = useState<AnalyseFormule[] | null>(null);
   const [marges, setMarges] = useState<MargeAbonnement[]>([]);
-  const [formulesOuvert, setFormulesOuvert] = useState(false);
+  // Déplié par défaut : une proposition qu'il faut penser à ouvrir n'est pas
+  // consultable. Le panneau reste repliable pour ne pas allonger la page.
+  const [formulesOuvert, setFormulesOuvert] = useState(true);
 
   // 1er clic : diff proposé (rien n'est écrit). 2e clic : confirmation.
   const previsualiserSynchro = async () => {
@@ -323,7 +325,13 @@ export default function PricingAdminPage() {
 
       {/* Plans */}
       <div>
-        <h2 className="text-xl font-bold text-white mb-4">Plans</h2>
+        {/* Distinguer sans ambiguïté ce qui est VENDU de ce qui est PROPOSÉ :
+            le panneau du dessus porte des formules non activées. */}
+        <h2 className="text-xl font-bold text-white mb-1">Abonnements en vente</h2>
+        <p className="mb-4 text-xs text-gray-500">
+          Ce sont les formules réellement facturées aujourd’hui. Les propositions Créateur / Pro /
+          Studio du panneau ci-dessus ne sont pas activées et ne peuvent pas être achetées.
+        </p>
         <div className="grid gap-4">
           {plans.map((plan) => (
             <div key={plan.key} className="rounded-xl border border-gray-700 bg-gray-800 p-5 space-y-3">
@@ -414,7 +422,7 @@ export default function PricingAdminPage() {
 
       {/* Packs */}
       <div>
-        <h2 className="text-xl font-bold text-white mb-4">Packs de crédits</h2>
+        <h2 className="text-xl font-bold text-white mb-4">Packs de crédits en vente</h2>
         <div className="grid md:grid-cols-2 gap-4">
           {packs.map((pack) => (
             <div key={pack.key} className="rounded-xl border border-gray-700 bg-gray-800 p-4 space-y-3">

@@ -92,7 +92,12 @@ function SettingsContent() {
         <p className="text-gray-400 text-sm">Gérez votre contenu, abonnement, branding et compte.</p>
       </div>
 
-      <div className="flex gap-1 border-b border-gray-800 pb-0">
+      {/* ⚠️ Les quatre onglets dépassaient la largeur de l'écran sur
+          téléphone — le dernier sortait à 395 px pour 390 disponibles — et
+          c'est TOUTE la page qui défilait horizontalement. Ils défilent
+          maintenant chez eux ; `shrink-0` évite que les libellés se cassent
+          en deux lignes. */}
+      <div className="flex gap-1 overflow-x-auto border-b border-gray-800 pb-0 [&>button]:shrink-0">
         {TABS.map(({ key, label, Icon }) => (
           <button
             key={key}

@@ -611,6 +611,46 @@ export default function TarifsAdminPage() {
           )}
         </div>
 
+        {/*
+          ⚠️ « 18 opérations à la rentabilité inconnue » se lisait comme dix-huit
+          problèmes. C'en est généralement UN SEUL, partagé : une donnée
+          d'entrée manquante. On nomme donc les CAUSES, séparément, et on
+          distingue ce qui n'est pas une donnée manquante — un rendu local
+          n'a pas de coût fournisseur, ce n'est pas un coût inconnu.
+        */}
+        {donnees?.resumeRentabilite && donnees.resumeRentabilite.inconnus > 0 && (() => {
+          const lignes = donnees.rentabilite ?? [];
+          const sansCout = lignes.filter((l) => l.coutUsd === null && l.coutAdminChf === null).length;
+          const locales = lignes.filter((l) => l.coutUsd === 0).length;
+          const causes: string[] = [];
+          if (donnees.valeurCreditChf === null) {
+            causes.push('la valeur du crédit n’est pas enregistrée — sans elle, aucune recette ni marge n’est calculable, pour aucune opération');
+          }
+          if (!donnees.change) {
+            causes.push('le taux USD → CHF n’est pas enregistré — les coûts fournisseurs sont en dollars et ne peuvent pas être comparés à une recette en francs');
+          }
+          if (sansCout > 0) {
+            causes.push(`${sansCout} tarif(s) n’ont aucun coût fournisseur vérifié — un coût absent n’est pas un coût nul, leur verdict reste suspendu`);
+          }
+          return (
+            <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-3 text-xs" data-testid="causes-inconnues">
+              <p className="font-medium text-gray-200">
+                Pourquoi {donnees.resumeRentabilite!.inconnus} verdict(s) restent inconnus
+              </p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-4 text-gray-400">
+                {causes.map((c) => <li key={c}>{c}</li>)}
+              </ul>
+              {locales > 0 && (
+                <p className="mt-1.5 text-gray-500">
+                  À part : {locales} rendu(s) local/locaux n’appellent aucun fournisseur. Leur coût
+                  fournisseur est réellement nul — ce n’est pas une donnée manquante. L’infrastructure
+                  qui les exécute n’est pas imputée ici.
+                </p>
+              )}
+            </div>
+          );
+        })()}
+
         {donnees?.resumeRentabilite && donnees.resumeRentabilite.pertes > 0 && (
           <p
             role="alert"
