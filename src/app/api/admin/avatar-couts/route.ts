@@ -7,6 +7,9 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin';
 import { supabaseAdmin } from '@/lib/db/supabase';
+import { lireTarifs } from '@/lib/tarifs/serveur';
+import { economieParMois } from '@/lib/fournisseurs/economie';
+import { bilanParMois, margeParMois } from '@/lib/credits/bilan';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,6 +32,42 @@ export async function GET() {
   if (error) return NextResponse.json({ success: false, error: error.message }, { status: 500 });
 
   const lignes = (data ?? []) as unknown as Array<Record<string, unknown>>;
+
+  /**
+   * L'AUTRE CÔTÉ DU COMPTE : crédits vendus, accordés, consommés, et la
+   * recette qu'ils représentent. Lectures best-effort — ce bloc ne doit
+   * jamais faire échouer la page de coûts, qui existait avant lui.
+   */
+  const bilan = await (async () => {
+    try {
+      const [transactions, config] = await Promise.all([
+        supabaseAdmin.from('credit_transactions').select('type, amount, created_at')
+          .order('created_at', { ascending: false }).limit(5_000),
+        lireTarifs(),
+      ]);
+      if (transactions.error) throw new Error(transactions.error.message);
+      const credits = bilanParMois(
+        (transactions.data ?? []) as Array<{ type?: unknown; amount?: unknown; created_at?: unknown }>,
+        config.valeurCreditChf,
+      );
+      // `changeEur` donne EUR par CHF ; le rapprochement a besoin de l'inverse.
+      const chfParEur = config.changeEur ? Math.round((1 / config.changeEur.eurParChf) * 10_000) / 10_000 : null;
+      return {
+        credits,
+        marges: margeParMois({
+          credits,
+          coutsFournisseurEur: economieParMois(lignes).map((m) => ({ mois: m.mois, coutFournisseurEur: m.coutFournisseurEur })),
+          chfParEur,
+        }),
+        valeurCreditChf: config.valeurCreditChf,
+        chfParEur,
+        tauxLe: config.changeEur?.le ?? null,
+      };
+    } catch (e) {
+      console.error('[admin/avatar-couts] bilan des crédits illisible :', e instanceof Error ? e.message : e);
+      return null;
+    }
+  })();
   // Somme des valeurs MESURÉES seulement ; aucune mesure = `null` (« non
   // mesuré »), jamais 0 — un coût inconnu n'est pas un coût nul.
   const somme = (k: string, filtre: (l: Record<string, unknown>) => boolean = () => true): number | null => {
@@ -39,6 +78,7 @@ export async function GET() {
     success: true,
     data: {
       migrationAppliquee,
+      bilan,
       generations: lignes,
       totaux: {
         providerCostEur: somme('provider_cost_eur'),
