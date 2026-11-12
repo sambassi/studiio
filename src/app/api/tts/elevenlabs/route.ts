@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { MESSAGE_VOIX_NON_CONFIGUREE } from '@/lib/fournisseurs/messages-neutres';
 import { auth } from '@/lib/auth/config';
 import { detectAndReportServiceError } from '@/lib/service-alerts';
-import { mapElevenLabsVoice, ELEVENLABS_VOICE_PREFIX, normaliserReglages, voiceSettingsElevenLabs, type ElevenLabsTtsVoice } from '@/lib/types/voice';
+import { mapElevenLabsVoice, ELEVENLABS_VOICE_PREFIX, idVoixInterne, idVoixPublic, normaliserReglages, voiceSettingsElevenLabs, type ElevenLabsTtsVoice } from '@/lib/types/voice';
 import { listUserVoices } from '@/lib/voice/store';
 import { voixUtilisable, texteParleDuCompte, prononciationsDuCompte } from '@/lib/voice/profil';
 import { scriptParle } from '@/lib/voice/prononciations';
@@ -136,7 +136,7 @@ export async function GET() {
       apiKey() ? listCatalogVoices() : Promise.resolve([] as ElevenLabsTtsVoice[]),
     ]);
     const clonees: ElevenLabsTtsVoice[] = mine.map((v) => ({
-      id: `${ELEVENLABS_VOICE_PREFIX}${v.provider_voice_id}`,
+      id: idVoixPublic(`${ELEVENLABS_VOICE_PREFIX}${v.provider_voice_id}`),
       name: `${v.name} (ma voix)`,
       lang: v.lang || 'FR',
       // `user_voices` ne stocke pas le genre : on ne l'invente pas. Un
@@ -174,7 +174,7 @@ async function voixAutorisee(userId: string, voiceId: string): Promise<boolean> 
   const miennes = await listUserVoices(userId);
   if (miennes.some((v) => v.provider === 'elevenlabs' && v.provider_voice_id === voiceId && voixUtilisable(v))) return true;
   const catalogue = await listCatalogVoices();
-  return catalogue.some((v) => v.id === `${ELEVENLABS_VOICE_PREFIX}${voiceId}`);
+  return catalogue.some((v) => idVoixInterne(v.id) === `${ELEVENLABS_VOICE_PREFIX}${voiceId}`);
 }
 
 /** POST /api/tts/elevenlabs — `{ text, voice }` → audio brut. */
@@ -208,7 +208,7 @@ export async function POST(req: NextRequest) {
     }
     // Le client envoie l'identifiant prefixe ; ElevenLabs attend le voice_id nu.
     const voiceId = typeof voice === 'string'
-      ? voice.replace(new RegExp(`^${ELEVENLABS_VOICE_PREFIX}`), '').trim()
+      ? idVoixInterne(voice).replace(new RegExp(`^${ELEVENLABS_VOICE_PREFIX}`), '').trim()
       : '';
     // Le voice_id part dans le CHEMIN de l'URL : une valeur exotique y
     // fabriquerait une requete vers un autre endpoint.

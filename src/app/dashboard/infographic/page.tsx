@@ -371,7 +371,7 @@ export default function InfographiePage() {
     const searchQuery = query || pexelsQuery || THEME_TO_QUERY[selectedTheme] || 'fitness dance';
     setPexelsLoading(true);
     try {
-      const res = await fetch(`/api/pexels?query=${encodeURIComponent(searchQuery)}&count=8`);
+      const res = await fetch(`/api/photos?query=${encodeURIComponent(searchQuery)}&count=8`);
       const data = await res.json();
       setPexelsResults(data.success && data.photos ? data.photos : []);
     } catch { setPexelsResults([]); } finally { setPexelsLoading(false); }
@@ -417,7 +417,7 @@ export default function InfographiePage() {
     const searchQuery = customQuery || batchSearchQuery.trim() || THEME_TO_QUERY[selectedTheme] || 'fitness dance';
     let photos: string[] = [];
     try {
-      const pRes = await fetch(`/api/pexels?query=${encodeURIComponent(searchQuery)}&count=12&page=${batchPageRef.current}`);
+      const pRes = await fetch(`/api/photos?query=${encodeURIComponent(searchQuery)}&count=12&page=${batchPageRef.current}`);
       const pData = await pRes.json();
       if (pData.success && pData.photos) photos = pData.photos.map((p: { url: string; medium: string }) => p.medium || p.url);
     } catch { /* ignore */ }

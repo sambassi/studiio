@@ -1,4 +1,7 @@
 // @vitest-environment node
+// ⚠️ Les identifiants EMIS sont publics et neutres (`vp-`) : ils finissent
+// en `value=` d'une option, donc ils ne nomment pas le prestataire.
+// `idVoixInterne` fait le pont avec l'ancienne forme, cote serveur.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 /**
@@ -59,7 +62,7 @@ describe('GET /api/tts/elevenlabs sans ELEVENLABS_API_KEY', () => {
     const res = await GET();
     expect(res.status).toBe(200);
     const body = await res.json() as { voices: Array<Record<string, unknown>>; configured: boolean };
-    expect(body.voices.map((v) => v.id)).toEqual(['elevenlabs-MaVoixClonee01']);
+    expect(body.voices.map((v) => v.id)).toEqual(['vp-MaVoixClonee01']);
     expect(body.voices[0]).toMatchObject({ name: 'Bassi (ma voix)', cloned: true, provider: 'elevenlabs', lang: 'fr' });
     // La table est lue pour CE compte — jamais pour un autre.
     expect(store.lectures).toEqual([U]);
@@ -79,7 +82,7 @@ describe('GET /api/tts/elevenlabs sans ELEVENLABS_API_KEY', () => {
   it('la voix clonée d’un AUTRE compte n’est pas listée', async () => {
     session.courante = { user: { id: AUTRE } };
     const body = await (await GET()).json() as { voices: Array<{ id: string }> };
-    expect(body.voices.map((v) => v.id)).toEqual(['elevenlabs-VoixAutrui0001']);
+    expect(body.voices.map((v) => v.id)).toEqual(['vp-VoixAutrui0001']);
   });
 
   it('un compte sans voix clonée et sans clé → liste vide, non configuré, pas une erreur', async () => {

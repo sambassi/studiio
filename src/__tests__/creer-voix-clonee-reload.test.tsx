@@ -1,3 +1,9 @@
+// ⚠️ IDENTIFIANTS PUBLICS NEUTRES. Les listes de voix émettent `vp-` /
+// `va-` / `vn-` au lieu de `elevenlabs-` / `heygen-` / `openai-` : un
+// identifiant finit en `value=` d'une option, donc il ne doit pas nommer
+// le prestataire. Les chemins appelés par le navigateur sont neutres eux
+// aussi (`/api/voix/*`). `idVoixInterne` fait le pont avec l'ancienne
+// forme, qui reste valide pour toute sélection déjà enregistrée.
 /**
  * La voix TTS choisie dans Créer survit au rechargement — PAR LE BROUILLON.
  *
@@ -7,7 +13,7 @@
  *
  * Le choix de voix ne vivait que dans `localStorage['tts.voiceId']`, hors du
  * brouillon : le wizard ne le connaissait pas, et un identifiant
- * `elevenlabs-…` y était de surcroît rejeté au rechargement. La voix clonée
+ * `vp-…` y était de surcroît rejeté au rechargement. La voix clonée
  * « Bassi » choisie la veille revenait en « Denise ».
  *
  * Ce fichier monte le VRAI wizard sur l'étape Audio, choisit la voix clonée
@@ -54,7 +60,7 @@ import AssistantWizard from '../app/dashboard/creer/AssistantWizard';
 import { draftKey, DRAFT_VERSION, sanitizeDraft, type SanitizeDeps } from '../lib/creer/draft';
 
 const CLE = draftKey('a@b.c');
-const CLONEE = 'elevenlabs-MaVoixClonee01';
+const CLONEE = 'vp-MaVoixClonee01';
 const DEFAUT = 'fr-FR-DeniseNeural';
 const HENRI = 'fr-FR-HenriNeural';
 const CONTENU = {
@@ -79,8 +85,8 @@ function installerFetch() {
       text: async () => JSON.stringify(corps),
       blob: async () => new Blob(['x']),
     } as unknown as Response);
-    if (u.includes('/api/tts/elevenlabs')) return rep({ voices: voixClonees, configured: false });
-    if (u.includes('/api/tts/heygen')) return rep({ voices: [] });
+    if (u.includes('/api/voix/premium')) return rep({ voices: voixClonees, configured: false });
+    if (u.includes('/api/voix/avatar')) return rep({ voices: [] });
     if (u.includes('/api/credits/balance')) return rep({ ok: true, politique: 'credits', balance: 5000 });
     if (u.includes('/api/render/tarifs')) return rep({ ok: true, politique: 'credits', tarifs: { reel: 10, tv: 15 } });
     return rep({ success: true, data: [], posts: [], content: {}, images: [], photos: [] });
@@ -132,11 +138,11 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 describe('Voix TTS : choisie, enregistrée dans le brouillon, restaurée', () => {
-  it('(a) le sélecteur de l étape Audio liste la voix clonée reçue de /api/tts/elevenlabs', async () => {
+  it('(a) le sélecteur de l étape Audio liste la voix clonée reçue de /api/voix/premium', async () => {
     poser();
     await monter();
     await waitFor(() => expect(Array.from(selecteur().options).map((o) => o.value)).toContain(CLONEE));
-    expect(appels.some((u) => u.includes('/api/tts/elevenlabs'))).toBe(true);
+    expect(appels.some((u) => u.includes('/api/voix/premium'))).toBe(true);
   });
 
   it('(b) un choix explicite est écrit dans le brouillon sous `ttsVoiceId`', async () => {
@@ -225,7 +231,7 @@ const valide = (over: Record<string, unknown> = {}) => ({
 
 describe('sanitizeDraft — ttsVoiceId', () => {
   it('relit un identifiant de voix bien formé, quel que soit le fournisseur', () => {
-    for (const id of [CLONEE, 'heygen-abc_123', 'openai-nova', 'fr-FR-DeniseNeural', 'en-US-AriaNeural']) {
+    for (const id of [CLONEE, 'va-abc_123', 'vn-nova', 'fr-FR-DeniseNeural', 'en-US-AriaNeural']) {
       expect(sanitizeDraft(valide({ ttsVoiceId: id }), DEPS)!.ttsVoiceId, id).toBe(id);
     }
   });
@@ -240,7 +246,7 @@ describe('sanitizeDraft — ttsVoiceId', () => {
     expect(sanitizeDraft(valide({ ttsVoiceId: '' }), DEPS)!.ttsVoiceId).toBeUndefined();
     expect(sanitizeDraft(valide({ ttsVoiceId: 'a'.repeat(121) }), DEPS)!.ttsVoiceId).toBeUndefined();
     expect(sanitizeDraft(valide({ ttsVoiceId: 'a'.repeat(120) }), DEPS)!.ttsVoiceId).toBe('a'.repeat(120));
-    expect(sanitizeDraft(valide({ ttsVoiceId: 'elevenlabs-<script>' }), DEPS)!.ttsVoiceId).toBeUndefined();
+    expect(sanitizeDraft(valide({ ttsVoiceId: 'vp-<script>' }), DEPS)!.ttsVoiceId).toBeUndefined();
     expect(sanitizeDraft(valide({ ttsVoiceId: 'Google français' }), DEPS)!.ttsVoiceId).toBeUndefined();
     expect(sanitizeDraft(valide({ ttsVoiceId: { id: CLONEE } }), DEPS)!.ttsVoiceId).toBeUndefined();
   });

@@ -171,7 +171,14 @@ vi.mock('replicate', () => ({
       if (/ocr|text-extract|florence|easyocr/i.test(modele)) return 'Texte lu sur l image';
       // Affiche IA (flux) : des octets PNG ; retouches : une URL de sortie.
       if (typeof o?.input?.num_outputs === 'number' || o?.input?.output_format === 'webp') return [{ blob: async () => new Blob([PNG]) }];
-      return 'https://replicate.delivery/sortie.png';
+      // ⚠️ Les retouches rendaient une URL nue. Elles rapatrient maintenant
+      // les OCTETS dans le stockage Studiio (l'URL du fournisseur ne part
+      // plus au navigateur), donc la sortie doit être lisible : un
+      // `FileOutput` du SDK, avec `url()` ET `blob()`.
+      return {
+        url: () => new URL('https://replicate.delivery/sortie.png'),
+        blob: async () => new Blob([PNG]),
+      };
     };
   },
 }));

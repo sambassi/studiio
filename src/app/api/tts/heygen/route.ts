@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { MESSAGE_VOIX_NON_CONFIGUREE } from '@/lib/fournisseurs/messages-neutres';
 import { auth } from '@/lib/auth/config';
 import { texteParleDuCompte } from '@/lib/voice/profil';
-import { HEYGEN_VOICE_PREFIX, type HeyGenTtsVoice } from '@/lib/types/voice';
+import { HEYGEN_VOICE_PREFIX, idVoixPublic, type HeyGenTtsVoice } from '@/lib/types/voice';
 
 /**
  * TTS HeyGen — synthese vocale avec les voix du compte, **voix clonee comprise**.
@@ -122,7 +122,7 @@ function mapVoice(raw: Record<string, any>, cloned: boolean): HeyGenTtsVoice | n
   const gender = String(raw.gender ?? '').toLowerCase() === 'male' ? 'Male' : 'Female';
   const baseName = String(raw.display_name ?? raw.name ?? 'Voix').trim() || 'Voix';
   return {
-    id: `${HEYGEN_VOICE_PREFIX}${voiceId}`,
+    id: idVoixPublic(`${HEYGEN_VOICE_PREFIX}${voiceId}`),
     name: cloned ? `${baseName} (ma voix)` : `${baseName} (avatar)`,
     lang,
     gender,

@@ -204,12 +204,18 @@ describe('Les échecs sont DITS, jamais avalés', () => {
 });
 
 describe('Le débit est affaire du SERVEUR', () => {
-  it('il vérifie le solde avant, et débite APRÈS extraction réussie', () => {
+  it('il vérifie le solde avant, et débite APRÈS que le résultat est chez nous', () => {
     // Rien à faire côté client : le débit ne peut pas partir sur un échec.
+    // ⚠️ L'ordre a gagné une étape : la sortie du fournisseur est désormais
+    // RAPATRIÉE dans le stockage Studiio avant le débit, pour que l'URL du
+    // fournisseur ne parte pas au navigateur. Un échec de rapatriement
+    // survient donc, lui aussi, avant toute facturation.
     expect(route).toContain('// Extract URL from output BEFORE deducting credits');
     const extraction = route.indexOf('// Extract URL from output BEFORE deducting credits');
-    const debit = route.indexOf('// Deduct credits AFTER successful extraction');
-    expect(debit).toBeGreaterThan(extraction);
+    const rapatriement = route.indexOf('urlStudiio = await rapatrierSortie(');
+    const debit = route.indexOf('// Débit APRÈS que le résultat est écrit et adressable CHEZ NOUS.');
+    expect(rapatriement).toBeGreaterThan(extraction);
+    expect(debit).toBeGreaterThan(rapatriement);
   });
 
   it('un token absent répond 503 avec un message clair (comportement testé dans ai-generate-bg-route)', () => {

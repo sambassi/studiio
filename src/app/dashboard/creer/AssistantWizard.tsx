@@ -3409,7 +3409,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
   useEffect(() => {
     let annule = false;
     setPosterUrl(null);
-    fetch(`/api/pexels?query=${encodeURIComponent(sample.posterQuery)}&count=1`)
+    fetch(`/api/photos?query=${encodeURIComponent(sample.posterQuery)}&count=1`)
       .then((r) => r.json())
       .then((d) => {
         if (annule || !d?.success || !Array.isArray(d.photos)) return;

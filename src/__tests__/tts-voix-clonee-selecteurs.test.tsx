@@ -1,3 +1,9 @@
+// ⚠️ IDENTIFIANTS PUBLICS NEUTRES. Les listes de voix émettent `vp-` /
+// `va-` / `vn-` au lieu de `elevenlabs-` / `heygen-` / `openai-` : un
+// identifiant finit en `value=` d'une option, donc il ne doit pas nommer
+// le prestataire. Les chemins appelés par le navigateur sont neutres eux
+// aussi (`/api/voix/*`). `idVoixInterne` fait le pont avec l'ancienne
+// forme, qui reste valide pour toute sélection déjà enregistrée.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, act, fireEvent, waitFor } from '@testing-library/react';
 import { AudioStudioPanel } from '@/components/creer/AudioStudioPanel';
@@ -9,7 +15,7 @@ import { emptySequenceVoices, emptySequenceVoicesUserEdited } from '@/lib/types/
  *
  * Trois régressions observées, trois verrous :
  *
- *  1. Au rechargement, `localStorage['tts.voiceId'] = 'elevenlabs-…'` était
+ *  1. Au rechargement, `localStorage['tts.voiceId'] = 'vp-…'` était
  *     rejeté (seuls HeyGen et le catalogue statique passaient) et l'effet
  *     de persistance réécrivait aussitôt la clé avec « Denise » : la voix
  *     clonée choisie disparaissait sans un mot.
@@ -19,8 +25,8 @@ import { emptySequenceVoices, emptySequenceVoicesUserEdited } from '@/lib/types/
  *     lire pour le brouillon, ni le rendre. D'où les props contrôlées.
  */
 
-const CLONEE = 'elevenlabs-abc123';
-const CLONEE_HEYGEN = 'heygen-zzz';
+const CLONEE = 'vp-abc123';
+const CLONEE_HEYGEN = 'va-zzz';
 const DEFAUT = 'fr-FR-DeniseNeural';
 
 let voixClonees: Array<Record<string, unknown>>;
@@ -29,8 +35,8 @@ function installerFetch() {
   globalThis.fetch = vi.fn(async (url: unknown) => {
     const u = String(url);
     const rep = (corps: unknown) => ({ ok: true, status: 200, json: async () => corps } as unknown as Response);
-    if (u.includes('/api/tts/elevenlabs')) return rep({ voices: voixClonees, configured: false });
-    if (u.includes('/api/tts/heygen')) return rep({ voices: [] });
+    if (u.includes('/api/voix/premium')) return rep({ voices: voixClonees, configured: false });
+    if (u.includes('/api/voix/avatar')) return rep({ voices: [] });
     return rep({ success: true });
   }) as unknown as typeof fetch;
 }
@@ -144,7 +150,7 @@ describe('2. Sans choix, la voix clonée du compte est présélectionnée', () =
   });
 
   it('sans voix clonée dans la liste, Denise reste', async () => {
-    voixClonees = [{ ...voixBassi('elevenlabs-catalogue'), name: 'Rachel (ElevenLabs)', cloned: false }];
+    voixClonees = [{ ...voixBassi('vp-catalogue'), name: 'Rachel (ElevenLabs)', cloned: false }];
     monterAudio();
     await attendre();
     await attendre();
@@ -153,7 +159,7 @@ describe('2. Sans choix, la voix clonée du compte est présélectionnée', () =
 
   it('la première voix CLONÉE, pas la première de la liste', async () => {
     voixClonees = [
-      { ...voixBassi('elevenlabs-catalogue'), name: 'Rachel (ElevenLabs)', cloned: false },
+      { ...voixBassi('vp-catalogue'), name: 'Rachel (ElevenLabs)', cloned: false },
       voixBassi(CLONEE_HEYGEN),
       voixBassi(),
     ];

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { MESSAGE_IMAGE_IA_NON_CONFIGUREE } from '@/lib/fournisseurs/messages-neutres';
-import { operationAutorisee } from '@/lib/tarifs/garde-cout';
+import { BLOCAGE_COUT_INCONNU_DEFAUT, operationAutorisee } from '@/lib/tarifs/garde-cout';
 import { lireTarifs } from '@/lib/tarifs/serveur';
 import { randomUUID } from 'crypto';
 import { auth } from '@/lib/auth/config';
@@ -12,7 +12,9 @@ import Replicate from 'replicate';
 import { extractText } from '@/lib/ai/extract-text';
 import { erreurReplicateSanitisee } from '@/lib/ai/replicate-erreur';
 import { construirePromptImage } from '@/lib/ai/prompt-image';
-import { detecterSignatureImage, MAX_AFFICHE_IA_BYTES } from '@/lib/storage/image-signature';
+import {
+  detecterSignatureImage, detecterSignatureMedia, MAX_AFFICHE_IA_BYTES, MAX_SORTIE_IA_BYTES,
+} from '@/lib/storage/image-signature';
 import { CLE_ACTION_IA } from '@/lib/tarifs/catalogue';
 import { signerSiNotreStockage } from '@/lib/storage/jeton-relais';
 import { toAbsoluteMediaUrl } from '@/lib/storage/resolve-url';
@@ -165,7 +167,7 @@ async function lireFluxBorne(stream: ReadableStream<Uint8Array>, max: number): P
  * delai et taille bornes. Cette URL vient du SDK, JAMAIS du corps de la
  * requete.
  */
-async function telechargerSortieLegacy(urlBrute: string): Promise<Uint8Array> {
+async function telechargerSortieLegacy(urlBrute: string, max = MAX_AFFICHE_IA_BYTES): Promise<Uint8Array> {
   let url: URL;
   try { url = new URL(urlBrute); } catch {
     throw new ErreurAfficheIA(502, 'Le modèle IA a renvoyé une sortie illisible. Réessayez.', 'url-invalide');
@@ -186,7 +188,7 @@ async function telechargerSortieLegacy(urlBrute: string): Promise<Uint8Array> {
     if (!res.ok || !res.body) {
       throw new ErreurAfficheIA(502, 'Le modèle IA a renvoyé une sortie inaccessible. Réessayez.', 'telechargement');
     }
-    return await lireFluxBorne(res.body as ReadableStream<Uint8Array>, MAX_AFFICHE_IA_BYTES);
+    return await lireFluxBorne(res.body as ReadableStream<Uint8Array>, max);
   } catch (err) {
     if (err instanceof ErreurAfficheIA) throw err;
     if ((err as { name?: string })?.name === 'AbortError') {
@@ -206,27 +208,67 @@ async function telechargerSortieLegacy(urlBrute: string): Promise<Uint8Array> {
  * possible (`getReader`), sinon `.blob()`. Une chaine nue passe par le
  * chemin legacy garde. Tout le reste est illisible.
  */
-async function lireOctetsSortie(output: unknown): Promise<Uint8Array> {
+async function lireOctetsSortie(output: unknown, max = MAX_AFFICHE_IA_BYTES): Promise<Uint8Array> {
   const premiere = Array.isArray(output) ? output[0] : output;
   if (premiere == null) {
     throw new ErreurAfficheIA(502, 'Le modèle IA n\'a renvoyé aucune image. Réessayez.', 'sortie-vide');
   }
-  if (typeof premiere === 'string') return telechargerSortieLegacy(premiere);
+  if (typeof premiere === 'string') return telechargerSortieLegacy(premiere, max);
 
   if (typeof premiere === 'object') {
     const o = premiere as { getReader?: unknown; blob?: unknown };
     if (typeof o.getReader === 'function') {
-      return lireFluxBorne(premiere as ReadableStream<Uint8Array>, MAX_AFFICHE_IA_BYTES);
+      return lireFluxBorne(premiere as ReadableStream<Uint8Array>, max);
     }
     if (typeof o.blob === 'function') {
       const blob = await (o.blob as () => Promise<Blob>)();
-      if (blob.size > MAX_AFFICHE_IA_BYTES) {
-        throw new ErreurAfficheIA(502, 'L\'image générée est trop volumineuse. Réessayez.', 'taille');
+      if (blob.size > max) {
+        throw new ErreurAfficheIA(502, 'Le résultat généré est trop volumineux. Réessayez.', 'taille');
       }
       return new Uint8Array(await blob.arrayBuffer());
     }
   }
   throw new ErreurAfficheIA(502, 'Le modèle IA a répondu mais l\'image n\'a pas pu être lue. Réessayez.', 'sortie-illisible');
+}
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────
+ * RAPATRIEMENT DE LA SORTIE DANS LE STOCKAGE STUDIIO
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Sept des huit outils renvoyaient au navigateur l'URL DU FOURNISSEUR, qui
+ * devenait le `src` de l'image dans l'éditeur : son domaine était lisible
+ * dans la page, dans l'onglet réseau, et dans tout média enregistré ensuite.
+ * « Affiche IA » rapatriait déjà les octets — c'est ce chemin, éprouvé en
+ * production, qui est généralisé ici.
+ *
+ * Trois garanties :
+ *   - les octets sont lus et VÉRIFIÉS côté serveur : une page d'erreur, du
+ *     JSON ou un GIF n'entre jamais dans le stockage ;
+ *   - un échec survient AVANT le débit — rien n'est facturé ;
+ *   - les médias DÉJÀ enregistrés ne sont pas touchés : seules les nouvelles
+ *     sorties changent d'adresse.
+ */
+async function rapatrierSortie(output: unknown, userId: string, action: string): Promise<string> {
+  const octets = await lireOctetsSortie(output, MAX_SORTIE_IA_BYTES);
+  const signature = detecterSignatureMedia(octets);
+  if (!signature) {
+    throw new ErreurAfficheIA(502, 'Le modèle IA a répondu mais le résultat n\'est pas un média valide. Réessayez.', 'signature');
+  }
+  const key = `${userId}/ia/${randomUUID()}-${action}.${signature.ext}`;
+  const { error } = await supabaseAdmin.storage
+    .from(BUCKET_AFFICHE_IA)
+    .upload(key, Buffer.from(octets), { contentType: signature.mime, upsert: false });
+  if (error) {
+    console.warn('[AI Image] upload refuse', { action, message: String(error.message ?? error) });
+    throw new ErreurAfficheIA(502, 'Le résultat n\'a pas pu être enregistré. Réessayez.', 'upload');
+  }
+  const url = urlPubliqueAbsolue(key);
+  if (!url) {
+    await effacerObjet(key);
+    throw new ErreurAfficheIA(500, 'Le stockage est mal configuré : le résultat n\'a pas pu être publié.', 'url-publique');
+  }
+  return url;
 }
 
 /**
@@ -375,11 +417,15 @@ export async function POST(req: NextRequest) {
     // fournisseur n'est pas vérifié est refusée AVANT tout appel et tout
     // débit. Aucun tarif actuel n'est concerné — la garde vise un tarif
     // ajouté plus tard sans son coût. Une opération à 0 crédit passe.
-    const garde = operationAutorisee({
-      cle: CLE_ACTION_IA[action],
-      credits: cost,
-      blocage: (await lireTarifs()).bloquerSiCoutInconnu,
-    });
+    // Le drapeau est lu DÉFENSIVEMENT : une configuration illisible ne doit
+    // pas faire échouer une opération payante, elle retombe sur le défaut sûr.
+    let blocage = BLOCAGE_COUT_INCONNU_DEFAUT;
+    try {
+      blocage = (await lireTarifs()).bloquerSiCoutInconnu;
+    } catch (e) {
+      console.warn('[ai/image] drapeau de blocage illisible, défaut appliqué :', e instanceof Error ? e.message : e);
+    }
+    const garde = operationAutorisee({ cle: CLE_ACTION_IA[action], credits: cost, blocage });
     if (!garde.autorisee) {
       console.error('[ai/image]', garde.detail);
       return NextResponse.json(
@@ -736,12 +782,26 @@ export async function POST(req: NextRequest) {
       }, { status: 500 });
     }
 
-    // Deduct credits AFTER successful extraction
+    // ⚠️ `resultUrl` est l'adresse CHEZ LE FOURNISSEUR : elle ne sort pas
+    // d'ici. On rapatrie les octets dans le stockage Studiio, et c'est cette
+    // adresse-là que le navigateur reçoit. Un échec ici ne débite rien.
+    let urlStudiio: string;
+    try {
+      urlStudiio = await rapatrierSortie(output, session.user.id, action);
+    } catch (err) {
+      if (err instanceof ErreurAfficheIA) {
+        console.warn('[AI Image] rapatriement impossible', { action, etape: err.etape });
+        return NextResponse.json({ success: false, error: err.message }, { status: err.status });
+      }
+      throw err;
+    }
+
+    // Débit APRÈS que le résultat est écrit et adressable CHEZ NOUS.
     await deductCredits(session.user.id, cost, `ai-${action}`);
 
     return NextResponse.json({
       success: true,
-      resultUrl,
+      resultUrl: urlStudiio,
       action,
       creditsUsed: cost,
       creditsRemaining: credits - cost,
