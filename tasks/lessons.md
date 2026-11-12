@@ -1264,3 +1264,50 @@ Avec l'avatar, « Produire maintenant » répond 200 `{ jumeau: 'en_preparation'
 - [2026-11-02] | L'etape Scenes montrait des listes de scenes et du vocabulaire de moteur (« 0/3 media », « a reproduire », « Plan 2/3 », « ecarts ») sans dire quoi faire : un debutant ne savait pas par ou commencer | Une etape commence par UNE decision claire (deux cartes) et le moteur parle la langue de l'utilisateur : « N visuels a preparer », « cette scene doit etre mise a jour », « N points a verifier dans ton histoire ». Chaque alerte dit ce qui se passe, pourquoi, quoi faire, et l'acceptation annonce sa consequence. Choisir une methode est un simple affichage : jamais de generation ni de depense au clic.
 - [2026-11-02] | Le bouton « Preparer l'image avec l'IA » de l'apercu vide ne faisait que selectionner la scene (ouvrir un editeur hors de vue) : au 1er clic rien de visible, au 2e rien du tout. Les chemins « silencieux » de `genererMedia` (`return` si une generation est en cours) etaient du meme type | Un bouton d'action ouvre TOUJOURS quelque chose de visible (fenetre de preparation : ce qui est verifie, le cout, la confirmation, et si ca bloque : pourquoi et quoi faire). Aucun `return` silencieux sur un clic ; l'erreur du serveur s'affiche dans la fenetre, qui reste ouverte. Reproduire en navigateur reel AVANT de corriger : les erreurs 500 de la console (`/api/credits/balance`, base absente en local) n'avaient aucun rapport.
 - [2026-11-02] | Le reglage « Avec / Sans narration » ne disait pas COMMENT le film est raconte, et le decoupage attribuait « Karim répond : « Bonjour Maya » » a MAYA (le nom cite dans la citation gagnait par ordre du casting) | Le locuteur se lit HORS de la citation (`locuteurNomme`) ; un nom cite seulement dans la replique est celui a qui l'on parle. Sans nom hors citation, le locuteur est AMBIGU : jamais lu, l'utilisateur CHOISIT (`locuteurConfirme`). Une seule regle de voix (`audio.ts : voixAJouer`) decide de ce qui est lu, partout (synthese, montage). Un champ optionnel (`modeAudio`) separe les nouveaux films du systeme historique : absent = comportement d'avant, jamais transforme en silence.
+
+## 2026-11-12 | Chantier commercial (abonnements, crédits, paiements)
+
+**Un prix « proposé » figé dans le code peut vendre à perte sans que personne le voie.**
+Le catalogue portait `propose: 10 / 25 / 40` crédits pour les trois moteurs
+d'avatar. Au plafond de script, ces générations coûtent de 1,42 à 10,32 USD
+chez le fournisseur : les trois propositions vendaient sous le coût, et l'écran
+n'en disait rien. Règle : un prix proposé se CALCULE à partir du coût réel et
+d'un taux daté, il ne se code pas en dur. Et le verdict (rentable / à perte /
+inconnu) s'affiche à côté du prix, sinon il n'existe pas.
+
+**Un coût en USD et une recette en CHF ne se comparent pas sans taux — et un taux sans date n'est pas un taux.**
+Plutôt que d'inventer un taux de repli, le module rend le TAUX D'ÉQUILIBRE
+(« rentable seulement si 1 USD < X CHF ») et suspend son verdict. Le taux réel
+vient des taux de référence BCE, avec sa date, et il est signalé périmé après
+30 jours.
+
+**Relayer le message d'erreur d'un fournisseur est une fuite, même quand le code ne le nomme pas.**
+Six routes renvoyaient `${e.message}` au navigateur. Le texte vient du
+prestataire : il peut porter son nom, son domaine, un identifiant de modèle.
+Le détail va aux journaux, l'utilisateur reçoit une constante neutre
+(`lib/fournisseurs/messages-neutres.ts`). Et ce genre de fuite ne se prouve
+pas en greppant le source : le test APPELLE les routes sans clé et inspecte
+le corps rendu.
+
+**Une clé de traduction manquante affichait son chemin technique à l'écran.**
+`useTranslations` faisait `return path` : un catalogue incomplet montrait
+`billing.transactionHistory`. Le repli du provider ne jouait qu'à l'échec de
+chargement du FICHIER, jamais à la clé manquante. Sans socle français fusionné
+clé par clé, aucune langue ne peut être ajoutée progressivement.
+
+**Ne pas proposer une langue qu'on n'a pas traduite.**
+Les six langues africaines sont déclarées et chargeables, mais absentes du
+sélecteur sous 60 % de couverture : offrir « Wolof » pour afficher du français
+est une promesse non tenue. Un test tient la règle dans les deux sens.
+
+**Lister `payment_method_types` fige les moyens de paiement dans le code.**
+TWINT, PayPal ou Apple Pay ne pouvaient pas apparaître, même activés sur le
+compte. Sans ce champ, Stripe applique ce qui est configuré au Dashboard —
+sûr uniquement parce que le webhook ne crédite qu'à `payment_status === 'paid'`
+et traite `checkout.session.async_payment_succeeded`.
+
+**Un taux de change commercial n'est pas une conversion.**
+Les deux dépôts afroboost portaient 400 et 655 XOF par CHF, sans date et
+contradictoires ; le 400 était un prix d'accessibilité. Le franc CFA est
+arrimé à l'euro à parité FIXE (655,957) : seule la part CHF → EUR flotte, et
+elle se lit avec sa date. Sans taux daté, on refuse d'afficher un prix.
