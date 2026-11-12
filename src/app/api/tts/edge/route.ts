@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { MESSAGE_VOIX_INDISPONIBLE } from '@/lib/fournisseurs/messages-neutres';
 import { auth } from '@/lib/auth/config';
 import { texteParleDuCompte } from '@/lib/voice/profil';
 import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts';
@@ -95,7 +96,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(
-      { success: false, error: `TTS synthesis failed: ${errMsg}` },
+      { success: false, error: MESSAGE_VOIX_INDISPONIBLE },
       { status: 500 }
     );
   }

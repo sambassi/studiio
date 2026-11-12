@@ -65,13 +65,14 @@ export const TTS_VOICES: TtsVoice[] = [
   // Allemand
   { id: 'de-DE-KatjaNeural', name: 'Katja', lang: 'DE', gender: 'Female', flag: '\u{1F1E9}\u{1F1EA}' },
   { id: 'de-DE-ConradNeural', name: 'Conrad', lang: 'DE', gender: 'Male', flag: '\u{1F1E9}\u{1F1EA}' },
-  // OpenAI TTS — natural voices (English-only for now). Routed via /api/tts/openai.
-  { id: 'openai-alloy', name: 'Alloy (OpenAI)', lang: 'EN', gender: 'Female', flag: '\u{1F916}', provider: 'openai' },
-  { id: 'openai-echo', name: 'Echo (OpenAI)', lang: 'EN', gender: 'Male', flag: '\u{1F916}', provider: 'openai' },
-  { id: 'openai-fable', name: 'Fable (OpenAI)', lang: 'EN', gender: 'Male', flag: '\u{1F916}', provider: 'openai' },
-  { id: 'openai-onyx', name: 'Onyx (OpenAI)', lang: 'EN', gender: 'Male', flag: '\u{1F916}', provider: 'openai' },
-  { id: 'openai-nova', name: 'Nova (OpenAI)', lang: 'EN', gender: 'Female', flag: '\u{1F916}', provider: 'openai' },
-  { id: 'openai-shimmer', name: 'Shimmer (OpenAI)', lang: 'EN', gender: 'Female', flag: '\u{1F916}', provider: 'openai' },
+  // Voix naturelles (anglais pour l'instant). Le nom du prestataire ne doit
+  // JAMAIS figurer dans `name` : ce champ est affiche a l'utilisateur.
+  { id: 'openai-alloy', name: 'Alloy', lang: 'EN', gender: 'Female', flag: '\u{1F916}', provider: 'openai' },
+  { id: 'openai-echo', name: 'Echo', lang: 'EN', gender: 'Male', flag: '\u{1F916}', provider: 'openai' },
+  { id: 'openai-fable', name: 'Fable', lang: 'EN', gender: 'Male', flag: '\u{1F916}', provider: 'openai' },
+  { id: 'openai-onyx', name: 'Onyx', lang: 'EN', gender: 'Male', flag: '\u{1F916}', provider: 'openai' },
+  { id: 'openai-nova', name: 'Nova', lang: 'EN', gender: 'Female', flag: '\u{1F916}', provider: 'openai' },
+  { id: 'openai-shimmer', name: 'Shimmer', lang: 'EN', gender: 'Female', flag: '\u{1F916}', provider: 'openai' },
 ];
 
 // Map voice IDs to BCP47 language codes for browser fallback

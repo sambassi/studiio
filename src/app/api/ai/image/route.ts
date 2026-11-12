@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { MESSAGE_IMAGE_IA_NON_CONFIGUREE } from '@/lib/fournisseurs/messages-neutres';
 import { randomUUID } from 'crypto';
 import { auth } from '@/lib/auth/config';
 import { deductCredits, getUserCredits } from '@/lib/credits/system';
@@ -392,7 +393,7 @@ export async function POST(req: NextRequest) {
       );
       return NextResponse.json({
         success: false,
-        error: 'Service IA non configuré sur le serveur (clé Replicate absente). Aucun crédit débité — contactez l’administrateur.',
+        error: MESSAGE_IMAGE_IA_NON_CONFIGUREE,
         code: 'ia_non_configuree',
       }, { status: 503 });
     }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
+import { MESSAGE_IA_NON_CONFIGUREE, MESSAGE_IA_INDISPONIBLE } from '@/lib/fournisseurs/messages-neutres';
 
 // POST /api/content/icon-suggest
 // Body:
@@ -15,7 +16,7 @@ export async function POST(req: NextRequest) {
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ success: false, error: 'Anthropic API not configured' }, { status: 500 });
+      return NextResponse.json({ success: false, error: MESSAGE_IA_NON_CONFIGUREE }, { status: 500 });
     }
 
     const { title = '', description = '', mode = 'emoji', allowed = [] } = await req.json();
@@ -44,7 +45,8 @@ export async function POST(req: NextRequest) {
     });
 
     if (!r.ok) {
-      return NextResponse.json({ success: false, error: `Anthropic ${r.status}` }, { status: 500 });
+      console.error('[icon-suggest] appel IA en echec :', r.status);
+      return NextResponse.json({ success: false, error: MESSAGE_IA_INDISPONIBLE }, { status: 500 });
     }
     const d = await r.json();
     const block = d.content?.find((c: any) => c.type === 'text');

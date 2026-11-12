@@ -14,13 +14,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, ChevronDown, Coins, Gift, History, Loader2, Save, Sparkles, X,
+  AlertTriangle, ChevronDown, Coins, Gift, History, Loader2, RefreshCw, Save, Sparkles,
+  ShieldAlert, TrendingUp, X,
 } from 'lucide-react';
 import {
   CATALOGUE_TARIFS, LIBELLE_CATEGORIE, TARIF_MAX, TARIFS_GRATUITS,
   type CategorieTarif, type CleTarif, type CoutFournisseur, type EntreeCatalogue,
 } from '@/lib/tarifs/catalogue';
 import { ETAT_INTERACTIF_SANS_FOND } from '@/lib/ui/etats';
+import type { LigneRentabilite, ResumeRentabilite } from '@/lib/tarifs/rentabilite';
+import type { TauxChange } from '@/lib/tarifs/change';
 
 interface LigneHistorique { cle: string; ancien: unknown; nouveau: unknown; admin: string; le: string }
 
@@ -33,6 +36,13 @@ interface ReponseTarifs {
   coutsFournisseur: Partial<Record<string, CoutFournisseur>>;
   source: 'configuration' | 'defaut';
   historique?: LigneHistorique[];
+  /** Taux USD → CHF enregistré, daté. `null` = marges en USD non calculées. */
+  change?: TauxChange | null;
+  /** Rentabilité de la grille ENREGISTRÉE (pas de la saisie en cours). */
+  rentabilite?: LigneRentabilite[];
+  resumeRentabilite?: ResumeRentabilite;
+  changeLibelle?: string;
+  changePerime?: boolean;
 }
 
 interface CoutSaisi { chf: string; unite: string }
@@ -41,6 +51,26 @@ const ORDRE_CATEGORIES: CategorieTarif[] = ['audio', 'video', 'avatar', 'ia', 'a
 const VALEUR_CREDIT_MAX_CHF = 100;
 const COUT_MAX_CHF = 10_000;
 const CHAMP_VALEUR_CREDIT = 'valeurCreditChf';
+const CHAMP_CHANGE = 'change';
+const TAUX_MIN = 0.1;
+const TAUX_MAX = 10;
+
+/** Miroir de `normaliserTaux` côté serveur : un taux sans date n'est pas un taux. */
+function erreurTaux(chfParUsd: string, le: string): string | null {
+  const brut = chfParUsd.trim();
+  if (brut === '' && le.trim() === '') return null;
+  if (brut === '') return 'Taux requis (ou efface la date).';
+  const n = Number(brut.replace(',', '.'));
+  if (!Number.isFinite(n) || n < TAUX_MIN || n > TAUX_MAX) return `Taux entre ${TAUX_MIN} et ${TAUX_MAX} attendu.`;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(le.trim())) return 'Date du taux requise (AAAA-MM-JJ).';
+  return null;
+}
+
+const STYLE_VERDICT: Record<LigneRentabilite['verdict'], { classe: string; texte: string }> = {
+  perte: { classe: 'border-red-500/40 bg-red-500/10 text-red-300', texte: 'Vendu à perte' },
+  inconnu: { classe: 'border-amber-500/40 bg-amber-500/10 text-amber-300', texte: 'Rentabilité inconnue' },
+  rentable: { classe: 'border-green-500/40 bg-green-500/10 text-green-300', texte: 'Rentable' },
+};
 
 const champCout = (cle: string) => `cout:${cle}`;
 
@@ -197,6 +227,9 @@ export default function TarifsAdminPage() {
   const [prix, setPrix] = useState<Record<string, string>>({});
   const [valeurCredit, setValeurCredit] = useState('');
   const [couts, setCouts] = useState<Record<string, CoutSaisi>>({});
+  const [taux, setTaux] = useState({ chfParUsd: '', le: '' });
+  const [sourceTaux, setSourceTaux] = useState<string>('');
+  const [lectureTaux, setLectureTaux] = useState(false);
 
   const [fermees, setFermees] = useState<Partial<Record<CategorieTarif, boolean>>>({});
   const [confirmation, setConfirmation] = useState(false);
@@ -215,6 +248,8 @@ export default function TarifsAdminPage() {
       const c = d.coutsFournisseur?.[e.cle];
       return [e.cle, { chf: c ? String(c.chf) : '', unite: c?.unite ?? '' }];
     })));
+    setTaux({ chfParUsd: d.change ? String(d.change.chfParUsd) : '', le: d.change?.le ?? '' });
+    setSourceTaux(d.change?.source ?? '');
     setErreursServeur({});
   }, []);
 
@@ -232,6 +267,38 @@ export default function TarifsAdminPage() {
 
   useEffect(() => { charger(); }, [charger]);
 
+  /**
+   * Lit le taux de référence et REMPLIT le champ, sans rien enregistrer :
+   * l'admin voit la valeur et sa date, puis confirme comme n'importe quel
+   * autre changement.
+   */
+  const lireTauxReference = useCallback(async () => {
+    setLectureTaux(true);
+    setMessage(null);
+    try {
+      const r = await fetch('/api/admin/tarifs/taux', { cache: 'no-store' });
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j?.change) {
+        setMessage({ texte: j?.error || 'Taux de référence indisponible.', type: 'erreur' });
+        return;
+      }
+      const c = j.change as TauxChange;
+      setTaux({ chfParUsd: String(c.chfParUsd), le: c.le });
+      setSourceTaux(c.source);
+      setErreursServeur((e) => { const { [CHAMP_CHANGE]: _, ...r2 } = e; return r2; });
+    } catch {
+      setMessage({ texte: 'Taux de référence indisponible.', type: 'erreur' });
+    } finally {
+      setLectureTaux(false);
+    }
+  }, []);
+
+  /** Rentabilité enregistrée, indexée par clé de tarif. */
+  const rentabiliteParCle = useMemo(
+    () => new Map((donnees?.rentabilite ?? []).map((l) => [l.cle as string, l])),
+    [donnees],
+  );
+
   // ── Validation (miroir serveur) ────────────────────────────────────────
   const erreursClient = useMemo(() => {
     const out: Record<string, string> = {};
@@ -243,12 +310,19 @@ export default function TarifsAdminPage() {
     }
     const mv = erreurValeurCredit(valeurCredit);
     if (mv) out[CHAMP_VALEUR_CREDIT] = mv;
+    const mt = erreurTaux(taux.chfParUsd, taux.le);
+    if (mt) out[CHAMP_CHANGE] = mt;
     return out;
-  }, [catalogue, prix, couts, valeurCredit, max]);
+  }, [catalogue, prix, couts, valeurCredit, taux, max]);
 
   // ── Ce qui a changé ────────────────────────────────────────────────────
   const diff = useMemo(() => {
-    const corps: { prix?: Record<string, number>; valeurCreditChf?: number | null; coutsFournisseur?: Record<string, CoutFournisseur | null> } = {};
+    const corps: {
+      prix?: Record<string, number>;
+      valeurCreditChf?: number | null;
+      coutsFournisseur?: Record<string, CoutFournisseur | null>;
+      change?: TauxChange | null;
+    } = {};
     const lignes: Changement[] = [];
     if (!donnees) return { corps, lignes };
     for (const e of catalogue) {
@@ -286,8 +360,24 @@ export default function TarifsAdminPage() {
           : `Passer la valeur du crédit de ${avantV === null ? 'non renseignée' : chf(avantV)} à ${chf(v)} ?`,
       });
     }
+    const nTaux = lireDecimal(taux.chfParUsd);
+    const avantTaux = donnees.change ?? null;
+    const apresTaux: TauxChange | null = nTaux === null || Number.isNaN(nTaux) || !/^\d{4}-\d{2}-\d{2}$/.test(taux.le.trim())
+      ? null
+      : { chfParUsd: nTaux, le: taux.le.trim(), source: sourceTaux || 'Saisie administrateur' };
+    const tauxEgal = (avantTaux === null && apresTaux === null)
+      || (avantTaux !== null && apresTaux !== null && avantTaux.chfParUsd === apresTaux.chfParUsd && avantTaux.le === apresTaux.le);
+    if (!tauxEgal && !erreurTaux(taux.chfParUsd, taux.le)) {
+      corps.change = apresTaux;
+      lignes.push({
+        champ: CHAMP_CHANGE,
+        phrase: apresTaux === null
+          ? 'Effacer le taux de change ? Les marges en USD ne seront plus calculées.'
+          : `Enregistrer le taux 1 USD = ${apresTaux.chfParUsd} CHF (${apresTaux.le}) ?`,
+      });
+    }
     return { corps, lignes };
-  }, [donnees, catalogue, prix, couts, valeurCredit]);
+  }, [donnees, catalogue, prix, couts, valeurCredit, taux, sourceTaux]);
 
   const modifie = diff.lignes.length > 0;
   const bloque = Object.keys(erreursClient).length > 0;
@@ -412,6 +502,92 @@ export default function TarifsAdminPage() {
         <p className="text-xs text-gray-500">Valeur indicative — ne modifie pas les packs de paiement Stripe.</p>
       </section>
 
+      {/* ── Rentabilité & taux de change ──────────────────────────────── */}
+      <section className="card-base space-y-3" style={{ padding: 16 }}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="flex items-center gap-2 text-base font-semibold text-white">
+            <TrendingUp size={16} className="text-gray-400" /> Rentabilité
+          </h2>
+          {donnees?.resumeRentabilite && (
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              {donnees.resumeRentabilite.pertes > 0 && (
+                <span className={`rounded-full border px-2 py-0.5 ${STYLE_VERDICT.perte.classe}`}>
+                  {donnees.resumeRentabilite.pertes} à perte
+                </span>
+              )}
+              {donnees.resumeRentabilite.inconnus > 0 && (
+                <span className={`rounded-full border px-2 py-0.5 ${STYLE_VERDICT.inconnu.classe}`}>
+                  {donnees.resumeRentabilite.inconnus} inconnues
+                </span>
+              )}
+              <span className={`rounded-full border px-2 py-0.5 ${STYLE_VERDICT.rentable.classe}`}>
+                {donnees.resumeRentabilite.rentables} rentables
+              </span>
+            </div>
+          )}
+        </div>
+
+        {donnees?.resumeRentabilite && donnees.resumeRentabilite.pertes > 0 && (
+          <p
+            role="alert"
+            data-testid="alerte-vente-a-perte"
+            className="flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-300"
+          >
+            <ShieldAlert size={16} className="mt-0.5 shrink-0" />
+            <span>
+              {donnees.resumeRentabilite.pertes === 1 ? 'Un tarif est vendu' : `${donnees.resumeRentabilite.pertes} tarifs sont vendus`}
+              {' '}sous leur coût fournisseur. Chaque génération creuse la marge.
+            </span>
+          </p>
+        )}
+
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="space-y-1">
+            <label htmlFor="taux-chf-usd" className="block text-xs font-medium text-gray-300">1 USD en CHF</label>
+            <input
+              id="taux-chf-usd"
+              type="number"
+              inputMode="decimal"
+              min={TAUX_MIN}
+              max={TAUX_MAX}
+              step="0.00001"
+              value={taux.chfParUsd}
+              onChange={(e) => { setTaux((t) => ({ ...t, chfParUsd: e.target.value })); setErreursServeur((s2) => { const { [CHAMP_CHANGE]: _, ...r } = s2; return r; }); }}
+              placeholder="0.83"
+              aria-invalid={!!erreurDe(CHAMP_CHANGE)}
+              className="w-28 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-white focus:border-orange-500 focus:outline-none"
+            />
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="taux-date" className="block text-xs font-medium text-gray-300">Daté du</label>
+            <input
+              id="taux-date"
+              type="date"
+              value={taux.le}
+              onChange={(e) => { setTaux((t) => ({ ...t, le: e.target.value })); setErreursServeur((s2) => { const { [CHAMP_CHANGE]: _, ...r } = s2; return r; }); }}
+              className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-white focus:border-orange-500 focus:outline-none"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={lireTauxReference}
+            disabled={lectureTaux}
+            className={`inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-200 disabled:opacity-50 ${ETAT_INTERACTIF_SANS_FOND}`}
+          >
+            {lectureTaux ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            Lire le taux de référence
+          </button>
+        </div>
+        {erreurDe(CHAMP_CHANGE) && <p className="text-xs text-red-400">{erreurDe(CHAMP_CHANGE)}</p>}
+        <p className={`text-xs ${donnees?.changePerime ? 'text-amber-400' : 'text-gray-500'}`} data-testid="etat-taux">
+          {donnees?.changeLibelle ?? 'Taux non chargé.'}
+          {sourceTaux && <span className="text-gray-600"> · {sourceTaux}</span>}
+        </p>
+        <p className="text-xs text-gray-500">
+          Sans taux enregistré, aucune marge en USD n’est calculée : la rentabilité reste affichée comme inconnue plutôt que supposée bonne.
+        </p>
+      </section>
+
       {/* ── Catégories ───────────────────────────────────────────────── */}
       {ORDRE_CATEGORIES.map((cat) => {
         const entrees = catalogue.filter((e) => e.categorie === cat);
@@ -518,6 +694,17 @@ export default function TarifsAdminPage() {
                           ≈ {chf(estimation.client)} client · marge ≈ <span className={estimation.marge < 0 ? 'text-red-400' : ''}>{chf(estimation.marge)}</span>
                         </p>
                       )}
+                      {(() => {
+                        const r = rentabiliteParCle.get(e.cle);
+                        if (!r) return null;
+                        const st = STYLE_VERDICT[r.verdict];
+                        return (
+                          <p className="flex flex-wrap items-center gap-2 text-xs" data-testid={`verdict-${e.cle}`}>
+                            <span className={`rounded-full border px-2 py-0.5 ${st.classe}`}>{st.texte}</span>
+                            <span className="min-w-0 flex-1 text-gray-500">{r.motif}</span>
+                          </p>
+                        );
+                      })()}
                     </div>
                   );
                 })}

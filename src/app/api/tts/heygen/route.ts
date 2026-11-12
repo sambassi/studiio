@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { MESSAGE_VOIX_NON_CONFIGUREE } from '@/lib/fournisseurs/messages-neutres';
 import { auth } from '@/lib/auth/config';
 import { texteParleDuCompte } from '@/lib/voice/profil';
 import { HEYGEN_VOICE_PREFIX, type HeyGenTtsVoice } from '@/lib/types/voice';
@@ -201,7 +202,7 @@ export async function POST(req: NextRequest) {
 
     const key = apiKey();
     if (!key) {
-      return NextResponse.json({ error: 'HEYGEN_API_KEY not configured' }, { status: 500 });
+      return NextResponse.json({ error: MESSAGE_VOIX_NON_CONFIGUREE }, { status: 500 });
     }
 
     const body = await req.json();

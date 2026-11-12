@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { MESSAGE_VOIX_NON_CONFIGUREE } from '@/lib/fournisseurs/messages-neutres';
 import { auth } from '@/lib/auth/config';
 import { detectAndReportServiceError } from '@/lib/service-alerts';
 import { mapElevenLabsVoice, ELEVENLABS_VOICE_PREFIX, normaliserReglages, voiceSettingsElevenLabs, type ElevenLabsTtsVoice } from '@/lib/types/voice';
@@ -186,7 +187,7 @@ export async function POST(req: NextRequest) {
 
     const key = apiKey();
     if (!key) {
-      return NextResponse.json({ error: 'ELEVENLABS_API_KEY not configured' }, { status: 500 });
+      return NextResponse.json({ error: MESSAGE_VOIX_NON_CONFIGUREE }, { status: 500 });
     }
 
     const body = await req.json();

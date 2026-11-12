@@ -231,8 +231,8 @@ export const VOICE_GROUP_LABELS = {
   cloned: 'Ma voix clonée',
   elevenlabs: 'Voix premium',
   heygen: 'Voix avatar',
-  openai: 'Voix OpenAI',
-  edge: 'Voix standard (Edge)',
+  openai: 'Voix naturelles',
+  edge: 'Voix standard',
 } as const;
 
 export type VoiceGroupKey = keyof typeof VOICE_GROUP_LABELS;

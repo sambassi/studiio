@@ -13,6 +13,7 @@
  * verifiee ICI (`sessionCinema`, qui ferme aussi la route quand le module est eteint).
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { MESSAGE_IA_INDISPONIBLE } from '@/lib/fournisseurs/messages-neutres';
 import { sessionCinema } from '@/lib/cinema/routes-aide';
 import { diagnostiquerProposition, estActionRedaction, promptRedaction, type ContexteRedaction } from '@/lib/cinema/redaction';
 import { genererTexteIA } from '@/lib/ia/texte';
@@ -77,6 +78,6 @@ export async function POST(req: NextRequest) {
   if (issue.motif === 'appel') detectAndReportServiceError('anthropic', new Error(issue.detail));
   return NextResponse.json({
     ok: false,
-    erreur: `L’aide IA n’a pas pu repondre (${issue.detail}). Votre texte n’a pas ete modifie.`,
+    erreur: `${MESSAGE_IA_INDISPONIBLE} Votre texte n’a pas ete modifie.`,
   }, { status: 502 });
 }

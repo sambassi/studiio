@@ -105,7 +105,7 @@ interface Voice {
 
 type GenStatus = 'idle' | 'pending' | 'processing' | 'completed' | 'failed';
 type Qualite = 'standard' | 'qualite' | 'premium';
-interface QualiteOfferte { qualite: Qualite; libelle: string; ouverte: boolean; recommandee?: boolean; motif?: string | null; moteurLibelle?: string; description?: string; meilleure?: boolean }
+interface QualiteOfferte { qualite: Qualite; libelle: string; ouverte: boolean; recommandee?: boolean; motif?: string | null; description?: string; meilleure?: boolean }
 const lireQualites = (brut: unknown): QualiteOfferte[] => (Array.isArray(brut)
   ? (brut as QualiteOfferte[]).filter((q) => q && (q.qualite === 'standard' || q.qualite === 'qualite' || q.qualite === 'premium'))
   : []);
@@ -1775,7 +1775,7 @@ export default function AvatarPage() {
                     >
                       {qualites.map((q) => (
                         <option key={q.qualite} value={q.qualite} disabled={!q.ouverte} data-avatar-qualite-option={q.qualite} data-avatar-qualite-ouverte={q.ouverte ? 'oui' : 'non'}>
-                          {q.libelle}{q.moteurLibelle ? ` — ${q.moteurLibelle}` : ''}{q.description ? ` · ${q.description.toLowerCase()}` : ''}{q.ouverte ? '' : ` (indisponible : ${q.motif ?? 'pas encore ouvert'})`}
+                          {q.libelle}{q.description ? ` · ${q.description.toLowerCase()}` : ''}{q.ouverte ? '' : ` (indisponible : ${q.motif ?? 'pas encore ouvert'})`}
                         </option>
                       ))}
                     </select>
@@ -1881,10 +1881,10 @@ export default function AvatarPage() {
                   <span className="rounded-full bg-studiio-primary/25 px-1.5 py-0.5 text-[10px] font-semibold text-purple-100" data-avatar-premium-badge>Meilleure qualité</span>
                   {premium.ouverte ? (
                     qualite === 'premium'
-                      ? <span>Premium — Avatar V sélectionné.</span>
-                      : <><span>Premium — Avatar V disponible pour votre avatar.</span><button type="button" data-avatar-premium-choisir disabled={busy} onClick={() => choisirQualite('premium')} className="text-purple-200 underline hover:text-white disabled:opacity-40">Choisir</button></>
+                      ? <span>Qualité Premium sélectionnée.</span>
+                      : <><span>La qualité Premium est disponible pour votre avatar.</span><button type="button" data-avatar-premium-choisir disabled={busy} onClick={() => choisirQualite('premium')} className="text-purple-200 underline hover:text-white disabled:opacity-40">Choisir</button></>
                   ) : (
-                    <span data-avatar-premium-motif className="text-gray-400">Premium — Avatar V : {premium.motif ?? 'indisponible.'}</span>
+                    <span data-avatar-premium-motif className="text-gray-400">Qualité Premium : {premium.motif ?? 'indisponible.'}</span>
                   )}
                 </div>
               )}
