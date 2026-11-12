@@ -54,6 +54,38 @@ export function normaliserTaux(brut: unknown): TauxChange | null {
   };
 }
 
+/**
+ * Taux CHF → EUR, même discipline : daté, sourcé, sans repli. Il sert à
+ * convertir un prix Studiio en franc CFA, qui est arrimé à l'euro à parité
+ * fixe (`lib/paiements/cfa`) — donc la seule part flottante est celle-ci.
+ */
+export interface TauxEur {
+  /** Combien d'euros vaut 1 CHF. */
+  eurParChf: number;
+  le: string;
+  source: string;
+}
+
+/** Bornes de bon sens : CHF/EUR n'a jamais quitté cet intervalle. */
+export const EUR_MIN = 0.5;
+export const EUR_MAX = 2;
+
+export function tauxEurValide(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v) && v >= EUR_MIN && v <= EUR_MAX;
+}
+
+export function normaliserTauxEur(brut: unknown): TauxEur | null {
+  if (!brut || typeof brut !== 'object' || Array.isArray(brut)) return null;
+  const t = brut as { eurParChf?: unknown; le?: unknown; source?: unknown };
+  if (!tauxEurValide(t.eurParChf)) return null;
+  if (typeof t.le !== 'string' || !DATE_ISO.test(t.le)) return null;
+  return {
+    eurParChf: t.eurParChf,
+    le: t.le,
+    source: typeof t.source === 'string' && t.source.trim() ? t.source.trim().slice(0, 200) : SOURCE_REFERENCE,
+  };
+}
+
 export function jourAge(le: string, maintenant: Date = new Date()): number | null {
   if (!DATE_ISO.test(le)) return null;
   const t = Date.parse(`${le}T00:00:00Z`);

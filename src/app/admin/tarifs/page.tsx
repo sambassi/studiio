@@ -23,7 +23,7 @@ import {
 } from '@/lib/tarifs/catalogue';
 import { ETAT_INTERACTIF_SANS_FOND } from '@/lib/ui/etats';
 import type { LigneRentabilite, ResumeRentabilite } from '@/lib/tarifs/rentabilite';
-import type { TauxChange } from '@/lib/tarifs/change';
+import type { TauxChange, TauxEur } from '@/lib/tarifs/change';
 
 interface LigneHistorique { cle: string; ancien: unknown; nouveau: unknown; admin: string; le: string }
 
@@ -38,6 +38,8 @@ interface ReponseTarifs {
   historique?: LigneHistorique[];
   /** Taux USD → CHF enregistré, daté. `null` = marges en USD non calculées. */
   change?: TauxChange | null;
+  /** Taux CHF → EUR, daté : la part flottante d'un prix en franc CFA. */
+  changeEur?: TauxEur | null;
   /** Rentabilité de la grille ENREGISTRÉE (pas de la saisie en cours). */
   rentabilite?: LigneRentabilite[];
   resumeRentabilite?: ResumeRentabilite;
@@ -243,6 +245,7 @@ export default function TarifsAdminPage() {
   const [taux, setTaux] = useState({ chfParUsd: '', le: '' });
   const [sourceTaux, setSourceTaux] = useState<string>('');
   const [margeCible, setMargeCible] = useState('');
+  const [tauxEur, setTauxEur] = useState<TauxEur | null>(null);
   const [lectureTaux, setLectureTaux] = useState(false);
 
   const [fermees, setFermees] = useState<Partial<Record<CategorieTarif, boolean>>>({});
@@ -265,6 +268,7 @@ export default function TarifsAdminPage() {
     setTaux({ chfParUsd: d.change ? String(d.change.chfParUsd) : '', le: d.change?.le ?? '' });
     setMargeCible(d.margeCible === undefined || d.margeCible === null ? '' : String(Math.round(d.margeCible * 100)));
     setSourceTaux(d.change?.source ?? '');
+    setTauxEur(d.changeEur ?? null);
     setErreursServeur({});
   }, []);
 
@@ -300,6 +304,8 @@ export default function TarifsAdminPage() {
       const c = j.change as TauxChange;
       setTaux({ chfParUsd: String(c.chfParUsd), le: c.le });
       setSourceTaux(c.source);
+      // Le même relevé porte CHF → EUR, qui sert aux prix en franc CFA.
+      setTauxEur((j.changeEur as TauxEur | null) ?? null);
       setErreursServeur((e) => { const { [CHAMP_CHANGE]: _, ...r2 } = e; return r2; });
     } catch {
       setMessage({ texte: 'Taux de référence indisponible.', type: 'erreur' });
@@ -339,6 +345,7 @@ export default function TarifsAdminPage() {
       valeurCreditChf?: number | null;
       coutsFournisseur?: Record<string, CoutFournisseur | null>;
       change?: TauxChange | null;
+      changeEur?: TauxEur | null;
       margeCible?: number;
     } = {};
     const lignes: Changement[] = [];
@@ -394,6 +401,16 @@ export default function TarifsAdminPage() {
           : `Enregistrer le taux 1 USD = ${apresTaux.chfParUsd} CHF (${apresTaux.le}) ?`,
       });
     }
+    const avantEur = donnees.changeEur ?? null;
+    if (JSON.stringify(tauxEur) !== JSON.stringify(avantEur)) {
+      corps.changeEur = tauxEur;
+      lignes.push({
+        champ: 'changeEur',
+        phrase: tauxEur === null
+          ? 'Effacer le taux CHF → EUR ? Les prix en franc CFA ne seront plus affichables.'
+          : `Enregistrer le taux 1 CHF = ${tauxEur.eurParChf} EUR (${tauxEur.le}) ?`,
+      });
+    }
     const nMarge = lireDecimal(margeCible);
     const apresMarge = nMarge === null || Number.isNaN(nMarge) ? null : Math.round(nMarge) / 100;
     const avantMarge = donnees.margeCible ?? null;
@@ -405,7 +422,7 @@ export default function TarifsAdminPage() {
       });
     }
     return { corps, lignes };
-  }, [donnees, catalogue, prix, couts, valeurCredit, taux, sourceTaux, margeCible]);
+  }, [donnees, catalogue, prix, couts, valeurCredit, taux, sourceTaux, margeCible, tauxEur]);
 
   const modifie = diff.lignes.length > 0;
   const bloque = Object.keys(erreursClient).length > 0;
@@ -643,6 +660,11 @@ export default function TarifsAdminPage() {
         </p>
         <p className="text-xs text-gray-500">
           Sans taux enregistré, aucune marge en USD n’est calculée : la rentabilité reste affichée comme inconnue plutôt que supposée bonne.
+        </p>
+        <p className="text-xs text-gray-500" data-testid="etat-taux-eur">
+          {donnees.changeEur
+            ? `Franc CFA : 1 CHF = ${donnees.changeEur.eurParChf} EUR (${donnees.changeEur.le}), × 655,957 pour le XOF / XAF.`
+            : 'Franc CFA : aucun taux CHF → EUR enregistré, aucun prix en franc CFA n’est affichable.'}
         </p>
       </section>
 

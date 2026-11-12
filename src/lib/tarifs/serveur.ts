@@ -36,7 +36,7 @@ import {
   type CoutFournisseur,
   type GrilleTarifs,
 } from './catalogue';
-import { normaliserTaux, tauxValide, type TauxChange } from './change';
+import { normaliserTaux, normaliserTauxEur, tauxValide, type TauxChange, type TauxEur } from './change';
 import { MARGE_CIBLE_DEFAUT, margeValide } from './rentabilite';
 
 export const CLE_REGLAGE_TARIFS = 'tarifs_credits';
@@ -55,6 +55,11 @@ export interface ConfigurationTarifs {
    * taux de repli inventé — cf. `lib/tarifs/change`).
    */
   change: TauxChange | null;
+  /**
+   * Taux CHF → EUR, daté : la seule part flottante d'un prix en franc CFA
+   * (arrimé à l'euro à parité fixe). `null` = aucun prix en CFA affichable.
+   */
+  changeEur: TauxEur | null;
   /** Marge brute visée au-dessus du coût fournisseur, pour le prix conseillé. */
   margeCible: number;
   /** `defaut` : rien n'a pu être lu, prix codés. */
@@ -107,7 +112,7 @@ async function charger(): Promise<ConfigurationTarifs> {
   // configuration valide (5 s de cache), et `ecrireTarifs` réécrirait ces
   // replis par-dessus la configuration de l'admin.
   if (reglage.error) throw new Error('tarifs illisibles');
-  const brut = (lireJson(reglage.data?.value) ?? {}) as { prix?: unknown; valeurCreditChf?: unknown; coutsFournisseur?: unknown; change?: unknown; margeCible?: unknown };
+  const brut = (lireJson(reglage.data?.value) ?? {}) as { prix?: unknown; valeurCreditChf?: unknown; coutsFournisseur?: unknown; change?: unknown; changeEur?: unknown; margeCible?: unknown };
   const prix = normaliserGrille(brut.prix);
   // Les rendus : la table que lit le débit SQL fait foi.
   for (const ligne of (Array.isArray(rendus.data) ? rendus.data : []) as Array<{ format?: unknown; credits?: unknown }>) {
@@ -118,6 +123,7 @@ async function charger(): Promise<ConfigurationTarifs> {
     valeurCreditChf: valeurCreditValide(brut.valeurCreditChf) ? brut.valeurCreditChf : null,
     coutsFournisseur: normaliserCouts(brut.coutsFournisseur),
     change: normaliserTaux(brut.change),
+    changeEur: normaliserTauxEur(brut.changeEur),
     margeCible: margeValide(brut.margeCible) ? brut.margeCible : MARGE_CIBLE_DEFAUT,
     source: 'configuration',
   };
@@ -131,7 +137,7 @@ export async function lireTarifs(): Promise<ConfigurationTarifs> {
     .then((v) => { etat.valeur = v; etat.luA = horloge(); return v; })
     .catch((e) => {
       console.error('[tarifs] lecture impossible — repli :', e instanceof Error ? e.message : e);
-      return etat.valeur ?? { prix: { ...TARIFS_DEFAUT }, valeurCreditChf: null, coutsFournisseur: {}, change: null, margeCible: MARGE_CIBLE_DEFAUT, source: 'defaut' as const };
+      return etat.valeur ?? { prix: { ...TARIFS_DEFAUT }, valeurCreditChf: null, coutsFournisseur: {}, change: null, changeEur: null, margeCible: MARGE_CIBLE_DEFAUT, source: 'defaut' as const };
     })
     .finally(() => { if (etat.enVol === promesse) etat.enVol = null; });
   etat.enVol = promesse;
@@ -153,6 +159,7 @@ export interface ModificationTarifs {
   coutsFournisseur?: Record<string, unknown>;
   /** `null` efface le taux ; un objet invalide est refusé, pas ignoré. */
   change?: unknown;
+  changeEur?: unknown;
   margeCible?: unknown;
 }
 
@@ -174,6 +181,9 @@ export function validerModification(m: ModificationTarifs): ErreurValidation[] {
         ? 'Date du taux manquante ou invalide (AAAA-MM-JJ attendu).'
         : 'Taux USD → CHF invalide.',
     });
+  }
+  if (m.changeEur !== undefined && m.changeEur !== null && normaliserTauxEur(m.changeEur) === null) {
+    erreurs.push({ champ: 'changeEur', message: 'Taux CHF → EUR invalide, ou date manquante (AAAA-MM-JJ).' });
   }
   if (m.margeCible !== undefined && !margeValide(m.margeCible)) {
     erreurs.push({ champ: 'margeCible', message: 'Marge entre 0 et 10 attendue (0,4 = 40 %).' });
@@ -220,6 +230,14 @@ export async function ecrireTarifs(m: ModificationTarifs, adminEmail: string): P
       change = demande;
     }
   }
+  let changeEur = actuelle.changeEur;
+  if (m.changeEur !== undefined) {
+    const demande = m.changeEur === null ? null : normaliserTauxEur(m.changeEur);
+    if (JSON.stringify(demande) !== JSON.stringify(changeEur)) {
+      changements.push({ cle: 'change.eur_per_chf', ancien: changeEur, nouveau: demande });
+      changeEur = demande;
+    }
+  }
   let margeCible = actuelle.margeCible;
   if (m.margeCible !== undefined && m.margeCible !== margeCible) {
     changements.push({ cle: 'pricing.marge_cible', ancien: margeCible, nouveau: m.margeCible });
@@ -251,7 +269,7 @@ export async function ecrireTarifs(m: ModificationTarifs, adminEmail: string): P
   // l'écrire ferait échouer chaque enregistrement). L'auteur va à `audit_log`.
   const { error } = await supabaseAdmin.from('app_settings').upsert({
     key: CLE_REGLAGE_TARIFS,
-    value: { prix, valeurCreditChf, coutsFournisseur, change, margeCible },
+    value: { prix, valeurCreditChf, coutsFournisseur, change, changeEur, margeCible },
     updated_at: new Date().toISOString(),
   });
   if (error) throw new Error(`app_settings : ${error.message}`);
