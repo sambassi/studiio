@@ -125,6 +125,7 @@ const CASES: Case[] = [
   R('tarifs', 'GET', 401, () => import('@/app/api/admin/tarifs/route')),
   R('tarifs', 'PUT', 401, () => import('@/app/api/admin/tarifs/route')),
   R('tarifs/taux', 'GET', 401, () => import('@/app/api/admin/tarifs/taux/route')),
+  R('pricing/formules', 'GET', 401, () => import('@/app/api/admin/pricing/formules/route')),
   R('terms', 'GET', 401, () => import('@/app/api/admin/terms/route')),
   R('terms', 'PATCH', 401, () => import('@/app/api/admin/terms/route')),
   R('users/[id]/ban', 'POST', 401, () => import('@/app/api/admin/users/[id]/ban/route')),

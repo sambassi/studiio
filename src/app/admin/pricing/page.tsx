@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Loader2, Save, Download, RefreshCw } from 'lucide-react';
+import { Loader2, Save, Download, RefreshCw, ChevronDown, Target } from 'lucide-react';
+import type { AnalyseFormule } from '@/lib/stripe/formules-proposees';
 
 interface Plan {
   key: string; name: string; price_cents: number; yearly_price_cents: number;
@@ -21,6 +22,8 @@ export default function PricingAdminPage() {
   const [toast, setToast] = useState('');
   const [synchro, setSynchro] = useState<null | { lignes: any[]; erreurs: string[]; aEcrire: number }>(null);
   const [synchronising, setSynchronising] = useState(false);
+  const [formules, setFormules] = useState<AnalyseFormule[] | null>(null);
+  const [formulesOuvert, setFormulesOuvert] = useState(false);
 
   // 1er clic : diff proposé (rien n'est écrit). 2e clic : confirmation.
   const previsualiserSynchro = async () => {
@@ -67,8 +70,21 @@ export default function PricingAdminPage() {
     setLoading(false);
   };
 
+  /**
+   * Les formules VISÉES, confrontées à la valeur du crédit. Lecture seule :
+   * rien n'est mis en vente depuis ce panneau, et il reste replié par défaut.
+   */
+  const chargerFormules = async () => {
+    try {
+      const res = await fetch('/api/admin/pricing/formules', { cache: 'no-store' });
+      const data = await res.json();
+      if (res.ok && Array.isArray(data.formules)) setFormules(data.formules as AnalyseFormule[]);
+    } catch { /* panneau simplement vide */ }
+  };
+
   useEffect(() => {
     loadPricing();
+    chargerFormules();
   }, []);
 
   const runSeed = async () => {
@@ -133,6 +149,58 @@ export default function PricingAdminPage() {
         <h1 className="text-3xl font-bold text-white mb-1">Tarification</h1>
         <p className="text-gray-400 text-sm">Gérez les plans et packs de crédits.</p>
       </div>
+
+      {/* ── Formules visées (proposition, rien n'est en vente) ────────── */}
+      {formules && formules.length > 0 && (
+        <section className="rounded-xl border border-gray-800 bg-gray-900/40" data-testid="formules-proposees">
+          <button
+            type="button"
+            aria-expanded={formulesOuvert}
+            onClick={() => setFormulesOuvert((v) => !v)}
+            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-white/[0.02]"
+          >
+            <span className="flex items-center gap-2 text-sm font-semibold text-white">
+              <Target size={16} className="text-gray-400" /> Formules visées — proposition, non activée
+            </span>
+            <span className="flex items-center gap-2">
+              {formules.some((f) => f.verdict === 'dilue') && (
+                <span className="rounded-full border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-[11px] text-red-300">
+                  {formules.filter((f) => f.verdict === 'dilue').length} diluent le crédit
+                </span>
+              )}
+              <ChevronDown size={16} className="text-gray-400 transition-transform" style={{ transform: formulesOuvert ? 'rotate(180deg)' : 'none' }} />
+            </span>
+          </button>
+          {formulesOuvert && (
+            <div className="space-y-2 border-t border-gray-800 px-4 py-3">
+              <p className="text-xs text-gray-500">
+                Aucune de ces formules n’est en vente. Les abonnements facturés sont ceux du tableau ci-dessous.
+                Un abonnement vend des crédits : si une formule les cède bien sous leur valeur de référence, elle
+                rend faux le prix unitaire de chaque opération.
+              </p>
+              {formules.map((f) => {
+                const style = f.verdict === 'dilue'
+                  ? 'border-red-500/40 bg-red-500/10 text-red-300'
+                  : f.verdict === 'inconnu'
+                    ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+                    : 'border-green-500/40 bg-green-500/10 text-green-300';
+                return (
+                  <div key={f.cle} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b border-gray-800/60 pb-2 text-xs last:border-b-0 last:pb-0" data-testid={`formule-${f.cle}`}>
+                    <span className="font-medium text-gray-200">{f.nom}</span>
+                    <span className="text-gray-400">
+                      {(f.prixCentimes / 100).toLocaleString('fr-CH', { style: 'currency', currency: 'CHF' })} / mois · {f.credits.toLocaleString('fr-CH')} crédits
+                    </span>
+                    <span className={`rounded-full border px-2 py-0.5 ${style}`}>
+                      {f.verdict === 'dilue' ? 'Dilue le crédit' : f.verdict === 'inconnu' ? 'À vérifier' : 'Tenable'}
+                    </span>
+                    <span className="min-w-0 flex-1 text-gray-500">{f.motif}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
 
       <div className="rounded-xl border border-purple-500/30 bg-purple-500/5 p-4 space-y-3">
         <div className="flex items-center justify-between gap-4">

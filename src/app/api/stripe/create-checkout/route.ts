@@ -87,7 +87,18 @@ export async function POST(req: NextRequest) {
       customer: customerId,
       client_reference_id: session.user.id,
       mode: 'subscription',
-      payment_method_types: ['card'],
+      // ⚠️ PAS de `payment_method_types`. Le lister fige les moyens de
+      // paiement dans le code : TWINT, PayPal, Apple Pay ou un prélèvement
+      // local n'apparaîtraient jamais, même activés sur le compte. Sans ce
+      // champ, Stripe applique les MOYENS DE PAIEMENT DYNAMIQUES configurés
+      // dans le Dashboard (recommandation Stripe) et ne propose que ceux qui
+      // conviennent à la devise, au pays et au mode de la session.
+      //
+      // Un moyen à notification différée (TWINT en est un) termine la session
+      // AVANT que les fonds soient confirmés. C'est déjà couvert :
+      // `webhook-traitement.ts` refuse de créditer tant que
+      // `payment_status !== 'paid'` et attend
+      // `checkout.session.async_payment_succeeded`.
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${baseUrl}/dashboard/billing?success=true`,
       cancel_url: `${baseUrl}/dashboard/billing?canceled=true`,
