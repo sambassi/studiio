@@ -1,3 +1,6 @@
+// ⚠️ Le navigateur appelle `/api/photos`, alias neutre de la route
+// historique : le nom de la banque ne doit pas figurer dans l'URL. Son
+// ATTRIBUTION, elle, reste affichée avec chaque photo.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, screen, cleanup, act, fireEvent } from '@testing-library/react';
 
@@ -186,7 +189,7 @@ describe('aucun effet de bord au chargement', () => {
    * programmation, l'activation de l'Autopilote et la création d'un post.
    *
    * Les LECTURES, elles, sont permises et il en existe déjà au montage
-   * (`GET /api/autopilot/config`, `GET /api/voice/clone`, `GET /api/pexels`).
+   * (`GET /api/autopilot/config`, `GET /api/voice/clone`, `GET /api/photos`).
    * Lire la configuration de l'Autopilote n'est pas l'activer, et ces appels
    * sont antérieurs à ce lot : les interdire ici casserait le parcours de
    * création sans rien protéger.

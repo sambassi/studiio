@@ -1161,7 +1161,7 @@ export function ongletsApercu(activeOrder: readonly string[]): Array<{ id: Previ
 /** Sections repliables de l'etape Style — l'ordre du panneau. */
 type SectionId = 'format' | 'couleurs' | 'affiche' | 'ambiance' | 'texte' | 'sequences' | 'transition' | 'animation';
 
-/** Photo proposee par `/api/pexels` — Pexels comme Unsplash. */
+/** Photo proposee par `/api/photos` — l'attribution de la banque reste affichee. */
 interface PosterPhoto {
   id: string | number;
   url: string;
@@ -5549,7 +5549,7 @@ export default function AssistantWizard() {
     posterPageRef.current = page;
     const appel = async (p: number) => {
       const res = await fetch(
-        `/api/pexels?query=${encodeURIComponent(q)}&count=${Math.max(POSTER_COUNT, photosToFetch(batchCountRef.current))}&page=${p}&source=${source}`,
+        `/api/photos?query=${encodeURIComponent(q)}&count=${Math.max(POSTER_COUNT, photosToFetch(batchCountRef.current))}&page=${p}&source=${source}`,
       );
       return res.json();
     };

@@ -1,3 +1,6 @@
+// ⚠️ Le navigateur appelle `/api/photos`, alias neutre de la route
+// historique : le nom de la banque ne doit pas figurer dans l'URL. Son
+// ATTRIBUTION, elle, reste affichée avec chaque photo.
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
@@ -11,7 +14,7 @@ import {
  *
  * **Les deux bugs signalés n'en faisaient qu'un.**
  *
- * `/api/pexels` construit ses entrées par enchaînement optionnel, sans repli
+ * `/api/photos` construit ses entrées par enchaînement optionnel, sans repli
  * final (`url: p.src?.large2x || p.src?.large`). Une photo dont le
  * fournisseur ne renvoie pas ces tailles arrive donc avec `url: undefined`,
  * et l'écran rangeait la réponse **telle quelle**. D'où :

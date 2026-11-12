@@ -1,3 +1,6 @@
+// ⚠️ Le navigateur appelle `/api/photos`, alias neutre de la route
+// historique : le nom de la banque ne doit pas figurer dans l'URL. Son
+// ATTRIBUTION, elle, reste affichée avec chaque photo.
 /**
  * A5 — À L'ÉCRAN : l'aperçu de l'Autopilote annonce la durée que la vidéo
  * finale prendra avec le jumeau (estimation signalée) et dit que la voix de
@@ -48,7 +51,7 @@ beforeEach(() => {
     const u = String(url);
     appels.push(u);
     if (init?.method && init.method !== 'GET') ecritures.push(u);
-    if (u.startsWith('/api/pexels')) return { ok: true, json: async () => ({ success: true, photos: [] }) };
+    if (u.startsWith('/api/photos')) return { ok: true, json: async () => ({ success: true, photos: [] }) };
     if (u.startsWith('/api/creer/jumeau')) return { ok: true, json: async () => ({ success: true, data: JUMEAU_PRET }) };
     if (u.startsWith('/api/avatars')) return { ok: true, json: async () => ({ success: true, data: AVATARS }) };
     if (u.startsWith('/api/autopilot/config')) {

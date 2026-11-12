@@ -1,3 +1,6 @@
+// ⚠️ Le navigateur appelle `/api/photos`, alias neutre de la route
+// historique : le nom de la banque ne doit pas figurer dans l'URL. Son
+// ATTRIBUTION, elle, reste affichée avec chaque photo.
 /**
  * LOT UX « Créer / Autopilote » :
  *   1. le choix du mode n'a PLUS d'aperçu à droite (une colonne) ;
@@ -42,7 +45,7 @@ beforeEach(() => {
   window.localStorage.clear();
   vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
     const u = String(url);
-    if (u.startsWith('/api/pexels')) {
+    if (u.startsWith('/api/photos')) {
       return { ok: true, json: async () => ({ success: true, photos: [{ id: 1, url: 'https://exemple.test/affiche.jpg', medium: 'https://exemple.test/affiche.jpg' }] }) };
     }
     if (u.startsWith('/api/autopilot/config')) {

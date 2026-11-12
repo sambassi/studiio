@@ -23,7 +23,11 @@ test.beforeEach(async ({ page }) => {
   await page.route('**/api/credits/balance**', (route) => route.fulfill({ json: { success: true, credits: 120 } }));
 });
 
-for (const chemin of ['/', '/dashboard/billing']) {
+// ⚠️ `/dashboard/creer` est dans la liste parce qu'un appel y avait échappé
+// au premier passage : la recherche de photos par lot, dont le `fetch(` et
+// l'URL sont sur deux lignes. Une relecture de code ne l'avait pas vu ; la
+// liste des URL réellement demandées, si.
+for (const chemin of ['/', '/dashboard/billing', '/dashboard/creer']) {
   test(`${chemin} — aucune requête du navigateur ne nomme un prestataire`, async ({ page }) => {
     const urls: string[] = [];
     page.on('request', (r) => urls.push(r.url()));

@@ -1,3 +1,6 @@
+// ⚠️ Le navigateur appelle `/api/photos`, alias neutre de la route
+// historique : le nom de la banque ne doit pas figurer dans l'URL. Son
+// ATTRIBUTION, elle, reste affichée avec chaque photo.
 import { describe, it, expect, afterEach } from 'vitest';
 import { etatDepuisReponse, messagePhotos } from '@/lib/creer/photosEtat';
 import { render, cleanup } from '@testing-library/react';
@@ -139,10 +142,10 @@ describe('Le compositeur fait bien la même chose', () => {
 });
 
 describe('La recherche', () => {
-  it('interroge /api/pexels avec la source demandée', () => {
+  it('interroge /api/photos avec la source demandée', () => {
     // Le nombre demandé suit la taille du lot : il faut assez de photos
     // distinctes pour en donner une par vidéo.
-    expect(wizard).toContain('`/api/pexels?query=${encodeURIComponent(q)}&count=${');
+    expect(wizard).toContain('`/api/photos?query=${encodeURIComponent(q)}&count=${');
     expect(wizard).toContain('Math.max(POSTER_COUNT, photosToFetch(batchCountRef.current))');
     expect(wizard).toContain('&page=${p}&source=${source}`');
   });
