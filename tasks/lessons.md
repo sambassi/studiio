@@ -1311,3 +1311,34 @@ Les deux dépôts afroboost portaient 400 et 655 XOF par CHF, sans date et
 contradictoires ; le 400 était un prix d'accessibilité. Le franc CFA est
 arrimé à l'euro à parité FIXE (655,957) : seule la part CHF → EUR flotte, et
 elle se lit avec sa date. Sans taux daté, on refuse d'afficher un prix.
+
+## 2026-11-12 (suite) | Clôture du chantier commercial
+
+**Un « coût fournisseur inconnu » est presque toujours un coût qu'on n'a pas cherché.**
+Quatorze tarifs étaient marqués inconnus. Les quatorze avaient un prix public,
+lisible sans compte et sans appel payant, sur la page du modèle concerné. La
+correspondance action → modèle était déjà dans le code. Avant de déclarer un
+coût inconnu, ouvrir la grille publique du fournisseur.
+
+**Un identifiant qui fait l'aller-retour ne se supprime pas, il se renomme — avec un pont.**
+Un id de voix part au navigateur comme valeur d'option et revient dire quel
+moteur appeler. `idVoixPublic` / `idVoixInterne` traduisent dans les deux
+sens, et la forme interne reste acceptée en entrée : aucune migration de
+données, aucune sélection enregistrée cassée.
+
+**L'URL d'un résultat est une fuite au même titre qu'un libellé.**
+Sept outils renvoyaient l'adresse du fournisseur, qui devenait le `src` de
+l'image. Le rapatriement des octets existait déjà pour un seul outil : il
+fallait le généraliser, pas l'inventer. Et il doit survenir AVANT le débit,
+pour qu'un échec ne facture rien.
+
+**Lire un réglage dans une route crée une dépendance que les doubles de test ne connaissent pas.**
+Brancher la garde de coût a fait échouer un test qui ne simulait que `prixDe`.
+Un réglage non critique se lit donc défensivement : illisible, il retombe sur
+son défaut sûr au lieu de faire échouer une opération payante.
+
+**Une migration qui ne crée qu'une fonction n'a pas de données à sauvegarder.**
+Le risque d'une migration se juge à ce qu'elle TRANSFORME. Celle du
+remboursement ne crée qu'une fonction, son retour arrière la supprime, et
+aucune ligne n'est touchée — la sauvegarde quotidienne suffit. Le vrai piège
+est ailleurs : le rôle qui joue la migration décide des droits hérités.
