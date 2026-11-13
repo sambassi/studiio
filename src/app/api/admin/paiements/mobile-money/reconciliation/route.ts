@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin';
 import {
-  depotsEnAttente, expirerDepotsAbandonnes, SocleAbsent, MESSAGE_SOCLE_ABSENT,
+  depotsAbandonnesARelire, depotsEnAttente, SocleAbsent, MESSAGE_SOCLE_ABSENT,
 } from '@/lib/paiements/pawapay/depots';
 import { reconcilier } from '@/lib/paiements/pawapay/confirmation';
 import { lecteurEtat } from '@/lib/paiements/pawapay/lecteur';
@@ -26,16 +26,26 @@ export async function POST() {
   if (error) return error;
 
   try {
-    // ⚠️ D'ABORD VIDER LES ABANDONNÉS. Un dépôt jamais honoré reste « en
-    // attente » pour toujours : sans cette passe, il suffirait d'en ouvrir
-    // cinquante et de ne jamais payer pour que la fenêtre de relecture soit
-    // occupée en permanence et que les paiements des autres ne soient PLUS
-    // JAMAIS relus. Le filet s'annulerait tout seul, sans aucune erreur.
-    const expires = await expirerDepotsAbandonnes();
+    const lire = lecteurEtat();
+
+    // 1. LA FILE PRINCIPALE. Les dépôts ouverts, les moins récemment relus
+    //    d'abord. Ceux qui dépassent la borne y sont fermés — mais seulement
+    //    après que le prestataire a confirmé qu'ils sont toujours en attente.
     const ouverts = await depotsEnAttente(50);
-    const bilan = { ...(await reconcilier(ouverts, lecteurEtat())), expires };
-    console.info('[mobile money] réconciliation', bilan);
-    return NextResponse.json({ success: true, bilan });
+    const bilan = await reconcilier(ouverts, lire);
+
+    // 2. LA SECONDE CHANCE. Fermer un dépôt le sort de la file principale ;
+    //    sans cette passe il n'y reviendrait jamais, et un paiement confirmé
+    //    tardivement — après que nous avons cessé d'attendre — serait encaissé
+    //    sans être crédité. Elle est petite et sans fin : ces dépôts tournent
+    //    eux aussi, les moins récemment relus d'abord.
+    const rattrapage = await reconcilier(
+      await depotsAbandonnesARelire(10), lire, { fermerLesAbandonnes: false },
+    );
+
+    const total = { ...bilan, rattrapage };
+    console.info('[mobile money] réconciliation', total);
+    return NextResponse.json({ success: true, bilan: total });
   } catch (e) {
     if (e instanceof SocleAbsent) {
       return NextResponse.json({ success: false, code: 'socle_absent', error: MESSAGE_SOCLE_ABSENT }, { status: 503 });

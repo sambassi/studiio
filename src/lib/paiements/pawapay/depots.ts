@@ -66,12 +66,28 @@ function tableAbsente(erreur: { code?: string; message?: string } | null): boole
   return m.includes('pgrst205') || m.includes('could not find the table') || m.includes('does not exist');
 }
 
+/**
+ * Levée quand la BASE refuse l'ouverture : le compte a déjà trop de
+ * paiements en cours. C'est le refus qui fait autorité — celui de la route
+ * n'est qu'un raccourci pour afficher un message sans aller jusqu'à la base.
+ */
+export class TropDePaiementsOuverts extends Error {
+  constructor() {
+    super('trop_de_paiements_ouverts');
+    this.name = 'TropDePaiementsOuverts';
+  }
+}
+
 export async function creerDepot(
   d: Omit<Depot, 'statut' | 'motif_echec' | 'credite_le' | 'created_at' | 'derniere_verification_le'>,
 ): Promise<void> {
   const { error } = await supabaseAdmin.from(TABLE_DEPOTS).insert({ ...d, statut: 'en_attente' });
   if (error) {
     if (tableAbsente(error)) throw new SocleAbsent();
+    // Le déclencheur de la migration, qui compte sous verrou et refuse.
+    if ((error.message ?? '').includes('trop_de_paiements_ouverts')) {
+      throw new TropDePaiementsOuverts();
+    }
     throw new Error(`dépôt non enregistré : ${error.message}`);
   }
 }
@@ -164,27 +180,46 @@ export async function marquerVerifie(depositId: string): Promise<void> {
   }
 }
 
+/** Vrai si ce dépôt traîne depuis plus longtemps que la borne d'abandon. */
+export function depasseLaBorne(d: Depot, heures = HEURES_AVANT_ABANDON): boolean {
+  return Date.parse(d.created_at) < Date.now() - heures * 3600_000;
+}
+
 /**
- * Ferme les dépôts abandonnés : encore « en attente » au-delà de la borne.
+ * Ferme un dépôt comme abandonné.
  *
- * ⚠️ Fermer ici ne PERD rien. `confirmerDepot` ne regarde que `credite_le` :
- * si le prestataire confirmait malgré tout ce paiement plus tard, la
- * notification le créditerait quand même. On sort de la file de relecture,
- * on ne renonce pas au paiement.
+ * ⚠️ À N'APPELER QU'APRÈS AVOIR DEMANDÉ AU PRESTATAIRE, et seulement s'il
+ * répond encore « en attente ». Fermer sur le seul critère de l'âge était un
+ * vrai défaut : le paiement a pu aboutir côté payeur sans que nous le
+ * sachions, et comme la notification peut ne jamais arriver — c'est tout le
+ * problème que ce lot traite — nous aurions encaissé sans créditer. L'âge
+ * décide QUAND on cesse d'attendre, jamais SI le paiement a eu lieu.
  */
-export async function expirerDepotsAbandonnes(heures = HEURES_AVANT_ABANDON): Promise<number> {
-  const limite = new Date(Date.now() - heures * 3600_000).toISOString();
+export async function marquerAbandonne(depositId: string): Promise<void> {
+  await marquerDepot(depositId, { statut: 'expire', motif_echec: 'sans_reponse' });
+}
+
+/**
+ * Les dépôts fermés comme abandonnés mais JAMAIS CRÉDITÉS, les moins
+ * récemment relus d'abord.
+ *
+ * C'est la seconde chance : fermer un dépôt le sort de la file principale,
+ * il ne faut donc pas qu'il disparaisse pour autant. Cette passe le rouvre
+ * de temps en temps, pour le cas où le prestataire finirait par confirmer un
+ * paiement que nous avons cessé d'attendre.
+ */
+export async function depotsAbandonnesARelire(limite = 10): Promise<Depot[]> {
   const { data, error } = await supabaseAdmin
-    .from(TABLE_DEPOTS)
-    .update({ statut: 'expire', motif_echec: 'sans_reponse', updated_at: new Date().toISOString() })
-    .eq('statut', 'en_attente')
-    .lt('created_at', limite)
-    .select('deposit_id');
+    .from(TABLE_DEPOTS).select('*')
+    .eq('statut', 'expire')
+    .is('credite_le', null)
+    .order('derniere_verification_le', { ascending: true, nullsFirst: true })
+    .limit(limite);
   if (error) {
     if (tableAbsente(error)) throw new SocleAbsent();
-    throw new Error(`dépôts non expirés : ${error.message}`);
+    throw new Error(`dépôts illisibles : ${error.message}`);
   }
-  return (data as unknown[] | null)?.length ?? 0;
+  return (data as Depot[] | null) ?? [];
 }
 
 /**

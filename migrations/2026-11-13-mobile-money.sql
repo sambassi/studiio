@@ -97,6 +97,54 @@ create index if not exists pawapay_depots_user
   on public.pawapay_depots (user_id, created_at desc);
 
 -- ---------------------------------------------------------------------------
+-- 2 bis. LE PLAFOND DE PAIEMENTS OUVERTS, TENU PAR LA BASE
+-- ---------------------------------------------------------------------------
+-- La route compte puis insere. Entre les deux, rien n'empeche dix requetes
+-- simultanees de passer toutes le controle : compter n'est pas reserver. Le
+-- plafond doit donc etre tenu la ou l'insertion a lieu.
+--
+-- ⚠️ LE VERROU N'EST PAS DECORATIF. Sans lui, deux transactions concurrentes
+-- lisent le meme compte (lecture validee : chacune ignore la ligne que
+-- l'autre n'a pas encore validee) et inserent toutes les deux. Le verrou
+-- consultatif serialise par UTILISATEUR -- deux comptes differents ne
+-- s'attendent jamais -- et il est relache a la fin de la transaction, quoi
+-- qu'il arrive.
+--
+-- La valeur 5 et la fenetre de 24 h sont les memes que `MAX_DEPOTS_OUVERTS`
+-- et `HEURES_AVANT_ABANDON` dans `src/lib/paiements/pawapay/depots.ts`.
+-- Changer l'une sans l'autre ne cree pas de faille : la plus basse gagne,
+-- et c'est la base qui tranche.
+create or replace function public.pawapay_plafond_depots_ouverts()
+returns trigger
+language plpgsql
+as $$
+declare
+  ouverts integer;
+begin
+  perform pg_advisory_xact_lock(hashtext('pawapay_depot:' || new.user_id::text));
+
+  select count(*) into ouverts
+    from public.pawapay_depots
+   where user_id = new.user_id
+     and statut = 'en_attente'
+     and created_at > now() - interval '24 hours';
+
+  if ouverts >= 5 then
+    raise exception 'trop_de_paiements_ouverts'
+      using errcode = 'P0001',
+            hint = 'Terminer ou laisser expirer un paiement en cours.';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists pawapay_depots_plafond on public.pawapay_depots;
+create trigger pawapay_depots_plafond
+  before insert on public.pawapay_depots
+  for each row execute function public.pawapay_plafond_depots_ouverts();
+
+-- ---------------------------------------------------------------------------
 -- 3. L'INDEX QUI PORTE L'UNICITE DU CREDIT
 -- ---------------------------------------------------------------------------
 -- Sans lui, la fonction ci-dessous ne peut RIEN garantir : c'est lui qui

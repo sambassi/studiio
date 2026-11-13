@@ -20,6 +20,9 @@ drop function if exists public.crediter_credits_mobile_money(uuid, integer, text
 -- L'index unique part avec la fonction : sans elle, plus rien n'ecrit de
 -- reference `mm:%`. Le laisser serait sans effet, mais le retirer rend le
 -- retour arriere complet et verifiable.
+drop trigger if exists pawapay_depots_plafond on public.pawapay_depots;
+drop function if exists public.pawapay_plafond_depots_ouverts();
+
 drop index if exists public.credit_transactions_mm_reference_unique;
 
 commit;

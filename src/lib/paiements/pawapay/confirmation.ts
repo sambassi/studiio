@@ -48,7 +48,8 @@ import {
   type LectureDepot, type StatutDepot,
 } from './contrat';
 import {
-  lireDepotLocal, marquerDepot, marquerVerifie, type Depot,
+  depasseLaBorne, lireDepotLocal, marquerAbandonne, marquerDepot, marquerVerifie,
+  type Depot,
 } from './depots';
 
 export type ResultatConfirmation =
@@ -149,6 +150,8 @@ export interface BilanReconciliation {
   echoues: number;
   encoreEnAttente: number;
   refuses: number;
+  /** Fermés comme abandonnés — APRÈS que le prestataire a répondu. */
+  abandonnes: number;
   erreurs: number;
 }
 
@@ -162,16 +165,33 @@ export interface BilanReconciliation {
 export async function reconcilier(
   depots: readonly Depot[],
   lireEtat: LecteurEtat,
+  /**
+   * `false` pour la passe de seconde chance : ces dépôts sont DÉJÀ fermés,
+   * les refermer à chaque passage réécrirait la même ligne sans rien
+   * apprendre, et gonflerait le compte des fermetures dans le bilan.
+   */
+  options: { fermerLesAbandonnes?: boolean } = {},
 ): Promise<BilanReconciliation> {
+  const fermer = options.fermerLesAbandonnes !== false;
   const bilan: BilanReconciliation = {
-    examines: depots.length, credites: 0, echoues: 0, encoreEnAttente: 0, refuses: 0, erreurs: 0,
+    examines: depots.length, credites: 0, echoues: 0, encoreEnAttente: 0,
+    refuses: 0, abandonnes: 0, erreurs: 0,
   };
   for (const d of depots) {
     try {
       const r = await confirmerDepot(d.deposit_id, lireEtat);
-      // Relu : il passe en fin de file, et laisse la place aux suivants au
-      // prochain passage. Sans cela, les mêmes dépôts reviendraient toujours.
-      if (r.issue === 'en_attente') await marquerVerifie(d.deposit_id);
+      if (r.issue === 'en_attente') {
+        // ⚠️ LE PRESTATAIRE VIENT DE RÉPONDRE « toujours en attente ». C'est
+        // seulement maintenant, et jamais sur le seul critère de l'âge, qu'un
+        // dépôt peut être déclaré abandonné : le fermer sans avoir demandé
+        // reviendrait à renoncer à un paiement peut-être déjà encaissé.
+        if (fermer && depasseLaBorne(d)) {
+          await marquerAbandonne(d.deposit_id);
+          bilan.abandonnes += 1;
+        }
+        // Relu : il passe en fin de file et laisse la place aux suivants.
+        await marquerVerifie(d.deposit_id);
+      }
       switch (r.issue) {
         case 'credite': bilan.credites += 1; break;
         case 'deja_credite': break;

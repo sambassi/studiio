@@ -8,8 +8,14 @@ import { annonceConversion, convertirChfVersCfa, estDeviseCfa } from '@/lib/paie
 import { etatMobileMoney } from '@/lib/paiements/mobile-money';
 import {
   creerDepot, depotsOuvertsDuCompte, MAX_DEPOTS_OUVERTS,
-  SocleAbsent, MESSAGE_SOCLE_ABSENT,
+  SocleAbsent, MESSAGE_SOCLE_ABSENT, TropDePaiementsOuverts,
 } from '@/lib/paiements/pawapay/depots';
+
+const REFUS_PLAFOND = {
+  success: false,
+  code: 'trop_de_paiements_ouverts',
+  error: 'Tu as déjà plusieurs paiements en cours. Termine-les ou attends quelques minutes avant d’en ouvrir un autre.',
+} as const;
 import {
   creerPagePaiement, enProduction, fournisseurSimule,
   ErreurPrestataire, MESSAGE_PRESTATAIRE_INJOIGNABLE,
@@ -109,14 +115,17 @@ export async function POST(req: NextRequest) {
   //    par tous les comptes : un seul compte qui ouvrirait des paiements sans
   //    jamais les honorer la remplirait, et les crédits des autres
   //    arriveraient en retard, voire plus du tout.
+  //
+  //    ⚠️ CE CONTRÔLE-CI NE FAIT PAS AUTORITÉ, et ne le peut pas : entre le
+  //    comptage et l'insertion, rien n'empêche dix requêtes simultanées de
+  //    passer toutes les dix. Compter n'est pas réserver. Le plafond est tenu
+  //    par un déclencheur qui compte SOUS VERROU au moment de l'insertion
+  //    (migration 2026-11-13) ; ce test-ci n'est qu'un raccourci pour répondre
+  //    sans aller jusque-là dans le cas courant.
   try {
     const ouverts = await depotsOuvertsDuCompte(session.user.id);
     if (ouverts >= MAX_DEPOTS_OUVERTS) {
-      return NextResponse.json({
-        success: false,
-        code: 'trop_de_paiements_ouverts',
-        error: 'Tu as déjà plusieurs paiements en cours. Termine-les ou attends quelques minutes avant d’en ouvrir un autre.',
-      }, { status: 429 });
+      return NextResponse.json(REFUS_PLAFOND, { status: 429 });
     }
   } catch (e) {
     if (e instanceof SocleAbsent) {
@@ -154,6 +163,11 @@ export async function POST(req: NextRequest) {
     if (e instanceof SocleAbsent) {
       console.error('[mobile money] migration non appliquée — aucun dépôt créé');
       return NextResponse.json({ success: false, code: 'socle_absent', error: MESSAGE_SOCLE_ABSENT }, { status: 503 });
+    }
+    // Le refus du déclencheur, qui a compté sous verrou : c'est LUI qui fait
+    // autorité, y compris quand le comptage ci-dessus avait laissé passer.
+    if (e instanceof TropDePaiementsOuverts) {
+      return NextResponse.json(REFUS_PLAFOND, { status: 429 });
     }
     console.error('[mobile money] dépôt non enregistré :', e instanceof Error ? e.message : e);
     return NextResponse.json({ success: false, error: MESSAGE_PRESTATAIRE_INJOIGNABLE }, { status: 503 });

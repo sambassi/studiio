@@ -21,6 +21,8 @@ const base = {
   /** Index unique partiel `reference_id like 'mm:%'` — la garantie d'unicité. */
   references: new Map<string, string>(),
   fonctionAbsente: false,
+  /** Le déclencheur de plafond refuse la prochaine insertion. */
+  refusPlafond: false,
 };
 
 vi.mock('@/lib/db/supabase', () => {
@@ -49,7 +51,17 @@ vi.mock('@/lib/db/supabase', () => {
       return 0;
     };
     const exec = () => {
-      if (insertion) { base.depots.push(insertion); return { data: [insertion], error: null, count: 1 }; }
+      if (insertion) {
+        if (base.refusPlafond) {
+          return {
+            data: null,
+            error: { message: 'trop_de_paiements_ouverts', code: 'P0001' },
+            count: 0,
+          };
+        }
+        base.depots.push(insertion);
+        return { data: [insertion], error: null, count: 1 };
+      }
       let rows = retenues();
       if (patch) for (const l of rows) Object.assign(l, patch);
       if (compterSeulement) return { data: null, error: null, count: rows.length };
@@ -70,6 +82,7 @@ vi.mock('@/lib/db/supabase', () => {
       insert: (v: LigneDepot) => { insertion = v; return api; },
       update: (p: Partial<LigneDepot>) => { patch = p; return api; },
       eq: (k: string, v: unknown) => { filtres.push((l) => champ(l, k) === v); return api; },
+      is: (k: string, v: unknown) => { filtres.push((l) => (champ(l, k) ?? null) === v); return api; },
       lt: (k: string, v: unknown) => { cmp(k, v, '<'); return api; },
       gte: (k: string, v: unknown) => { cmp(k, v, '>='); return api; },
       order: (c: string, o?: { ascending?: boolean; nullsFirst?: boolean }) => {
@@ -140,6 +153,7 @@ beforeEach(() => {
   base.soldes = new Map([[UTILISATEUR, 100]]);
   base.references = new Map();
   base.fonctionAbsente = false;
+  base.refusPlafond = false;
   reinitialiserSimulateur();
 });
 
@@ -299,7 +313,10 @@ describe('9. Réconciliation des paiements en attente', () => {
 
     const bilan = await reconcilier(base.depots.filter((d) => d.statut === 'en_attente'), lecteur);
 
-    expect(bilan).toEqual({ examines: 4, credites: 1, echoues: 1, encoreEnAttente: 1, refuses: 1, erreurs: 0 });
+    expect(bilan).toEqual({
+      examines: 4, credites: 1, echoues: 1, encoreEnAttente: 1, refuses: 1,
+      abandonnes: 0, erreurs: 0,
+    });
     expect(solde()).toBe(300);
   });
 
@@ -395,30 +412,63 @@ describe('Famine de la file de réconciliation', () => {
   });
 });
 
-describe('Dépôts abandonnés', () => {
-  it('au-delà de vingt-quatre heures, un dépôt en attente sort de la file', async () => {
-    const { expirerDepotsAbandonnes, depotsEnAttente } = await import('@/lib/paiements/pawapay/depots');
-    poserDepot('abandonne', { created_at: new Date(Date.now() - 30 * 3600_000).toISOString() });
+describe('Dépôts abandonnés — jamais fermés sans avoir demandé', () => {
+  it('⚠️ un dépôt vieux de trente heures n’est PAS fermé tant que le prestataire n’a pas répondu', async () => {
+    const { depotsEnAttente } = await import('@/lib/paiements/pawapay/depots');
+    poserDepot('vieux-paye', { created_at: new Date(Date.now() - 30 * 3600_000).toISOString() });
+
+    // Le prestataire finit par dire : réussi. Fermer sur le seul critère de
+    // l'âge aurait encaissé sans créditer — c'est exactement le défaut.
+    poserIssueSimulee('vieux-paye', { statut: 'reussi' });
+    const bilan = await reconcilier(await depotsEnAttente(10), lecteur);
+
+    expect(bilan.credites).toBe(1);
+    expect(bilan.abandonnes).toBe(0);
+    expect(solde()).toBe(300);
+    expect(depot('vieux-paye').statut).toBe('reussi');
+  });
+
+  it('fermé seulement quand le prestataire confirme qu’il est toujours en attente', async () => {
+    const { depotsEnAttente } = await import('@/lib/paiements/pawapay/depots');
+    poserDepot('vieux-mort', { created_at: new Date(Date.now() - 30 * 3600_000).toISOString() });
     poserDepot('recent');
 
-    expect(await expirerDepotsAbandonnes()).toBe(1);
-    expect(depot('abandonne').statut).toBe('expire');
-    expect(depot('abandonne').motif_echec).toBe('sans_reponse');
+    // Aucune issue posée : le prestataire répond « en attente » pour les deux.
+    const bilan = await reconcilier(await depotsEnAttente(10), lecteur);
+
+    expect(bilan.abandonnes).toBe(1);
+    expect(depot('vieux-mort').statut).toBe('expire');
+    expect(depot('vieux-mort').motif_echec).toBe('sans_reponse');
+    // Le récent, lui, reste ouvert : c'est l'âge qui décide QUAND on cesse
+    // d'attendre, pas si le paiement a eu lieu.
+    expect(depot('recent').statut).toBe('en_attente');
     expect((await depotsEnAttente(10)).map((d) => d.deposit_id)).toEqual(['recent']);
   });
 
-  it('⚠️ expirer ne PERD pas le paiement : une confirmation tardive crédite quand même', async () => {
-    const { expirerDepotsAbandonnes } = await import('@/lib/paiements/pawapay/depots');
-    poserDepot('tardif', { created_at: new Date(Date.now() - 30 * 3600_000).toISOString() });
-    await expirerDepotsAbandonnes();
-    expect(depot('tardif').statut).toBe('expire');
+  it('⚠️ un abandonné reste repêchable : la seconde chance le crédite', async () => {
+    const { depotsEnAttente, depotsAbandonnesARelire } = await import('@/lib/paiements/pawapay/depots');
+    poserDepot('repeche', { created_at: new Date(Date.now() - 30 * 3600_000).toISOString() });
 
-    // Le prestataire finit par confirmer. `confirmerDepot` ne regarde que
-    // `credite_le` : le crédit a lieu, l'argent encaissé est honoré.
-    poserIssueSimulee('tardif', { statut: 'reussi' });
-    const r = await confirmerDepot('tardif', lecteur);
-    expect(r).toEqual({ issue: 'credite', credits: 200, solde: 300 });
-    expect(depot('tardif').statut).toBe('reussi');
+    await reconcilier(await depotsEnAttente(10), lecteur);
+    expect(depot('repeche').statut).toBe('expire');
+    expect(solde()).toBe(100);
+
+    // Le prestataire confirme APRÈS que nous avons cessé d'attendre.
+    poserIssueSimulee('repeche', { statut: 'reussi' });
+    const rattrapage = await reconcilier(await depotsAbandonnesARelire(10), lecteur);
+
+    expect(rattrapage.credites).toBe(1);
+    expect(solde()).toBe(300);
+    expect(depot('repeche').statut).toBe('reussi');
+  });
+
+  it('la seconde chance ne repêche pas ce qui est déjà crédité', async () => {
+    const { depotsAbandonnesARelire } = await import('@/lib/paiements/pawapay/depots');
+    poserDepot('fini', { statut: 'expire', credite_le: new Date().toISOString() });
+    poserDepot('a-revoir', { statut: 'expire' });
+
+    const file = await depotsAbandonnesARelire(10);
+    expect(file.map((d) => d.deposit_id)).toEqual(['a-revoir']);
   });
 });
 
@@ -432,5 +482,23 @@ describe('Plafond de paiements ouverts par compte', () => {
 
     expect(await depotsOuvertsDuCompte(UTILISATEUR)).toBe(2);
     expect(await depotsOuvertsDuCompte('u-2')).toBe(1);
+  });
+});
+
+describe('Le plafond est tenu par la BASE, pas par le comptage', () => {
+  it('⚠️ le refus du déclencheur est reconnu — c’est lui qui fait autorité', async () => {
+    const { creerDepot, TropDePaiementsOuverts } = await import('@/lib/paiements/pawapay/depots');
+    base.refusPlafond = true;
+
+    // Le comptage de la route a pu laisser passer : entre compter et insérer,
+    // dix requêtes simultanées passent toutes. Seule l'insertion tranche.
+    await expect(creerDepot({
+      deposit_id: 'course', user_id: UTILISATEUR, offre_type: 'pack', offre_cle: 'small',
+      credits: 50, montant_local: 6394, devise: 'XOF', pays: 'SEN',
+      prix_chf_cents: 900, taux_eur_par_chf: 1.083, taux_le: '2026-11-11', sandbox: true,
+    })).rejects.toBeInstanceOf(TropDePaiementsOuverts);
+
+    // Et rien n'a été écrit.
+    expect(base.depots.find((d) => d.deposit_id === 'course')).toBeUndefined();
   });
 });

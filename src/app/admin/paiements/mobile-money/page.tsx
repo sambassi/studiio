@@ -67,8 +67,14 @@ export default function MobileMoneyAdminPage() {
       const r = await fetch('/api/admin/paiements/mobile-money/reconciliation', { method: 'POST' });
       const j = await r.json();
       if (!r.ok || !j?.success) { setBilan(j?.error ?? 'Réconciliation impossible.'); return; }
-      const b = j.bilan as Record<string, number>;
-      setBilan(`${b.expires} abandonné(s) fermé(s) · ${b.examines} dépôt(s) relu(s) · ${b.credites} crédité(s) · ${b.echoues} échoué(s) · ${b.refuses} refusé(s) · ${b.encoreEnAttente} encore en attente · ${b.erreurs} erreur(s)`);
+      const b = j.bilan as Record<string, number> & { rattrapage?: Record<string, number> };
+      const seconde = b.rattrapage;
+      setBilan(
+        `${b.examines} dépôt(s) relu(s) · ${b.credites} crédité(s) · ${b.echoues} échoué(s) · `
+        + `${b.refuses} refusé(s) · ${b.abandonnes} fermé(s) sans réponse · `
+        + `${b.encoreEnAttente} encore en attente · ${b.erreurs} erreur(s)`
+        + (seconde ? ` — seconde chance : ${seconde.examines} relu(s), ${seconde.credites} crédité(s)` : ''),
+      );
       await charger();
     } finally { setReconciliation(false); }
   };
@@ -151,8 +157,10 @@ export default function MobileMoneyAdminPage() {
             <p className="text-xs text-gray-400">
               Relit chaque paiement en attente auprès du prestataire et crédite ceux qui sont
               confirmés. C’est ce filet qui rend le crédit indépendant de la notification.
-              Les paiements relus passent en fin de file et ceux restés sans réponse au-delà
-              de 24 h sont fermés, pour qu’aucun paiement abandonné ne retarde les autres.
+              Les paiements relus passent en fin de file ; ceux dont le prestataire confirme
+              qu’ils sont encore en attente au-delà de 24 h sont fermés, sans jamais être
+              fermés sur leur seul âge. Une seconde passe rouvre les paiements fermés mais
+              non crédités, au cas où la confirmation arriverait plus tard.
             </p>
           </div>
           <button

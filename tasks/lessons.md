@@ -1362,6 +1362,21 @@ pas un seul — le tri fait tourner, l'expiration vide, le plafond borne
 l'entrée. Et chacun se prouve par un test qui échoue sans le correctif :
 celui du tri a bien échoué avant d'être corrigé, c'est ce qui le rend utile.
 
+**Suite, le lendemain même.** Le correctif a introduit son propre défaut :
+pour vider la file, j'expirais les dépôts de plus de 24 h **sans demander au
+prestataire**. Or le paiement a pu aboutir côté payeur ; et comme la
+notification peut ne jamais arriver — c'est le problème que ce lot traite —
+nous aurions encaissé sans créditer. L'âge décide **quand on cesse
+d'attendre**, jamais **si le paiement a eu lieu**. Désormais on ferme
+seulement après que le prestataire a répondu « toujours en attente », et une
+seconde passe rouvre régulièrement les dépôts fermés non crédités.
+
+**Et compter n'est pas réserver.** Le plafond par compte lisait puis
+insérait : dix requêtes simultanées passaient toutes le contrôle. Un plafond
+se tient là où l'écriture a lieu — déclencheur qui compte **sous verrou
+consultatif par utilisateur**, la vérification applicative n'étant qu'un
+raccourci pour le cas courant.
+
 **Corollaire sur les doubles de base.** Le plafond semblait inopérant en
 prévisualisation : le double de base n'appliquait pas le défaut de colonne
 `created_at`, donc les lignes naissaient sans date et tout filtre sur cette
