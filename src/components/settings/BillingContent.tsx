@@ -29,6 +29,7 @@ export function BillingContent() {
   const t = useTranslations('billing');
   const tc = useTranslations('common');
   const [loadingPortal, setLoadingPortal] = useState(false);
+  const [erreurPortail, setErreurPortail] = useState<string | null>(null);
   const [credits, setCredits] = useState<number | null>(null);
   const [libelleFacturation, setLibelleFacturation] = useState<string | null>(null);
   const [sub, setSub] = useState<SubscriptionInfo | null>(null);
@@ -59,10 +60,11 @@ export function BillingContent() {
     try {
       const res = await fetch('/api/stripe/create-portal', { method: 'POST' });
       const data = await res.json();
-      if (data.url) window.location.href = data.url;
-      else alert(data.error || 'Erreur');
+      if (data.url) { window.location.href = data.url; return; }
+      // Le message s'affiche DANS Studiio, pas dans une fenêtre du navigateur.
+      setErreurPortail(data.error || 'La gestion de l’abonnement est momentanément indisponible.');
     } catch {
-      alert('Erreur de connexion');
+      setErreurPortail('La gestion de l’abonnement est momentanément indisponible.');
     } finally {
       setLoadingPortal(false);
     }
@@ -130,6 +132,12 @@ export function BillingContent() {
             >
               {loadingPortal ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{tc('loading')}</> : 'Gérer l\'abonnement'}
             </Button>
+            {erreurPortail && (
+              <p role="alert" data-testid="erreur-portail"
+                className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                {erreurPortail}
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>

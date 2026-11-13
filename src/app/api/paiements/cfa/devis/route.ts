@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { lireTarifs } from '@/lib/tarifs/serveur';
-import { offrePack } from '@/lib/stripe/prix';
+import { offrePack, offrePlan } from '@/lib/stripe/prix';
 import { CREDIT_PACKAGES } from '@/lib/stripe/constants';
+import { PLANS_PAYANTS } from '@/lib/billing/plan-choisi';
 import { annonceConversion, convertirChfVersCfa, estDeviseCfa } from '@/lib/paiements/cfa';
 
 /**
@@ -27,22 +28,33 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
   }
 
-  const corps = (await req.json().catch(() => null)) as { pack?: unknown; devise?: unknown } | null;
+  // Les deux offres passent par ici : une recharge (`pack`) ou un abonnement
+  // (`plan`). Elles ne diffèrent que par la table où le prix est lu — le
+  // montant ne vient jamais du navigateur, dans un cas comme dans l'autre.
+  const corps = (await req.json().catch(() => null)) as {
+    pack?: unknown; plan?: unknown; devise?: unknown;
+  } | null;
   const pack = typeof corps?.pack === 'string' ? corps.pack : '';
-  if (!pack || !Object.prototype.hasOwnProperty.call(CREDIT_PACKAGES, pack)) {
-    return NextResponse.json({ success: false, error: 'Recharge inconnue.' }, { status: 400 });
+  const plan = typeof corps?.plan === 'string' ? corps.plan : '';
+  const packConnu = !!pack && Object.prototype.hasOwnProperty.call(CREDIT_PACKAGES, pack);
+  const planConnu = !!plan && (PLANS_PAYANTS as readonly string[]).includes(plan);
+  if (!packConnu && !planConnu) {
+    return NextResponse.json({ success: false, error: 'Offre inconnue.' }, { status: 400 });
   }
   if (!estDeviseCfa(corps?.devise)) {
     return NextResponse.json({ success: false, error: 'Devise non prise en charge.' }, { status: 400 });
   }
 
   const [offre, config] = await Promise.all([
-    offrePack(pack as keyof typeof CREDIT_PACKAGES),
+    planConnu
+      ? offrePlan(plan as (typeof PLANS_PAYANTS)[number])
+        .then((o) => ({ amount: o.credits, price_cents: o.price_cents }))
+      : offrePack(pack as keyof typeof CREDIT_PACKAGES),
     lireTarifs(),
   ]);
   if (!(offre.amount > 0) || !(offre.price_cents > 0)) {
-    console.error('[cfa/devis] offre invalide en base', pack, offre);
-    return NextResponse.json({ success: false, error: 'Recharge indisponible : tarif à vérifier.' }, { status: 503 });
+    console.error('[cfa/devis] offre invalide en base', planConnu ? plan : pack, offre);
+    return NextResponse.json({ success: false, error: 'Offre indisponible : tarif à vérifier.' }, { status: 503 });
   }
 
   const r = convertirChfVersCfa({

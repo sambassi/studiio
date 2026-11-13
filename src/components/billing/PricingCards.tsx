@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Check } from 'lucide-react';
 import { ETAT_INTERACTIF_SANS_FOND, classesSegment } from '@/lib/ui/etats';
 import { totalAnnuelCentimes } from '@/lib/stripe/constants';
+import { ChoixPaiement, type OffreChoisie } from '@/components/billing/ChoixPaiement';
 
 function centsToFr(cents: number): string {
   if (cents === 0) return '0 CHF';
@@ -42,8 +43,8 @@ export function PricingCards({ onSelectPlan, planActuel }: PricingCardsProps) {
   const router = useRouter();
   const { data: session } = useSession();
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
-  const [loading, setLoading] = useState<string | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [offre, setOffre] = useState<OffreChoisie | null>(null);
   const currentPlan = (planActuel || ((session?.user as any)?.plan as string) || 'free').toLowerCase();
 
   useEffect(() => {
@@ -52,24 +53,32 @@ export function PricingCards({ onSelectPlan, planActuel }: PricingCardsProps) {
     }).catch(() => {});
   }, []);
 
-  const handleSubscribe = async (planKey: string) => {
+  /*
+    ⚠️ ON N'OUVRE PLUS LE PAIEMENT PAR CARTE DIRECTEMENT. Le clic ouvrait
+    `create-checkout` et, quand aucun identifiant de prix bancaire n'était
+    configuré, se terminait par un `alert()` du navigateur disant « prix non
+    configuré » — une phrase vraie pour le serveur, incompréhensible pour qui
+    veut acheter, et sans rien à faire ensuite.
+
+    Le clic ouvre désormais le choix du moyen de paiement, qui porte aussi
+    bien la carte que le Mobile Money, et affiche ses erreurs DANS Studiio.
+  */
+  const handleSubscribe = (planKey: string) => {
     if (planKey === 'free') {
       if (!session) router.push('/auth/signup');
       return;
     }
     if (onSelectPlan) { onSelectPlan(planKey); return; }
-    setLoading(planKey);
-    try {
-      const res = await fetch('/api/stripe/create-checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan: planKey, billingCycle }),
-      });
-      const data = await res.json();
-      const url = data.url || data.data?.sessionUrl;
-      if (url) window.location.href = url;
-      else alert(data.error || 'Erreur');
-    } catch { alert('Erreur de connexion'); } finally { setLoading(null); }
+    const p = plans.find((x) => x.key === planKey);
+    if (!p) return;
+    const cents = billingCycle === 'yearly' ? (p.yearly_price_cents || 0) : p.price_cents;
+    setOffre({
+      type: 'plan',
+      cle: planKey,
+      nom: p.name,
+      cycle: billingCycle,
+      prix: `${centsToFr(cents)}${billingCycle === 'yearly' ? '/mois, facturé annuellement' : '/mois'}`,
+    });
   };
 
   const ordered = PLAN_ORDER.map(k => plans.find(p => p.key === k)).filter(Boolean) as Plan[];
@@ -143,7 +152,6 @@ export function PricingCards({ onSelectPlan, planActuel }: PricingCardsProps) {
               </CardContent>
               <CardFooter>
                 <Button variant={isPopular ? 'primary' : 'secondary'} className="w-full"
-                  etat={loading === plan.key ? 'chargement' : 'repos'}
                   disabled={isCurrent} onClick={() => handleSubscribe(plan.key)}>
                   {cta}
                 </Button>
@@ -152,6 +160,12 @@ export function PricingCards({ onSelectPlan, planActuel }: PricingCardsProps) {
           );
         })}
       </div>
+
+      <ChoixPaiement
+        offre={offre}
+        onFermer={() => setOffre(null)}
+        onCredite={() => router.refresh()}
+      />
     </div>
   );
 }

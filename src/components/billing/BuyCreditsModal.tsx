@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
+import { ChoixPaiement, type OffreChoisie } from '@/components/billing/ChoixPaiement';
 
 interface Pack {
   key: string; name: string; amount: number; price_cents: number; popular?: boolean;
@@ -19,7 +20,12 @@ interface BuyCreditsModalProps {
 }
 
 export function BuyCreditsModal({ isOpen, onClose }: BuyCreditsModalProps) {
-  const [loading, setLoading] = useState<string | null>(null);
+  const [offre, setOffre] = useState<OffreChoisie | null>(null);
+  // ⚠️ `onCredite` ne ferme PAS la fenêtre : il la fermait, et l'écran de
+  // confirmation qu'elle portait disparaissait avant d'être lu — le compte
+  // était crédité, l'utilisateur ne voyait rien. On note seulement qu'un
+  // crédit a eu lieu ; la fenêtre se ferme quand il clique « Fermer ».
+  const [aCredite, setACredite] = useState(false);
   const [packs, setPacks] = useState<Pack[]>([]);
 
   useEffect(() => {
@@ -29,19 +35,15 @@ export function BuyCreditsModal({ isOpen, onClose }: BuyCreditsModalProps) {
     }).catch(() => {});
   }, [isOpen]);
 
-  const buy = async (pack: string) => {
-    setLoading(pack);
-    try {
-      const res = await fetch('/api/credits/purchase-pack', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pack }),
-      });
-      const data = await res.json();
-      const url = data.url || data.data?.sessionUrl;
-      if (url) window.location.href = url;
-      else alert(data.error || 'Erreur');
-    } catch { alert('Erreur de connexion'); } finally { setLoading(null); }
+  /*
+    Même changement que pour les abonnements : le clic ouvre le choix du
+    moyen de paiement — carte ou Mobile Money — au lieu de lancer la carte
+    et de finir sur un `alert()` du navigateur quand rien n'est configuré.
+  */
+  const buy = (pack: string) => {
+    const p = packs.find((x) => x.key === pack);
+    if (!p) return;
+    setOffre({ type: 'pack', cle: pack, nom: p.name, prix: centsToFr(p.price_cents) });
   };
 
   return (
@@ -59,13 +61,21 @@ export function BuyCreditsModal({ isOpen, onClose }: BuyCreditsModalProps) {
               <div className="text-2xl font-bold text-white mt-2">{centsToFr(pkg.price_cents)}</div>
               <div className="text-xs text-gray-400 mt-1">{unitLabel}</div>
               <Button variant={pkg.popular ? 'primary' : 'secondary'} className="w-full mt-4"
-                etat={loading === pkg.key ? 'chargement' : 'repos'} onClick={() => buy(pkg.key)}>
+                onClick={() => buy(pkg.key)}>
                 Acheter
               </Button>
             </div>
           );
         })}
       </div>
+      <ChoixPaiement
+        offre={offre}
+        onCredite={() => setACredite(true)}
+        onFermer={() => {
+          setOffre(null);
+          if (aCredite) { setACredite(false); onClose(); }
+        }}
+      />
     </Modal>
   );
 }
