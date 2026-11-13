@@ -46,6 +46,12 @@ export async function PUT(req: NextRequest) {
     valeurCreditChf: corps.valeurCreditChf,
     coutsFournisseur: corps.coutsFournisseur,
     change: corps.change,
+    // ⚠️ OUBLIÉ À L'ORIGINE. L'écran envoyait bien `changeEur`, la validation
+    // et l'écriture savaient le traiter, mais cette liste ne le recopiait
+    // pas : le taux CHF → EUR était accepté SANS ÊTRE ENREGISTRÉ. Le défaut
+    // ne se voyait qu'en bout de chaîne — aucun prix en franc CFA affichable,
+    // et le paiement mobile indisponible sans que rien ne l'explique.
+    changeEur: corps.changeEur,
     margeCible: corps.margeCible,
   };
   const erreurs = validerModification(m);

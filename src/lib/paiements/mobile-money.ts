@@ -74,7 +74,22 @@ export interface EtatMobileMoney {
  * `'1'` : une valeur approximative (`true`, `oui`, vide) laisse fermé, parce
  * qu'un encaissement ne s'ouvre pas par accident de configuration.
  */
-export function etatMobileMoney(env: NodeJS.ProcessEnv = process.env): EtatMobileMoney {
+/**
+ * Les seules variables lues. Un type explicite plutôt que `NodeJS.ProcessEnv` :
+ * il dit ce dont la fonction dépend, et il se construit sans conversion dans
+ * un test.
+ */
+export interface EnvMobileMoney {
+  MOBILE_MONEY_ACTIF?: string;
+  MOBILE_MONEY_API_TOKEN?: string;
+  MOBILE_MONEY_BASE_URL?: string;
+  MOBILE_MONEY_CALLBACK_URL?: string;
+  MOBILE_MONEY_SIMULE?: string;
+  /** Les autres variables du processus, dont rien ici ne dépend. */
+  [autre: string]: string | undefined;
+}
+
+export function etatMobileMoney(env: EnvMobileMoney = process.env): EtatMobileMoney {
   const base = (env.MOBILE_MONEY_BASE_URL || BASE_SANDBOX).trim();
   const sandbox = !base.startsWith(BASE_PRODUCTION);
   const ferme = (motif: MotifFermeture): EtatMobileMoney => ({

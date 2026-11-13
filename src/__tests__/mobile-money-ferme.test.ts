@@ -4,17 +4,18 @@
 import { describe, expect, it } from 'vitest';
 import {
   BASE_PRODUCTION, BASE_SANDBOX, VARIABLES_ATTENDUES, etatMobileMoney,
+  type EnvMobileMoney,
 } from '@/lib/paiements/mobile-money';
 
-const complet = {
+const complet: EnvMobileMoney = {
   MOBILE_MONEY_ACTIF: '1',
   MOBILE_MONEY_API_TOKEN: 'factice',
   MOBILE_MONEY_CALLBACK_URL: 'https://studiio.pro/api/paiements/rappel',
-} as NodeJS.ProcessEnv;
+};
 
 describe('interrupteur Mobile Money', () => {
   it('environnement vide : fermé', () => {
-    const e = etatMobileMoney({} as NodeJS.ProcessEnv);
+    const e = etatMobileMoney({});
     expect(e.actif).toBe(false);
     expect(e.motif).toBe('drapeau_absent');
     expect(e.message).toContain('n’est pas activé');
@@ -22,13 +23,13 @@ describe('interrupteur Mobile Money', () => {
 
   it('un drapeau approximatif ne l’ouvre pas', () => {
     for (const v of ['true', 'oui', 'yes', 'ON', '']) {
-      expect(etatMobileMoney({ ...complet, MOBILE_MONEY_ACTIF: v } as NodeJS.ProcessEnv).actif, v).toBe(false);
+      expect(etatMobileMoney({ ...complet, MOBILE_MONEY_ACTIF: v }).actif, v).toBe(false);
     }
   });
 
   it('drapeau posé mais jeton ou rappel absent : toujours fermé', () => {
-    expect(etatMobileMoney({ ...complet, MOBILE_MONEY_API_TOKEN: '' } as NodeJS.ProcessEnv).motif).toBe('jeton_absent');
-    expect(etatMobileMoney({ ...complet, MOBILE_MONEY_CALLBACK_URL: '' } as NodeJS.ProcessEnv).motif).toBe('rappel_absent');
+    expect(etatMobileMoney({ ...complet, MOBILE_MONEY_API_TOKEN: '' }).motif).toBe('jeton_absent');
+    expect(etatMobileMoney({ ...complet, MOBILE_MONEY_CALLBACK_URL: '' }).motif).toBe('rappel_absent');
   });
 
   it('tout réuni : ouvert, et le bac à sable est le défaut', () => {
@@ -39,14 +40,14 @@ describe('interrupteur Mobile Money', () => {
   });
 
   it('la production ne s’atteint qu’en la nommant explicitement', () => {
-    expect(etatMobileMoney({ ...complet, MOBILE_MONEY_BASE_URL: BASE_PRODUCTION } as NodeJS.ProcessEnv).sandbox).toBe(false);
-    expect(etatMobileMoney({ ...complet, MOBILE_MONEY_BASE_URL: BASE_SANDBOX } as NodeJS.ProcessEnv).sandbox).toBe(true);
+    expect(etatMobileMoney({ ...complet, MOBILE_MONEY_BASE_URL: BASE_PRODUCTION }).sandbox).toBe(false);
+    expect(etatMobileMoney({ ...complet, MOBILE_MONEY_BASE_URL: BASE_SANDBOX }).sandbox).toBe(true);
   });
 
   it('aucun message ne nomme le prestataire', () => {
     const messages = [
-      etatMobileMoney({} as NodeJS.ProcessEnv).message,
-      etatMobileMoney({ ...complet, MOBILE_MONEY_API_TOKEN: '' } as NodeJS.ProcessEnv).message,
+      etatMobileMoney({}).message,
+      etatMobileMoney({ ...complet, MOBILE_MONEY_API_TOKEN: '' }).message,
     ].join(' ').toLowerCase();
     expect(messages).not.toContain('pawapay');
     expect(messages).not.toContain('cinetpay');

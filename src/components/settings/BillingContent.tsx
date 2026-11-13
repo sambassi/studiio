@@ -10,6 +10,7 @@ import { Loader2, Zap } from 'lucide-react';
 import { useTranslations } from '@/i18n/client';
 import { BandeauDemo } from '@/components/ui/BandeauDemo';
 import { libelleTransaction, montantAffiche, sensTransaction } from '@/lib/credits/libelles-transaction';
+import { MobileMoneyRecharge } from '@/components/billing/MobileMoneyRecharge';
 
 interface SubscriptionInfo {
   plan: string;
@@ -33,6 +34,14 @@ export function BillingContent() {
   const [sub, setSub] = useState<SubscriptionInfo | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [showBuy, setShowBuy] = useState(false);
+  // Les packs servent AUSSI au paiement mobile : même source, mêmes prix.
+  const [packs, setPacks] = useState<Array<{ key: string; name: string; amount: number; price_cents: number; active?: boolean }>>([]);
+  useEffect(() => {
+    fetch('/api/pricing', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (Array.isArray(j?.packs)) setPacks(j.packs); })
+      .catch(() => { /* le bloc Mobile Money reste simplement absent */ });
+  }, []);
 
   useEffect(() => {
     fetch('/api/credits/balance').then(r => r.json()).then(d => {
@@ -124,6 +133,10 @@ export function BillingContent() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Moyen de paiement COMPLÉMENTAIRE : il ne remplace pas la carte, et
+          il n'apparaît que si le serveur le déclare ouvert. */}
+      <MobileMoneyRecharge packs={packs} />
 
       <Card>
         <CardHeader className="border-b border-gray-800">
