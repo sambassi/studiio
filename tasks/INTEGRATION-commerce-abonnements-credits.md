@@ -224,3 +224,41 @@ gh pr create --draft \
 
 Fusion en **merge commit**, pas en squash : les 12 commits racontent chacun
 une décision et doivent rester lisibles séparément.
+
+
+## Compte marchand PawaPay partagé — ce que dit le code d'Afroboost
+
+Lu dans `afroboost-v11-dev-pawapay-router/api/routes/pawapay_routes.py`
+(lecture seule, aucune modification, aucune valeur secrète lue).
+
+**Le compte est DÉJÀ partagé** entre plusieurs applications — le commentaire
+du fichier cite « afroboost, live, spordateur, studiio ». Le prestataire
+n'accepte qu'une adresse de notification par compte ; c'est celle
+d'afroboost, qui répartit ensuite.
+
+**La répartition ne se fait PAS par l'étiquette `metadata`**, contrairement à
+ce que laisse croire le commentaire de `create_pawapay_deposit`. Le code réel
+de `/api/pawapay/callback` : (1) le dépôt est-il dans la base d'afroboost ?
+→ traité sur place ; (2) sinon, essayer `live` puis `spordate`, et s'arrêter
+à la première qui répond 2xx sans `status: "ignored"`. **Studiio ne figure
+pas dans cette liste**, et l'y ajouter voudrait dire modifier afroboost.
+
+### Ce qu'on en tire, côté Studiio
+
+| Point | Conséquence |
+|---|---|
+| Contrats d'API | Identiques : `POST /v2/paymentpage`, `GET /v2/deposits/{id}`, bases sandbox et production, page hébergée, opérateur choisi chez le prestataire. |
+| Pays et devises | Aucune liste codée des deux côtés : `GET /v2/active-conf` fait foi. Rien à aligner. |
+| Pièges du contrat | Les mêmes, et tous déjà traités ici : `amountDetails`, montant en chaîne, `phoneNumber`, motif à 50 caractères, `failureReason` qui prime sur un HTTP 200, relance unique sur numéro invalide. |
+| Notification | **N'arrive pas jusqu'à Studiio**, et ne peut pas y arriver sans toucher afroboost. |
+| Crédit | N'en dépend pas : la relecture du dépôt avec notre propre jeton fait preuve. Elle tourne désormais toute seule (`/api/cron/paiements-mobile-money`). |
+| Étiquette | Studiio signe maintenant ses dépôts `metadata: [{ app: 'studiio' }]`, comme afroboost signe les siens. |
+
+### Si afroboost devait un jour nous router
+
+Rien à changer ici. Il suffirait d'ajouter une destination dans
+`destinations` côté afroboost pointant vers
+`POST /api/paiements/mobile-money/rappel`, qui répond déjà
+`{"status":"ignored"}` pour un dépôt qu'il ne connaît pas — exactement le
+protocole que le répartiteur attend. **Ce changement appartient à afroboost
+et n'a pas été fait.**

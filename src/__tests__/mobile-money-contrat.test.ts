@@ -128,3 +128,28 @@ describe('notification', () => {
     expect(referenceCredit('abc')).not.toMatch(/^stripe:/);
   });
 });
+
+describe('Compte marchand partagé — chaque dépôt porte sa marque', () => {
+  it('⚠️ le corps envoyé étiquette le dépôt comme venant de Studiio', () => {
+    const c = corpsPagePaiement({
+      depositId: 'd1', retourUrl: 'https://studiio.pro/retour', motif: 'Recharge',
+      pays: 'SEN', devise: 'XOF', montant: 20602, telephone: null,
+    });
+    // Format v2 : une LISTE d'objets à une clé. Un objet simple serait refusé.
+    expect(c.metadata).toEqual([{ app: 'studiio' }]);
+  });
+
+  it('l’étiquette est présente même quand le numéro est omis', () => {
+    const avec = corpsPagePaiement({
+      depositId: 'd2', retourUrl: 'https://studiio.pro/retour', motif: 'Recharge',
+      pays: 'CMR', devise: 'XAF', montant: 6394, telephone: '237600000000',
+    });
+    const sans = corpsPagePaiement({
+      depositId: 'd2', retourUrl: 'https://studiio.pro/retour', motif: 'Recharge',
+      pays: 'CMR', devise: 'XAF', montant: 6394, telephone: null,
+    });
+    // La relance sans numéro ne doit pas perdre l'étiquette au passage.
+    expect(avec.metadata).toEqual([{ app: 'studiio' }]);
+    expect(sans.metadata).toEqual([{ app: 'studiio' }]);
+  });
+});

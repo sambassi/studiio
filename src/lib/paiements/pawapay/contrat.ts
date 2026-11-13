@@ -87,6 +87,13 @@ export interface DemandePagePaiement {
  * Le corps exact attendu par `POST /v2/paymentpage`. Les quatre pièges de
  * forme (1 à 4 ci-dessus) sont encodés ici, une fois pour toutes.
  */
+/**
+ * Le nom sous lequel Studiio signe ses dépôts sur le compte marchand partagé.
+ * Il doit rester stable : c'est la seule chose qui, chez le prestataire,
+ * distingue un encaissement de Studiio d'un encaissement d'une autre marque.
+ */
+export const APP_STUDIIO = 'studiio';
+
 export function corpsPagePaiement(d: DemandePagePaiement): Record<string, unknown> {
   const entier = DEVISES_SANS_DECIMALE.includes(String(d.devise).toUpperCase());
   const montant = entier ? String(Math.round(d.montant)) : d.montant.toFixed(2);
@@ -99,6 +106,13 @@ export function corpsPagePaiement(d: DemandePagePaiement): Record<string, unknow
     amountDetails: { amount: montant, currency: String(d.devise).toUpperCase() },
   };
   if (d.telephone) corps.phoneNumber = d.telephone;
+  // ÉTIQUETTE DE PROPRIÉTÉ. Le compte marchand est partagé entre plusieurs
+  // applications et n'a qu'une adresse de notification. Sans cette étiquette,
+  // un dépôt de Studiio n'est attribuable à personne : ni par le répartiteur
+  // qui reçoit la notification, ni dans les rapports du prestataire, ni dans
+  // un rapprochement comptable. Format de l'API v2 : une LISTE d'objets à une
+  // clé, que le prestataire restitue sous forme d'OBJET.
+  corps.metadata = [{ app: APP_STUDIIO }];
   return corps;
 }
 
