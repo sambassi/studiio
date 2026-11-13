@@ -1377,6 +1377,17 @@ se tient là où l'écriture a lieu — déclencheur qui compte **sous verrou
 consultatif par utilisateur**, la vérification applicative n'étant qu'un
 raccourci pour le cas courant.
 
+**Et une troisième fois, dans le filet du filet.** La passe de seconde
+chance relisait tout dépôt `expire` non crédité — donc aussi ceux que le
+**prestataire** avait déclarés clos. Ceux-là ne basculent jamais : relus à
+chaque passage, leur statut réécrit à l'identique, ils ne quittaient jamais
+la réserve et occupaient la fenêtre de dix. La leçon : **ne jamais ranger
+sous le même statut « nous avons cessé d'attendre » et « le prestataire a
+prononcé la fin »** — le premier reste ouvert, le second est clos. Trois
+occurrences du même défaut en deux jours, à trois endroits différents : une
+file de rattrapage veut toujours un critère de sortie, une rotation, et une
+borne d'âge.
+
 **Corollaire sur les doubles de base.** Le plafond semblait inopérant en
 prévisualisation : le double de base n'appliquait pas le défaut de colonne
 `created_at`, donc les lignes naissaient sans date et tout filtre sur cette

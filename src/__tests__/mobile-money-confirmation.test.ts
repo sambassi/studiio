@@ -437,7 +437,7 @@ describe('Dépôts abandonnés — jamais fermés sans avoir demandé', () => {
     const bilan = await reconcilier(await depotsEnAttente(10), lecteur);
 
     expect(bilan.abandonnes).toBe(1);
-    expect(depot('vieux-mort').statut).toBe('expire');
+    expect(depot('vieux-mort').statut).toBe('abandonne');
     expect(depot('vieux-mort').motif_echec).toBe('sans_reponse');
     // Le récent, lui, reste ouvert : c'est l'âge qui décide QUAND on cesse
     // d'attendre, pas si le paiement a eu lieu.
@@ -450,7 +450,7 @@ describe('Dépôts abandonnés — jamais fermés sans avoir demandé', () => {
     poserDepot('repeche', { created_at: new Date(Date.now() - 30 * 3600_000).toISOString() });
 
     await reconcilier(await depotsEnAttente(10), lecteur);
-    expect(depot('repeche').statut).toBe('expire');
+    expect(depot('repeche').statut).toBe('abandonne');
     expect(solde()).toBe(100);
 
     // Le prestataire confirme APRÈS que nous avons cessé d'attendre.
@@ -464,8 +464,8 @@ describe('Dépôts abandonnés — jamais fermés sans avoir demandé', () => {
 
   it('la seconde chance ne repêche pas ce qui est déjà crédité', async () => {
     const { depotsAbandonnesARelire } = await import('@/lib/paiements/pawapay/depots');
-    poserDepot('fini', { statut: 'expire', credite_le: new Date().toISOString() });
-    poserDepot('a-revoir', { statut: 'expire' });
+    poserDepot('fini', { statut: 'abandonne', credite_le: new Date().toISOString() });
+    poserDepot('a-revoir', { statut: 'abandonne' });
 
     const file = await depotsAbandonnesARelire(10);
     expect(file.map((d) => d.deposit_id)).toEqual(['a-revoir']);
@@ -500,5 +500,52 @@ describe('Le plafond est tenu par la BASE, pas par le comptage', () => {
 
     // Et rien n'a été écrit.
     expect(base.depots.find((d) => d.deposit_id === 'course')).toBeUndefined();
+  });
+});
+
+describe('La seconde chance ne doit pas se boucher non plus', () => {
+  it('⚠️ un dépôt que LE PRESTATAIRE a clos n’entre pas dans la réserve', async () => {
+    const { depotsAbandonnesARelire } = await import('@/lib/paiements/pawapay/depots');
+    // Le prestataire a prononcé la fin : définitif, rien à réexaminer.
+    poserDepot('clos-par-eux', { statut: 'expire' });
+    poserDepot('clos-par-nous', { statut: 'abandonne' });
+
+    const file = await depotsAbandonnesARelire(10);
+    expect(file.map((d) => d.deposit_id)).toEqual(['clos-par-nous']);
+  });
+
+  it('⚠️ dix dossiers morts n’empêchent PAS de repêcher un paiement qui bascule', async () => {
+    const { depotsAbandonnesARelire } = await import('@/lib/paiements/pawapay/depots');
+    // L'attaque : dix dossiers que le prestataire déclare clos à chaque
+    // lecture. Sans horodatage de relecture sur TOUTES les issues, ils
+    // revenaient en tête à chaque passage et bouchaient la réserve.
+    for (let i = 0; i < 10; i += 1) {
+      poserDepot(`mort-${i}`, { statut: 'abandonne' });
+      poserIssueSimulee(`mort-${i}`, { statut: 'echoue', motifEchec: 'INSUFFICIENT_BALANCE' });
+    }
+    poserDepot('bascule', { statut: 'abandonne' });
+    poserIssueSimulee('bascule', { statut: 'reussi' });
+
+    const options = { fermerLesAbandonnes: false };
+    await reconcilier(await depotsAbandonnesARelire(10), lecteur, options);
+    expect(solde()).toBe(100);
+
+    // Second passage : les morts sont passés derrière, le vrai est atteint.
+    const file = await depotsAbandonnesARelire(10);
+    expect(file.map((d) => d.deposit_id)).toContain('bascule');
+    await reconcilier(file, lecteur, options);
+    expect(solde()).toBe(300);
+  });
+
+  it('au-delà de trente jours, on cesse de repêcher', async () => {
+    const { depotsAbandonnesARelire } = await import('@/lib/paiements/pawapay/depots');
+    poserDepot('tres-vieux', {
+      statut: 'abandonne',
+      created_at: new Date(Date.now() - 40 * 86_400_000).toISOString(),
+    });
+    poserDepot('recent-abandonne', { statut: 'abandonne' });
+
+    const file = await depotsAbandonnesARelire(10);
+    expect(file.map((d) => d.deposit_id)).toEqual(['recent-abandonne']);
   });
 });

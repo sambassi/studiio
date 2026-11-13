@@ -68,8 +68,13 @@ create table if not exists public.pawapay_depots (
   taux_eur_par_chf numeric(10, 5),
   taux_le         date,
   -- Ou en est-on.
+  -- `expire` = LE PRESTATAIRE a prononce la fin du paiement : definitif.
+  -- `abandonne` = NOUS avons cesse d'attendre alors qu'il repondait encore
+  -- « en attente » : le dossier n'est pas clos, et la passe de seconde
+  -- chance continue de le relire. Confondre les deux remplirait cette passe
+  -- de dossiers morts qui n'en sortiraient jamais.
   statut          text not null default 'en_attente'
-                  check (statut in ('en_attente', 'reussi', 'echoue', 'expire', 'annule')),
+                  check (statut in ('en_attente', 'reussi', 'echoue', 'expire', 'annule', 'abandonne')),
   motif_echec     text,
   -- Horodatage du credit effectif. `null` = pas encore credite.
   credite_le      timestamptz,
@@ -83,9 +88,30 @@ create table if not exists public.pawapay_depots (
   updated_at      timestamptz not null default now()
 );
 
--- Rattrapage d'une base ou la table existe deja sans la colonne.
+-- Rattrapage d'une base ou la table existe deja sans la colonne, ou avec
+-- l'ancienne contrainte de statut.
 alter table public.pawapay_depots
   add column if not exists derniere_verification_le timestamptz;
+
+do $$
+begin
+  if exists (
+    select 1 from pg_constraint
+     where conrelid = 'public.pawapay_depots'::regclass
+       and conname = 'pawapay_depots_statut_check'
+       and pg_get_constraintdef(oid) not like '%abandonne%'
+  ) then
+    alter table public.pawapay_depots drop constraint pawapay_depots_statut_check;
+    alter table public.pawapay_depots add constraint pawapay_depots_statut_check
+      check (statut in ('en_attente', 'reussi', 'echoue', 'expire', 'annule', 'abandonne'));
+  end if;
+end
+$$;
+
+-- La passe de seconde chance : nos propres abandons, jamais credites.
+create index if not exists pawapay_depots_abandonnes
+  on public.pawapay_depots (derniere_verification_le nulls first, created_at)
+  where statut = 'abandonne' and credite_le is null;
 
 -- La reconciliation ne balaie que ce qui est encore ouvert, et prend d'abord
 -- ce qui n'a pas ete relu depuis le plus longtemps -- jamais relu en tete.

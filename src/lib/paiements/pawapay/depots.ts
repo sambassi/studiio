@@ -27,6 +27,20 @@
 import { supabaseAdmin } from '@/lib/db/supabase';
 import type { StatutDepot } from './contrat';
 
+/**
+ * Le statut tel que NOUS le stockons.
+ *
+ * ⚠️ `abandonne` n'est pas un statut du prestataire : c'est le nôtre, et la
+ * distinction compte. `expire` veut dire « LE PRESTATAIRE a prononcé la fin
+ * de ce paiement » — c'est définitif, il n'y a rien à réexaminer.
+ * `abandonne` veut dire « NOUS avons cessé d'attendre » — le prestataire,
+ * lui, dit encore « en attente », donc le dossier n'est pas clos et doit
+ * rester repêchable. Les confondre mettrait dans la passe de seconde chance
+ * des dossiers morts qui y resteraient pour toujours, et finiraient par
+ * noyer ceux qui, eux, peuvent encore basculer.
+ */
+export type StatutDepotStocke = StatutDepot | 'abandonne';
+
 export const TABLE_DEPOTS = 'pawapay_depots';
 
 export const MESSAGE_SOCLE_ABSENT =
@@ -51,7 +65,7 @@ export interface Depot {
   prix_chf_cents: number;
   taux_eur_par_chf: number | null;
   taux_le: string | null;
-  statut: StatutDepot;
+  statut: StatutDepotStocke;
   motif_echec: string | null;
   credite_le: string | null;
   sandbox: boolean;
@@ -196,8 +210,16 @@ export function depasseLaBorne(d: Depot, heures = HEURES_AVANT_ABANDON): boolean
  * décide QUAND on cesse d'attendre, jamais SI le paiement a eu lieu.
  */
 export async function marquerAbandonne(depositId: string): Promise<void> {
-  await marquerDepot(depositId, { statut: 'expire', motif_echec: 'sans_reponse' });
+  await marquerDepot(depositId, { statut: 'abandonne', motif_echec: 'sans_reponse' });
 }
+
+/**
+ * Au-delà de ce délai, on cesse aussi de repêcher : un paiement que le
+ * prestataire laisse « en attente » depuis un mois ne basculera pas. Sans
+ * cette borne, la réserve de seconde chance ne ferait que grossir, et
+ * chaque dossier y passerait de moins en moins souvent.
+ */
+export const JOURS_AVANT_CLASSEMENT = 30;
 
 /**
  * Les dépôts fermés comme abandonnés mais JAMAIS CRÉDITÉS, les moins
@@ -209,10 +231,15 @@ export async function marquerAbandonne(depositId: string): Promise<void> {
  * paiement que nous avons cessé d'attendre.
  */
 export async function depotsAbandonnesARelire(limite = 10): Promise<Depot[]> {
+  const plancher = new Date(Date.now() - JOURS_AVANT_CLASSEMENT * 86_400_000).toISOString();
   const { data, error } = await supabaseAdmin
     .from(TABLE_DEPOTS).select('*')
-    .eq('statut', 'expire')
+    // ⚠️ `abandonne`, PAS `expire` : seulement les dossiers que nous avons
+    // refermés nous-mêmes. Ceux que le prestataire a déclarés clos n'ont rien
+    // à faire ici — ils ne basculeront jamais, et ils dilueraient la réserve.
+    .eq('statut', 'abandonne')
     .is('credite_le', null)
+    .gte('created_at', plancher)
     .order('derniere_verification_le', { ascending: true, nullsFirst: true })
     .limit(limite);
   if (error) {

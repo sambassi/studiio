@@ -180,6 +180,15 @@ export async function reconcilier(
   for (const d of depots) {
     try {
       const r = await confirmerDepot(d.deposit_id, lireEtat);
+
+      // ⚠️ RELU = REMIS EN FIN DE FILE, QUELLE QUE SOIT L'ISSUE. Ne l'écrire
+      // que pour les dépôts encore en attente laissait les autres — ceux que
+      // le prestataire déclare clos — avec une date de relecture jamais mise
+      // à jour : ils revenaient donc en tête à chaque passage et occupaient
+      // la fenêtre pour toujours. C'est le défaut que ce lot a déjà corrigé
+      // une fois ; il s'était reformé dans la passe de seconde chance.
+      await marquerVerifie(d.deposit_id);
+
       if (r.issue === 'en_attente') {
         // ⚠️ LE PRESTATAIRE VIENT DE RÉPONDRE « toujours en attente ». C'est
         // seulement maintenant, et jamais sur le seul critère de l'âge, qu'un
@@ -189,8 +198,6 @@ export async function reconcilier(
           await marquerAbandonne(d.deposit_id);
           bilan.abandonnes += 1;
         }
-        // Relu : il passe en fin de file et laisse la place aux suivants.
-        await marquerVerifie(d.deposit_id);
       }
       switch (r.issue) {
         case 'credite': bilan.credites += 1; break;

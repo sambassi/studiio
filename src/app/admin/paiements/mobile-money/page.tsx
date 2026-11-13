@@ -36,10 +36,12 @@ const STYLE_STATUT: Record<string, string> = {
   echoue: 'border-red-500/40 bg-red-500/10 text-red-300',
   expire: 'border-red-500/40 bg-red-500/10 text-red-300',
   annule: 'border-gray-600 bg-gray-700/30 text-gray-300',
+  abandonne: 'border-amber-500/40 bg-amber-500/10 text-amber-200',
 };
 
 const LIBELLE_STATUT: Record<string, string> = {
-  reussi: 'Crédité', en_attente: 'En attente', echoue: 'Échoué', expire: 'Expiré', annule: 'Annulé',
+  reussi: 'Crédité', en_attente: 'En attente', echoue: 'Échoué', expire: 'Expiré',
+  annule: 'Annulé', abandonne: 'Sans réponse',
 };
 
 export default function MobileMoneyAdminPage() {
@@ -84,6 +86,7 @@ export default function MobileMoneyAdminPage() {
 
   const enAttente = etat.depots.filter((d) => d.statut === 'en_attente').length;
   const echoues = etat.depots.filter((d) => ['echoue', 'expire'].includes(d.statut)).length;
+  const abandonnes = etat.depots.filter((d) => d.statut === 'abandonne' && !d.credite_le).length;
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-4 pb-6">
@@ -176,6 +179,7 @@ export default function MobileMoneyAdminPage() {
         <div className="flex flex-wrap gap-2 text-xs">
           <span className={`rounded-full border px-2 py-0.5 ${STYLE_STATUT.en_attente}`}>{enAttente} en attente</span>
           <span className={`rounded-full border px-2 py-0.5 ${STYLE_STATUT.echoue}`}>{echoues} échoué(s)</span>
+          <span className={`rounded-full border px-2 py-0.5 ${STYLE_STATUT.abandonne}`}>{abandonnes} sans réponse, encore relu(s)</span>
         </div>
         {bilan && <p className="text-xs text-gray-300" data-testid="bilan-reconciliation">{bilan}</p>}
       </section>
