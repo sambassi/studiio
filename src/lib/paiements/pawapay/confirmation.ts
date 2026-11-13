@@ -48,7 +48,7 @@ import {
   type LectureDepot, type StatutDepot,
 } from './contrat';
 import {
-  lireDepotLocal, marquerDepot, type Depot,
+  lireDepotLocal, marquerDepot, marquerVerifie, type Depot,
 } from './depots';
 
 export type ResultatConfirmation =
@@ -169,6 +169,9 @@ export async function reconcilier(
   for (const d of depots) {
     try {
       const r = await confirmerDepot(d.deposit_id, lireEtat);
+      // Relu : il passe en fin de file, et laisse la place aux suivants au
+      // prochain passage. Sans cela, les mêmes dépôts reviendraient toujours.
+      if (r.issue === 'en_attente') await marquerVerifie(d.deposit_id);
       switch (r.issue) {
         case 'credite': bilan.credites += 1; break;
         case 'deja_credite': break;

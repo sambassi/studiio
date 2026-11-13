@@ -6,7 +6,10 @@ import { offrePack, offrePlan } from '@/lib/stripe/prix';
 import { CREDIT_PACKAGES, STRIPE_PLANS } from '@/lib/stripe/constants';
 import { annonceConversion, convertirChfVersCfa, estDeviseCfa } from '@/lib/paiements/cfa';
 import { etatMobileMoney } from '@/lib/paiements/mobile-money';
-import { creerDepot, SocleAbsent, MESSAGE_SOCLE_ABSENT } from '@/lib/paiements/pawapay/depots';
+import {
+  creerDepot, depotsOuvertsDuCompte, MAX_DEPOTS_OUVERTS,
+  SocleAbsent, MESSAGE_SOCLE_ABSENT,
+} from '@/lib/paiements/pawapay/depots';
 import {
   creerPagePaiement, enProduction, fournisseurSimule,
   ErreurPrestataire, MESSAGE_PRESTATAIRE_INJOIGNABLE,
@@ -102,7 +105,30 @@ export async function POST(req: NextRequest) {
   }
   const c = conversion.conversion;
 
-  // 3. LE DÉPÔT D'ABORD. Un identifiant que NOUS générons : il nous permet de
+  // 3. BORNER LES PAIEMENTS OUVERTS. La file de réconciliation est partagée
+  //    par tous les comptes : un seul compte qui ouvrirait des paiements sans
+  //    jamais les honorer la remplirait, et les crédits des autres
+  //    arriveraient en retard, voire plus du tout.
+  try {
+    const ouverts = await depotsOuvertsDuCompte(session.user.id);
+    if (ouverts >= MAX_DEPOTS_OUVERTS) {
+      return NextResponse.json({
+        success: false,
+        code: 'trop_de_paiements_ouverts',
+        error: 'Tu as déjà plusieurs paiements en cours. Termine-les ou attends quelques minutes avant d’en ouvrir un autre.',
+      }, { status: 429 });
+    }
+  } catch (e) {
+    if (e instanceof SocleAbsent) {
+      return NextResponse.json(
+        { success: false, code: 'socle_absent', error: MESSAGE_SOCLE_ABSENT },
+        { status: 503 },
+      );
+    }
+    throw e;
+  }
+
+  // 4. LE DÉPÔT D'ABORD. Un identifiant que NOUS générons : il nous permet de
   //    reconnaître nos propres paiements parmi ceux du compte marchand.
   const depositId = randomUUID();
   const nomOffre = offre === 'plan'

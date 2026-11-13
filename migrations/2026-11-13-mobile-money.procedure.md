@@ -9,7 +9,7 @@
 
 | | |
 |---|---|
-| Crée | la table `pawapay_depots`, deux index de travail, **un index unique partiel** sur `credit_transactions(reference_id) WHERE reference_id LIKE 'mm:%'`, et la fonction `crediter_credits_mobile_money` |
+| Crée | la table `pawapay_depots` (dont `derniere_verification_le`), deux index de travail, **un index unique partiel** sur `credit_transactions(reference_id) WHERE reference_id LIKE 'mm:%'`, et la fonction `crediter_credits_mobile_money` |
 | Ne touche pas | `users`, les transactions existantes, les fonctions Stripe, aucune ligne de données |
 | Rejouable | oui — `create table if not exists`, `create index if not exists`, `create or replace function` |
 
@@ -64,6 +64,11 @@ docker kill -s SIGUSR1 studiio-postgrest
 ```sql
 -- 1. La table et ses index.
 select count(*) from public.pawapay_depots;                      -- 0
+-- La colonne qui fait TOURNER la file de reconciliation : sans elle, des
+-- depots jamais honores occuperaient la fenetre de relecture pour toujours.
+select column_name from information_schema.columns
+ where table_name = 'pawapay_depots'
+   and column_name = 'derniere_verification_le';                 -- 1 ligne
 select indexname from pg_indexes
  where indexname = 'credit_transactions_mm_reference_unique';    -- 1 ligne
 

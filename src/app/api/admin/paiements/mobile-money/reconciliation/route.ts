@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/admin';
-import { depotsEnAttente, SocleAbsent, MESSAGE_SOCLE_ABSENT } from '@/lib/paiements/pawapay/depots';
+import {
+  depotsEnAttente, expirerDepotsAbandonnes, SocleAbsent, MESSAGE_SOCLE_ABSENT,
+} from '@/lib/paiements/pawapay/depots';
 import { reconcilier } from '@/lib/paiements/pawapay/confirmation';
 import { lecteurEtat } from '@/lib/paiements/pawapay/lecteur';
 
@@ -24,8 +26,14 @@ export async function POST() {
   if (error) return error;
 
   try {
+    // ⚠️ D'ABORD VIDER LES ABANDONNÉS. Un dépôt jamais honoré reste « en
+    // attente » pour toujours : sans cette passe, il suffirait d'en ouvrir
+    // cinquante et de ne jamais payer pour que la fenêtre de relecture soit
+    // occupée en permanence et que les paiements des autres ne soient PLUS
+    // JAMAIS relus. Le filet s'annulerait tout seul, sans aucune erreur.
+    const expires = await expirerDepotsAbandonnes();
     const ouverts = await depotsEnAttente(50);
-    const bilan = await reconcilier(ouverts, lecteurEtat());
+    const bilan = { ...(await reconcilier(ouverts, lecteurEtat())), expires };
     console.info('[mobile money] réconciliation', bilan);
     return NextResponse.json({ success: true, bilan });
   } catch (e) {

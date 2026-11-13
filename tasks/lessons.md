@@ -1342,3 +1342,28 @@ Le risque d'une migration se juge à ce qu'elle TRANSFORME. Celle du
 remboursement ne crée qu'une fonction, son retour arrière la supprime, et
 aucune ligne n'est touchée — la sauvegarde quotidienne suffit. Le vrai piège
 est ailleurs : le rôle qui joue la migration décide des droits hérités.
+
+## 2026-11-13 | Un filet de sécurité peut s'annuler tout seul, en silence
+
+**Ce qui a mal tourné.** La réconciliation Mobile Money lisait les 50 dépôts
+en attente **les plus anciens**. Un dépôt jamais honoré reste « en attente »
+pour toujours : il suffisait donc d'en ouvrir cinquante et de ne jamais payer
+pour que la fenêtre soit occupée en permanence et que les paiements de tous
+les autres comptes ne soient **plus jamais relus**. Aucune erreur, aucun
+journal — seulement des crédits qui n'arrivent plus. Et c'est précisément ce
+filet qui servait d'argument pour dire que le crédit ne dépend pas de la
+notification : le neutraliser faisait tomber tout le raisonnement.
+
+**La règle.** Une file de rattrapage ne se trie jamais par date de création
+seule : il faut une marque de dernier passage (« qui n'a pas été relu depuis
+le plus longtemps »), une sortie de file pour ce qui est définitivement
+abandonné, et un plafond par compte sur ce qui alimente la file. Les trois,
+pas un seul — le tri fait tourner, l'expiration vide, le plafond borne
+l'entrée. Et chacun se prouve par un test qui échoue sans le correctif :
+celui du tri a bien échoué avant d'être corrigé, c'est ce qui le rend utile.
+
+**Corollaire sur les doubles de base.** Le plafond semblait inopérant en
+prévisualisation : le double de base n'appliquait pas le défaut de colonne
+`created_at`, donc les lignes naissaient sans date et tout filtre sur cette
+colonne les ignorait sans rien dire. Un double qui ignore une valeur par
+défaut ne teste pas le code, il le rassure.

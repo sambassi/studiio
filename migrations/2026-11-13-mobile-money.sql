@@ -74,13 +74,23 @@ create table if not exists public.pawapay_depots (
   -- Horodatage du credit effectif. `null` = pas encore credite.
   credite_le      timestamptz,
   sandbox         boolean not null default true,
+  -- Derniere relecture aupres du prestataire. `null` = jamais relu.
+  -- C'est ce qui FAIT TOURNER la file de reconciliation : sans elle, un lot
+  -- de depots abandonnes, toujours les plus anciens, occuperait indefiniment
+  -- la fenetre et les paiements recents ne seraient jamais relus.
+  derniere_verification_le timestamptz,
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now()
 );
 
--- La reconciliation ne balaie que ce qui est encore ouvert.
+-- Rattrapage d'une base ou la table existe deja sans la colonne.
+alter table public.pawapay_depots
+  add column if not exists derniere_verification_le timestamptz;
+
+-- La reconciliation ne balaie que ce qui est encore ouvert, et prend d'abord
+-- ce qui n'a pas ete relu depuis le plus longtemps -- jamais relu en tete.
 create index if not exists pawapay_depots_en_attente
-  on public.pawapay_depots (created_at)
+  on public.pawapay_depots (derniere_verification_le nulls first, created_at)
   where statut = 'en_attente';
 
 create index if not exists pawapay_depots_user

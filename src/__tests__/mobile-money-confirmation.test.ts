@@ -27,27 +27,57 @@ vi.mock('@/lib/db/supabase', () => {
   const from = (table: string) => {
     if (table !== 'pawapay_depots') throw new Error(`table inattendue : ${table}`);
     const filtres: Array<(l: LigneDepot) => boolean> = [];
+    // Les tris s'empilent, comme en SQL : le premier `order` décide, les
+    // suivants départagent. Reproduire cela FIDÈLEMENT est tout l'enjeu ici —
+    // c'est l'ordre de relecture qui empêche la file de se bloquer.
+    const tris: Array<{ col: string; croissant: boolean; nullsFirst: boolean }> = [];
     let patch: Partial<LigneDepot> | null = null;
     let insertion: LigneDepot | null = null;
     let limite: number | undefined;
-    let croissant = true;
+    let compterSeulement = false;
+    const champ = (l: LigneDepot, k: string) => (l as never as Record<string, unknown>)[k];
     const retenues = () => base.depots.filter((l) => filtres.every((f) => f(l)));
+    const comparer = (a: LigneDepot, b: LigneDepot) => {
+      for (const t of tris) {
+        const va = champ(a, t.col) as string | null;
+        const vb = champ(b, t.col) as string | null;
+        if (va === vb) continue;
+        if (va === null || va === undefined) return t.nullsFirst ? -1 : 1;
+        if (vb === null || vb === undefined) return t.nullsFirst ? 1 : -1;
+        return (va < vb ? -1 : 1) * (t.croissant ? 1 : -1);
+      }
+      return 0;
+    };
     const exec = () => {
-      if (insertion) { base.depots.push(insertion); return { data: [insertion], error: null }; }
+      if (insertion) { base.depots.push(insertion); return { data: [insertion], error: null, count: 1 }; }
       let rows = retenues();
       if (patch) for (const l of rows) Object.assign(l, patch);
-      rows = [...rows].sort((a, b) => (a.created_at < b.created_at ? -1 : 1) * (croissant ? 1 : -1));
+      if (compterSeulement) return { data: null, error: null, count: rows.length };
+      rows = [...rows].sort(comparer);
       if (limite !== undefined) rows = rows.slice(0, limite);
-      return { data: rows, error: null };
+      return { data: rows, error: null, count: rows.length };
     };
+    const cmp = (k: string, v: unknown, op: '<' | '>=') =>
+      filtres.push((l) => {
+        const x = champ(l, k) as string;
+        return op === '<' ? x < (v as string) : x >= (v as string);
+      });
     const api: Record<string, unknown> = {
-      select: () => api,
+      select: (_c?: string, o?: { count?: string; head?: boolean }) => {
+        if (o?.head) compterSeulement = true;
+        return api;
+      },
       insert: (v: LigneDepot) => { insertion = v; return api; },
       update: (p: Partial<LigneDepot>) => { patch = p; return api; },
-      eq: (k: string, v: unknown) => { filtres.push((l) => (l as never as Record<string, unknown>)[k] === v); return api; },
-      order: (_c: string, o?: { ascending?: boolean }) => { croissant = o?.ascending !== false; return api; },
+      eq: (k: string, v: unknown) => { filtres.push((l) => champ(l, k) === v); return api; },
+      lt: (k: string, v: unknown) => { cmp(k, v, '<'); return api; },
+      gte: (k: string, v: unknown) => { cmp(k, v, '>='); return api; },
+      order: (c: string, o?: { ascending?: boolean; nullsFirst?: boolean }) => {
+        tris.push({ col: c, croissant: o?.ascending !== false, nullsFirst: !!o?.nullsFirst });
+        return api;
+      },
       limit: async (n: number) => { limite = n; return exec(); },
-      maybeSingle: async () => { const r = exec(); return { data: r.data[0] ?? null, error: null }; },
+      maybeSingle: async () => { const r = exec(); return { data: r.data?.[0] ?? null, error: null }; },
       then: (ok: (v: unknown) => void) => Promise.resolve().then(exec).then(ok),
     };
     return api;
@@ -90,7 +120,8 @@ function poserDepot(id: string, extra: Partial<LigneDepot> = {}): LigneDepot {
     credits: 200, montant_local: ATTENDU.montant, devise: ATTENDU.devise, pays: 'SEN',
     prix_chf_cents: 2900, taux_eur_par_chf: 1.083, taux_le: '2026-11-11',
     statut: 'en_attente', motif_echec: null, credite_le: null,
-    sandbox: true, created_at: new Date().toISOString(), ...extra,
+    sandbox: true, derniere_verification_le: null,
+    created_at: new Date().toISOString(), ...extra,
   };
   base.depots.push(d);
   return d;
@@ -317,5 +348,89 @@ describe('Socle absent', () => {
     expect(solde()).toBe(100);
     // Le dépôt reste ouvert : la réconciliation le reprendra après migration.
     expect(depot('d16').statut).toBe('en_attente');
+  });
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LE FILET NE DOIT PAS POUVOIR S'ANNULER TOUT SEUL
+
+   La réconciliation est ce qui rend le crédit indépendant de la notification.
+   Si on peut la neutraliser, l'argument entier tombe — et elle tombe en
+   silence : aucune erreur, aucun journal, seulement des crédits qui
+   n'arrivent plus. Trois défenses, trois épreuves.
+   ═══════════════════════════════════════════════════════════════════════════ */
+describe('Famine de la file de réconciliation', () => {
+  it('⚠️ cinquante paiements jamais honorés n’empêchent PAS de relire un paiement récent', async () => {
+    const { depotsEnAttente } = await import('@/lib/paiements/pawapay/depots');
+    const vieux = new Date(Date.now() - 3 * 3600_000).toISOString();
+
+    // L'attaque : saturer la fenêtre de dépôts plus anciens que tout le reste.
+    for (let i = 0; i < 50; i += 1) {
+      poserDepot(`squat-${i}`, { created_at: vieux, derniere_verification_le: null });
+    }
+    poserDepot('vrai-paiement', { created_at: new Date().toISOString() });
+    poserIssueSimulee('vrai-paiement', { statut: 'reussi' });
+
+    // Premier passage : la fenêtre est pleine de squatteurs, c'est attendu.
+    const passe1 = await depotsEnAttente(50);
+    await reconcilier(passe1, lecteur);
+    expect(solde()).toBe(100);
+
+    // ⚠️ LE POINT QUI COMPTE : relus, les squatteurs passent en fin de file.
+    // Au second passage, le vrai paiement est atteint et crédité.
+    const passe2 = await depotsEnAttente(50);
+    expect(passe2.map((d) => d.deposit_id)).toContain('vrai-paiement');
+    await reconcilier(passe2, lecteur);
+    expect(solde()).toBe(300);
+  });
+
+  it('un dépôt relu passe derrière ceux qui ne l’ont jamais été', async () => {
+    const { depotsEnAttente, marquerVerifie } = await import('@/lib/paiements/pawapay/depots');
+    poserDepot('deja-vu', { created_at: new Date(Date.now() - 7200_000).toISOString() });
+    poserDepot('jamais-vu', { created_at: new Date().toISOString() });
+
+    await marquerVerifie('deja-vu');
+    const file = await depotsEnAttente(10);
+    expect(file[0].deposit_id).toBe('jamais-vu');
+  });
+});
+
+describe('Dépôts abandonnés', () => {
+  it('au-delà de vingt-quatre heures, un dépôt en attente sort de la file', async () => {
+    const { expirerDepotsAbandonnes, depotsEnAttente } = await import('@/lib/paiements/pawapay/depots');
+    poserDepot('abandonne', { created_at: new Date(Date.now() - 30 * 3600_000).toISOString() });
+    poserDepot('recent');
+
+    expect(await expirerDepotsAbandonnes()).toBe(1);
+    expect(depot('abandonne').statut).toBe('expire');
+    expect(depot('abandonne').motif_echec).toBe('sans_reponse');
+    expect((await depotsEnAttente(10)).map((d) => d.deposit_id)).toEqual(['recent']);
+  });
+
+  it('⚠️ expirer ne PERD pas le paiement : une confirmation tardive crédite quand même', async () => {
+    const { expirerDepotsAbandonnes } = await import('@/lib/paiements/pawapay/depots');
+    poserDepot('tardif', { created_at: new Date(Date.now() - 30 * 3600_000).toISOString() });
+    await expirerDepotsAbandonnes();
+    expect(depot('tardif').statut).toBe('expire');
+
+    // Le prestataire finit par confirmer. `confirmerDepot` ne regarde que
+    // `credite_le` : le crédit a lieu, l'argent encaissé est honoré.
+    poserIssueSimulee('tardif', { statut: 'reussi' });
+    const r = await confirmerDepot('tardif', lecteur);
+    expect(r).toEqual({ issue: 'credite', credits: 200, solde: 300 });
+    expect(depot('tardif').statut).toBe('reussi');
+  });
+});
+
+describe('Plafond de paiements ouverts par compte', () => {
+  it('compte les paiements ouverts du compte, et ignore les abandonnés', async () => {
+    const { depotsOuvertsDuCompte } = await import('@/lib/paiements/pawapay/depots');
+    poserDepot('o1'); poserDepot('o2');
+    poserDepot('vieux', { created_at: new Date(Date.now() - 48 * 3600_000).toISOString() });
+    poserDepot('fini', { statut: 'reussi' });
+    poserDepot('autrui', { user_id: 'u-2' });
+
+    expect(await depotsOuvertsDuCompte(UTILISATEUR)).toBe(2);
+    expect(await depotsOuvertsDuCompte('u-2')).toBe(1);
   });
 });

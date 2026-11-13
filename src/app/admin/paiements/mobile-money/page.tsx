@@ -68,7 +68,7 @@ export default function MobileMoneyAdminPage() {
       const j = await r.json();
       if (!r.ok || !j?.success) { setBilan(j?.error ?? 'Réconciliation impossible.'); return; }
       const b = j.bilan as Record<string, number>;
-      setBilan(`${b.examines} dépôt(s) examiné(s) · ${b.credites} crédité(s) · ${b.echoues} échoué(s) · ${b.refuses} refusé(s) · ${b.encoreEnAttente} encore en attente · ${b.erreurs} erreur(s)`);
+      setBilan(`${b.expires} abandonné(s) fermé(s) · ${b.examines} dépôt(s) relu(s) · ${b.credites} crédité(s) · ${b.echoues} échoué(s) · ${b.refuses} refusé(s) · ${b.encoreEnAttente} encore en attente · ${b.erreurs} erreur(s)`);
       await charger();
     } finally { setReconciliation(false); }
   };
@@ -151,6 +151,8 @@ export default function MobileMoneyAdminPage() {
             <p className="text-xs text-gray-400">
               Relit chaque paiement en attente auprès du prestataire et crédite ceux qui sont
               confirmés. C’est ce filet qui rend le crédit indépendant de la notification.
+              Les paiements relus passent en fin de file et ceux restés sans réponse au-delà
+              de 24 h sont fermés, pour qu’aucun paiement abandonné ne retarde les autres.
             </p>
           </div>
           <button
