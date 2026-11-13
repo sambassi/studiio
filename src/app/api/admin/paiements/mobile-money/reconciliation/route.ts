@@ -1,9 +1,9 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, type NextRequest } from 'next/server';
 import { requireAdmin } from '@/lib/admin';
 import {
   depotsAbandonnesARelire, depotsEnAttente, SocleAbsent, MESSAGE_SOCLE_ABSENT,
 } from '@/lib/paiements/pawapay/depots';
-import { reconcilier } from '@/lib/paiements/pawapay/confirmation';
+import { confirmerDepot, reconcilier } from '@/lib/paiements/pawapay/confirmation';
 import { lecteurEtat } from '@/lib/paiements/pawapay/lecteur';
 
 /**
@@ -21,12 +21,36 @@ import { lecteurEtat } from '@/lib/paiements/pawapay/lecteur';
  */
 export const dynamic = 'force-dynamic';
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   const { error } = await requireAdmin();
   if (error) return error;
 
+  const corps = (await req.json().catch(() => null)) as { depot?: unknown } | null;
+  const unSeul = typeof corps?.depot === 'string' ? corps.depot.trim() : '';
+
   try {
     const lire = lecteurEtat();
+
+    /*
+      RELECTURE D'UN SEUL PAIEMENT, SUR DEMANDE.
+
+      Les deux passes automatiques ci-dessous sont bornées — en nombre, et
+      dans le temps : au-delà de trente jours un dossier n'est plus repêché
+      tout seul. Sans cette porte-ci, un paiement que le prestataire
+      confirmerait après ce délai, et dont la notification ne nous serait
+      jamais parvenue, resterait encaissé sans crédit, sans aucun moyen de le
+      récupérer. C'est le dernier recours, et il est volontairement manuel.
+
+      Il ne contourne AUCUNE garantie : il passe par le même `confirmerDepot`
+      que tout le reste. Le prestataire reste seul juge du paiement, le
+      montant et la devise sont vérifiés, et l'index unique interdit le
+      second crédit. Réservé à l'administration, et journalisé.
+    */
+    if (unSeul) {
+      const r = await confirmerDepot(unSeul, lire);
+      console.info('[mobile money] relecture administrateur', { depot: unSeul, issue: r.issue });
+      return NextResponse.json({ success: true, depot: unSeul, resultat: r });
+    }
 
     // 1. LA FILE PRINCIPALE. Les dépôts ouverts, les moins récemment relus
     //    d'abord. Ceux qui dépassent la borne y sont fermés — mais seulement

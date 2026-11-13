@@ -549,3 +549,44 @@ describe('La seconde chance ne doit pas se boucher non plus', () => {
     expect(file.map((d) => d.deposit_id)).toEqual(['recent-abandonne']);
   });
 });
+
+describe('Dernier recours : relecture d’un seul paiement par l’administration', () => {
+  it('⚠️ un paiement confirmé APRÈS la borne de trente jours reste récupérable', async () => {
+    const { depotsAbandonnesARelire } = await import('@/lib/paiements/pawapay/depots');
+    // Quarante jours : les passes automatiques ne le reprennent plus, et la
+    // notification n'est jamais arrivée. Sans recours manuel, l'argent est
+    // encaissé et les crédits perdus.
+    poserDepot('tres-tardif', {
+      statut: 'abandonne',
+      created_at: new Date(Date.now() - 40 * 86_400_000).toISOString(),
+    });
+    expect((await depotsAbandonnesARelire(10)).map((d) => d.deposit_id)).not.toContain('tres-tardif');
+
+    poserIssueSimulee('tres-tardif', { statut: 'reussi' });
+    const r = await confirmerDepot('tres-tardif', lecteur);
+
+    expect(r).toEqual({ issue: 'credite', credits: 200, solde: 300 });
+    expect(solde()).toBe(300);
+  });
+
+  it('⚠️ et il ne peut pas servir à créditer deux fois', async () => {
+    poserDepot('deja-paye');
+    poserIssueSimulee('deja-paye', { statut: 'reussi' });
+    await confirmerDepot('deja-paye', lecteur);
+    expect(solde()).toBe(300);
+
+    // L'administration relance la relecture, dix fois s'il le faut.
+    for (let i = 0; i < 10; i += 1) {
+      const r = await confirmerDepot('deja-paye', lecteur);
+      expect(r).toEqual({ issue: 'deja_credite', credits: 200 });
+    }
+    expect(solde()).toBe(300);
+  });
+
+  it('ne crédite pas un paiement que le prestataire n’a pas confirmé', async () => {
+    poserDepot('jamais-paye', { statut: 'abandonne' });
+    const r = await confirmerDepot('jamais-paye', lecteur);
+    expect(r).toEqual({ issue: 'en_attente' });
+    expect(solde()).toBe(100);
+  });
+});

@@ -30,6 +30,9 @@ export const MIGRATIONS_SOCLE = [
   join(RACINE, 'migrations/2026-10-30-remboursement-credits-operation.sql'),
   // Plafond de dépense Replicate par compte et global — NON encore appliquée (PR en cours).
   join(RACINE, 'migrations/2026-10-31-cinema-plafond-compte.sql'),
+  // Journal des dépôts Mobile Money, crédit atomique et plafond de paiements
+  // ouverts — NON encore appliquée (PR en cours).
+  join(RACINE, 'migrations/2026-11-13-mobile-money.sql'),
 ];
 
 /**

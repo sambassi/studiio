@@ -182,6 +182,14 @@ export default function MobileMoneyAdminPage() {
           <span className={`rounded-full border px-2 py-0.5 ${STYLE_STATUT.abandonne}`}>{abandonnes} sans réponse, encore relu(s)</span>
         </div>
         {bilan && <p className="text-xs text-gray-300" data-testid="bilan-reconciliation">{bilan}</p>}
+
+        <p className="text-xs text-gray-500">
+          Au-delà de 30 jours, un paiement n’est plus repêché automatiquement. S’il était
+          confirmé après ce délai, il reste récupérable un par un&nbsp;:
+          <code className="mx-1 rounded bg-black/30 px-1">POST /api/admin/paiements/mobile-money/reconciliation</code>
+          avec l’identifiant du dépôt. Ce recours passe par les mêmes vérifications et ne peut
+          pas créditer deux fois.
+        </p>
       </section>
 
       {/* ── Transactions ────────────────────────────────────────────────── */}

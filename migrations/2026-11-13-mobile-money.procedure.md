@@ -93,6 +93,15 @@ select has_table_privilege('service_role', 'public.pawapay_depots', 'INSERT');  
 select count(*) from credit_transactions where reference_id like 'stripe:%';        -- inchangé
 ```
 
+## 6 bis. Ce qui est deja eprouve sur un vrai PostgreSQL
+
+`tests-pg/mobile-money.pg.test.ts` joue CETTE migration sur un Postgres 16
+reel (`npm run test:pg`, et le job « Credits - PostgreSQL reel » en CI). Dix
+ouvertures **simultanees** n'y laissent passer que cinq depots, deux
+confirmations concurrentes ne creditent qu'une fois, et un statut invente est
+refuse. Ces proprietes sont celles du moteur : aucune ne peut etre etablie
+par un double en memoire.
+
 ## 7. Retour arrière
 
 ```bash
