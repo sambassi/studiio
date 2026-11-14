@@ -33,7 +33,7 @@ export default function ChoixMouvements({ actif, surChoisir }: {
             type="button"
             onClick={() => surChoisir(m.camera)}
             aria-pressed={actif === m.camera}
-            title={m.quoiRegarder}
+            title={tUi.fr(m.quoiRegarder)}
             className={`overflow-hidden rounded-lg border text-left transition-colors ${
               actif === m.camera ? 'border-violet-500/80 ring-1 ring-violet-500/40' : 'border-slate-800 hover:border-violet-500/40'
             }`}
@@ -42,7 +42,7 @@ export default function ChoixMouvements({ actif, surChoisir }: {
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={m.poster} alt="" aria-hidden="true" loading="lazy" className="absolute inset-0 h-full w-full object-cover" />
               <span className="absolute inset-x-0 bottom-0 h-1/2" style={{ background: 'linear-gradient(180deg, rgba(5,6,10,0) 0%, rgba(5,6,10,0.85) 100%)' }} />
-              <span className="absolute bottom-1 left-2 right-2 block truncate text-[11px] font-semibold text-white">{m.libelle}</span>
+              <span className="absolute bottom-1 left-2 right-2 block truncate text-[11px] font-semibold text-white">{tUi.fr(m.libelle)}</span>
             </span>
           </button>
         ))}

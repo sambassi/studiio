@@ -78,7 +78,7 @@ export function ConseilsVideo({ postId, metadata }: { postId: string; metadata: 
                     return (
                       <div key={c.id} className="rounded-md bg-gray-800/60 p-2.5">
                         <div className="flex items-start gap-2">
-                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0" style={{ background: p.fond, color: p.texte }}>{p.libelle}</span>
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0" style={{ background: p.fond, color: p.texte }}>{tUi.fr(p.libelle)}</span>
                           <p className="text-xs text-gray-200 flex-1">{c.probleme}</p>
                         </div>
                         <p className="text-xs text-white mt-1.5">{c.conseil}</p>

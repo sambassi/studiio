@@ -369,6 +369,7 @@ function prochainesEcheances(
  * video a l'autre ? Une liste unique de quinze lignes ne repondait pas.
  */
 function RECAP_VARIABLE(config: AutopilotConfig, e: EtatMediasPrevus): Array<[string, string]> {
+  const tUi = useTranslations('ui.componentsCreerAutopilotPanel');
   const n = e.rushesPersonnels;
   return [
     ['Thèmes', config.topics.length === 0
@@ -377,7 +378,7 @@ function RECAP_VARIABLE(config: AutopilotConfig, e: EtatMediasPrevus): Array<[st
     ['Affiche', config.posterMode === 'custom' && config.posterUrls.length > 0
       ? `Vos ${config.posterUrls.length} photo${config.posterUrls.length > 1 ? 's' : ''}, en rotation`
       : 'Choisie par Studiio selon le thème'],
-    ['Textes', 'Différents à chaque vidéo'],
+    ['Textes', tUi('differents_a_chaque_video')],
     ['Sources', aUneSourceVisuelle(e) ? resumeSources(e) : 'Aucune — rien ne sera produit'],
     ['Rushes', n === 0
       ? 'Aucun rush personnel'
@@ -391,37 +392,39 @@ function RECAP_CONSTANT(
   config: AutopilotConfig,
   voix: VoixClonee[],
 ): Array<[string, string]> {
+  const tUi = useTranslations('ui.componentsCreerAutopilotPanel');
   const choisie = voixDeConfig(voix, config.voiceId);
   return [
     ['Couleurs', `${config.cardGradientStart} → ${config.cardGradientEnd}, titre ${config.titleColor}`],
-    ['Fond des cartes', config.cardsShowPoster ? 'L’affiche' : 'Les couleurs choisies'],
+    [tUi('fond_des_cartes'), config.cardsShowPoster ? 'L’affiche' : 'Les couleurs choisies'],
     ['Musique', config.musicUrl ? `${nomDeFichier(config.musicUrl)} · ${pourcent(config.musicVolume)}` : 'Aucune'],
-    ['Voix off', config.voiceEnabled
+    [tUi('voix_off_2'), config.voiceEnabled
       ? `${choisie ? choisie.name : 'Voix par défaut'} · ${pourcent(config.voiceVolume)} (payante)`
       : 'Désactivée'],
-    ['Son du rush', config.keepRushAudio ? `Gardé · ${pourcent(config.rushVolume)}` : 'Coupé'],
+    [tUi('son_du_rush'), config.keepRushAudio ? `Gardé · ${pourcent(config.rushVolume)}` : 'Coupé'],
   ];
 }
 
 function RECAP_DIFFUSION(config: AutopilotConfig): Array<[string, string]> {
+  const tUi = useTranslations('ui.componentsCreerAutopilotPanel');
   const intention = intentionDiffusion(config);
   return [
     ['Rythme', CADENCE_LABELS[config.cadence]],
     // La date de début : « dès le prochain passage » sans date — le
     // comportement d'avant, dit tel quel plutôt que laissé vide.
-    ['Date de début', config.startDate ? dateLisible(config.startDate) : 'Dès le prochain passage'],
+    [tUi('date_de_debut'), config.startDate ? dateLisible(config.startDate) : 'Dès le prochain passage'],
     // Deux lignes, deux heures : la production et la publication ne sont
     // pas le même moment, et le récapitulatif les confondait.
-    ['Heure de départ', `${heureLisible(config.runHour)} (${config.runTimezone})`],
+    [tUi('heure_de_depart'), `${heureLisible(config.runHour)} (${config.runTimezone})`],
     ['Heure de publication', `${heurePublicationLisible(config)} (${config.runTimezone}), le lendemain de la production`],
-    ['Par cycle', `${config.countPerCycle} vidéo${config.countPerCycle > 1 ? 's' : ''}`],
+    [tUi('par_cycle'), `${config.countPerCycle} vidéo${config.countPerCycle > 1 ? 's' : ''}`],
     ['Diffusion', INTENTION_LABELS[intention]],
     ['Plateformes', config.platforms.length
       ? config.platforms.join(', ')
       : intention === 'produire'
         ? 'Aucune — brouillons à télécharger depuis le Calendrier'
         : 'Aucune — les vidéos restent dans le Calendrier'],
-    ['Seuil de crédits', `${config.creditFloor} crédits`],
+    [tUi('seuil_de_credits'), `${config.creditFloor} crédits`],
   ];
 }
 
@@ -1223,7 +1226,7 @@ export default function AutopilotPanel({
           if (!p && !r && j?.etat === 'depose' && j.post) {
             appliquerResultat({
               success: true, postId: j.post.postId, scheduledDate: j.post.scheduledDate, scheduledTime: j.post.scheduledTime,
-              avertissements: j.sansAvatar ? ['La vidéo de votre avatar n’a pas pu être préparée : le brouillon a été monté sans elle.'] : [],
+              avertissements: j.sansAvatar ? [tUi('la_video_de_votre_avatar_n_a_pas_pu_et')] : [],
             });
           } else if (!p && !r && j?.etat === 'echec') {
             setProduire({ etat: 'erreur', message: String(j.message ?? 'La production n’a pas abouti.') });
@@ -1675,7 +1678,7 @@ export default function AutopilotPanel({
                   className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left ${classesCarteOption(retenu)}`}
                 >
                   <CardIcon name={t.icon} size={14} color={retenu ? accent : '#9CA3AF'} className="" />
-                  <span className="text-[11px] leading-tight">{t.label}</span>
+                  <span className="text-[11px] leading-tight">{tUi.fr(t.label)}</span>
                 </button>
               );
             })}
@@ -2168,13 +2171,13 @@ export default function AutopilotPanel({
                     {m === 'auto'
                       ? <Sparkles className="w-3 h-3" />
                       : <ImageIcon className="w-3 h-3" />}
-                    {POSTER_MODE_LABELS[m]}
+                    {tUi.fr(POSTER_MODE_LABELS[m])}
                   </span>
                 </button>
               ))}
             </div>
             <p className="text-[11px] text-gray-500 mt-1.5">
-              {POSTER_MODE_HINTS[config.posterMode]}
+              {tUi.fr(POSTER_MODE_HINTS[config.posterMode])}
             </p>
 
             {(config.posterMode === 'custom' || config.posterMode === 'reference') && (
@@ -2748,7 +2751,7 @@ export default function AutopilotPanel({
                 className="w-full rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2 text-xs disabled:opacity-40"
               >
                 {CADENCES.map((c) => (
-                  <option key={c} value={c}>{CADENCE_LABELS[c]}</option>
+                  <option key={c} value={c}>{tUi.fr(CADENCE_LABELS[c])}</option>
                 ))}
               </select>
             </div>
@@ -2965,8 +2968,8 @@ export default function AutopilotPanel({
           {rendreMediasPrevus()}
 
           {([
-            ['Ce qui change à chaque vidéo', RECAP_VARIABLE(config, etatSources), 'variable'],
-            ['Ce qui ne change jamais', RECAP_CONSTANT(config, voixClonees), 'constant'],
+            [tUi('ce_qui_change_a_chaque_video'), RECAP_VARIABLE(config, etatSources), 'variable'],
+            [tUi('ce_qui_ne_change_jamais'), RECAP_CONSTANT(config, voixClonees), 'constant'],
             ['Rythme & diffusion', RECAP_DIFFUSION(config), 'diffusion'],
           ] as Array<[string, Array<[string, string]>, string]>).map(([titre, lignes, jeton]) => (
             <dl

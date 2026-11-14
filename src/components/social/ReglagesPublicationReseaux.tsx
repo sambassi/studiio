@@ -236,8 +236,8 @@ export default function ReglagesPublicationReseaux({
         >
           {([
             ['auto', 'Automatique', 'Automatique', 'Auto', Sparkles],
-            ['upload', 'Choisir une image', 'Image', 'Image', ImageIcon],
-            ['frame', 'Image dans la vidéo', 'Dans la vidéo', 'Vidéo', Film],
+            ['upload', tUi('choisir_une_image'), 'Image', 'Image', ImageIcon],
+            ['frame', tUi('image_dans_la_video'), tUi('dans_la_video'), 'Vidéo', Film],
           ] as const).map(([m, libelle, moyen, court, Icone]) => (
             <button
               key={m}
@@ -405,7 +405,7 @@ export default function ReglagesPublicationReseaux({
                       onChange={(e) => majTt({ privacy_level: e.target.value as ConfidentialiteTiktok })}
                       className="w-full rounded-lg bg-white/[0.05] px-2.5 py-1.5 text-xs text-white transition-colors hover:bg-white/[0.08] focus:outline-none focus:ring-1 focus:ring-purple-400/50"
                     >
-                      {infoTt.confidentialites.map((c) => <option key={c} value={c}>{LIBELLES_CONFIDENTIALITE[c]}</option>)}
+                      {infoTt.confidentialites.map((c) => <option key={c} value={c}>{tUi.fr(LIBELLES_CONFIDENTIALITE[c])}</option>)}
                     </select>
                   ) : (
                     <p className="text-[11px] leading-relaxed text-amber-300/90" data-tiktok-moi-uniquement>

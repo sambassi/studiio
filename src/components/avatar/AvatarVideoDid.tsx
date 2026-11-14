@@ -224,7 +224,7 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
                   'vous lisez la phrase exactement, y compris votre nom ;',
                   'vous êtes face caméra, visage visible ;',
                   'votre voix est claire et audible ;',
-                  'puis enregistrez une nouvelle vidéo.',
+                  tUi('puis_enregistrez_une_nouvelle_video'),
                 ]}
                 motif={erreurConsentement}
                 {...(!fichier && !expiree

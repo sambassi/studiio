@@ -201,7 +201,7 @@ export default function BriefVideo({
           <div key={cle}>
             <div className="flex items-center justify-between gap-2 mb-1">
               <label htmlFor={id} className="block text-xs font-medium text-gray-300">
-                {BRIEF_LABELS[cle]}
+                {tUi.fr(BRIEF_LABELS[cle])}
                 <span className="text-gray-600 font-normal"> · facultatif</span>
               </label>
               {profil && (

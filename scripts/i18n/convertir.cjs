@@ -293,7 +293,8 @@ function traiter(fichier) {
           // portée) ; hors composant (constante de module) `convertir` l'ignore et le liste.
           convertir(n, n.getStart(), n.end, v, norm(v), (k) => `${HOOK}('${k}')`, true);
         } else if (ts.isArrayLiteralExpression(p) && v.split(' ').length >= 2) {
-          ignore('libellé dans un tableau (à traiter à la main)', v);
+          // Tableau de libellés : converti s'il vit DANS un composant (sinon `convertir` le liste).
+          convertir(n, n.getStart(), n.end, v, norm(v), (k) => `${HOOK}('${k}')`, true);
         }
       }
     }

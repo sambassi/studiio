@@ -262,7 +262,7 @@ export default function AideRedaction({ histoire, surChanger, personnages = [], 
                       {enCours === a.id
                         ? <Loader2 className="w-4 h-4 shrink-0 animate-spin text-violet-300" />
                         : <Sparkles className="w-4 h-4 shrink-0 text-violet-300" />}
-                      {a.libelle}
+                      {tUi.fr(a.libelle)}
                     </button>
                   ))}
                   {erreur && (

@@ -1021,7 +1021,7 @@ export default function CinemaPage() {
                         }}
                         className="min-w-0 rounded bg-slate-950 border border-slate-700 px-2 py-1 text-slate-200"
                       >
-                        {VOIX_FILM.map((v) => <option key={v.id} value={v.id}>{v.libelle}</option>)}
+                        {VOIX_FILM.map((v) => <option key={v.id} value={v.id}>{tUi.fr(v.libelle)}</option>)}
                       </select>
                       {casting.some((c, k) => k !== i && (c.voix ?? voixDistincte(k)) === (p.voix ?? voixDistincte(i)) && c.nom && p.nom) && (
                         <span className="text-amber-300" data-voix-partagee>{tUi('meme_voix_qu_un_autre_personnage_chois')}</span>

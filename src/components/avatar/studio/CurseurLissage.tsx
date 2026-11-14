@@ -42,7 +42,7 @@ export default function CurseurLissage(props: { valeur: number; onChange: (v: nu
             className={`absolute -translate-x-1/2 whitespace-nowrap hover:text-white ${v === r.valeur ? 'text-purple-200' : ''}`}
             style={{ left: `${r.valeur}%`, transform: r.valeur === 0 ? 'none' : r.valeur === 100 ? 'translateX(-100%)' : undefined }}
           >
-            {r.libelle}
+            {tUi.fr(r.libelle)}
           </button>
         ))}
       </div>

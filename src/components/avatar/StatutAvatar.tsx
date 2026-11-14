@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { CheckCircle2, Loader2, AlertTriangle, UserSquare2, ShieldCheck, Eye } from 'lucide-react';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * Le STATUT GLOBAL de l'avatar, dit en un mot, en tête de la colonne de
@@ -41,6 +42,7 @@ const RENDU: Record<StatutAvatarCle, { libelle: string; icone: ReactNode; classe
 };
 
 export default function StatutAvatar({ statut, texte, lien, children, className = '' }: StatutAvatarProps) {
+  const tUi = useTranslations('ui.componentsAvatarStatutAvatar');
   const r = RENDU[statut];
   return (
     /* Un encart DANS la carte principale (pas une carte dans la carte). */
@@ -48,7 +50,7 @@ export default function StatutAvatar({ statut, texte, lien, children, className 
       <div className="min-w-0 flex-1 space-y-1">
         <span data-avatar-statut-libelle className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${r.classe}`}>
           {r.icone}
-          {r.libelle}
+          {tUi.fr(r.libelle)}
         </span>
         {texte && <p data-avatar-statut-texte className="text-sm text-gray-400">{texte}</p>}
         {children}

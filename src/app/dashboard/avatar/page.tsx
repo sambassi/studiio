@@ -1088,8 +1088,8 @@ export default function AvatarPage() {
     return { titre: tUi('l_entrainement_n_a_pas_abouti'), texte: tUi('changez_de_source_et_reessayez_avec_un') };
   })();
   const conseilsSource: string[] = kind === 'photo'
-    ? ['portrait net', 'visage de face', 'pas de masque ni lunettes de soleil', 'bonne lumière', 'visage entier, non coupé']
-    : didVideoActif ? [] : ['visage de face, bien éclairé, en train de parler', 'arrière-plan calme et peu de mouvement, cadrage stable', "c'est la limite d'envoi : pensez à compresser"];
+    ? ['portrait net', 'visage de face', tUi('pas_de_masque_ni_lunettes_de_soleil'), tUi('bonne_lumiere'), tUi('visage_entier_non_coupe')]
+    : didVideoActif ? [] : [tUi('visage_de_face_bien_eclaire_en_train_d'), tUi('arriere_plan_calme_et_peu_de_mouvement'), tUi('c_est_la_limite_d_envoi_pensez_a_compr')];
 
   /** La notification affichée : celle de la page, sinon l'échec d'entraînement HeyGen (qui a sa sortie). */
   const notificationAffichee: NotificationPage | null = notification ?? (!viaDid && trainingFailed
@@ -1198,8 +1198,8 @@ export default function AvatarPage() {
     <span role="tablist" aria-label={tUi('apercu')} className="flex flex-wrap items-center gap-1 normal-case tracking-normal">
       {([
         ['format', `Aperçu ${ratio}`, !!srcVersionActive],
-        ['rendu', 'Rendu récent', !!renduRecent],
-        ['video', 'Votre vidéo', !!videoUrl],
+        ['rendu', tUi('rendu_recent'), !!renduRecent],
+        ['video', tUi('votre_video'), !!videoUrl],
       ] as const).filter(([, , ok]) => ok).map(([cle, libelle]) => (
         <button
           key={cle}

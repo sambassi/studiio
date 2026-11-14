@@ -3913,7 +3913,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
           <span className="block" data-autopilot-apercu-mention>
             <span className="text-gray-200" data-autopilot-apercu-badge="style">{tUi('apercu_du_style')}</span>
             {' '}{tUi('textes_et_affiche_d')}<span className="text-gray-400">exemple</span> {tUi('sur_le_theme')}
-            {' '}«&nbsp;{themeLabel(sample.topic)}&nbsp;». Le sujet, l’affiche et les textes
+            {' '}«&nbsp;{tUi.fr(themeLabel(sample.topic))}&nbsp;». Le sujet, l’affiche et les textes
             changent à chaque vidéo ; le style, non.
             {/* Une DÉMONSTRATION, pas le script des futures vidéos : celui-ci
                 est généré à chaque production, à partir du brief récurrent. */}
@@ -4188,7 +4188,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
                 className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-purple-500 outline-none px-2 py-1.5 text-sm"
               >
                 {CARD_STYLES.map((c) => (
-                  <option key={c.label} value={c.label}>{c.label} — {c.sublabel}</option>
+                  <option key={c.label} value={c.label}>{tUi.fr(c.label)} — {tUi.fr(c.sublabel)}</option>
                 ))}
               </select>
               <p className="text-[11px] text-gray-500 mt-1">
@@ -12008,7 +12008,7 @@ export default function AssistantWizard() {
                               className="block h-5 w-full rounded-md border border-white/10"
                               style={{ backgroundColor: c.value }}
                             />
-                            <span className="mt-1.5 block text-[10px] text-gray-400 truncate">{c.label}</span>
+                            <span className="mt-1.5 block text-[10px] text-gray-400 truncate">{tUi.fr(c.label)}</span>
                           </button>
                         ))}
                       </div>
@@ -12070,7 +12070,7 @@ export default function AssistantWizard() {
                                   : 'bg-gray-800/60 text-gray-400 hover:text-white'
                               }`}
                             >
-                              {m.label}
+                              {tUi.fr(m.label)}
                             </button>
                           ))}
                         </div>
@@ -12847,7 +12847,7 @@ export default function AssistantWizard() {
                         className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-purple-500 outline-none px-2 py-1.5 text-sm"
                       >
                         {CARD_STYLES.map((c) => (
-                          <option key={c.label} value={c.label}>{c.label} — {c.sublabel}</option>
+                          <option key={c.label} value={c.label}>{tUi.fr(c.label)} — {tUi.fr(c.sublabel)}</option>
                         ))}
                       </select>
                       <p className="text-[11px] text-gray-500 mt-1">
@@ -13221,7 +13221,7 @@ export default function AssistantWizard() {
                                 {seq.enabled ? position + 1 : '—'}
                               </span>
                               <div className="min-w-0 flex-1">
-                                <div className="text-sm font-medium truncate">{meta.label}</div>
+                                <div className="text-sm font-medium truncate">{tUi.fr(meta.label)}</div>
                                 <div className="text-[11px] text-gray-500 truncate" title={isVideo && rushUrl ? (listeMedias[0] ? titreMedia(listeMedias[0]) : undefined) : undefined}>
                                   {isVideo && mediasVideo
                                     ? `${mediasVideo.length} média${mediasVideo.length > 1 ? 's' : ''} enchaîné${mediasVideo.length > 1 ? 's' : ''}`
@@ -13530,7 +13530,7 @@ export default function AssistantWizard() {
                                   montage — `transitionLayerStyles` transcrit
                                   `drawTransition`, pas une illustration. */}
                               <TransitionMiniPreview style={style} playing={joue} aspect={ASPECT_CSS[format]} height={40} />
-                              <span className="min-w-0">{TRANSITION_LABELS[style]}</span>
+                              <span className="min-w-0">{tUi.fr(TRANSITION_LABELS[style])}</span>
                               {choisi && <Check size={12} aria-hidden="true" data-coche className="ml-auto shrink-0 text-purple-300" />}
                             </button>
                             {/* Lecture explicite : mobile (pas de survol) et

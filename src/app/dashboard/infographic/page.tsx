@@ -392,20 +392,20 @@ export default function InfographiePage() {
 
   // --- BATCH ---
   const BATCH_TITLE_VARIATIONS: Record<string, string[]> = {
-    sommeil: ['SOMMEIL & SPORT', 'REPOS RÉPARATEUR', 'DORS MIEUX', 'NUIT DE CHAMPION', 'RÉCUPÉRATION MAX', 'SLEEP BETTER', 'REPOS ACTIF', 'BIEN DORMIR', 'NUIT PROFONDE', 'SOMMEIL SPORTIF'],
-    nutrition: ['NUTRITION & DANSE', 'MANGE & DANSE', 'FUEL YOUR BODY', 'HEALTHY MOVES', 'EAT CLEAN', 'SUPER FOOD', 'ÉNERGIE SAINE', 'NUTRITION FIT', 'BON & SAIN', 'BIEN MANGER'],
-    energie: ['ÉNERGIE & CARDIO', 'CARDIO MAX', 'FULL ENERGY', 'BOOST TOTAL', 'FIRE UP', 'POWER MOVE', 'HIGH INTENSITY', 'CARDIO BLAST', 'ÉNERGIE PURE', 'MAX EFFORT'],
-    stress: ['STRESS & MENTAL', 'MENTAL FORT', 'ZÉRO STRESS', 'INNER PEACE', 'BIEN-ÊTRE', 'MIND POWER', 'CALME INTÉRIEUR', 'FEEL GOOD', 'ANTI-STRESS', 'ÉQUILIBRE'],
-    communaute: ['COMMUNAUTÉ', 'TEAM SPIRIT', 'ENSEMBLE', 'LA TRIBU', 'CREW GOALS', 'REJOINS-NOUS', 'ON EST LÀ', 'UNITED', 'SQUAD UP', 'FAMILY FIRST'],
-    custom: ['DÉCOUVRE', 'À TESTER', 'NOUVEAU', 'EXCLUSIF', 'INÉDIT', 'TENDANCE', 'HOT TOPIC', 'VIRAL', 'MUST SEE', 'TOP CONTENU'],
+    sommeil: ['SOMMEIL & SPORT', tUi('repos_reparateur'), 'DORS MIEUX', 'NUIT DE CHAMPION', tUi('recuperation_max'), 'SLEEP BETTER', 'REPOS ACTIF', 'BIEN DORMIR', 'NUIT PROFONDE', 'SOMMEIL SPORTIF'],
+    nutrition: ['NUTRITION & DANSE', 'MANGE & DANSE', 'FUEL YOUR BODY', 'HEALTHY MOVES', 'EAT CLEAN', 'SUPER FOOD', tUi('energie_saine'), 'NUTRITION FIT', 'BON & SAIN', 'BIEN MANGER'],
+    energie: [tUi('energie_cardio'), 'CARDIO MAX', 'FULL ENERGY', 'BOOST TOTAL', 'FIRE UP', 'POWER MOVE', 'HIGH INTENSITY', 'CARDIO BLAST', tUi('energie_pure'), 'MAX EFFORT'],
+    stress: ['STRESS & MENTAL', 'MENTAL FORT', tUi('zero_stress'), 'INNER PEACE', 'BIEN-ÊTRE', 'MIND POWER', tUi('calme_interieur'), 'FEEL GOOD', 'ANTI-STRESS', 'ÉQUILIBRE'],
+    communaute: ['COMMUNAUTÉ', 'TEAM SPIRIT', 'ENSEMBLE', tUi('la_tribu'), 'CREW GOALS', 'REJOINS-NOUS', tUi('on_est_la'), 'UNITED', 'SQUAD UP', 'FAMILY FIRST'],
+    custom: ['DÉCOUVRE', tUi('a_tester'), 'NOUVEAU', 'EXCLUSIF', 'INÉDIT', 'TENDANCE', 'HOT TOPIC', 'VIRAL', 'MUST SEE', 'TOP CONTENU'],
   };
   const BATCH_SUB_VARIATIONS: Record<string, string[]> = {
-    sommeil: ['Danse pour mieux dormir', 'Booste ta récupération', 'Le sport améliore ton sommeil', 'Qualité de sommeil x2', 'Repose-toi comme un champion', 'Nuit réparatrice garantie', 'Endors-toi plus vite', 'Récupère comme un pro', 'Ton sommeil optimisé', 'Le repos du guerrier'],
-    nutrition: ['Nourris ton corps', 'L\'énergie vient de l\'assiette', 'Mange bien, danse mieux', 'Alimente ta performance', 'Recettes de champion', 'Nutrition sportive', 'Boost naturel', 'Ton corps te remerciera', 'Aliments magiques', 'La clé de la forme'],
-    energie: ['Pousse tes limites', 'Dépasse-toi', 'Ton cardio au max', 'Brûle des calories', 'Énergie explosive', 'Full puissance', 'Intensité maximale', 'Le feu intérieur', 'Repousse tes limites', 'Énergie sans fin'],
-    stress: ['Libère ton esprit', 'Danse ta sérénité', 'Le mouvement guérit', 'Respire et danse', 'Trouve ton équilibre', 'Paix intérieure', 'Zéro pression', 'Calme et puissance', 'L\'esprit libre', 'Bien dans ta peau'],
-    communaute: ['Rejoins la tribu', 'On danse ensemble', 'La force du groupe', 'Partage l\'énergie', 'Communauté de feu', 'Ensemble on est fort', 'La team grandit', 'Bienvenue dans la famille', 'L\'union fait la force', 'Danse et partage'],
-    custom: ['Contenu exclusif', 'Découvre maintenant', 'Ne rate rien', 'Nouveau concept', 'À toi de jouer', 'C\'est le moment', 'Fais le premier pas', 'Tu vas adorer', 'Essaie maintenant', 'Le changement commence ici'],
+    sommeil: [tUi('danse_pour_mieux_dormir'), tUi('booste_ta_recuperation'), tUi('le_sport_ameliore_ton_sommeil'), tUi('qualite_de_sommeil_x2'), tUi('repose_toi_comme_un_champion'), tUi('nuit_reparatrice_garantie'), 'Endors-toi plus vite', tUi('recupere_comme_un_pro'), tUi('ton_sommeil_optimise'), tUi('le_repos_du_guerrier')],
+    nutrition: [tUi('nourris_ton_corps'), tUi('l_energie_vient_de_l_assiette'), 'Mange bien, danse mieux', tUi('alimente_ta_performance'), 'Recettes de champion', 'Nutrition sportive', 'Boost naturel', tUi('ton_corps_te_remerciera'), 'Aliments magiques', tUi('la_cle_de_la_forme')],
+    energie: [tUi('pousse_tes_limites'), 'Dépasse-toi', tUi('ton_cardio_au_max'), tUi('brule_des_calories'), tUi('energie_explosive'), 'Full puissance', tUi('intensite_maximale'), tUi('le_feu_interieur'), tUi('repousse_tes_limites'), tUi('energie_sans_fin')],
+    stress: [tUi('libere_ton_esprit'), tUi('danse_ta_serenite'), tUi('le_mouvement_guerit'), tUi('respire_et_danse'), tUi('trouve_ton_equilibre'), tUi('paix_interieure'), tUi('zero_pression'), tUi('calme_et_puissance'), 'L\'esprit libre', tUi('bien_dans_ta_peau')],
+    communaute: [tUi('rejoins_la_tribu'), 'On danse ensemble', tUi('la_force_du_groupe'), tUi('partage_l_energie'), tUi('communaute_de_feu'), tUi('ensemble_on_est_fort'), tUi('la_team_grandit'), tUi('bienvenue_dans_la_famille'), tUi('l_union_fait_la_force'), tUi('danse_et_partage')],
+    custom: ['Contenu exclusif', tUi('decouvre_maintenant'), tUi('ne_rate_rien'), 'Nouveau concept', tUi('a_toi_de_jouer'), tUi('c_est_le_moment'), tUi('fais_le_premier_pas'), tUi('tu_vas_adorer'), 'Essaie maintenant', tUi('le_changement_commence_ici')],
   };
 
   const generateBatchVariations = async (customQuery?: string): Promise<BatchVariation[]> => {

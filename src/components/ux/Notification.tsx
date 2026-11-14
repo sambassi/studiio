@@ -66,7 +66,7 @@ export default function Notification({
       <div className="min-w-0 flex-1 space-y-2">
         {/* Le niveau est aussi DIT, pas seulement coloré. */}
         <p className="font-medium">
-          <span className="sr-only">{s.libelle} : </span>
+          <span className="sr-only">{tUi.fr(s.libelle)} : </span>
           <span data-notification-titre>{titre}</span>
         </p>
         {details.length === 1 && <p className="text-[13px] opacity-90" data-notification-detail>{details[0]}</p>}

@@ -90,7 +90,7 @@ export function SelecteurStyleFilm({ valeur, surChoisir, surMontrerExemple, exem
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={EXTRAITS_STYLES[s.id].poster} alt="" aria-hidden="true" loading="lazy" className="absolute inset-0 h-full w-full object-cover" />
                 <span className="absolute inset-x-0 bottom-0 h-1/2" style={{ background: 'linear-gradient(180deg, rgba(5,6,10,0) 0%, rgba(5,6,10,0.8) 100%)' }} />
-                <span className="absolute bottom-1 left-2 right-2 block truncate text-[11px] font-semibold text-white">{s.libelle}</span>
+                <span className="absolute bottom-1 left-2 right-2 block truncate text-[11px] font-semibold text-white">{tUi.fr(s.libelle)}</span>
               </span>
             </button>
           );
@@ -132,7 +132,7 @@ export function SelecteurStyleScene({ valeur, styleFilm, surChoisir }: {
         className={`rounded bg-slate-950 border px-2 py-1 ${valeur ? 'border-violet-500/50 text-violet-200' : 'border-slate-700'}`}
       >
         <option value="">{parDefaut ? tUi('style_du_film_libelle', { libelle: parDefaut.libelle }) : tUi('style_du_film_aucun')}</option>
-        {STYLES_CINEMA.map((s) => <option key={s.id} value={s.id}>{s.libelle}</option>)}
+        {STYLES_CINEMA.map((s) => <option key={s.id} value={s.id}>{tUi.fr(s.libelle)}</option>)}
       </select>
     </label>
   );

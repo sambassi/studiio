@@ -27,6 +27,8 @@ const appliquer = args.includes('--appliquer');
 const entrees = args.filter((a) => !a.startsWith('--'));
 const sauf = (args.find((a) => a.startsWith('--sauf=')) || '').slice(7).split(',').filter(Boolean);
 const CATALOGUE = path.join(racine, 'messages', 'fr.json');
+// Fonctions importées qui RENDENT un libellé français d'une constante déjà moissonnée (ex. themeLabel).
+const FONCTIONS = new Set(((args.find((a) => a.startsWith('--fonctions=')) || '').slice(12)).split(',').filter(Boolean));
 const HOOK = 'tUi';
 
 const ATTRS = new Set(['placeholder', 'title', 'aria-label', 'alt', 'label', 'description', 'helperText', 'tooltip']);
@@ -72,7 +74,15 @@ function slugFichier(rel) {
   const p = rel.replace(/^src\//, '').replace(/\.(tsx|ts|jsx|js)$/, '').replace(/\/page$/, '').split(/[\/\\]/);
   return p.map((x) => x.replace(/[^A-Za-z0-9]+(.)?/g, (_, c) => (c ? c.toUpperCase() : ''))).map((x, i) => (i === 0 ? x.charAt(0).toLowerCase() + x.slice(1) : x.charAt(0).toUpperCase() + x.slice(1))).join('');
 }
-const deballer = (e) => { let x = e; while (x && (ts.isAsExpression(x) || ts.isSatisfiesExpression(x) || ts.isParenthesizedExpression(x) || ts.isTypeAssertionExpression(x))) x = x.expression; return x; };
+// Enveloppes sans effet sur le contenu : `as const`, `satisfies`, parenthèses, `Object.freeze([...])`.
+const deballer = (e) => {
+  let x = e;
+  for (;;) {
+    if (x && (ts.isAsExpression(x) || ts.isSatisfiesExpression(x) || ts.isParenthesizedExpression(x) || ts.isTypeAssertionExpression(x))) x = x.expression;
+    else if (x && ts.isCallExpression(x) && x.expression.getText() === 'Object.freeze' && x.arguments.length === 1) x = x.arguments[0];
+    else return x;
+  }
+};
 const nomProp = (n) => (n.name ? n.name.getText().replace(/['"]/g, '') : '');
 
 /** Moissonne les textes français d'un littéral ; renvoie { textes, propsTexte, propsTableau, elementsChaines }. */
@@ -128,7 +138,37 @@ function traiter(fichier) {
       if (info.textes.length) { constantes.set(d.name.text, info); res.textes.push(...info.textes); }
     }
   }
-  if (!constantes.size) return { res, nouveau: null };
+  // 1b. constantes IMPORTÉES depuis `@/lib/...` (thèmes, listes d'offres…) : leurs libellés sont
+  // moissonnés dans le fichier source, et le nom local importé devient une « constante » du fichier.
+  for (const st of sf.statements) {
+    if (!ts.isImportDeclaration(st) || !ts.isStringLiteral(st.moduleSpecifier) || !st.importClause || !st.importClause.namedBindings || !ts.isNamedImports(st.importClause.namedBindings)) continue;
+    const spec = st.moduleSpecifier.text;
+    if (!spec.startsWith('@/lib/')) continue;
+    const base = path.join(racine, 'src', spec.slice(2));
+    const cible = [`${base}.ts`, `${base}.tsx`, path.join(base, 'index.ts')].find((c) => fs.existsSync(c));
+    if (!cible) continue;
+    const sfc = ts.createSourceFile(cible, fs.readFileSync(cible, 'utf8'), ts.ScriptTarget.Latest, true);
+    const exportees = new Map();
+    for (const e of sfc.statements) {
+      if (!ts.isVariableStatement(e) || !(e.modifiers || []).some((m) => m.kind === ts.SyntaxKind.ExportKeyword)) continue;
+      for (const d of e.declarationList.declarations) if (ts.isIdentifier(d.name) && d.initializer) exportees.set(d.name.text, d.initializer);
+    }
+    for (const el of st.importClause.namedBindings.elements) {
+      const distant = (el.propertyName || el.name).text;
+      if (!exportees.has(distant)) continue;
+      const info = moissonner(exportees.get(distant));
+      if (info.textes.length) { constantes.set(el.name.text, info); res.textes.push(...info.textes); }
+    }
+  }
+  // 1c. alias : `const THEMES = SHARED_THEMES;`
+  for (const st of sf.statements) {
+    if (!ts.isVariableStatement(st)) continue;
+    for (const d of st.declarationList.declarations) {
+      const init = d.initializer && deballer(d.initializer);
+      if (ts.isIdentifier(d.name) && init && ts.isIdentifier(init) && constantes.has(init.text) && !constantes.has(d.name.text)) constantes.set(d.name.text, constantes.get(init.text));
+    }
+  }
+  if (!constantes.size && !FONCTIONS.size) return { res, nouveau: null };
 
   // 2. racines dérivées : nom -> { genre: 'objet'|'chaine', info }
   const derives = new Map();
@@ -148,6 +188,20 @@ function traiter(fichier) {
   const propsTexte = new Set(toutesInfos.flatMap((i) => [...i.propsTexte]));
   const propsTableau = new Set(toutesInfos.flatMap((i) => [...i.propsTableau]));
 
+  // 2b. `const r = RENDU[statut];` / `const t = THEMES.find(...)` : la variable porte un élément de la constante
+  const variables = [];
+  const collecterVars = (n) => { if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.initializer) variables.push(n); ts.forEachChild(n, collecterVars); };
+  collecterVars(sf);
+  for (const v of variables) {
+    const init = deballer(v.initializer);
+    if (ts.isElementAccessExpression(init)) {
+      const r = deballer(init.expression);
+      if (ts.isIdentifier(r) && constantes.has(r.text) && !derives.has(v.name.text)) derives.set(v.name.text, { genre: constantes.get(r.text).recordChaines ? 'chaine' : 'objet', info: constantes.get(r.text), constante: false });
+    } else if (ts.isCallExpression(init) && ts.isPropertyAccessExpression(init.expression) && ['find', 'at'].includes(init.expression.name.text)) {
+      const r = deballer(init.expression.expression);
+      if (ts.isIdentifier(r) && constantes.has(r.text) && !derives.has(v.name.text)) derives.set(v.name.text, { genre: 'objet', info: constantes.get(r.text), constante: false });
+    }
+  }
   let change = true; let tours = 0;
   const maps = [];
   const collecter = (n) => { if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) && n.expression.name.text === 'map' && n.arguments[0] && (ts.isArrowFunction(n.arguments[0]) || ts.isFunctionExpression(n.arguments[0]))) maps.push(n); ts.forEachChild(n, collecter); };
@@ -195,6 +249,8 @@ function traiter(fichier) {
       if (ts.isElementAccessExpression(base)) { const r = racineDe(base.expression); if (r && constantes.has(r) && propsTexte.has(x.name.text)) return true; }
       return false;
     }
+    // {themeLabel(x)} : fonction de libellé déclarée dans --fonctions
+    if (ts.isCallExpression(x) && ts.isIdentifier(x.expression) && FONCTIONS.has(x.expression.text)) return true;
     // {CONST[clé]}
     if (ts.isElementAccessExpression(x)) { const r = deballer(x.expression); return ts.isIdentifier(r) && constantes.has(r.text) && constantes.get(r.text).recordChaines; }
     return false;

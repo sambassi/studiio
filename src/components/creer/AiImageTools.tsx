@@ -191,7 +191,7 @@ export default function AiImageTools({
             >
               <span className="flex items-center gap-1.5 min-w-0">
                 {loading === tool.action ? <Loader2 size={11} className="animate-spin" /> : tool.icon}
-                <span className="truncate">{tool.label}</span>
+                <span className="truncate">{tUi.fr(tool.label)}</span>
               </span>
               {/* Le cout est annonce AVANT le clic — comme dans l'editeur avance. */}
               <span className="text-[10px] text-gray-500 shrink-0">{prixOutil(tool)} cr.</span>
@@ -205,12 +205,12 @@ export default function AiImageTools({
         if (!tool) return null;
         return (
           <div className="rounded-lg border border-purple-500/30 bg-gray-900 p-2 space-y-2">
-            <p className="text-[11px] font-medium text-purple-200">{tool.label}</p>
+            <p className="text-[11px] font-medium text-purple-200">{tUi.fr(tool.label)}</p>
             {tool.needsPrompt && (
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value.slice(0, 400))}
-                placeholder={tool.promptPlaceholder}
+                placeholder={tUi.fr(tool.promptPlaceholder)}
                 rows={2}
                 data-ai-prompt
                 className="w-full rounded-lg bg-gray-950 border border-gray-800 focus:border-purple-500 outline-none p-2 text-[11px] resize-y"

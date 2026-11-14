@@ -273,6 +273,7 @@ type LignePertinenceProps = { p: PertinenceRush; theme: string; langue: LanguePe
 
 /** M2-c — Un avis de pertinence : « Hors sujet pour … » ou « À vérifier », 1 à 2 raisons, les deux gestes existants. */
 function LignePertinence({ p, theme, langue, position, onEcarter, onAccepter }: LignePertinenceProps) {
+  const tUi = useTranslations('ui.componentsCreerQualiteRushs');
   const hors = p.niveau === 'hors_sujet';
   const Icone = hors ? XCircle : AlertTriangle;
   const t = TEXTES_PANNEAU[langue];
@@ -297,7 +298,7 @@ function LignePertinence({ p, theme, langue, position, onEcarter, onAccepter }: 
           <li key={`${m.code}-${i}`} className="text-[11px] text-gray-400" data-pertinence-motif={m.code}>{texteMotif(m, langue)}</li>
         ))}
       </ul>
-      <p className="mt-1 text-[11px] text-gray-500">{t.mention}</p>
+      <p className="mt-1 text-[11px] text-gray-500">{tUi.fr(t.mention)}</p>
       <div className="mt-1.5 flex gap-2">
         <button
           type="button"
@@ -305,7 +306,7 @@ function LignePertinence({ p, theme, langue, position, onEcarter, onAccepter }: 
           className="rounded-lg border border-gray-700 px-2.5 py-1 text-[11px] text-gray-200 transition hover:border-gray-500 hover:text-white"
           data-pertinence-ecarter
         >
-          {t.ecarter}
+          {tUi.fr(t.ecarter)}
         </button>
         <button
           type="button"
@@ -313,7 +314,7 @@ function LignePertinence({ p, theme, langue, position, onEcarter, onAccepter }: 
           className="rounded-lg px-2.5 py-1 text-[11px] text-gray-400 transition hover:text-white"
           data-pertinence-accepter
         >
-          {t.accepter}
+          {tUi.fr(t.accepter)}
         </button>
       </div>
     </div>
