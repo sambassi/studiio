@@ -66,3 +66,18 @@ Statut dans `/admin/traductions` : **« Proposition IA · à valider (non publi�
 *Approuver* (unitaire ou « Approuver les N affichées ») → l'entrée devient « Validée » et s'affiche pour tous, sans déploiement.
 Les propositions n'écrasent jamais une traduction existante ni une correction de l'administration. L'approbation est faite par
 un administrateur, pas par un locuteur natif : une relecture native reste nécessaire avant d'afficher « Complète ».
+
+## 8. Bàsàa du Cameroun (« bas ») — vérification des trois sources (14/11/2026)
+| Source | Accès constaté | Droits | Utilisable pour Studiio ? |
+|---|---|---|---|
+| SIL Cameroun, dictionnaire bàsàa-fr-en-de (≈16 000 entrées), `BasaaHTMLDictionary.zip` | La page de description est publique et ne mentionne **aucune licence** ; le fichier est derrière une vérification anti-robot Cloudflare (« Just a moment », HTTP 403). Contournement interdit : non téléchargé. | Non établis | **Non, en l'état.** À télécharger par un humain depuis son navigateur, puis demande d'autorisation (brouillon prêt : `demandes-autorisation/sil-cameroun-basaa.md`). |
+| Mozilla Data Collective, « Basaa-ALCAM-MultimodalDataset » (14,7 Mo, TSV + MP3) | Fiche publique ; fichiers sur demande d'accès. | NOODL-1.0 **et** clause « Forbidden Usage » : IA générative, reproduction, copie, modification, œuvres dérivées **sans autorisation explicite** du contact (E. Ngue Um). | **Non** sans accord écrit du propriétaire. Non demandé, non téléchargé. |
+| CNRS `lgidf.cnrs.fr/basaa` | Redirige vers `lgmef.huma-num.fr/basaa` : **404**. | Inconnus | Introuvable, rien à exploiter. |
+
+Code de langue vérifié : `bas` (ISO 639-3, bàsàa du Cameroun), distinct de `bsq` (bassa du Liberia) ; le sélecteur affiche désormais « Bàsàa (Cameroun) ».
+
+**Passe IA ciblée (5 agents indépendants, 792 libellés courts essentiels : tableau de bord, CRÉER, Cinéma IA, Autopilote)** :
+0 traduction proposée, 792 « indisponibles ». Chaque agent a refusé de fabriquer des formes bàsàa qu'il ne connaît pas (seuls
+« ndàmbà » = prix et « lìkɛɛ » = demain sont attestés). Ce n'est pas un défaut de code : le raccordement des clés, l'aperçu
+administrateur et l'approbation fonctionnent pour `bas` comme pour les autres langues (vérifié avec la proposition existante).
+Le blocage est **les données** : aucune ressource bàsàa exploitable légalement n'est accessible.

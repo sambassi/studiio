@@ -12,7 +12,7 @@ export const localeNames: Record<Locale, string> = {
   wo: 'Wolof',
   sw: 'Kiswahili',
   bm: 'Bamanankan',
-  bas: 'Bàsàa (Bassa)',
+  bas: 'Bàsàa (Cameroun)',
   ht: 'Kreyòl ayisyen',
 };
 
