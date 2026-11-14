@@ -14236,12 +14236,12 @@ export default function AssistantWizard() {
                           va VRAIMENT se passer. */}
                       {envoiIntention === 'programmer' && reseauxProgrammes.length > 0 ? (
                         <span className="block mt-1 text-gray-500" data-envoi-recap="programmer">
-                          {tUi('programme')}{batchCount > 1 ? 's' : ''}{scheduledDate ? ` le ${scheduledDate}` : ''} à {scheduledTime}
+                          {tUi.pluriel(tUi('programme'), batchCount)}{scheduledDate ? ` le ${scheduledDate}` : ''} à {scheduledTime}
                           {' '}sur {reseauxProgrammes.map((r) => LIBELLE_RESEAU[r]).join(', ')} {tUi('publication_automatique_par_le_cron_a')}{fuseauNavigateur()}).
                         </span>
                       ) : (
                         <span className="block mt-1 text-gray-500" data-envoi-recap="brouillon">
-                          {tUi('enregistre')}{batchCount > 1 ? 's' : ''} {tUi('en_brouillon_aucune_publication_automa')}
+                          {tUi.pluriel(tUi('enregistre'), batchCount)} {tUi('en_brouillon_aucune_publication_automa')}
                         </span>
                       )}
                     </div>
@@ -15060,7 +15060,7 @@ export default function AssistantWizard() {
             )}
             {freeElements.length > 0 && (
               <p className="mt-2 text-center text-xs text-gray-400">
-                {freeElements.length} {tUi('element_2')}{freeElements.length > 1 ? 's' : ''} {tUi('pose')}
+                {freeElements.length} {tUi.pluriel(tUi('element_2'), freeElements.length)} {tUi('pose')}
                 {freeElements.length > 1 ? 's' : ''}
                 <span className="text-gray-600"> {tUi('cliquer_pour_selectionner_glisser_pour')}</span>
               </p>

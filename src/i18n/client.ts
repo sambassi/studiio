@@ -41,6 +41,27 @@ export function useSetLocale(): (locale: Locale) => void {
 export function useTranslations(namespace?: string) {
   const ctx = useContext(I18nContext);
   const messages = ctx.messages;
+  const locale = ctx.locale;
+  // L'identité de `t` ne change QUE si la langue (donc les textes) ou le namespace change :
+  // elle peut figurer sans risque dans les dépendances d'un useMemo / useCallback / useEffect.
+  // ⚠️ PAS de `useMemo` ici : `useTranslations` n'emploie que `useContext`, qui n'occupe aucun
+  // emplacement de hook ; certains composants l'appellent après un retour anticipé, ce qui ne
+  // se voyait pas. Un vrai hook ferait planter ces composants (« Rendered more hooks… »). Le
+  // cache est donc un WeakMap hors React : même résultat, aucune contrainte d'ordre.
+  return traducteurStable(messages, namespace, locale);
+}
+
+const CACHE_T = new WeakMap<object, Map<string, ReturnType<typeof fabriquerT>>>();
+function traducteurStable(messages: Messages, namespace: string | undefined, locale: Locale) {
+  let parNs = CACHE_T.get(messages);
+  if (!parNs) { parNs = new Map(); CACHE_T.set(messages, parNs); }
+  const cle = `${namespace ?? ''}|${locale}`;
+  let t = parNs.get(cle);
+  if (!t) { t = fabriquerT(messages, namespace, locale); parNs.set(cle, t); }
+  return t;
+}
+
+function fabriquerT(messages: Messages, namespace: string | undefined, locale: Locale) {
 
   function getNestedValue(obj: unknown, path: string): string {
     const keys = path.split('.');
@@ -94,6 +115,12 @@ export function useTranslations(namespace?: string) {
     if (v === cle) v = getNestedValue(messagesDeRepli, cle);
     return v === cle || !v ? texte : v;
   };
+
+  /**
+   * `t.pluriel(mot, n)` : le « s » du pluriel français n'existe pas dans les autres langues
+   * (« Scheduleds » n'est pas de l'anglais). N'ajoute le « s » qu'en français, et seulement si n > 1.
+   */
+  t.pluriel = (mot: string, n: number): string => (locale === 'fr' && n > 1 ? `${mot}s` : mot);
 
   return t;
 }

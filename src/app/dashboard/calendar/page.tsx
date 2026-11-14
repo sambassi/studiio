@@ -1428,31 +1428,31 @@ export default function CalendarPage() {
   const generateIACaption = () => {
     const captions: Record<string, string[]> = {
       promotion: [
-        tUi('offre_exclusive_ne_rate_pas_cette_oppo'),
-        tUi('flash_sale_profite_de_30_cette_semaine'),
-        tUi('ton_objectif_commence_ici_premier_cour'),
-        tUi('investis_en_toi_l_offre_expire_bientot'),
+        "🔥 Offre exclusive ! Ne rate pas cette opportunité, places limitées 💥 #promo #offre #fitness",
+        "⚡ FLASH SALE - Profite de -30% cette semaine seulement ! Lien en bio 👆 #promotion #deal #sport",
+        "🎯 Ton objectif commence ici. Premier cours GRATUIT ! #decouverte #gratuit #afroboost",
+        "💪 Investis en toi. L'offre expire bientôt ⏰ #motivation #promo #transformation",
       ],
       motivation: [
-        tUi('pas_d_excuses_c_est_maintenant_ou_jama'),
-        tUi('chaque_jour_est_une_nouvelle_chance_de'),
-        tUi('le_succes_commence_quand_tu_sors_de_ta'),
-        tUi('ton_corps_peut_tout_c_est_ton_esprit_q'),
+        "🔥 Pas d'excuses. C'est maintenant ou jamais ! Tu es plus fort(e) que tu ne le crois 💪 #motivation #noexcuse #fitness",
+        "⚡ Chaque jour est une nouvelle chance de se dépasser Qui est prêt ? 🙋‍♂️ #motivation #workout #energie",
+        "💥 Le succès commence quand tu sors de ta zone de confort #mindset #strong #afroboost",
+        "🌟 Ton corps peut tout. C'est ton esprit qu'il faut convaincre #motivation #believe #power",
       ],
       bienfaits: [
-        tUi('savais_tu_30_min_de_danse_400_calories'),
-        tUi('le_sport_reduit_le_stress_de_70_et_ame'),
-        tUi('resultats_visibles_en_30_jours_teste_p'),
+        "✨ Savais-tu ? 30 min de danse = 400 calories brûlées ! Ton corps te remerciera 🙏 #bienfaits #sante #danse",
+        "❤️ Le sport réduit le stress de 70% et améliore ton sommeil Prouvé scientifiquement 📊 #bienfaits #wellness",
+        "💪 Résultats visibles en 30 jours. Testé par +5000 personnes #resultats #transformation #bienfaits",
       ],
       abonnement: [
-        tUi('abonne_toi_pour_ne_rien_rater_contenu'),
-        tUi('rejoins_la_communaute_5000_membres_act'),
-        tUi('active_la_cloche_du_contenu_qui_va_cha'),
+        "🔔 Abonne-toi pour ne rien rater ! Contenu exclusif chaque jour 🎬 #follow #subscribe #contenu",
+        "❤️ Rejoins la communauté ! +5000 membres actifs Lien en bio 👆 #communaute #team #abonnement",
+        "🚀 Active la cloche ! Du contenu qui va changer ta routine #followme #notification #afroboost",
       ],
       nutrition: [
-        tUi('mange_sain_performe_mieux_recette_du_j'),
-        tUi('la_nutrition_c_est_70_de_tes_resultats'),
-        tUi('recette_proteinee_en_5_min_chrono_simp'),
+        "🥗 Mange sain, performe mieux ! Recette du jour dans le post ➡️ #nutrition #healthy #recette",
+        "💚 La nutrition c'est 70% de tes résultats Fuel ton corps avec le meilleur 🍎 #nutrition #mealprep #sante",
+        "🔥 Recette protéinée en 5 min chrono ⏱️ Simple, rapide, efficace #nutrition #recipe #fitness",
       ],
     };
     const postTitle = (editFormData.title || '').toLowerCase();
