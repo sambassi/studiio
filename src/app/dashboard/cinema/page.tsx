@@ -687,7 +687,7 @@ export default function CinemaPage() {
       <span className="text-slate-300">{tUi('qui_dit_cette_replique')}</span>
       {film.personnages.map((pp) => (
         <button key={pp.id} type="button" onClick={() => enregistrer({ plans: [{ id: planId, locuteur: pp.id }] })}
-          aria-label={`${pp.nom} dit cette réplique`}
+          aria-label={tUi('nom_dit_cette_replique', { nom: pp.nom })}
           className="rounded-full border border-violet-500/50 px-2.5 py-0.5 text-violet-100 hover:bg-violet-500/10">
           {pp.nom}
         </button>
@@ -700,7 +700,7 @@ export default function CinemaPage() {
         {e.critique ? <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" /> : <Info className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />}
         <span className="min-w-0 flex-1">{e.detail}</span>
       </div>
-      {e.critique && e.conseil && <p className="pl-[18px] text-slate-300">Pour le régler : {e.conseil}</p>}
+      {e.critique && e.conseil && <p className="pl-[18px] text-slate-300">{tUi('pour_le_regler_conseil', { conseil: e.conseil })}</p>}
       {e.genre === 'locuteur_devine' && e.planId && (
         <div className="flex flex-wrap items-center gap-2 pl-[18px]">
           {choixLocuteur(e.planId)}
@@ -1140,7 +1140,7 @@ export default function CinemaPage() {
                     {aProduire.length > 0 && (
                       <p className="flex items-start gap-2 text-xs text-slate-300" data-a-mettre-a-jour>
                         <RefreshCw className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-300" aria-hidden="true" />
-                        <span>{aProduire.length === 1 ? tUi('une_scene_doit_etre_mise_a_jour') : `${aProduire.length} scènes doivent être mises à jour`} : son contenu a changé depuis la dernière version de la vidéo. Elle sera refaite à l’export.</span>
+                        <span>{aProduire.length === 1 ? tUi('une_scene_doit_etre_mise_a_jour') : tUi('length_scenes_doivent_etre_mises_a_jou', { length: aProduire.length })} : son contenu a changé depuis la dernière version de la vidéo. Elle sera refaite à l’export.</span>
                       </p>
                     )}
                     {visuelsAPreparer > 0 && (
@@ -1434,10 +1434,10 @@ export default function CinemaPage() {
                                 <li key={pp.id} className="flex items-center gap-2">
                                   <PortraitPersonnage filmId={film.id} personnage={pp} selectionne taille={28} />
                                   <span className="min-w-0 flex-1 truncate">{pp.nom}{aUnePhoto(pp) ? '' : ' — aucune photo'}</span>
-                                  <label title={aUnePhoto(pp) ? `Remplacer la photo de ${pp.nom}` : `Ajouter une photo de reference pour ${pp.nom}`} className={`${BOUTON_ICONE} cursor-pointer`}>
+                                  <label title={aUnePhoto(pp) ? tUi('remplacer_la_photo_de_nom', { nom: pp.nom }) : tUi('ajouter_une_photo_de_reference_pour_no', { nom: pp.nom })} className={`${BOUTON_ICONE} cursor-pointer`}>
                                     {enCours === `reference:${pp.id}` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <ImagePlus className="h-4 w-4" aria-hidden="true" />}
                                     <input type="file" accept=".jpg,.jpeg,.png,.webp" className="sr-only"
-                                      aria-label={aUnePhoto(pp) ? `Remplacer la photo de ${pp.nom}` : `Ajouter une photo de reference pour ${pp.nom}`}
+                                      aria-label={aUnePhoto(pp) ? tUi('remplacer_la_photo_de_nom', { nom: pp.nom }) : tUi('ajouter_une_photo_de_reference_pour_no', { nom: pp.nom })}
                                       onChange={(e) => { const f = e.target.files?.[0]; if (f) importerReference(pp.id, f); e.target.value = ''; }} />
                                   </label>
                                 </li>
@@ -1493,7 +1493,7 @@ export default function CinemaPage() {
                     {mediasGeneres > 0
                       ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden="true" />
                       : <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" aria-hidden="true" />}
-                    {mediasGeneres > 0 ? `${mediasGeneres} media(s) sur vos plans` : tUi('aucun_media_genere_pour_ce_film')}
+                    {mediasGeneres > 0 ? tUi('mediasgeneres_media_s_sur_vos_plans', { mediasGeneres }) : tUi('aucun_media_genere_pour_ce_film')}
                   </p>
                 </div>
 
@@ -1561,7 +1561,7 @@ export default function CinemaPage() {
                           {problemes.map((pb) => (
                             <li key={pb.code} className="space-y-1 text-[11px] leading-snug text-amber-200/90" data-probleme-audio={pb.code}>
                               <p className="flex items-start gap-1.5"><AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" /> {pb.message}</p>
-                              <p className="pl-[18px] text-slate-300">Pour le régler : {pb.conseil}</p>
+                              <p className="pl-[18px] text-slate-300">{tUi('pour_le_regler_conseil', { conseil: pb.conseil })}</p>
                               {pb.planIds?.map((id) => {
                                 const pl = plansFilm.find((x) => x.id === id);
                                 return pl ? (
@@ -1874,7 +1874,7 @@ function ApercuVide({ format }: { format: string }) {
           </span>
           <p className="text-sm font-medium text-slate-200">{tUi('votre_film_apparaitra_ici')}</p>
           <p className="text-xs text-slate-400">{tUi('ecrivez_l_histoire_puis_composez_le_sc')}</p>
-          <p className="text-[11px] text-slate-500">{format} · en attendant, choisissez un style ou un mouvement pour voir un exemple.</p>
+          <p className="text-[11px] text-slate-500">{tUi('format_en_attendant_choisissez_un_styl', { format })}</p>
         </div>
         {/* Meme position, meme taille que le bouton actif de `Apercu` ; `aria-disabled` +
             infobulle plutot que `disabled` seul : il reste focusable et s'explique. */}
@@ -2105,7 +2105,7 @@ function Apercu({ montage, surPreparerVoix, voixEnCours }: { montage: MontageApi
           ? tUi('aucune_image_ni_video_pour_l_instant_c')
           : bilan.manquants > 0
             ? `${bilan.avecMedia} plan${bilan.avecMedia > 1 ? 's' : ''} sur ${bilan.total} avec média · ${bilan.manquants} manquant${bilan.manquants > 1 ? 's' : ''}.`
-            : `${bilan.total} plans avec média : vous voyez les vrais fichiers.`}
+            : tUi('total_plans_avec_media_vous_voyez_les', { total: bilan.total })}
       </p>
 
       <CadreMontage montage={montage} segment={segment} tempsS={tempsS} taille="ligne" joue={joue} son={son}>

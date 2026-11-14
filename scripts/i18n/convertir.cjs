@@ -76,6 +76,16 @@ function lister(entree, sortie = []) {
   return sortie;
 }
 
+
+/** Expression « simple » (affichable telle quelle comme variable) : identifiant ou chaîne de propriétés. */
+function nomVariable(e) {
+  if (ts.isNonNullExpression(e)) return nomVariable(e.expression);
+  if (ts.isParenthesizedExpression(e)) return nomVariable(e.expression);
+  if (ts.isIdentifier(e)) return e.text;
+  if (ts.isPropertyAccessExpression(e) && ts.isIdentifier(e.name)) { return nomVariable(e.expression) ? e.name.text : null; }
+  return null;
+}
+
 const fonction = (n) => ts.isFunctionDeclaration(n) || ts.isFunctionExpression(n) || ts.isArrowFunction(n) || ts.isMethodDeclaration(n);
 
 /** Nom du binding d'une fonction (déclaration, const x = () =>, memo(forwardRef(...))). */
@@ -162,7 +172,76 @@ function traiter(fichier) {
     res.converti.push(brut);
   };
 
+  const nomsUniques = (exprs) => {
+    const vus = new Map(); const out = [];
+    for (const e of exprs) {
+      let base = nomVariable(e); let nom = base; let i = 2;
+      // collision : on remonte le chemin (a.size / b.size → a_size / b_size) avant de numéroter
+      if (vus.has(nom)) nom = e.getText().replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || base;
+      const racine = nom;
+      while (vus.has(nom)) { nom = `${racine}${i}`; i += 1; }
+      vus.set(nom, true); out.push({ nom, expr: e });
+    }
+    return out;
+  };
+  const paramsDe = (vars) => `{ ${vars.map((v) => (v.nom === v.expr.getText() ? v.nom : `${v.nom}: ${v.expr.getText()}`)).join(', ')} }`;
+
+  /** <p>Bonjour {nom}, il reste {n} crédits</p> -> {tUi('k', { nom, n })} (clé « Bonjour {nom}, … »). */
+  const essaiFragment = (n) => {
+    const enfants = (n.children || []).filter((c) => !(ts.isJsxText(c) && !c.text.trim()));
+    if (enfants.length < 2) return false;
+    const toutSimple = enfants.every((c) => ts.isJsxText(c) || (ts.isJsxExpression(c) && c.expression && (nomVariable(c.expression) || (ts.isStringLiteral(c.expression) && c.expression.text === ' '))));
+    if (!toutSimple) return false;
+    const vars = nomsUniques(enfants.filter((c) => ts.isJsxExpression(c) && c.expression && nomVariable(c.expression)).map((c) => c.expression));
+    if (!vars.length) return false;
+    // deux variables collées (`{a}{b}`) : fragments cachés, à traiter à la main
+    for (let j = 1; j < enfants.length; j += 1) if (ts.isJsxExpression(enfants[j]) && ts.isJsxExpression(enfants[j - 1])) return false;
+    let i = 0; let texte = '';
+    for (const c of enfants) {
+      if (ts.isJsxText(c)) texte += c.text;
+      else if (ts.isStringLiteral(c.expression)) texte += ' ';
+      else { texte += `{${vars[i].nom}}`; i += 1; }
+    }
+    const coeur = norm(texte);
+    const sansVars = coeur.replace(/\{[^}]+\}/g, ' ');
+    if (!francais(sansVars)) return false;
+    if (/[{}]/.test(sansVars)) return false;
+    const comp = composantDe(n);
+    if (!comp) { ignore('hors composant (constante ou fonction utilitaire)', coeur); return true; }
+    const k = cleDe(coeur);
+    composantsEquipes.set(comp, true);
+    const debut = enfants[0].pos + (ts.isJsxText(enfants[0]) ? enfants[0].text.indexOf(enfants[0].text.trim()) : (enfants[0].getStart() - enfants[0].pos));
+    const dernier = enfants[enfants.length - 1];
+    const fin = ts.isJsxText(dernier) ? dernier.pos + dernier.text.trimEnd().length : dernier.end;
+    const debutReel = ts.isJsxText(enfants[0]) ? enfants[0].pos + enfants[0].text.length - enfants[0].text.trimStart().length : enfants[0].getStart();
+    edits.push({ debut: debutReel, fin, texte: `{${HOOK}('${k}', ${paramsDe(vars)})}` });
+    res.converti.push(coeur);
+    return true;
+  };
+
+  /** `Il reste ${n} crédits` affiché -> tUi('k', { n }) */
+  const essaiGabarit = (n) => {
+    const p = n.parent;
+    const affiche = (ts.isCallExpression(p) && ts.isIdentifier(p.expression) && SETTERS.test(p.expression.text) && p.arguments[0] === n) || positionAffichee(n);
+    if (!affiche) return false;
+    if (!n.templateSpans.every((sp) => nomVariable(sp.expression))) return false;
+    const vars = nomsUniques(n.templateSpans.map((sp) => sp.expression));
+    let texte = n.head.text; n.templateSpans.forEach((sp, i) => { texte += `{${vars[i].nom}}` + sp.literal.text; });
+    if (/[{}]/.test(texte.replace(/\{[a-zA-Z_][\w]*\}/g, ''))) return false;
+    if (!francais(texte.replace(/\{[^}]+\}/g, ' '))) return false;
+    if (texte !== texte.trim() || /^[\s·—–(),;:!?.\-/+&|]/.test(texte)) { ignore('fragment de concaténation (espace ou ponctuation de liaison en bordure)', texte); return true; }
+    const comp = composantDe(n);
+    if (!comp) { ignore('hors composant (constante ou fonction utilitaire)', texte); return true; }
+    const k = cleDe(norm(texte));
+    composantsEquipes.set(comp, true);
+    edits.push({ debut: n.getStart(), fin: n.end, texte: `${HOOK}('${k}', ${paramsDe(vars)})` });
+    res.converti.push(norm(texte));
+    return true;
+  };
+
   const visite = (n) => {
+    if ((ts.isJsxElement(n) || ts.isJsxFragment(n)) && essaiFragment(n)) return;
+    if (ts.isTemplateExpression(n) && essaiGabarit(n)) return;
     if (ts.isJsxText(n)) {
       const brut = n.text;
       const coeur = brut.trim();

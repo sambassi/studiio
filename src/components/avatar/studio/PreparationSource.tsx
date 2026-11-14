@@ -391,11 +391,11 @@ export default function PreparationSource(props: {
             <canvas
               ref={toileLissage}
               data-preparation-lissage-direct={apercuLissageVisible ? 'visible' : 'masque'}
-              aria-label={`Aperçu du lissage à ${lissageCourant} % sur l’image courante`}
+              aria-label={tUi('apercu_du_lissage_a_lissagecourant_sur', { lissageCourant })}
               style={{ ...styleVideo(filtreApres), display: apercuLissageVisible ? 'block' : 'none' }}
             />
             {apercuLissageVisible && (
-              <span className="pointer-events-none absolute right-2 bottom-2 rounded-full bg-purple-600/80 px-2 py-0.5 text-[10px] text-white">Aperçu — lissage {lissageCourant} %</span>
+              <span className="pointer-events-none absolute right-2 bottom-2 rounded-full bg-purple-600/80 px-2 py-0.5 text-[10px] text-white">{tUi('apercu_lissage_lissagecourant', { lissageCourant })}</span>
             )}
             {comparer && (
               <>
@@ -517,7 +517,7 @@ export default function PreparationSource(props: {
               {coupeInvalide && (
                 <p data-preparation-coupe-invalide className="text-xs text-amber-200">
                   {dureeRetenue < EXIGENCES_SOURCE_VIDEO.dureeMinS
-                    ? `Gardez au moins ${EXIGENCES_SOURCE_VIDEO.dureeMinS} secondes (idéalement 2 minutes).`
+                    ? tUi('gardez_au_moins_dureemins_secondes_ide', { dureeMinS: EXIGENCES_SOURCE_VIDEO.dureeMinS })
                     : `${EXIGENCES_SOURCE_VIDEO.dureeMaxS / 60} minutes maximum.`}
                 </p>
               )}

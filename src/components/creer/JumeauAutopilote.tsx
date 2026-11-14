@@ -99,8 +99,7 @@ export default function JumeauAutopilote(props: {
         <div data-jumeau-autopilote-etat="voix_non_reliee" className="text-xs space-y-1">
           <div className="text-amber-200 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" /> {tUi('la_voix_de_votre_jumeau_doit_etre_veri')}</div>
           <div className="text-gray-300">
-            Votre jumeau est prêt, mais sa voix (« {jumeau.voix.nom} ») n’est pas dans la liste des voix clonées de votre compte :
-            l’Autopilote ne peut pas la poser. Rechargez la page ou vérifiez votre voix dans Mon avatar.
+            {tUi('votre_jumeau_est_pret_mais_sa_voix_nom', { nom: jumeau.voix.nom })}
           </div>
         </div>
       )}

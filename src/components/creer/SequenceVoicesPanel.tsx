@@ -627,8 +627,7 @@ export function SequenceVoicesPanel({
         <div className="flex items-start gap-1.5 rounded bg-blue-500/10 px-2 py-1.5 text-[10px] text-blue-300">
           <Info size={12} className="mt-0.5 flex-shrink-0" />
           <span>
-            Mode batch ×{batchCount} — la voix TTS sélectionnée s'applique aux {batchCount} vidéos.
-            Les textes seront re-générés depuis le contenu propre à chaque itération.
+            {tUi('mode_batch_batchcount_la_voix_tts_sele', { batchCount, batchCount2: batchCount })}
           </span>
         </div>
       )}
@@ -863,7 +862,7 @@ export function SequenceVoicesPanel({
                         <span className="font-semibold">{tUi('audio_perime')}</span>
                         {' — '}
                         {perime.motif === 'voix'
-                          ? (voixDeGeneration ? `généré avec ${voixDeGeneration}, une autre voix que celle choisie.` : tUi('genere_avec_une_autre_voix_que_celle_c'))
+                          ? (voixDeGeneration ? tUi('genere_avec_voixdegeneration_une_autre', { voixDeGeneration }) : tUi('genere_avec_une_autre_voix_que_celle_c'))
                           : perime.motif === 'texte'
                             ? tUi('le_texte_a_change_depuis_la_generation')
                             : perime.motif === 'reglages'

@@ -3195,7 +3195,7 @@ const TextZonePanel: React.FC<{
           step={5}
           value={Math.round(echelle * 100)}
           onChange={(e) => onChange({ scale: Number(e.target.value) / 100 })}
-          aria-label={`Taille — ${libelle}`}
+          aria-label={tUi('taille_libelle', { libelle })}
           data-autopilot-scale={zone}
           className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
         />
@@ -9068,7 +9068,7 @@ export default function AssistantWizard() {
         setJumeauReprise('inactif');
         setJumeauPhase(null);
         if (posee) {
-          setJumeauNotice(`Votre jumeau (v${video.avatarVersion}) est monté dans la séquence « Vidéo ».`);
+          setJumeauNotice(tUi('votre_jumeau_v_avatarversion_est_monte', { avatarVersion: video.avatarVersion }));
           montrerJumeauPose();
         }
       } catch (e) {
@@ -9478,7 +9478,7 @@ export default function AssistantWizard() {
         // serait un refus inventé, sur un compte qui ne paie pas en crédits.
         if (politiqueFraiche === 'credits'
           && readable && typeof balance === 'number' && balance < coutTotal) {
-          setError(`Crédits insuffisants : ${coutTotal} requis, ${balance} disponible(s).`);
+          setError(tUi('credits_insuffisants_couttotal_requis', { coutTotal, balance }));
           return;
         }
       } catch {
@@ -9609,7 +9609,7 @@ export default function AssistantWizard() {
             // CHAQUE créneau « Mon avatar » ; les autres médias restent.
             ? await poserJumeauDansListe(video.url, video.avatarVersion, textesJumeau)
             : await applyRush(video.url, `Mon jumeau (v${video.avatarVersion})`, false);
-          setJumeauNotice(`Votre jumeau (v${video.avatarVersion}) est monté dans la séquence « Vidéo ».`);
+          setJumeauNotice(tUi('votre_jumeau_v_avatarversion_est_monte', { avatarVersion: video.avatarVersion }));
         } catch (e) {
           // 404 : la génération n'existe pas pour ce compte — la garder dans le
           // brouillon ferait boucler la reprise à chaque ouverture. Tout autre
@@ -9834,7 +9834,7 @@ export default function AssistantWizard() {
             setDemandeRaccourci(null);
             if (!continuer) throw new ArretPourAjouterDesRushs();
           }
-          setMontageNotice(`Matière exploitable dans les rushes : ${dispo} s — séquence Vidéo ramenée à ${dispo} s (extraits jamais rallongés).`);
+          setMontageNotice(tUi('matiere_exploitable_dans_les_rushes_di', { dispo, dispo2: dispo }));
           plateau = { ...plateau, videoDuration: dureePlan(planMontageRushs) };
           duree = dureeDeSequence(ordre, { intro: introDuration, cards: cardsDuration, video: plateau.videoDuration, cta: ctaDuration });
         }
@@ -11306,8 +11306,7 @@ export default function AssistantWizard() {
         <div className="max-w-md w-full rounded-2xl border border-gray-800 bg-gray-950 p-5 space-y-4">
           <p className="text-sm text-gray-100" data-raccourci-message>{demandeRaccourci.message}</p>
           <p className="text-xs text-gray-400" data-raccourci-detail>
-            Rushs uniques utilisés : {demandeRaccourci.rushs} · rushs à ajouter (estimation) : environ {demandeRaccourci.supplementaires}.
-            Aucun passage n’est répété.
+            {tUi('rushs_uniques_utilises_rushs_rushs_a_a', { rushs: demandeRaccourci.rushs, supplementaires: demandeRaccourci.supplementaires })}
           </p>
           <div className="flex flex-col sm:flex-row gap-2">
             <button type="button" data-raccourci-continuer onClick={() => demandeRaccourci.resoudre(true)} className="flex-1 rounded-lg bg-purple-600 hover:bg-purple-500 px-3 py-2 text-sm font-medium text-white">
@@ -12219,8 +12218,7 @@ export default function AssistantWizard() {
 
                         {batchPhotoMode === 'auto' && affichesDisponibles < batchCount && (
                           <p className="text-xs text-gray-500">
-                            Pas assez de photos distinctes ({affichesDisponibles} pour {batchCount})
-                            — élargissez la recherche ou demandez d’autres photos.
+                            {tUi('pas_assez_de_photos_distinctes_affiche', { affichesDisponibles, batchCount })}
                           </p>
                         )}
 
@@ -12295,8 +12293,7 @@ export default function AssistantWizard() {
 
                         {!affichesCompletes && (
                           <p className="text-xs text-gray-500">
-                            {affichesRetenues} / {batchCount} — l’envoi est
-                            bloqué tant que chaque vidéo n’a pas sa propre affiche.
+                            {tUi('affichesretenues_batchcount_l_envoi_es', { affichesRetenues, batchCount })}
                           </p>
                         )}
                       </div>
@@ -12982,7 +12979,7 @@ export default function AssistantWizard() {
                                 step={5}
                                 value={Math.round(zone.scale * 100)}
                                 onChange={(e) => patch({ scale: Number(e.target.value) / 100 })}
-                                aria-label={`Taille du texte — ${zoneLabel}`}
+                                aria-label={tUi('taille_du_texte_zonelabel', { zoneLabel })}
                                 className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
                               />
                               <span className="text-[11px] text-gray-400 w-11 text-right tabular-nums">
@@ -13084,7 +13081,7 @@ export default function AssistantWizard() {
                                   setEditedTextColor(editedTextColor === 'color' ? null : 'color')
                                 }
                                 aria-pressed={editedTextColor === 'color'}
-                                aria-label={`Couleur — ${zoneLabel}`}
+                                aria-label={tUi('couleur_zonelabel', { zoneLabel })}
                                 className={`h-6 flex-1 rounded-md border transition ${
                                   editedTextColor === 'color' ? 'border-purple-400' : 'border-white/10'
                                 }`}
@@ -13120,8 +13117,7 @@ export default function AssistantWizard() {
 
                             {missingFonts.includes(zone.font) && (
                               <p className="text-[11px] text-amber-400/90">
-                                « {zone.font} » n’a pas pu être chargée : l’aperçu et la
-                                vidéo utiliseront une police de repli.
+                                {tUi('font_n_a_pas_pu_etre_chargee_l_apercu', { font: zone.font })}
                               </p>
                             )}
 
@@ -13235,7 +13231,7 @@ export default function AssistantWizard() {
                                     ? `${mediasVideo.length} média${mediasVideo.length > 1 ? 's' : ''} enchaîné${mediasVideo.length > 1 ? 's' : ''}`
                                     : isVideo && rushUrl
                                     // Jamais le nom du fichier (gardé en infobulle) : sa provenance.
-                                    ? (rushSuivants.length ? `${rushListe.length} rushes enchaînés` : listeMedias[0] ? libelleMedia(listeMedias[0]) : tUi('rush_importe'))
+                                    ? (rushSuivants.length ? tUi('length_rushes_enchaines', { length: rushListe.length }) : listeMedias[0] ? libelleMedia(listeMedias[0]) : tUi('rush_importe'))
                                     : meta.hint}
                                 </div>
                                 {/* La protection anti-rétention a échoué en base : le rush
@@ -13916,7 +13912,7 @@ export default function AssistantWizard() {
                       {envoiIntention === 'programmer' && reseauxProgrammes.length > 0 ? (
                         <p className="text-sm text-gray-400 mt-1" data-envoi-confirmation="programmer">
                           {batchCount > 1
-                            ? `Les ${batchCount} vidéos sont composées et les posts programmés`
+                            ? tUi('les_batchcount_videos_sont_composees_e', { batchCount })
                             : tUi('la_video_est_composee_et_le_post_progr')}{' '}
                           sur {reseauxProgrammes.map((r) => LIBELLE_RESEAU[r]).join(', ')}, à {scheduledTime}.
                           La publication est automatique, à l&apos;heure dite — vous pouvez encore
@@ -13925,7 +13921,7 @@ export default function AssistantWizard() {
                       ) : (
                         <p className="text-sm text-gray-400 mt-1" data-envoi-confirmation="brouillon">
                           {batchCount > 1
-                            ? `Les ${batchCount} vidéos sont composées et les posts enregistrés en brouillon.`
+                            ? tUi('les_batchcount_videos_sont_composees_e_2', { batchCount })
                             : tUi('la_video_est_composee_et_le_post_enreg')}{' '}
                           Le calendrier les lit telles quelles — aucun nouveau rendu n&apos;est
                           nécessaire. Rien n&apos;est publié : la diffusion se déclenche depuis le
@@ -14035,7 +14031,7 @@ export default function AssistantWizard() {
                       <label className="block text-sm font-medium mb-2">
                         {tUi('combien_de_videos')}
                         <span className="ml-2 text-[11px] font-normal text-gray-500" data-serie-plafond>
-                          De 2 à {BATCH_SERIE_MAX}
+                          {tUi('de_2_a_batch_serie_max', { BATCH_SERIE_MAX })}
                         </span>
                       </label>
                       <div className="flex flex-wrap gap-1.5">
@@ -14312,7 +14308,7 @@ export default function AssistantWizard() {
                     >
                       <Download className="w-3.5 h-3.5" />
                       {batchCount > 1
-                        ? `Télécharger les ${batchCount} vidéos (.zip)`
+                        ? tUi('telecharger_les_batchcount_videos_zip', { batchCount })
                         : tUi('telecharger_la_video')}
                       <span className="text-gray-500">·</span>
                       <span data-export-bureau-cout>
@@ -14359,8 +14355,8 @@ export default function AssistantWizard() {
                             <>
                               <CalendarPlus className="w-4 h-4" />{' '}
                               {envoiIntention === 'programmer'
-                                ? (batchCount > 1 ? `Composer et programmer ${batchCount} vidéos` : tUi('composer_et_programmer'))
-                                : (batchCount > 1 ? `Composer et envoyer ${batchCount} vidéos` : tUi('composer_et_envoyer'))}
+                                ? (batchCount > 1 ? tUi('composer_et_programmer_batchcount_vide', { batchCount }) : tUi('composer_et_programmer'))
+                                : (batchCount > 1 ? tUi('composer_et_envoyer_batchcount_videos', { batchCount }) : tUi('composer_et_envoyer'))}
                             </>
                           )}
                         </span>
@@ -14668,7 +14664,7 @@ export default function AssistantWizard() {
         {apercuMontage && apercuMontage.exclus.length > 0 && (
           <div data-medias-exclus className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
             <p className="font-medium">
-              {apercuMontage.exclus.length === 1 ? tUi('1_media_ne_sera_pas_dans_la_video') : `${apercuMontage.exclus.length} médias ne seront pas dans la vidéo :`}
+              {apercuMontage.exclus.length === 1 ? tUi('1_media_ne_sera_pas_dans_la_video') : tUi('length_medias_ne_seront_pas_dans_la_vi', { length: apercuMontage.exclus.length })}
             </p>
             <ul className="mt-1 list-disc pl-4 space-y-0.5">
               {apercuMontage.exclus.map((e) => (
@@ -15095,7 +15091,7 @@ export default function AssistantWizard() {
               // du compositeur, elle merite d'etre dite.
               title={
                 (generated?.cards.length ?? 0) >= limiteCartes
-                  ? `Maximum de ${limiteCartes} cartes dans ce format`
+                  ? tUi('maximum_de_limitecartes_cartes_dans_ce', { limiteCartes })
                   : tUi('dupliquer_la_selection')
               }
               className="flex items-center gap-1.5 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"

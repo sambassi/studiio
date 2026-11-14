@@ -94,7 +94,7 @@ export function ConseilsVideo({ postId, metadata }: { postId: string; metadata: 
                           <p className="text-[11px] text-gray-400 mt-1.5">
                             {c.placementRecommande && <>Placement : {c.placementRecommande}</>}
                             {c.placementRecommande && c.dureeRecommandee && ' · '}
-                            {c.dureeRecommandee && <>Durée : {c.dureeRecommandee}</>}
+                            {c.dureeRecommandee && <>{tUi('duree_dureerecommandee', { dureeRecommandee: c.dureeRecommandee })}</>}
                           </p>
                         )}
                         <div className="flex justify-end mt-1">

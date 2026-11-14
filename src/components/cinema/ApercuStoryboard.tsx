@@ -113,7 +113,7 @@ export function EmplacementVide({ segment, grand }: { segment: SegmentVue; grand
         <ImageOff className="h-5 w-5" aria-hidden="true" />
       </span>
       <p className={`${grand ? 'text-sm' : 'text-xs'} font-medium text-slate-300`}>{tUi('media_manquant')}</p>
-      <p className="text-[11px] text-slate-500">Plan {segment.cadre} · importez une image ou une vidéo</p>
+      <p className="text-[11px] text-slate-500">{tUi('plan_cadre_importez_une_image_ou_une_v', { cadre: segment.cadre })}</p>
     </div>
   );
 }

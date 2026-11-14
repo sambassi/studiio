@@ -1161,7 +1161,7 @@ export default function AvatarPage() {
       // génération (`fit: cover` chez HeyGen). Lecture privée, aucun fournisseur.
       if (srcVersionActive && (vueApercu === 'format' || !renduRecent)) return {
         vue: 'format', titre: `Aperçu ${ratio}`, ratio: ratioFormat, etat: { statut: 'pret' },
-        media: <><video data-avatar-apercu-format={ratio} src={`${srcVersionActive}#t=1`} muted playsInline preload="metadata" className="w-full h-full object-cover bg-black" /><span className="sr-only">{`Aperçu du format ${ratio} : votre avatar recadré pour remplir le cadre, comme à la génération.`}</span></>,
+        media: <><video data-avatar-apercu-format={ratio} src={`${srcVersionActive}#t=1`} muted playsInline preload="metadata" className="w-full h-full object-cover bg-black" /><span className="sr-only">{tUi('apercu_du_format_ratio_votre_avatar_re', { ratio })}</span></>,
       };
       return { titre: TITRE_RENDU_RECENT, ratio: ratioFormat, media: null, etat: busy ? { statut: 'chargement', message: 'Votre vidéo est en cours de création.' } : { statut: 'vide', message: AUCUN_RENDU_RECENT } };
     }

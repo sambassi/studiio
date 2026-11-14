@@ -1890,7 +1890,7 @@ export default function AutopilotPanel({
                   <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
                   {rushExpires.length === 1
                     ? tUi('1_rush_a_expire_retention_24_h_et_n_es')
-                    : `${rushExpires.length} rushes ont expiré (rétention 24 h) et ne sont plus utilisés — réimportez-les.`}
+                    : tUi('length_rushes_ont_expire_retention_24', { length: rushExpires.length })}
                 </p>
                 <button
                   type="button"
@@ -2829,9 +2829,7 @@ export default function AutopilotPanel({
           <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{tUi('reseaux')}</p>
           {(intentionCliquee ?? intentionDiffusion(config)) === 'produire' ? (
             <p className="text-[11px] text-gray-500" data-autopilot-reseaux-masques>
-              Aucun réseau : les vidéos arrivent en brouillon dans le Calendrier,
-              à télécharger depuis l’export sécurisé. Choisissez « {INTENTION_LABELS.valider} »
-              pour sélectionner des réseaux.
+              {tUi('aucun_reseau_les_videos_arrivent_en_br', { valider: INTENTION_LABELS.valider })}
             </p>
           ) : (
           <div>

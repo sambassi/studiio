@@ -54,7 +54,7 @@ export function useTranslations(namespace?: string) {
     return typeof current === 'string' ? current : path;
   }
 
-  function t(key: string, params?: Record<string, string | number>): string {
+  function t(key: string, params?: Record<string, string | number | null | undefined>): string {
     const fullPath = namespace ? `${namespace}.${key}` : key;
     let value = getNestedValue(messages, fullPath);
     // Rendu sans fournisseur (tests) : les clés de l'arbre `ui.*` — celles issues de la

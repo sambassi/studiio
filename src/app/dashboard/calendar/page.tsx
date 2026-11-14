@@ -1818,7 +1818,7 @@ export default function CalendarPage() {
         } catch (err: any) {
           console.error('[Publish] Compose failed:', err);
           const errMsg = err?.message || String(err);
-          alert(`Erreur lors du rendu du montage:\n${errMsg}\n\nVeuillez réessayer.`);
+          alert(tUi('erreur_lors_du_rendu_du_montage_errmsg', { errMsg }));
           setSaving(false);
           return; // ABORT — don't schedule without a video
         } finally {
@@ -2037,7 +2037,7 @@ export default function CalendarPage() {
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         console.error('[Import] upload failed:', msg, error);
-        alert(`Upload échoué : ${msg}`);
+        alert(tUi('upload_echoue_msg', { msg }));
       } finally {
         setImporting(false);
         setImportProgress(0);
@@ -2188,7 +2188,7 @@ export default function CalendarPage() {
                 ? `\n\nDétail FFmpeg :\n${convertData.stderr.slice(-300)}`
                 : '';
               setExportRenderStage('Conversion MP4 impossible');
-              alert(`La conversion MP4 a échoué : ${errMsg}${sizeInfo}.${stderrInfo}\n\nAucun fichier n'a été téléchargé. Réessayez dans quelques minutes.`);
+              alert(tUi('la_conversion_mp4_a_echoue_errmsg_size', { errMsg, sizeInfo, stderrInfo }));
             }
           }
         } catch (err) {
@@ -2198,12 +2198,12 @@ export default function CalendarPage() {
             // 4-min client timeout — likely a very long video or server overloaded
             console.warn(`[Export] Server conversion timed out after ${ATTENTE_CONVERSION_MIN} min`);
             setExportRenderStage('Conversion MP4 trop longue');
-            alert(`La conversion MP4 prend trop de temps (>${ATTENTE_CONVERSION_MIN} min). Aucun fichier n'a été téléchargé. Réessayez dans quelques minutes.`);
+            alert(tUi('la_conversion_mp4_prend_trop_de_temps', { ATTENTE_CONVERSION_MIN }));
           } else {
             const msg = (err as Error)?.message || 'erreur réseau';
             console.error('[Export] Server conversion error:', err);
             setExportRenderStage('Erreur de conversion');
-            alert(`Export bureau échoué : ${msg}. Vérifiez votre connexion et réessayez.`);
+            alert(tUi('export_bureau_echoue_msg_verifiez_votr', { msg }));
           }
         }
       }
@@ -2379,7 +2379,7 @@ export default function CalendarPage() {
       const msg = (err as Error)?.message || 'erreur inconnue';
       console.error('[Export] Montage composition failed:', err);
       setExportRenderStage(t('exportOverlay.errorMontage'));
-      alert(`Export bureau échoué : ${msg}. Si le post est incomplet (pas de cartes / pas de visuel), modifiez-le d'abord depuis /creer puis ré-exportez.`);
+      alert(tUi('export_bureau_echoue_msg_si_le_post_es', { msg }));
     } finally {
       planifierResetExport();
     }
@@ -2582,7 +2582,7 @@ export default function CalendarPage() {
               <div className="mt-4 p-3 bg-gray-800/80 border border-purple-700/50 rounded-lg space-y-3">
                 <div className="flex items-center justify-between">
                   <p className="text-xs text-purple-300 font-medium">
-                    {selectedPostIds.size} post(s) sur {selectedBulkDays.size} jour(s)
+                    {tUi('size_post_s_sur_selectedbulkdays_size', { size: selectedPostIds.size, selectedBulkDays_size: selectedBulkDays.size })}
                   </p>
                   <button
                     onClick={() => { setCrossDateBulk(false); setSelectedPostIds(new Set()); setSelectedBulkDays(new Set()); }}

@@ -307,7 +307,7 @@ const RechercheStockSequence = forwardRef<PanneauStockHandle, RechercheStockSequ
           next[m.id] = true;
           return next;
         });
-        setMessage(`Photo appliquée à la séquence « ${props.libelleSequence} ».`);
+        setMessage(tUi('photo_appliquee_a_la_sequence_libelles', { libelleSequence: props.libelleSequence }));
       }
     } finally {
       setEnCours(null);
@@ -503,7 +503,7 @@ const RechercheStockSequence = forwardRef<PanneauStockHandle, RechercheStockSequ
                           type="button"
                           data-stock-apercu={m.id}
                           onClick={() => selectionner(m)}
-                          aria-label={`Aperçu : ${libelle}`}
+                          aria-label={tUi('apercu_libelle', { libelle })}
                           title={tUi('previsualiser')}
                           className="flex min-w-0 flex-1 items-center justify-center gap-1 rounded-md border border-gray-800 px-1.5 py-1 text-[11px] text-gray-300 hover:text-white hover:border-gray-600 transition-colors"
                         >
@@ -515,7 +515,7 @@ const RechercheStockSequence = forwardRef<PanneauStockHandle, RechercheStockSequ
                           data-stock-ajouter={m.id}
                           onClick={() => void ajouter(m)}
                           disabled={etat !== 'pret' || (!!enCours && enCours !== m.id)}
-                          aria-label={etat === 'ajoute' ? `${libelle} : déjà ajoutée` : aideAjout(m)}
+                          aria-label={etat === 'ajoute' ? tUi('libelle_deja_ajoutee', { libelle }) : aideAjout(m)}
                           title={etat === 'ajoute' ? tUi('deja_ajoute') : aideAjout(m)}
                           className={`flex min-w-0 flex-1 items-center justify-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed ${
                             etat === 'ajoute'
@@ -536,7 +536,7 @@ const RechercheStockSequence = forwardRef<PanneauStockHandle, RechercheStockSequ
         ) : (
           cherche && !chargement && !echec && (
             <p data-stock-vide className="text-xs text-gray-500 text-center py-4">
-              Aucun résultat pour « {saisie} ». Essayez une autre suggestion ou une autre recherche.
+              {tUi('aucun_resultat_pour_saisie_essayez_une', { saisie })}
             </p>
           )
         )}

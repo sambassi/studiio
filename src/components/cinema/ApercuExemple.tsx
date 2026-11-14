@@ -149,7 +149,7 @@ export default function ApercuExemple({ exemple, format, surRevenir, surAgrandir
       )}
 
       <p className="mt-2 text-[11px] text-slate-500">
-        {v.mention} Image : {v.credit.auteur} ({v.credit.source}).
+        {tUi('mention_image_auteur_source', { mention: v.mention, auteur: v.credit.auteur, source: v.credit.source })}
       </p>
     </section>
   );

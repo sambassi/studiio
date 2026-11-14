@@ -443,7 +443,7 @@ export default function CompleterRushesStock({
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-gray-300">
         {avatar && <span data-autopilot-stock-avatar>Avatar personnel : plan d’accroche</span>}
         <span data-autopilot-stock-personnels>Rushes personnels : {couverture.rushesPersonnels}</span>
-        <span data-autopilot-stock-proposes>Médias suggérés : {proposes}</span>
+        <span data-autopilot-stock-proposes>{tUi('medias_suggeres_proposes', { proposes })}</span>
       </div>
       <p className="text-[11px] text-gray-500">
         {tUi('rien_n_est_ajoute_sans_votre_accord_co')}

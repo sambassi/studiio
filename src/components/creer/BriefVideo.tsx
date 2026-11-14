@@ -184,7 +184,7 @@ export default function BriefVideo({
       </div>
       {profil?.personnalise && (
         <p className="text-[11px] text-gray-500" data-brief-theme-personnalise>
-          Thème personnalisé : les exemples reprennent simplement vos mots « {profil.libelle} ».
+          {tUi('theme_personnalise_les_exemples_repren', { libelle: profil.libelle })}
         </p>
       )}
       {annonce && (
@@ -352,7 +352,7 @@ export default function BriefVideo({
                   data-brief-conseil-duree-appliquer
                   className="shrink-0 rounded-md border border-amber-500/40 px-1.5 py-0.5 text-amber-200 hover:bg-amber-500/10"
                 >
-                  Passer à {conseilDuree.recommandee} s
+                  {tUi('passer_a_recommandee_s', { recommandee: conseilDuree.recommandee })}
                 </button>
               </div>
             )}
@@ -508,11 +508,11 @@ export function BriefRecurrentRecap({ brief, sujets, admin = false }: {
           </span>
           {coherence.niveau === 'bonne' && (
             <span className="block text-emerald-400">
-              Brief cohérent avec {liste.length > 1 ? tUi('les_themes_choisis') : `le thème ${coherence.sujet}`}.
+              Brief cohérent avec {liste.length > 1 ? tUi('les_themes_choisis') : tUi('le_theme_sujet', { sujet: coherence.sujet })}.
             </span>
           )}
           {admin && coherence.score !== null && (
-            <span className="block text-[10px] text-gray-500" data-autopilot-brief-recap-score>Score de cohérence (admin) : {coherence.score}/100</span>
+            <span className="block text-[10px] text-gray-500" data-autopilot-brief-recap-score>{tUi('score_de_coherence_admin_score_100', { score: coherence.score })}</span>
           )}
         </InfoBulle>
       </div>
@@ -540,7 +540,7 @@ export function BriefRecurrentRecap({ brief, sujets, admin = false }: {
           <span>
             {coherence.conflits[0]
               ? `Une incohérence a été détectée entre le sujet ${coherence.sujet} et ${CHAMP_ARTICLE[coherence.conflits[0].champ]} « ${brief[coherence.conflits[0].champ]} ».`
-              : `Brief à vérifier : il parle peu du sujet ${coherence.sujet}.`}
+              : tUi('brief_a_verifier_il_parle_peu_du_sujet', { sujet: coherence.sujet })}
           </span>
         </p>
       )}

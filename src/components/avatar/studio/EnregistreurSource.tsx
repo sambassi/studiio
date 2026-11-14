@@ -252,7 +252,7 @@ export default function EnregistreurSource(props: {
       {phase === 'inactif' && (
         <div className="rounded-2xl bg-gray-900/60 p-5 space-y-3 text-center">
           <Camera className="w-8 h-8 mx-auto text-purple-300" />
-          <p className="text-sm text-gray-300">Filmez-vous face caméra, seul à l’image, visage visible du début à la fin, dans un endroit calme et bien éclairé. Parlez naturellement pendant {EXIGENCES_SOURCE_VIDEO.dureeMinS} secondes au moins — idéalement 2 minutes.</p>
+          <p className="text-sm text-gray-300">{tUi('filmez_vous_face_camera_seul_a_l_image', { dureeMinS: EXIGENCES_SOURCE_VIDEO.dureeMinS })}</p>
           <div className="rounded-xl bg-black/30 p-3 space-y-2">
             <p className="flex items-center justify-center gap-1.5 text-xs font-medium text-white"><ListChecks className="w-4 h-4 text-purple-300" /> Guide de tournage</p>
             <GuideTournage />

@@ -285,7 +285,7 @@ export default function MesAvatars(props: {
               </header>
 
               {a.versionActive && !fusion && (
-                <p data-version-active className="text-xs text-gray-300">Version actuellement utilisée : v{a.versionActive.version}</p>
+                <p data-version-active className="text-xs text-gray-300">{tUi('version_actuellement_utilisee_v_versio', { version: a.versionActive.version })}</p>
               )}
 
               {c && (c.etat === 'preparation' || c.etat === 'entrainement') && (() => {
@@ -316,7 +316,7 @@ export default function MesAvatars(props: {
                   </div>
                   {/* La progression s'arrête là où elle a échoué — rien ne continue d'« avancer ». */}
                   <ProgressStatus titre={`Nouvelle version de l’avatar (v${c.version})`} statut="erreur" etapes={progressionVersion(c).etapes} compact note={null} />
-                  {a.versionActive && <div className="text-red-100/80">Votre version v{a.versionActive.version} reste utilisée.</div>}
+                  {a.versionActive && <div className="text-red-100/80">{tUi('votre_version_v_version_reste_utilisee', { version: a.versionActive.version })}</div>}
                   <div className="flex flex-wrap gap-2">
                     <button type="button" data-action="reessayer" onClick={() => setFlux({ mode: 'remplacer', avatar: a })} className={TERTIAIRE}>{tUi('reessayer')}</button>
                     <button type="button" data-action="modifier-video" onClick={() => setFlux({ mode: 'remplacer', avatar: a })} className={TERTIAIRE}>{tUi('modifier_la_video')}</button>
@@ -432,7 +432,7 @@ export default function MesAvatars(props: {
                               {h.source ? (h.type === 'video'
                                 ? <video src={`${srcSource(false)}#t=0.5`} preload="metadata" muted playsInline className="w-full h-full object-cover" onError={(e) => { e.currentTarget.hidden = true; }} />
                                 /* eslint-disable-next-line @next/next/no-img-element */
-                                : <img src={srcSource(false)} alt={`Source de la version v${h.version}`} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.hidden = true; }} />)
+                                : <img src={srcSource(false)} alt={tUi('source_de_la_version_v_version', { version: h.version })} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.hidden = true; }} />)
                                 : (h.type === 'video' ? <Clapperboard className="w-4 h-4 text-gray-500" aria-hidden /> : <ImageIcon className="w-4 h-4 text-gray-500" aria-hidden />)}
                             </div>
                             <dl className="min-w-0 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-gray-300">
@@ -471,7 +471,7 @@ export default function MesAvatars(props: {
                               {h.type === 'video'
                                 ? <video src={srcSource(vue.originale)} controls playsInline preload="metadata" className="block mx-auto max-h-72 w-auto max-w-full rounded-lg bg-black" />
                                 /* eslint-disable-next-line @next/next/no-img-element */
-                                : <img src={srcSource(vue.originale)} alt={`Source de la version v${h.version}`} className="block mx-auto max-h-72 w-auto max-w-full rounded-lg bg-black" />}
+                                : <img src={srcSource(vue.originale)} alt={tUi('source_de_la_version_v_version', { version: h.version })} className="block mx-auto max-h-72 w-auto max-w-full rounded-lg bg-black" />}
                               {h.originalConserve && (
                                 <button type="button" data-action="voir-original" onClick={() => setSourceVue({ versionId: h.id, originale: !vue.originale })} className={TERTIAIRE}>
                                   {vue.originale ? tUi('voir_la_version_envoyee') : tUi('voir_l_original_importe')}

@@ -1741,7 +1741,8 @@
       "premium_avatar_v_disponible_pour_votre": "Premium — Avatar V disponible pour votre avatar.",
       "avec_votre_voix_clonee_la_qualite_par": "Avec votre voix clonée, la qualité par défaut est celle de Créer.",
       "carre": "carré",
-      "telecharger_la_video": "Télécharger la vidéo"
+      "telecharger_la_video": "Télécharger la vidéo",
+      "apercu_du_format_ratio_votre_avatar_re": "Aperçu du format {ratio} : votre avatar recadré pour remplir le cadre, comme à la génération."
     },
     "appDashboardBillingPlanPreselectionne": {
       "erreur_de_connexion": "Erreur de connexion",
@@ -1767,7 +1768,14 @@
       "re_generer_le_montage_avec_la_derniere": "Re-générer le montage avec la dernière version du composer",
       "regenerer_le_montage": "Régénérer le montage",
       "chat_pour_plus_d_infos": "CHAT POUR PLUS D'INFOS",
-      "modifier_le_montage": "Modifier le montage"
+      "modifier_le_montage": "Modifier le montage",
+      "erreur_lors_du_rendu_du_montage_errmsg": "Erreur lors du rendu du montage: {errMsg} Veuillez réessayer.",
+      "upload_echoue_msg": "Upload échoué : {msg}",
+      "la_conversion_mp4_a_echoue_errmsg_size": "La conversion MP4 a échoué : {errMsg}{sizeInfo}.{stderrInfo} Aucun fichier n'a été téléchargé. Réessayez dans quelques minutes.",
+      "la_conversion_mp4_prend_trop_de_temps": "La conversion MP4 prend trop de temps (>{ATTENTE_CONVERSION_MIN} min). Aucun fichier n'a été téléchargé. Réessayez dans quelques minutes.",
+      "export_bureau_echoue_msg_verifiez_votr": "Export bureau échoué : {msg}. Vérifiez votre connexion et réessayez.",
+      "export_bureau_echoue_msg_si_le_post_es": "Export bureau échoué : {msg}. Si le post est incomplet (pas de cartes / pas de visuel), modifiez-le d'abord depuis /creer puis ré-exportez.",
+      "size_post_s_sur_selectedbulkdays_size": "{size} post(s) sur {selectedBulkDays_size} jour(s)"
     },
     "appDashboardCinema": {
       "afficher_le_detail": "Afficher le detail",
@@ -1880,7 +1888,15 @@
       "quitter_la_demonstration": "Quitter la démonstration",
       "mode_demonstration_gratuit": "Mode démonstration (gratuit)",
       "apercu_agrandi_du_montage": "Apercu agrandi du montage",
-      "echap_pour_revenir": "Echap pour revenir"
+      "echap_pour_revenir": "Echap pour revenir",
+      "nom_dit_cette_replique": "{nom} dit cette réplique",
+      "pour_le_regler_conseil": "Pour le régler : {conseil}",
+      "length_scenes_doivent_etre_mises_a_jou": "{length} scènes doivent être mises à jour",
+      "remplacer_la_photo_de_nom": "Remplacer la photo de {nom}",
+      "ajouter_une_photo_de_reference_pour_no": "Ajouter une photo de reference pour {nom}",
+      "mediasgeneres_media_s_sur_vos_plans": "{mediasGeneres} media(s) sur vos plans",
+      "format_en_attendant_choisissez_un_styl": "{format} · en attendant, choisissez un style ou un mouvement pour voir un exemple.",
+      "total_plans_avec_media_vous_voyez_les": "{total} plans avec média : vous voyez les vrais fichiers."
     },
     "appDashboardCreerAssistantWizard": {
       "revenir_au_choix_des_modes": "Revenir au choix des modes",
@@ -2114,7 +2130,26 @@
       "retrecir": "Rétrécir",
       "retrecir_l_element": "Rétrécir l’élément",
       "taille_de_l_element": "Taille de l’élément",
-      "agrandir_l_element": "Agrandir l’élément"
+      "agrandir_l_element": "Agrandir l’élément",
+      "taille_libelle": "Taille — {libelle}",
+      "votre_jumeau_v_avatarversion_est_monte": "Votre jumeau (v{avatarVersion}) est monté dans la séquence « Vidéo ».",
+      "credits_insuffisants_couttotal_requis": "Crédits insuffisants : {coutTotal} requis, {balance} disponible(s).",
+      "matiere_exploitable_dans_les_rushes_di": "Matière exploitable dans les rushes : {dispo} s — séquence Vidéo ramenée à {dispo2} s (extraits jamais rallongés).",
+      "rushs_uniques_utilises_rushs_rushs_a_a": "Rushs uniques utilisés : {rushs} · rushs à ajouter (estimation) : environ {supplementaires}. Aucun passage n’est répété.",
+      "pas_assez_de_photos_distinctes_affiche": "Pas assez de photos distinctes ({affichesDisponibles} pour {batchCount}) — élargissez la recherche ou demandez d’autres photos.",
+      "affichesretenues_batchcount_l_envoi_es": "{affichesRetenues} / {batchCount} — l’envoi est bloqué tant que chaque vidéo n’a pas sa propre affiche.",
+      "taille_du_texte_zonelabel": "Taille du texte — {zoneLabel}",
+      "couleur_zonelabel": "Couleur — {zoneLabel}",
+      "font_n_a_pas_pu_etre_chargee_l_apercu": "« {font} » n’a pas pu être chargée : l’aperçu et la vidéo utiliseront une police de repli.",
+      "length_rushes_enchaines": "{length} rushes enchaînés",
+      "les_batchcount_videos_sont_composees_e": "Les {batchCount} vidéos sont composées et les posts programmés",
+      "les_batchcount_videos_sont_composees_e_2": "Les {batchCount} vidéos sont composées et les posts enregistrés en brouillon.",
+      "de_2_a_batch_serie_max": "De 2 à {BATCH_SERIE_MAX}",
+      "telecharger_les_batchcount_videos_zip": "Télécharger les {batchCount} vidéos (.zip)",
+      "composer_et_programmer_batchcount_vide": "Composer et programmer {batchCount} vidéos",
+      "composer_et_envoyer_batchcount_videos": "Composer et envoyer {batchCount} vidéos",
+      "length_medias_ne_seront_pas_dans_la_vi": "{length} médias ne seront pas dans la vidéo :",
+      "maximum_de_limitecartes_cartes_dans_ce": "Maximum de {limiteCartes} cartes dans ce format"
     },
     "appDashboardInfographic": {
       "chat_pour_plus_d_infos": "CHAT POUR PLUS D'INFOS",
@@ -2152,7 +2187,8 @@
     },
     "appDashboardSocialCallback": {
       "compte_non_enregistre": "Compte non enregistré.",
-      "retour_aux_reseaux": "Retour aux réseaux"
+      "retour_aux_reseaux": "Retour aux réseaux",
+      "compte_platform_connecte": "Compte {platform} connecté."
     },
     "app": {
       "faites_le_test_gratuit": "Faites le test gratuit",
@@ -2264,7 +2300,10 @@
       "voir_la_source": "Voir la source",
       "reactive_cette_version_deja_prete_aucu": "Réactive cette version déjà prête : aucun nouvel entraînement, aucun frais.",
       "voir_la_version_envoyee": "Voir la version envoyée",
-      "voir_l_original_importe": "Voir l’original importé"
+      "voir_l_original_importe": "Voir l’original importé",
+      "version_actuellement_utilisee_v_versio": "Version actuellement utilisée : v{version}",
+      "votre_version_v_version_reste_utilisee": "Votre version v{version} reste utilisée.",
+      "source_de_la_version_v_version": "Source de la version v{version}"
     },
     "componentsAvatarSelecteurAvatar": {
       "avatar_utilise": "Avatar utilisé",
@@ -2285,7 +2324,8 @@
       "changer_de_camera": "Changer de caméra",
       "camera": "Caméra",
       "arreter": "Arrêter",
-      "utiliser_cette_video": "Utiliser cette vidéo"
+      "utiliser_cette_video": "Utiliser cette vidéo",
+      "filmez_vous_face_camera_seul_a_l_image": "Filmez-vous face caméra, seul à l’image, visage visible du début à la fin, dans un endroit calme et bien éclairé. Parlez naturellement pendant {dureeMinS} secondes au moins — idéalement 2 minutes."
     },
     "componentsAvatarStudioPreparationPhoto": {
       "connexion_impossible_reessayez": "Connexion impossible. Réessayez.",
@@ -2297,7 +2337,10 @@
       "previsualiser": "Prévisualiser",
       "la_photo_qui_sera_utilisee": "La photo qui sera utilisée",
       "modifier": "Modifier",
-      "reinitialiser": "Réinitialiser"
+      "reinitialiser": "Réinitialiser",
+      "apercu_du_lissage_a_lissage": "Aperçu du lissage à {lissage} %",
+      "apercu_lissage_lissage": "Aperçu — lissage {lissage} %",
+      "apres_lissage_lissage": "Après — lissage {lissage} %"
     },
     "componentsAvatarStudioPreparationSource": {
       "connexion_impossible_reessayez": "Connexion impossible. Réessayez.",
@@ -2331,7 +2374,10 @@
       "qualite": "Qualité",
       "apres_version_preparee": "Après — version préparée",
       "modifier": "Modifier",
-      "utiliser_cette_video": "Utiliser cette vidéo"
+      "utiliser_cette_video": "Utiliser cette vidéo",
+      "apercu_du_lissage_a_lissagecourant_sur": "Aperçu du lissage à {lissageCourant} % sur l’image courante",
+      "apercu_lissage_lissagecourant": "Aperçu — lissage {lissageCourant} %",
+      "gardez_au_moins_dureemins_secondes_ide": "Gardez au moins {dureeMinS} secondes (idéalement 2 minutes)."
     },
     "componentsBillingBuyCreditsModal": {
       "erreur_de_connexion": "Erreur de connexion",
@@ -2358,7 +2404,8 @@
     },
     "componentsCinemaApercuExemple": {
       "revenir_a_mon_film": "Revenir à mon film",
-      "aucun_extrait_filme_n_existe_pour_ce_m": "Aucun extrait filmé n’existe pour ce mouvement. Il sera appliqué à votre film, sans démonstration."
+      "aucun_extrait_filme_n_existe_pour_ce_m": "Aucun extrait filmé n’existe pour ce mouvement. Il sera appliqué à votre film, sans démonstration.",
+      "mention_image_auteur_source": "{mention} Image : {auteur} ({source})."
     },
     "componentsCinemaApercuScene": {
       "visuels_de_la_scene": "Visuels de la scene",
@@ -2367,7 +2414,8 @@
     "componentsCinemaApercuStoryboard": {
       "media_manquant": "Média manquant",
       "storyboard_du_film": "Storyboard du film",
-      "demo": "démo"
+      "demo": "démo",
+      "plan_cadre_importez_une_image_ou_une_v": "Plan {cadre} · importez une image ou une vidéo"
     },
     "componentsCinemaChoixMouvements": {
       "mouvements_de_camera": "Mouvements de caméra",
@@ -2393,7 +2441,9 @@
       "mouvement_de_camera_de_ce_plan": "Mouvement de camera de ce plan",
       "aucun_impose": "aucun impose",
       "s_applique_aux_prochaines_generations": "s’applique aux prochaines generations",
-      "image": "Image"
+      "image": "Image",
+      "resume_l_exemple_s_affiche_dans_l_aper": "{resume} — l’exemple s’affiche dans l’apercu",
+      "style_du_film_libelle": "Style du film ({libelle})"
     },
     "componentsCinemaLecteurVideo": {
       "activer_le_son": "Activer le son",
@@ -2503,7 +2553,8 @@
       "ajoute_une_voix_off_pour_activer_cette": "Ajoute une voix off pour activer cette option",
       "supprimer_ce_keyframe": "Supprimer ce keyframe",
       "ajouter_un_keyframe": "Ajouter un keyframe",
-      "clique_sur_la_barre_pour_ajouter_un_ke": "Clique sur la barre pour ajouter un keyframe à un moment précis (utile pour ducker la musique pendant que la voix parle)."
+      "clique_sur_la_barre_pour_ajouter_un_ke": "Clique sur la barre pour ajouter un keyframe à un moment précis (utile pour ducker la musique pendant que la voix parle).",
+      "reactiver_label": "Réactiver {label}"
     },
     "componentsCreerAudioMixPreview": {
       "ecouter_le_mixage": "Écouter le mixage",
@@ -2631,7 +2682,9 @@
       "votre_autopilote_est_pret": "Votre Autopilote est prêt.",
       "votre_autopilote_n_est_pas_encore_pret": "Votre Autopilote n’est pas encore prêt — aucun avatar prêt : configurez-le dans Mon avatar, ou décochez « Mon avatar ».",
       "votre_autopilote_n_est_pas_encore_pret_2": "Votre Autopilote n’est pas encore prêt — ajoutez une source visuelle : un rush, votre avatar ou un média suggéré. Vous pouvez l’activer dès maintenant : il démarrera dès qu’une source sera prête.",
-      "precedent": "Précédent"
+      "precedent": "Précédent",
+      "length_rushes_ont_expire_retention_24": "{length} rushes ont expiré (rétention 24 h) et ne sont plus utilisés — réimportez-les.",
+      "aucun_reseau_les_videos_arrivent_en_br": "Aucun réseau : les vidéos arrivent en brouillon dans le Calendrier, à télécharger depuis l’export sécurisé. Choisissez « {valider} » pour sélectionner des réseaux."
     },
     "componentsCreerAvatarPrincipalAutopilote": {
       "mon_avatar": "Mon avatar",
@@ -2659,7 +2712,12 @@
       "la_narration_exacte_de_chaque_video_es": "La narration exacte de chaque vidéo est produite à chaque cycle, à partir de ce brief et du sujet du jour. Aucun audio n’existe avant le rendu — rien n’est généré ni facturé ici.",
       "les_themes_choisis": "les thèmes choisis",
       "aucun_brief_chaque_video_ne_dira_que_c": "Aucun brief : chaque vidéo ne dira que ce que son sujet du jour inspire.",
-      "aucun_cout_a_cette_etape": "Aucun coût à cette étape"
+      "aucun_cout_a_cette_etape": "Aucun coût à cette étape",
+      "theme_personnalise_les_exemples_repren": "Thème personnalisé : les exemples reprennent simplement vos mots « {libelle} ».",
+      "passer_a_recommandee_s": "Passer à {recommandee} s",
+      "le_theme_sujet": "le thème {sujet}",
+      "score_de_coherence_admin_score_100": "Score de cohérence (admin) : {score}/100",
+      "brief_a_verifier_il_parle_peu_du_sujet": "Brief à vérifier : il parle peu du sujet {sujet}."
     },
     "componentsCreerCartesEditeur": {
       "changer_l_icone": "Changer l’icône",
@@ -2681,22 +2739,26 @@
     },
     "componentsCreerChronologieMontage": {
       "chronologie_du_montage": "Chronologie du montage",
-      "remplacer_ce_media": "Remplacer ce média"
+      "remplacer_ce_media": "Remplacer ce média",
+      "remplacer_ce_media_libelle": "Remplacer ce média ({libelle})"
     },
     "componentsCreerCompleterRushesStock": {
       "votre_avatar_et_vos_rushes_suffisent_a": "Votre avatar et vos rushes suffisent : aucun média suggéré nécessaire.",
       "vos_rushes_suffisent_aucun_media_sugge": "Vos rushes suffisent : aucun média suggéré nécessaire.",
       "rien_n_est_ajoute_sans_votre_accord_co": "Rien n’est ajouté sans votre accord : conservez une proposition pour l’ajouter à la banque, après vos propres rushes.",
       "ajoutee_a_la_banque": "Ajoutée à la banque",
-      "aucun_media_assez_pertinent_pour_ce_pl": "Aucun média assez pertinent pour ce plan — votre avatar ou vos rushes le couvriront."
+      "aucun_media_assez_pertinent_pour_ce_pl": "Aucun média assez pertinent pour ce plan — votre avatar ou vos rushes le couvriront.",
+      "medias_suggeres_proposes": "Médias suggérés : {proposes}"
     },
     "componentsCreerConseilsVideo": {
       "conseils_pour_ameliorer_cette_video": "Conseils pour améliorer cette vidéo",
       "rien_a_signaler_sur_ce_qui_a_ete_mesur": "Rien à signaler sur ce qui a été mesuré.",
-      "copier_la_proposition": "Copier la proposition"
+      "copier_la_proposition": "Copier la proposition",
+      "duree_dureerecommandee": "Durée : {dureeRecommandee}"
     },
     "componentsCreerGalerieStylesVideo": {
-      "styles_video": "Styles vidéo"
+      "styles_video": "Styles vidéo",
+      "detail_du_style_libelle": "Détail du style {libelle}"
     },
     "componentsCreerIconPicker": {
       "rechercher_une_icone": "Rechercher une icône…",
@@ -2705,7 +2767,8 @@
       "masquer_les_icones_echap": "Masquer les icônes (Échap)",
       "afficher_les_icones": "Afficher les icônes",
       "masquer_les_icones": "Masquer les icônes",
-      "choisir_une_icone": "Choisir une icône"
+      "choisir_une_icone": "Choisir une icône",
+      "aucune_icone_pour_query": "Aucune icône pour « {query} »."
     },
     "componentsCreerJumeauAutopilote": {
       "mon_jumeau": "Mon jumeau",
@@ -2720,7 +2783,8 @@
       "chaque_montage_genere_alors_un_avatar": "Chaque montage génère alors un avatar (facturé en plus du rendu) et arrive dans le Calendrier quelques minutes après. En cas d’échec, le montage sort sans l’avatar et le signale.",
       "la_video_de_votre_avatar_n_est_pas_dis": "La vidéo de votre avatar n’est pas disponible sur ce serveur pour le moment — la voix reste utilisable pour la narration.",
       "votre_jumeau_n_est_pas_pret": "Votre jumeau n’est pas prêt.",
-      "gerer_mon_avatar": "Gérer mon avatar"
+      "gerer_mon_avatar": "Gérer mon avatar",
+      "votre_jumeau_est_pret_mais_sa_voix_nom": "Votre jumeau est prêt, mais sa voix (« {nom} ») n’est pas dans la liste des voix clonées de votre compte : l’Autopilote ne peut pas la poser. Rechargez la page ou vérifiez votre voix dans Mon avatar."
     },
     "componentsCreerJumeauPanel": {
       "jumeau_numerique": "Jumeau numérique",
@@ -2738,7 +2802,10 @@
       "modifiable_dans_le_panneau_voix_off_pa": "Modifiable dans le panneau « Voix-off par séquence » (étape Contenu).",
       "ou_il_apparait_sequence_video_a_l_imag": "Où il apparaît : séquence « Vidéo » (à l’image, avec votre voix).",
       "ou_il_apparait_sequences_titre_cartes": "Où il apparaît : séquences Titre, Cartes, CTA (voix seulement).",
-      "ou_il_apparait_nulle_part": "Où il apparaît : nulle part."
+      "ou_il_apparait_nulle_part": "Où il apparaît : nulle part.",
+      "voix_ma_voix_nom": "Voix : Ma voix — {nom}",
+      "la_voix_de_votre_jumeau_nom_n_est_pas": "La voix de votre jumeau (« {nom} ») n’est pas dans la liste des voix clonées de votre compte : elle ne peut pas être posée. Rechargez la page ou vérifiez votre voix dans Mon avatar.",
+      "presence_video_reelle_a_l_envoi_votre": "Présence vidéo réelle : à l’envoi, votre avatar dit ces textes avec votre voix et devient la séquence « Vidéo ». {coutAvatar} crédits en plus du rendu."
     },
     "componentsCreerMaVoixClonee": {
       "ma_voix_clonee": "Ma voix clonée",
@@ -2764,7 +2831,8 @@
       "mon_rush": "Mon rush",
       "configurer_mon_avatar": "Configurer mon avatar",
       "media_suggere": "Média suggéré",
-      "ma_mediatheque": "Ma médiathèque"
+      "ma_mediatheque": "Ma médiathèque",
+      "allonger_nom_jusqu_a_sa_duree_reelle": "Allonger {nom} (jusqu’à sa durée réelle)"
     },
     "componentsCreerPassagesSuggeres": {
       "une_recherche_est_deja_en_cours_pour_c": "Une recherche est déjà en cours pour cette analyse.",
@@ -2772,7 +2840,8 @@
       "trouver_les_meilleurs_passages": "Trouver les meilleurs passages",
       "aucun_passage_propose_pour_l_instant": "Aucun passage proposé pour l’instant.",
       "generer_une_video_de_ce_rush": "Générer une vidéo de ce rush",
-      "video_ponctuelle_a_partir_de_ce_rush_s": "Vidéo ponctuelle, à partir de ce rush seulement. L’Autopilote n’en a pas besoin pour continuer."
+      "video_ponctuelle_a_partir_de_ce_rush_s": "Vidéo ponctuelle, à partir de ce rush seulement. L’Autopilote n’en a pas besoin pour continuer.",
+      "propose_par_modele": "Proposé par {modele}."
     },
     "componentsCreerPlanAvantGeneration": {
       "en_savoir_plus_sur_le_plan_avant_gener": "En savoir plus sur le plan avant génération",
@@ -2797,7 +2866,16 @@
       "supprimer": "Supprimer",
       "en_surimpression_sur_la_fin_de_la_vide": "en surimpression sur la fin de la vidéo",
       "montage_prevu_plan_par_plan": "Montage prévu, plan par plan",
-      "ajouter_une_sequence": "Ajouter une séquence"
+      "ajouter_une_sequence": "Ajouter une séquence",
+      "sequence_n": "Séquence {n}",
+      "type_de_la_sequence_n": "Type de la séquence {n}",
+      "media_de_la_sequence_n": "Média de la séquence {n}",
+      "rechercher_un_media_pour_la_sequence_n": "Rechercher un média pour la séquence {n}",
+      "remplacer_le_media_de_la_sequence_n": "Remplacer le média de la séquence {n}",
+      "deplacer_la_sequence_n": "Déplacer la séquence {n}",
+      "deplacer_la_sequence_n_vers_le_haut": "Déplacer la séquence {n} vers le haut",
+      "deplacer_la_sequence_n_vers_le_bas": "Déplacer la séquence {n} vers le bas",
+      "supprimer_la_sequence_n": "Supprimer la séquence {n}"
     },
     "componentsCreerQualiteRushs": {
       "verification_de_la_qualite_de_vos_rush": "Vérification de la qualité de vos rushes…",
@@ -2832,7 +2910,11 @@
       "apercu": "Aperçu",
       "deja_ajoute": "Déjà ajouté",
       "ajoute": "Ajouté",
-      "ajouter": "Ajouter"
+      "ajouter": "Ajouter",
+      "photo_appliquee_a_la_sequence_libelles": "Photo appliquée à la séquence « {libelleSequence} ».",
+      "apercu_libelle": "Aperçu : {libelle}",
+      "libelle_deja_ajoutee": "{libelle} : déjà ajoutée",
+      "aucun_resultat_pour_saisie_essayez_une": "Aucun résultat pour « {saisie} ». Essayez une autre suggestion ou une autre recherche."
     },
     "componentsCreerSequenceCards": {
       "double_clic_pour_changer_l_icone": "Double-clic pour changer l’icône",
@@ -2872,7 +2954,9 @@
       "le_texte_a_change_depuis_la_generation": "le texte a changé depuis la génération.",
       "la_vitesse_ou_le_dynamisme_ont_change": "la vitesse ou le dynamisme ont changé depuis la génération.",
       "la_vitesse_a_change_depuis_la_generati": "la vitesse a changé depuis la génération.",
-      "regenerer": "Régénérer"
+      "regenerer": "Régénérer",
+      "mode_batch_batchcount_la_voix_tts_sele": "Mode batch ×{batchCount} — la voix TTS sélectionnée s'applique aux {batchCount2} vidéos. Les textes seront re-générés depuis le contenu propre à chaque itération.",
+      "genere_avec_voixdegeneration_une_autre": "généré avec {voixDeGeneration}, une autre voix que celle choisie."
     },
     "componentsCreerSessionsTournagePanel": {
       "creation_impossible": "Création impossible.",
@@ -2928,13 +3012,16 @@
       "apercu": "Aperçu",
       "tout_deselectionner": "Tout désélectionner",
       "tout_selectionner": "Tout sélectionner",
-      "annuler": "Annuler"
+      "annuler": "Annuler",
+      "score_d_interet_brut_score": "Score d'intérêt brut : {score}"
     },
     "componentsMediasCarteMedia": {
       "informations_du_media": "Informations du média",
       "voir_la_page_du_media": "Voir la page du média",
       "fermer_l_apercu": "Fermer l’aperçu",
-      "apercu": "Aperçu"
+      "apercu": "Aperçu",
+      "apercu_libelle": "Aperçu — {libelle}",
+      "apercu_nom": "Aperçu — {nom}"
     },
     "componentsMediasMiniatureVideo": {
       "apercu_indisponible": "Aperçu indisponible"
@@ -2952,7 +3039,8 @@
       "modifier": "Modifier"
     },
     "componentsSharedExportBar": {
-      "cout": "Coût :"
+      "cout": "Coût :",
+      "creditcost_credits": "{creditCost} crédits"
     },
     "componentsSharedMediaLibrary": {
       "protege_utilise_par_un_contenu_brouill": "Protégé : utilisé par un contenu (brouillon, programmé ou publié)",
@@ -2969,7 +3057,8 @@
       "reessayer_les_echecs": "Réessayer les échecs",
       "aucun_fichier_trouve": "Aucun fichier trouvé",
       "uploadez_un_fichier_pour_commencer": "Uploadez un fichier pour commencer",
-      "supprimer": "Supprimer"
+      "supprimer": "Supprimer",
+      "size_fichier_s_selectionne_s": "{size} fichier(s) sélectionné(s)"
     },
     "componentsSocialMesReseaux": {
       "mes_reseaux_publication": "Mes réseaux (publication)",
@@ -3029,7 +3118,8 @@
     },
     "componentsUxProgressStatus": {
       "operation_en_cours_progression_inconnu": "— opération en cours : progression inconnue",
-      "duree_ecoulee": "Durée écoulée :"
+      "duree_ecoulee": "Durée écoulée :",
+      "temps_estime_restant_resteestime": "Temps estimé restant : {resteEstime}"
     },
     "componentsVoiceAudioCompletSection": {
       "collez_ici_le_texte_complet_a_faire_di": "Collez ici le texte complet à faire dire par votre voix.",
@@ -3061,7 +3151,11 @@
       "texte_affiche": "Texte affiché :",
       "sera_prononce": "Sera prononcé :",
       "le_texte_prononce_depasse_la_pre_ecout": "Le texte prononcé dépasse la pré-écoute gratuite : raccourcissez-le.",
-      "l_ecoute_de_votre_voix_personnelle_n_e": "L’écoute de votre voix personnelle n’est pas encore disponible."
+      "l_ecoute_de_votre_voix_personnelle_n_e": "L’écoute de votre voix personnelle n’est pas encore disponible.",
+      "ma_voix_nom": "« Ma voix — {nom} »",
+      "ecouter_affiche": "Écouter « {affiche} »",
+      "pre_ecoute_gratuite_environ_5_secondes": "Pré-écoute gratuite : environ 5 secondes ({length}/{MAX_CARACTERES_PREECOUTE} caractères prononcés).",
+      "texte_prononce_spokenjoue": "Texte prononcé : « {spokenJoue} »"
     },
     "componentsVoiceVoiceCloneRecorder": {
       "clonage_impossible_verifiez_votre_conn": "Clonage impossible — vérifiez votre connexion.",

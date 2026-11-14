@@ -162,8 +162,8 @@ export default function PreparationPhoto(props: {
               <img ref={imageSource} data-preparation-photo-image="originale" src={urlLocale} alt={tUi('votre_photo_d_origine')} onLoad={(e) => setDims({ l: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })} className="w-full object-contain" />
             )}
             {/* L'aperçu lissé, dessiné PAR-DESSUS l'original (qui reste intact dessous). */}
-            <canvas ref={toile} data-preparation-photo-apercu-direct={apercuDirect && !avantEdition ? 'visible' : 'masque'} aria-label={`Aperçu du lissage à ${lissage} %`} className={`absolute inset-0 w-full h-full ${apercuDirect && !avantEdition ? '' : 'hidden'}`} />
-            <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white">{avantEdition || !apercuDirect ? 'Original' : `Aperçu — lissage ${lissage} %`}</span>
+            <canvas ref={toile} data-preparation-photo-apercu-direct={apercuDirect && !avantEdition ? 'visible' : 'masque'} aria-label={tUi('apercu_du_lissage_a_lissage', { lissage })} className={`absolute inset-0 w-full h-full ${apercuDirect && !avantEdition ? '' : 'hidden'}`} />
+            <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white">{avantEdition || !apercuDirect ? 'Original' : tUi('apercu_lissage_lissage', { lissage })}</span>
           </div>
           <div role="radiogroup" aria-label="Comparer" className="grid grid-cols-2 gap-1 rounded-xl bg-gray-900/70 p-1">
             <button type="button" role="radio" aria-checked={avantEdition} data-preparation-photo-direct="avant" onClick={() => setAvantEdition(true)} className={`rounded-lg py-1.5 text-xs ${avantEdition ? 'bg-studiio-primary text-white' : 'text-gray-300'}`}>Avant — original</button>
@@ -199,7 +199,7 @@ export default function PreparationPhoto(props: {
           </div>
           <div role="radiogroup" aria-label="Comparer" className="grid grid-cols-2 gap-1 rounded-xl bg-gray-900/70 p-1">
             <button type="button" role="radio" aria-checked={voirOriginal} data-preparation-photo-voir="original" onClick={() => setVoirOriginal(true)} className={`rounded-lg py-1.5 text-xs ${voirOriginal ? 'bg-studiio-primary text-white' : 'text-gray-300'}`}>Avant — voir l’original</button>
-            <button type="button" role="radio" aria-checked={!voirOriginal} data-preparation-photo-voir="apres" onClick={() => setVoirOriginal(false)} className={`rounded-lg py-1.5 text-xs ${!voirOriginal ? 'bg-studiio-primary text-white' : 'text-gray-300'}`}>Après — lissage {resultat.lissage} %</button>
+            <button type="button" role="radio" aria-checked={!voirOriginal} data-preparation-photo-voir="apres" onClick={() => setVoirOriginal(false)} className={`rounded-lg py-1.5 text-xs ${!voirOriginal ? 'bg-studiio-primary text-white' : 'text-gray-300'}`}>{tUi('apres_lissage_lissage', { lissage: resultat.lissage })}</button>
           </div>
           <p className="text-xs text-gray-500" data-preparation-photo-lissage>Lissage : {libelleLissage(resultat.lissage)}. Votre photo d’origine est conservée telle quelle.</p>
           <div className="grid grid-cols-3 gap-2">

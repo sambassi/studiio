@@ -201,19 +201,19 @@ export default function AudioDuckingTimeline({
   };
 
   /** Bouton de coupure d'une piste — meme dessin pour les trois. */
-  const MuteButton = ({ track, label }: { track: 'music' | 'rush' | 'voice'; label: string }) => (
+  const MuteButton = ({ track, label }: { track: 'music' | 'rush' | 'voice'; label: string }) => { const tUi = useTranslations('ui.componentsCreerAudioDuckingTimeline'); return (
     <button
       type="button"
       onClick={() => toggleMute(track)}
       aria-pressed={isMuted[track]}
-      title={isMuted[track] ? `Réactiver ${label}` : `Couper ${label}`}
+      title={isMuted[track] ? tUi('reactiver_label', { label }) : `Couper ${label}`}
       className={`flex h-5 w-5 shrink-0 items-center justify-center rounded transition-colors ${
         isMuted[track] ? 'text-red-400 hover:text-red-300' : 'text-gray-500 hover:text-white'
       }`}
     >
       {isMuted[track] ? <VolumeX size={11} /> : <Volume2 size={11} />}
     </button>
-  );
+  ); };
 
   return (
     <div className={flush ? 'min-w-0 space-y-2' : 'mt-3 min-w-0 rounded-lg border border-gray-800 bg-gray-900/60 p-3 space-y-2'}>

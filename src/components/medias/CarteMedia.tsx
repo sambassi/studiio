@@ -125,7 +125,7 @@ export function ApercuMedia({ media, onFermer }: { media: MediaApercu; onFermer:
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={`Aperçu — ${media.libelle}`}
+        aria-label={tUi('apercu_libelle', { libelle: media.libelle })}
         className="w-full max-w-sm rounded-xl border border-gray-800 bg-gray-950 p-3 space-y-2"
         onClick={(e) => e.stopPropagation()}
       >
@@ -253,7 +253,7 @@ export default function CarteMedia({
       <button
         type="button"
         onClick={() => { if (!sansApercu) setApercu(true); }}
-        aria-label={`Aperçu — ${nom}`}
+        aria-label={tUi('apercu_nom', { nom })}
         className="relative block w-full overflow-hidden bg-gray-800"
         style={styleVignette}
         data-carte-vignette
@@ -293,7 +293,7 @@ export default function CarteMedia({
             <button
               type="button"
               onClick={() => setApercu(true)}
-              aria-label={`Aperçu — ${nom}`}
+              aria-label={tUi('apercu_nom', { nom })}
               data-carte-apercu
               className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] ${CLASSES_ACTION.neutre}`}
             >

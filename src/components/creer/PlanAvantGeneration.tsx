@@ -273,7 +273,7 @@ export default function PlanAvantGeneration({
                     </span>
                   )}
                 <p className="min-w-0 flex-1 text-[11px] text-gray-300">
-                  <span className="font-medium text-white">Séquence {n}</span>
+                  <span className="font-medium text-white">{tUi('sequence_n', { n })}</span>
                   <span className="text-gray-500"> — </span>
                   <span className="break-words" data-plan-libelle title={c.media ? nomTechnique(c.media) : undefined}>{libelleCreneau(c, stock, rushesPerso)}</span>
                 </p>
@@ -292,7 +292,7 @@ export default function PlanAvantGeneration({
                   value={c.type}
                   disabled={disabled}
                   onChange={(e) => maj((l) => { l[i] = { id: c.id, type: e.target.value as TypeCreneau }; return l; })}
-                  aria-label={`Type de la séquence ${n}`}
+                  aria-label={tUi('type_de_la_sequence_n', { n })}
                   data-plan-forcer={i}
                   className="rounded border border-gray-800 bg-gray-950 px-1 py-0.5 text-[10px] text-gray-200"
                 >
@@ -303,7 +303,7 @@ export default function PlanAvantGeneration({
                     value={c.media ?? ''}
                     disabled={disabled}
                     onChange={(e) => maj((l) => { l[i] = { id: c.id, type: c.type, ...(e.target.value ? { media: e.target.value } : {}) }; return l; })}
-                    aria-label={`Média de la séquence ${n}`}
+                    aria-label={tUi('media_de_la_sequence_n', { n })}
                     data-plan-media={i}
                     className="min-w-0 max-w-full flex-1 basis-32 rounded border border-gray-800 bg-gray-950 px-1 py-0.5 text-[10px] text-gray-200"
                   >
@@ -316,7 +316,7 @@ export default function PlanAvantGeneration({
                     type="button"
                     onClick={() => onRechercher(c.id, lignes)}
                     disabled={disabled}
-                    aria-label={`Rechercher un média pour la séquence ${n}`}
+                    aria-label={tUi('rechercher_un_media_pour_la_sequence_n', { n })}
                     title={tUi('rechercher_un_media_pour_cette_sequenc')}
                     data-plan-rechercher={i}
                     className={BOUTON}
@@ -327,28 +327,28 @@ export default function PlanAvantGeneration({
                     type="button"
                     onClick={() => suivant && maj((l) => { l[i] = { id: c.id, type: c.type, media: suivant.v }; return l; })}
                     disabled={disabled || !remplacable}
-                    aria-label={`Remplacer le média de la séquence ${n}`}
+                    aria-label={tUi('remplacer_le_media_de_la_sequence_n', { n })}
                     title={remplacable ? tUi('passer_au_media_suivant_de_cette_sourc') : tUi('aucun_autre_media_dans_cette_source')}
                     data-plan-remplacer={i}
                     className={BOUTON}
                   >
                     <RefreshCw className="w-3 h-3" /> Remplacer
                   </button>
-                  <span className="flex items-center gap-0.5 rounded border border-gray-800 pl-1.5 text-[10px] text-gray-400" role="group" aria-label={`Déplacer la séquence ${n}`}>
+                  <span className="flex items-center gap-0.5 rounded border border-gray-800 pl-1.5 text-[10px] text-gray-400" role="group" aria-label={tUi('deplacer_la_sequence_n', { n })}>
                     {tUi('deplacer')}
                     <button type="button" onClick={() => deplacer(i, -1)} disabled={disabled || i === 0}
-                      aria-label={`Déplacer la séquence ${n} vers le haut`} title={tUi('deplacer_vers_le_haut')} data-plan-monter={i}
+                      aria-label={tUi('deplacer_la_sequence_n_vers_le_haut', { n })} title={tUi('deplacer_vers_le_haut')} data-plan-monter={i}
                       className="p-1 text-gray-300 hover:text-white disabled:opacity-30">
                       <ArrowUp className="w-3 h-3" />
                     </button>
                     <button type="button" onClick={() => deplacer(i, 1)} disabled={disabled || i === lignes.length - 1}
-                      aria-label={`Déplacer la séquence ${n} vers le bas`} title={tUi('deplacer_vers_le_bas')} data-plan-descendre={i}
+                      aria-label={tUi('deplacer_la_sequence_n_vers_le_bas', { n })} title={tUi('deplacer_vers_le_bas')} data-plan-descendre={i}
                       className="p-1 text-gray-300 hover:text-white disabled:opacity-30">
                       <ArrowDown className="w-3 h-3" />
                     </button>
                   </span>
                   <button type="button" onClick={() => maj((l) => l.filter((_, k) => k !== i))} disabled={disabled}
-                    aria-label={`Supprimer la séquence ${n}`} title={tUi('supprimer_cette_sequence')} data-plan-supprimer={i}
+                    aria-label={tUi('supprimer_la_sequence_n', { n })} title={tUi('supprimer_cette_sequence')} data-plan-supprimer={i}
                     className={`${BOUTON} hover:text-red-400`}>
                     <Trash2 className="w-3 h-3" /> {tUi('supprimer')}
                   </button>

@@ -39,6 +39,7 @@ function CarteStyle({ style, choisi, retouches, onChoisir, joue, onSurvol }: {
   joue: boolean;
   onSurvol: (actif: boolean) => void;
 }) {
+  const tUi = useTranslations('ui.componentsCreerGalerieStylesVideo');
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const ex = exempleStyle(style.id);
   useEffect(() => {
@@ -94,7 +95,7 @@ function CarteStyle({ style, choisi, retouches, onChoisir, joue, onSurvol }: {
         )}
       </button>
       <span className="absolute top-2 right-2">
-        <InfoBulle label={`Détail du style ${style.libelle}`} titre={style.libelle} marqueur={`style-info-${style.id}`}>
+        <InfoBulle label={tUi('detail_du_style_libelle', { libelle: style.libelle })} titre={style.libelle} marqueur={`style-info-${style.id}`}>
           {style.detail.map((l) => <span key={l} className="block">{l}</span>)}
           <span className="block mt-1 text-gray-400">
             Le style pose des réglages de départ ; tout reste modifiable ci-dessous. Texte, voix, musique, couleurs et durées ne changent pas.

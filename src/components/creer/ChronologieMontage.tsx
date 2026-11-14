@@ -180,7 +180,7 @@ export default function ChronologieMontage({
                 type="button"
                 onClick={() => onRemplacer!(s)}
                 data-chronologie-remplacer={s.id}
-                aria-label={`Remplacer ce média (${s.libelle})`}
+                aria-label={tUi('remplacer_ce_media_libelle', { libelle: s.libelle })}
                 title={tUi('remplacer_ce_media')}
                 className="absolute top-0.5 right-0.5 rounded bg-black/60 p-0.5 text-gray-200 hover:text-white"
               >

@@ -41,7 +41,7 @@ export function ExportBar({
             </span>
           ) : creditCost ? (
             <span>
-              {tUi('cout')} <span className="font-bold text-yellow-400">{creditCost} crédits</span>
+              {tUi('cout')} <span className="font-bold text-yellow-400">{tUi('creditcost_credits', { creditCost })}</span>
             </span>
           ) : null}
         </div>

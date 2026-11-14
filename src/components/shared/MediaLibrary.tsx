@@ -628,7 +628,7 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
         {/* Bulk action bar */}
         {selected.size > 0 && (
           <div className="flex items-center justify-between px-5 py-3 border-t border-gray-800 bg-gray-900/95">
-            <span className="text-xs text-gray-300">{selected.size} fichier(s) sélectionné(s)</span>
+            <span className="text-xs text-gray-300">{tUi('size_fichier_s_selectionne_s', { size: selected.size })}</span>
             <button
               onClick={deleteSelected}
               disabled={deleting}

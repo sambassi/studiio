@@ -146,7 +146,7 @@ function ReglageDuree({ m, i, item, plan, occupe, onDuree }: {
         onClick={() => onDuree(i, d + b.pas)} disabled={occupe || d >= b.max - 1e-6}
         title={b.limiteParNarration && d >= b.max - 1e-6
           ? tUi('plus_de_temps_libre_dans_la_narration')
-          : b.mode === 'video' ? `Allonger ${nom} (jusqu’à sa durée réelle)` : `Allonger ${nom}`}
+          : b.mode === 'video' ? tUi('allonger_nom_jusqu_a_sa_duree_reelle', { nom }) : `Allonger ${nom}`}
         aria-label={`Allonger ${nom} ${i + 1}`}
       ><Plus className="w-3 h-3" /></button>
     </span>

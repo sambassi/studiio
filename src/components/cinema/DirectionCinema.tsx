@@ -79,7 +79,7 @@ export function SelecteurStyleFilm({ valeur, surChoisir, surMontrerExemple, exem
               role="radio"
               aria-checked={choisi}
               aria-label={`${s.libelle}${choisi ? ' (choisi, cliquer pour retirer)' : ''}`}
-              title={`${s.resume} — l’exemple s’affiche dans l’apercu`}
+              title={tUi('resume_l_exemple_s_affiche_dans_l_aper', { resume: s.resume })}
               onClick={() => { surMontrerExemple?.(s.id); surChoisir(choisi ? null : s.id); }}
               className={`overflow-hidden rounded-lg border text-left transition-colors ${choisi
                 ? 'border-violet-500/80 ring-2 ring-violet-500/40 bg-violet-500/10'
@@ -131,7 +131,7 @@ export function SelecteurStyleScene({ valeur, styleFilm, surChoisir }: {
         aria-label={tUi('style_de_cette_scene')}
         className={`rounded bg-slate-950 border px-2 py-1 ${valeur ? 'border-violet-500/50 text-violet-200' : 'border-slate-700'}`}
       >
-        <option value="">{parDefaut ? `Style du film (${parDefaut.libelle})` : tUi('style_du_film_aucun')}</option>
+        <option value="">{parDefaut ? tUi('style_du_film_libelle', { libelle: parDefaut.libelle }) : tUi('style_du_film_aucun')}</option>
         {STYLES_CINEMA.map((s) => <option key={s.id} value={s.id}>{s.libelle}</option>)}
       </select>
     </label>

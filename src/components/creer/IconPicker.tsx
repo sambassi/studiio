@@ -115,7 +115,7 @@ export default function IconPicker({ onPick, selected, dense = false, autoFocus 
           );
         })}
         {rienNeCorrespond && (
-          <p className="text-xs text-gray-500 text-center py-4">Aucune icône pour « {query} ».</p>
+          <p className="text-xs text-gray-500 text-center py-4">{tUi('aucune_icone_pour_query', { query })}</p>
         )}
       </div>
     </div>

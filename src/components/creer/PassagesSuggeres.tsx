@@ -313,7 +313,7 @@ export default function PassagesSuggeres({ analyseId, montage, onVideoLancee }: 
       {/* Le modèle qui a proposé, quand il est connu. Jamais deviné. */}
       {aReussi && generation?.modele && (
         <p className="text-[9px] text-gray-600" data-passages-modele>
-          Proposé par {generation.modele}.
+          {tUi('propose_par_modele', { modele: generation.modele })}
         </p>
       )}
     </section>

@@ -721,7 +721,7 @@ export default function ClipDetectorModal({
                       <span
                         className="absolute right-1.5 top-1.5 rounded-full px-1.5 py-0.5 text-[9px] font-semibold text-white"
                         style={{ backgroundColor: `${ACCENT}CC` }}
-                        title={`Score d'intérêt brut : ${clip.score}`}
+                        title={tUi('score_d_interet_brut_score', { score: clip.score })}
                       >
                         {intensity}%
                       </span>

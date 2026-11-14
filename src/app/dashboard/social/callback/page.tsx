@@ -45,7 +45,7 @@ function Retour() {
       .then((d) => {
         if (d?.success) {
           setEtat('ok');
-          setMessage(`Compte ${platform} connecté.`);
+          setMessage(tUi('compte_platform_connecte', { platform }));
           setTimeout(() => router.push('/dashboard/social'), 1200);
         } else {
           setEtat('echec');

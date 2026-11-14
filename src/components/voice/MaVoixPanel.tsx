@@ -304,7 +304,7 @@ export default function MaVoixPanel() {
         <h3 className="font-semibold flex items-center gap-2"><Mic className="w-4 h-4" /> {tUi('voix_utilisee')}</h3>
         {profil.voixResolue ? (
           <div data-voix-selectionnee className="text-sm">
-            {tUi('voix_selectionnee')} <span className="font-medium">« Ma voix — {profil.voixResolue.nom} »</span>
+            {tUi('voix_selectionnee')} <span className="font-medium">{tUi('ma_voix_nom', { nom: profil.voixResolue.nom })}</span>
           </div>
         ) : (
           <div data-voix-motif={profil.motifVoix ?? 'inconnu'} className="text-sm text-gray-400">{profil.messageVoix}</div>
@@ -341,8 +341,8 @@ export default function MaVoixPanel() {
                 <button
                   type="button"
                   data-prononciation-ecouter={p.affiche}
-                  aria-label={`Écouter « ${p.affiche} »`}
-                  title={`Écouter « ${p.affiche} »`}
+                  aria-label={tUi('ecouter_affiche', { affiche: p.affiche })}
+                  title={tUi('ecouter_affiche', { affiche: p.affiche })}
                   onClick={() => void ecouterPrononciation(p.affiche)}
                   disabled={ligneEnCours !== null}
                   className="text-gray-400 hover:text-white disabled:opacity-40"
@@ -433,7 +433,7 @@ export default function MaVoixPanel() {
         {/* ── ÉCOUTER — vrai audio ou état indisponible, jamais un faux son ── */}
         {profil.ecouteDisponible ? (
           <div className="space-y-2">
-            <div data-preecoute-indice className="text-xs text-gray-400">Pré-écoute gratuite : environ 5 secondes ({spoken.length}/{MAX_CARACTERES_PREECOUTE} caractères prononcés).</div>
+            <div data-preecoute-indice className="text-xs text-gray-400">{tUi('pre_ecoute_gratuite_environ_5_secondes', { length: spoken.length, MAX_CARACTERES_PREECOUTE })}</div>
             {spokenTropLong && (
               <div data-preecoute-trop-long className="text-xs text-amber-200">{tUi('le_texte_prononce_depasse_la_pre_ecout')}</div>
             )}
@@ -444,7 +444,7 @@ export default function MaVoixPanel() {
               <div className="space-y-1">
                 {/* Lecteur Studiio : `<audio>` caché sans `controls` — ni menu ⋮, ni téléchargement. */}
                 <LecteurVoixCompact ref={audioRef} src={audioUrl} onLecture={arreterLectureLigne} />
-                {spokenJoue && <div className="text-xs text-gray-400">Texte prononcé : « {spokenJoue} »</div>}
+                {spokenJoue && <div className="text-xs text-gray-400">{tUi('texte_prononce_spokenjoue', { spokenJoue })}</div>}
               </div>
             )}
           </div>

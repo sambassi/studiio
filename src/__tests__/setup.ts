@@ -124,7 +124,7 @@ function texteFr(cle: string, ns: string): string | null {
   return typeof cur === 'string' ? cur : null;
 }
 
-export function restituerFrancais(source: string): string {
+export function restituerFrancais(source: string): string {  // eslint-disable-line
   const m = source.match(/useTranslations\('(ui\.[A-Za-z0-9.]+)'\)/);
   if (!m) return source;
   const ns = m[1];
@@ -132,6 +132,25 @@ export function restituerFrancais(source: string): string {
     const t = texteFr(cle, ns);
     return t === null ? null : forme(t);
   };
+  // Appels PARAMÉTRÉS : tUi('k', { a, b: x.y }) → gabarit d'origine (`…${a}…${x.y}…`).
+  const params = (brut: string): Record<string, string> => {
+    const m: Record<string, string> = {};
+    for (const part of brut.split(',')) {
+      const [nom, ...reste] = part.split(':');
+      const n = nom.trim();
+      if (n) m[n] = (reste.join(':').trim() || n);
+    }
+    return m;
+  };
+  const gabarit = (t: string, p: Record<string, string>, jsx: boolean) =>
+    t.replace(/\{([A-Za-z_][\w]*)\}/g, (tout, v) => (v in p ? (jsx ? `{${p[v]}}` : '${' + p[v] + '}') : tout));
+  source = source
+    // attribut : aria-label={tUi('k', {…})}  →  aria-label={`Texte ${x}`}
+    .replace(/=\{tUi\('([^']+)',\s*\{([^}]*)\}\)\}/g, (tout, cle, p) => sub(cle, (t) => '={`' + gabarit(t, params(p), false) + '`}') ?? tout)
+    // enfant JSX : {tUi('k', {…})}  →  Texte {x}
+    .replace(/\{tUi\('([^']+)',\s*\{([^}]*)\}\)\}/g, (tout, cle, p) => sub(cle, (t) => gabarit(t, params(p), true)) ?? tout)
+    // expression : tUi('k', {…})  →  `Texte ${x}`
+    .replace(/\btUi\('([^']+)',\s*\{([^}]*)\}\)/g, (tout, cle, p) => sub(cle, (t) => '`' + gabarit(t, params(p), false) + '`') ?? tout);
   return source
     // attribut : title={tUi('k')}  →  title="Texte"
     .replace(/=\{tUi\('([^']+)'\)\}/g, (tout, cle) => sub(cle, (t) => (t.includes('"') ? `={'${t.replace(/'/g, "\\'")}'}` : `="${t}"`)) ?? tout)

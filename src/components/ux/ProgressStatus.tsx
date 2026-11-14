@@ -196,7 +196,7 @@ export default function ProgressStatus({
         <p className="text-[11px] text-gray-400 flex flex-wrap gap-x-3 gap-y-0.5" data-progress-temps>
           {detail && <span data-progress-detail>{detail}</span>}
           {ecoulee && enCours && <span data-progress-ecoulee>{tUi('duree_ecoulee')} <span className="tabular-nums text-gray-200">{ecoulee}</span></span>}
-          {resteEstime && enCours && <span data-progress-reste>Temps estimé restant : {resteEstime}</span>}
+          {resteEstime && enCours && <span data-progress-reste>{tUi('temps_estime_restant_resteestime', { resteEstime })}</span>}
         </p>
       )}
 
