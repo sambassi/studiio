@@ -1393,3 +1393,32 @@ prévisualisation : le double de base n'appliquait pas le défaut de colonne
 `created_at`, donc les lignes naissaient sans date et tout filtre sur cette
 colonne les ignorait sans rien dire. Un double qui ignore une valeur par
 défaut ne teste pas le code, il le rassure.
+
+## 2026-11-14 | Page blanche sur la prévisualisation : réécrire les sources sous un `next dev` actif
+
+**Ce qui a mal tourné.** Après avoir livré la PR, j'ai enchaîné `git switch`,
+`git reset --hard` et `git cherry-pick` pendant que `next dev` tournait sur
+3112. Chaque commande réécrit des centaines de fichiers : le serveur lance
+une recompilation, et pendant ce temps la route d'authentification répond en
+erreur (`__webpack_modules__[moduleId] is not a function`). Le contenu de la
+page est rendu côté navigateur : un visiteur qui arrive à cet instant reçoit
+un 200 et une page BLANCHE.
+
+**Mesuré, pas supposé.** Page saine → on retouche les sources → un second
+visiteur voit 5 éléments / 31 caractères à +3 s, le rendu complet à +8 s.
+Machine saturée (swap 11,7 Go / 12 Go, charge 13,9 avec trois serveurs Next),
+la même fenêtre dure des minutes : c'est le « chargement interminable ».
+Le code applicatif était sain ; un navigateur vierge et le Chrome de
+l'utilisateur affichaient la page correctement une fois la compilation finie.
+
+**La règle.** Jamais de commande git qui réécrit des fichiers pendant qu'un
+serveur de développement tourne : ARRÊTER, changer de branche, RELANCER.
+`./scripts/apercu-commerce.sh stop|start|check` le fait proprement : il ne
+tue que le serveur de CE worktree, repart d'un `.next` neuf, réchauffe les
+routes dans l'ordre (la première visite n'a plus rien à compiler), puis
+vérifie DANS UN NAVIGATEUR que la page s'affiche et que « S'abonner » ouvre
+le choix du paiement.
+
+**Et la vérification.** Un code HTTP 200 ne prouve rien quand le contenu est
+rendu côté client : c'est exactement la panne qu'il laisse passer. Une
+prévisualisation n'est « prête » qu'après avoir été regardée s'afficher.
