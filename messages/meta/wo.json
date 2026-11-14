@@ -1,0 +1,1554 @@
+{
+ "common.active": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "common.add": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.all": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.and": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.back": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "common.cancel": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.clear": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "common.close": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "common.confirm": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.connectionError": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "common.create": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.credits": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "common.delete": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.download": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "common.duplicate": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "common.edit": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.error": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.errorOccurred": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "common.export": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.filter": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.formats.reel": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "common.formats.tv": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "common.generate": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "common.hide": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.image": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.import": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "common.more": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.next": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.no": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "common.noResults": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "common.none": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.of": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "common.open": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "common.or": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.page": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.perMonth": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "common.preview": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.previous": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "common.publish": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "common.remove": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "common.retry": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "common.save": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.search": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.select": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.show": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.status.active": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "common.status.completed": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "common.status.failed": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.status.published": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "common.submit": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.success": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.upload": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.video": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "common.videos": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "common.view": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "common.yes": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "sidebar.avatar": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "sidebar.buy": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "sidebar.create": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "sidebar.creditsAvailable": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "sidebar.settings": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "navbar.logout": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "navbar.notifications": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "languageSelector.label": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "auth.login.connecting": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "auth.login.email": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "auth.login.emailPlaceholder": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "auth.login.errorGeneric": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "auth.login.errorInvalid": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "auth.login.facebook": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "auth.login.google": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "auth.login.noAccount": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "auth.login.or": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "auth.login.password": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "auth.login.signup": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "auth.login.submit": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "auth.login.subtitle": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "auth.login.title": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "auth.signup.creditsPerMonth": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "auth.signup.facebook": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "auth.signup.google": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "auth.signup.hasAccount": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "auth.signup.login": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "auth.signup.month": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "auth.signup.privacyLink": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "auth.signup.termsAnd": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "auth.signup.termsLink": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "auth.signup.title": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "dashboardHome.createVideo": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "dashboardHome.directAccess.create": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "dashboardHome.directAccess.settings": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "dashboardHome.stats.creditsRemaining": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "dashboardHome.stats.totalViews": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "dashboardHome.stats.videosCreated": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "dashboardHome.welcome": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "billing.buyCredits": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "billing.errors.connectionError": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "billing.tableHeaders.credits": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "billing.tableHeaders.date": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "billing.tableHeaders.description": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "billing.transactions.buyCredits": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "library.actions.delete": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "library.actions.duplicate": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "library.actions.edit": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "library.actions.export": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "library.actions.preview": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "library.createFirstVideo": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "library.createVideo": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "library.deleteConfirm.title": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "library.filterSelect": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "library.formatLabels.reel": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "library.formatLabels.tv": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "library.noVideos": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "library.searchPlaceholder": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "library.status.completed": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "library.status.failed": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "library.status.published": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "library.subtitle": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "library.toasts.deleteError": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "library.toasts.deleted": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "library.toasts.duplicateError": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "library.toasts.exportError": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "library.typeLabels.video": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "assistant.close": {
+  "c": "h",
+  "s": "corpus:corpus-wo.json"
+ },
+ "calendar.fullPreview.close": {
+  "c": "h",
+  "s": "corpus:corpus-wo.json"
+ },
+ "assistant.send": {
+  "c": "h",
+  "s": "corpus:corpus-wo.json"
+ },
+ "calendar.actions.delete": {
+  "c": "h",
+  "s": "corpus:corpus-wo.json"
+ },
+ "calendar.bulkDelete": {
+  "c": "h",
+  "s": "corpus:corpus-wo.json"
+ },
+ "calendar.actions.duplicate": {
+  "c": "h",
+  "s": "lexique:wo-core"
+ },
+ "calendar.bulkDuplicate": {
+  "c": "h",
+  "s": "lexique:wo-core"
+ },
+ "calendar.actions.edit": {
+  "c": "h",
+  "s": "corpus:corpus-wo.json"
+ },
+ "calendar.fullPreview.edit": {
+  "c": "h",
+  "s": "corpus:corpus-wo.json"
+ },
+ "creator.change": {
+  "c": "h",
+  "s": "corpus:corpus-wo.json"
+ },
+ "calendar.actions.preview": {
+  "c": "h",
+  "s": "corpus:corpus-wo.json"
+ },
+ "calendar.actions.export": {
+  "c": "h",
+  "s": "lexique:wo-core"
+ },
+ "creator.batch.export": {
+  "c": "h",
+  "s": "lexique:wo-core"
+ },
+ "calendar.editModal.save": {
+  "c": "h",
+  "s": "lexique:wo-core"
+ },
+ "calendar.editModal.date": {
+  "c": "h",
+  "s": "corpus:corpus-wo.json"
+ },
+ "calendar.editModal.time": {
+  "c": "m",
+  "s": "corpus:corpus-wo.json (waxtu)"
+ },
+ "calendar.import": {
+  "c": "h",
+  "s": "lexique:wo-core"
+ },
+ "calendar.select": {
+  "c": "h",
+  "s": "lexique:wo-core"
+ },
+ "calendar.selectAll": {
+  "c": "m",
+  "s": "lexique:wo-core"
+ },
+ "calendar.status.published": {
+  "c": "h",
+  "s": "lexique:wo-core"
+ },
+ "calendar.status.failed": {
+  "c": "h",
+  "s": "lexique:wo-core"
+ },
+ "calendar.editModal.published": {
+  "c": "m",
+  "s": "lexique:wo-core"
+ },
+ "calendar.fullPreview.publishNow": {
+  "c": "m",
+  "s": "corpus:corpus-wo.json"
+ },
+ "calendar.editModal.connectNetwork": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "social.actions.connect": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "social.actions.connecting": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "social.confirmDisconnect.cancel": {
+  "c": "h",
+  "s": "corpus:corpus-wo.json"
+ },
+ "social.platforms.facebook.name": {
+  "c": "h",
+  "s": "marque"
+ },
+ "social.platforms.instagram.name": {
+  "c": "h",
+  "s": "marque"
+ },
+ "social.platforms.tiktok.name": {
+  "c": "h",
+  "s": "marque"
+ },
+ "social.platforms.youtube.name": {
+  "c": "h",
+  "s": "marque"
+ },
+ "creator.title": {
+  "c": "m",
+  "s": "lexique:wo-core"
+ },
+ "creator.batch.both": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "creator.rushVideos.add": {
+  "c": "h",
+  "s": "lexique:wo-core"
+ },
+ "creator.rushVideos.settings": {
+  "c": "h",
+  "s": "lexique:wo-core"
+ },
+ "creator.character.upload": {
+  "c": "h",
+  "s": "corpus:corpus-wo.json"
+ },
+ "creator.uploadCharacter": {
+  "c": "h",
+  "s": "corpus:corpus-wo.json"
+ },
+ "creator.credits": {
+  "c": "m",
+  "s": "lexique:wo-core"
+ },
+ "creator.preview.audio": {
+  "c": "h",
+  "s": "emprunt"
+ },
+ "creator.preview.seqVideo": {
+  "c": "h",
+  "s": "lexique:wo-core"
+ },
+ "creator.montageSequences.noVideo": {
+  "c": "m",
+  "s": "lexique:wo-core"
+ },
+ "creator.render.done": {
+  "c": "m",
+  "s": "lexique:wo-core"
+ },
+ "calendar.aiAgent.stages.done": {
+  "c": "m",
+  "s": "lexique:wo-core"
+ },
+ "calendar.aiAgent.generate": {
+  "c": "h",
+  "s": "lexique:wo-core"
+ },
+ "calendar.aiAgent.generating": {
+  "c": "m",
+  "s": "lexique:wo-core"
+ },
+ "creator.render.errorCreate": {
+  "c": "m",
+  "s": "lexique:wo-core"
+ },
+ "creator.summary.videos": {
+  "c": "h",
+  "s": "lexique:wo-core"
+ },
+ "objectives.form.description": {
+  "c": "h",
+  "s": "corpus:corpus-wo.json"
+ },
+ "objectives.form.name": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "social.toasts.connectionError": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "social.toasts.disconnectError": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "audioStudio.batchLabel": {
+  "c": "m",
+  "s": "lexique"
+ },
+ "audioStudio.destination.both": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "audioStudio.export.done": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "audioStudio.export.error": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "audioStudio.music.import": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "audioStudio.music.noMusic": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "audioStudio.music.title": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "audioStudio.nextVideo": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "audioStudio.previousVideo": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "audioStudio.timeline.music": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "audioStudio.timeline.video": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "audioStudio.timeline.voice": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "audioStudio.videoPreview": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "audioStudio.voice.file": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "audioStudio.voice.importFile": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "infographic.backButton": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "infographic.characterImage.upload": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "infographic.creditsInfo.batch": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "infographic.creditsInfo.single": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "infographic.export.uploadingFiles": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "infographic.exportButton.exporting": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "infographic.infoCards.add": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "infographic.logoSection.add": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "infographic.logoUpload.title": {
+  "c": "h",
+  "s": "savoir"
+ },
+ "infographic.logoUpload.upload": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "infographic.posterPhoto.import": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "infographic.posterPhoto.remove": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "infographic.preview.information": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "infographic.preview.noVideoLabel": {
+  "c": "m",
+  "s": "lexique"
+ },
+ "infographic.preview.seqVideo": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "infographic.sequenceOrder.noPhoto": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "infographic.sequenceOrder.noVideo": {
+  "c": "m",
+  "s": "lexique"
+ },
+ "infographic.sequences.video": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "infographic.titleField": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "infographic.videoRush.title": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "infographic.videoRush.upload": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "infographic.videoSection.choose": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "landing.nav.login": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "landing.pricing.creditsPerMonth": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "landing.stats.videosCreated": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.appDashboardAvatar.apercu": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.appDashboardAvatar.avatar_supprime": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.appDashboardAvatar.choisir_une_video": {
+  "c": "m",
+  "s": "lexique:core"
+ },
+ "ui.appDashboardAvatar.confirmer_la_suppression": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.appDashboardAvatar.connexion_impossible_reessayez": {
+  "c": "m",
+  "s": "lexique:core"
+ },
+ "ui.appDashboardAvatar.creer_mon_avatar": {
+  "c": "m",
+  "s": "lexique:core"
+ },
+ "ui.appDashboardAvatar.creer_mon_avatar_video": {
+  "c": "m",
+  "s": "lexique:core"
+ },
+ "ui.appDashboardAvatar.creer_une_video": {
+  "c": "m",
+  "s": "lexique:core"
+ },
+ "ui.appDashboardAvatar.envoi_de_la_video": {
+  "c": "m",
+  "s": "lexique:core"
+ },
+ "ui.appDashboardAvatar.generation_en_cours": {
+  "c": "m",
+  "s": "lexique:core"
+ },
+ "ui.appDashboardAvatar.importer_ma_video": {
+  "c": "m",
+  "s": "lexique:core"
+ },
+ "ui.appDashboardAvatar.ma_voix": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardAvatar.modifier": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.appDashboardAvatar.mon_avatar": {
+  "c": "h",
+  "s": "lexique:core"
+ },
+ "ui.appDashboardAvatar.supprimer_mon_avatar": {
+  "c": "m",
+  "s": "lexique:core"
+ },
+ "ui.appDashboardAvatar.telecharger_la_video": {
+  "c": "m",
+  "s": "lexique:core"
+ },
+ "ui.appDashboardAvatar.video": {
+  "c": "h",
+  "s": "lexique:core"
+ },
+ "ui.appDashboardAvatar.voir_mon_apercu": {
+  "c": "m",
+  "s": "lexique:core"
+ },
+ "ui.appDashboardAvatar.voix": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardAvatar.votre_video": {
+  "c": "m",
+  "s": "lexique:core"
+ },
+ "ui.appDashboardBillingPlanPreselectionne.erreur_de_connexion": {
+  "c": "h",
+  "s": "lexique:core"
+ },
+ "ui.appDashboardCalendar.annuler": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.appDashboardCalendar.annuler_selection": {
+  "c": "m",
+  "s": "lexique:core"
+ },
+ "ui.appDashboardCalendar.fermer": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCalendar.reessayer_la_publication": {
+  "c": "m",
+  "s": "lexique:core"
+ },
+ "ui.appDashboardCalendar.retour": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCalendar.upload_echoue_msg": {
+  "c": "m",
+  "s": "lexique:core"
+ },
+ "ui.appDashboardCinema.ajouter_une_image_ou_une_video": {
+  "c": "m",
+  "s": "lexique:core"
+ },
+ "ui.appDashboardCinema.annuler": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.appDashboardCinema.confirmer_la_suppression_du_film": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.appDashboardCinema.exporter_le_film": {
+  "c": "m",
+  "s": "lexique:core"
+ },
+ "ui.appDashboardCinema.generer_cette_image": {
+  "c": "m",
+  "s": "lexique:core"
+ },
+ "ui.appDashboardCinema.image": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.appDashboardCinema.supprimer_ce_film": {
+  "c": "m",
+  "s": "lexique:core"
+ },
+ "ui.appDashboardCreerAssistantWizard.annuler": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.appDashboardCreerAssistantWizard.apercu": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.appDashboardCreerAssistantWizard.apercu_de_mon_montage": {
+  "c": "m",
+  "s": "lexique:core"
+ },
+ "ui.appDashboardCreerAssistantWizard.creer_une_video": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.appDashboardCreerAssistantWizard.enregistre": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.appDashboardCreerAssistantWizard.fermer_la_fenetre": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.appDashboardCreerAssistantWizard.mon_avatar": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCreerAssistantWizard.rechercher": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.appDashboardCreerAssistantWizard.rechercher_une_photo": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.appDashboardCreerAssistantWizard.reessayer": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.appDashboardCreerAssistantWizard.retour": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCreerAssistantWizard.supprimer": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.appDashboardCreerAssistantWizard.telecharger_la_video": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.appDashboardCreerAssistantWizard.telecharger_mp4": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.appDashboardCreerAssistantWizard.video": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "ui.appDashboardMedia.ajouter_une_video": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.appDashboardMedia.fermer": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardMedia.supprimer": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.appDashboardSettings.reglages": {
+  "c": "m",
+  "s": "lexique"
+ },
+ "ui.appDashboardSettings.se_deconnecter": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "ui.componentsAvatarAvatarVideoDid.connexion_impossible_reessayez": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsAvatarFluxSourceAvatar.connexion_impossible_reessayez": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsAvatarFluxSourceAvatar.creer_mon_avatar": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsAvatarFluxSourceAvatar.creer_un_nouvel_avatar": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsAvatarFluxSourceAvatar.fermer": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsAvatarFluxSourceAvatar.modifier": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsAvatarFluxSourceAvatar.mon_avatar": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsAvatarFluxSourceAvatar.mon_avatar_video": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsAvatarFluxSourceAvatar.video": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "ui.componentsAvatarMesAvatars.apercu": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsAvatarMesAvatars.creer_un_nouvel_avatar": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsAvatarMesAvatars.fermer": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsAvatarMesAvatars.reessayer": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsAvatarMesAvatars.video": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "ui.componentsAvatarStudioEnregistreurSource.reessayer": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsAvatarStudioPreparationPhoto.annuler": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsAvatarStudioPreparationPhoto.connexion_impossible_reessayez": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsAvatarStudioPreparationPhoto.modifier": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsAvatarStudioPreparationPhoto.previsualiser": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsAvatarStudioPreparationPhoto.reessayer": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsAvatarStudioPreparationSource.annuler": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsAvatarStudioPreparationSource.connexion_impossible_reessayez": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsAvatarStudioPreparationSource.modifier": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsAvatarStudioPreparationSource.previsualiser": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsAvatarStudioPreparationSource.reessayer": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsAvatarStudioPreparationSource.reglages": {
+  "c": "m",
+  "s": "lexique"
+ },
+ "ui.componentsBillingBuyCreditsModal.acheter_des_credits": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "ui.componentsBillingBuyCreditsModal.erreur_de_connexion": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsBillingCreditsDisplay.credits_disponibles": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsBillingPricingCards.erreur_de_connexion": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsBrandingPreview.apercu": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCalendarAvisMp4Indisponible.reessayer": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsCinemaApercuExemple.image": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCinemaDialogueGenerationIA.annuler": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCinemaDialogueGenerationIA.fermer": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsCinemaDirectionCinema.image": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCinemaDirectionCinema.valider": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCinemaModelesFilm.annuler": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCinemaWizardCinema.retour": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsCreerAfficheIA.generer": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerAgentIAModal.annuler": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerAiImageTools.annuler": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerApercuMedia.video": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "ui.componentsCreerApercuMontageListe.aucun_media": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerAttenteAvatarMontage.reessayer": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsCreerAudioDuckingTimeline.la_musique": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsCreerAudioDuckingTimeline.musique": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsCreerAudioMixPreview.musique": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsCreerAudioStudioPanel.enregistrer": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerAudioStudioPanel.generer": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerAudioStudioPanel.musique": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsCreerAudioStudioPanel.reessayer": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsCreerAudioStudioPanel.supprimer": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerAudioStudioPanel.video": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "ui.componentsCreerAutopilotPanel.ajouter": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerAutopilotPanel.annuler": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerAutopilotPanel.credits": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsCreerAutopilotPanel.enregistre": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerAutopilotPanel.mon_avatar": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerAutopilotPanel.musique": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsCreerAutopilotPanel.precedent": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerAutopilotPanel.retirer_la_musique": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsCreerAutopilotPanel.supprimer": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerAutopilotPanel.video": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "ui.componentsCreerAvatarPrincipalAutopilote.mon_avatar": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerCartesEditeur.description": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerChronologieMontage.remplacer_ce_media": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerChronologieMontage.remplacer_ce_media_libelle": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerCompleterRushesStock.supprimer": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerMediasSequenceVideo.ajouter": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerMediasSequenceVideo.apercu": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerMediasSequenceVideo.mon_avatar": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerMediasSequenceVideo.supprimer": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerPlanAvantGeneration.rechercher": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerPlanAvantGeneration.supprimer": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerRecadrerRush.fermer": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsCreerRechercheStockSequence.ajoute": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsCreerRechercheStockSequence.ajouter": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerRechercheStockSequence.apercu": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerRechercheStockSequence.fermer": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsCreerRechercheStockSequence.rechercher": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerSequenceVoicesPanel.enregistrer": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerStockRechercheAutopilote.ajoute": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsCreerStockRechercheAutopilote.ajouter": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerStockRechercheAutopilote.rechercher": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsCreerVideosPretes.telecharger": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsDashboardRecentVideos.terminee": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsDashboardRecentVideos.voir_toutes_les_videos": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsFournisseursConfirmationCoutFournisseur.annuler": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsMediaClipDetectorModal.annuler": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsMediaClipDetectorModal.apercu": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsMediaClipDetectorModal.fermer": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsMediasCarteMedia.apercu": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsSettingsBillingContent.acheter_des_credits": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsSettingsBillingContent.credits": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsSettingsBillingContent.erreur_de_connexion": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsSharedBrandingIndicator.modifier": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsSharedExportBar.telecharger": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsSharedMediaLibrary.fermer": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsSharedMediaLibrary.reessayer": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsSharedMediaLibrary.supprimer": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsSocialReglagesPublicationReseaux.choisir_une_image": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsSocialReglagesPublicationReseaux.reessayer": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsSocialReglagesPublicationReseaux.supprimer": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsUiFloatingPanel.fermer": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsUiInfoBulle.fermer": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsUiModal.fermer": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsUiSelect.selectionner": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsUxProgressStatus.echec": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsVoiceMaVoixPanel.annuler": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsVoiceMaVoixPanel.choisir": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsVoiceMaVoixPanel.enregistrer": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsVoiceMaVoixPanel.modifier": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsVoiceMaVoixPanel.supprimer": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.componentsVoiceVoiceCloneRecorder.enregistrer": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.libelles.hykmuts5": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "ui.libelles.h2w4tw96": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.libelles.hj5yrlma": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.libelles.h14peoen5": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.libelles.h1kk2r126": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ }
+}

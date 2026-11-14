@@ -30,6 +30,7 @@ import { formatSecondes, type EtapeApercu, type LigneChronologie } from '@/lib/c
 import InfoBulle from '@/components/ui/InfoBulle';
 import ChronologieMontage, { segmentsChronologie, type SegmentChronologie } from '@/components/creer/ChronologieMontage';
 import { transformeKenBurns } from '@/lib/creer/ken-burns';
+import { useTranslations } from '@/i18n/client';
 
 export type FormatApercuMontage = '9:16' | '16:9' | '1:1';
 const RATIO: Record<FormatApercuMontage, string> = { '9:16': '9 / 16', '16:9': '16 / 9', '1:1': '1 / 1' };
@@ -77,6 +78,7 @@ const mmss = (s: number) => {
 };
 
 export default function ApercuMontageListe(p: ApercuMontageListeProps) {
+  const tUi = useTranslations('ui.componentsCreerApercuMontageListe');
   // Le calendrier joué : les étapes de la séquence Vidéo, puis le CTA.
   const calendrier = p.lignes;
   const total = calendrier.length ? calendrier[calendrier.length - 1].fin : 0;
@@ -158,7 +160,7 @@ export default function ApercuMontageListe(p: ApercuMontageListeProps) {
 
   let cadre: JSX.Element;
   if (!ligne) {
-    cadre = <div className="absolute inset-0 flex items-center justify-center text-[11px] text-gray-500">Aucun média</div>;
+    cadre = <div className="absolute inset-0 flex items-center justify-center text-[11px] text-gray-500">{tUi('aucun_media')}</div>;
   } else if (ligne.cta) {
     cadre = carteCta();
   } else if (etape && etape.source === 'avatar' && !etape.url) {
@@ -172,11 +174,11 @@ export default function ApercuMontageListe(p: ApercuMontageListeProps) {
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center gap-1.5 bg-gray-900 text-gray-500" data-apercu-montage-avatar-emplacement>
             <UserRound className="w-8 h-8" />
-            <span className="text-[11px] font-medium text-gray-300">Votre avatar apparaîtra ici</span>
+            <span className="text-[11px] font-medium text-gray-300">{tUi('votre_avatar_apparaitra_ici')}</span>
           </div>
         )}
         <span className="absolute left-1/2 bottom-3 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-medium text-white ring-1 ring-white/15">
-          Votre avatar parlera ici
+          {tUi('votre_avatar_parlera_ici')}
         </span>
       </div>
     );
@@ -203,7 +205,7 @@ export default function ApercuMontageListe(p: ApercuMontageListeProps) {
         />
         {avatarReel && (
           <span className="absolute left-1/2 bottom-3 -translate-x-1/2 truncate rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-medium text-white ring-1 ring-white/15" style={{ maxWidth: '90%' }} data-apercu-montage-avatar-mention>
-            Votre avatar — sa parole suivra le script
+            {tUi('votre_avatar_sa_parole_suivra_le_scrip')}
           </span>
         )}
       </>
@@ -222,15 +224,15 @@ export default function ApercuMontageListe(p: ApercuMontageListeProps) {
       <div className="flex items-center justify-between gap-2 min-w-0">
         <div className="min-w-0">
           <h3 className="flex items-center gap-1 text-sm font-semibold text-gray-100">
-            {p.titre ?? 'Aperçu du montage'}
+            {p.titre ?? tUi('apercu_du_montage')}
             {p.sousTitreEnInfo ? (
-              <InfoBulle label="En savoir plus sur l’aperçu du montage" marqueur="apercu-montage">
-                <span className="block" data-apercu-montage-sous-titre>{p.sousTitre ?? "Séquence Vidéo dans l'ordre de la liste, puis le CTA."}</span>
+              <InfoBulle label={tUi('en_savoir_plus_sur_l_apercu_du_montage')} marqueur="apercu-montage">
+                <span className="block" data-apercu-montage-sous-titre>{p.sousTitre ?? tUi('sequence_video_dans_l_ordre_de_la_list')}</span>
               </InfoBulle>
             ) : null}
           </h3>
           {p.sousTitreEnInfo ? null : (
-            <p className="text-[11px] text-gray-500" data-apercu-montage-sous-titre>{p.sousTitre ?? "Séquence Vidéo dans l'ordre de la liste, puis le CTA."}</p>
+            <p className="text-[11px] text-gray-500" data-apercu-montage-sous-titre>{p.sousTitre ?? tUi('sequence_video_dans_l_ordre_de_la_list')}</p>
           )}
         </div>
         <span className="text-[11px] text-gray-400 tabular-nums flex-shrink-0" data-apercu-montage-temps>{mmss(t)} / {mmss(total)}</span>
@@ -256,7 +258,7 @@ export default function ApercuMontageListe(p: ApercuMontageListeProps) {
       <div className="flex items-center justify-center gap-2">
         <button
           type="button" onClick={basculer} data-apercu-montage-lecture
-          aria-label={lecture ? 'Mettre en pause' : 'Lire le montage'}
+          aria-label={lecture ? 'Mettre en pause' : tUi('lire_le_montage')}
           title={lecture ? 'Pause' : 'Lire'}
           className="flex items-center gap-1 rounded-lg bg-gray-800 hover:bg-gray-700 px-3 py-1.5 text-[11px] font-medium text-gray-100 transition"
         >
@@ -265,7 +267,7 @@ export default function ApercuMontageListe(p: ApercuMontageListeProps) {
         </button>
         <button
           type="button" onClick={() => { sauterA(0); }} data-apercu-montage-revoir
-          aria-label="Revoir depuis le début" title="Revoir depuis le début"
+          aria-label={tUi('revoir_depuis_le_debut')} title={tUi('revoir_depuis_le_debut')}
           className="flex items-center gap-1 rounded-lg bg-gray-800 hover:bg-gray-700 px-3 py-1.5 text-[11px] font-medium text-gray-100 transition"
         >
           <RotateCcw className="w-3.5 h-3.5" />
@@ -288,7 +290,7 @@ export default function ApercuMontageListe(p: ApercuMontageListeProps) {
           className={`text-[10px] ${p.depassement && p.depassement > 0 ? 'text-amber-300' : 'text-gray-500'}`}
         >
           {p.depassement && p.depassement > 0 ? <AlertTriangle className="inline w-3 h-3 mr-1 -mt-0.5" /> : null}
-          Narration {p.narration.source === 'reelle' ? 'réelle' : 'estimée'} de votre avatar : {formatSecondes(p.narration.duree)} s
+          Narration {p.narration.source === 'reelle' ? tUi('reelle') : tUi('estimee')} {tUi('de_votre_avatar')} {formatSecondes(p.narration.duree)} s
           {p.depassement && p.depassement > 0
             ? ` — vos médias la dépassent de ${formatSecondes(Math.ceil(p.depassement * 10 - 1e-6) / 10)} s : raccourcissez-les avant d’envoyer.`
             : '. Vos médias gardent leur durée ; votre avatar occupe le reste.'}

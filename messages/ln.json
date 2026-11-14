@@ -1,0 +1,700 @@
+{
+  "common": {
+    "add": "Kobakisa",
+    "all": "Nyonso",
+    "and": "mpé",
+    "apply": "Kosalela",
+    "back": "Kozonga",
+    "cancel": "Kolongola",
+    "clear": "Kolongola",
+    "close": "Kokanga",
+    "confirm": "Kondima",
+    "connectionError": "Libunga ya kokangana. Meká lisusu.",
+    "create": "Kokela",
+    "credits": "ba crédits",
+    "delete": "Kolimwisa",
+    "download": "Kokitisa",
+    "duplicate": "Kosala kopi",
+    "edit": "Kobɔngisa",
+    "error": "Libunga",
+    "errorOccurred": "Libunga ebimi",
+    "export": "Komɛmɛ",
+    "filter": "Filtre",
+    "formats": {
+      "reel": "Reel 9:16",
+      "tv": "TV 16:9"
+    },
+    "hide": "Kobómba",
+    "image": "Elilingi",
+    "import": "Kokɔtisa",
+    "less": "Moke lisusu",
+    "more": "Mingi lisusu",
+    "next": "Oyo elandi",
+    "no": "Te",
+    "noResults": "Eloko moko te ezwami",
+    "none": "Moko te",
+    "of": "na",
+    "open": "Kofungola",
+    "or": "To",
+    "page": "Lokasa",
+    "perMonth": "/sanza",
+    "preview": "Botáli",
+    "previous": "Oyo ya liboso",
+    "publish": "Kobimisa",
+    "remove": "Kolimwisa",
+    "reset": "Kobanda na sika",
+    "retry": "Meká lisusu",
+    "save": "Kobómbisa",
+    "search": "Koluka",
+    "select": "Kopona",
+    "selected": "eponami",
+    "show": "Komɔ́nisa",
+    "status": {
+      "active": "Ezali kosala",
+      "completed": "Esili",
+      "published": "Ebimisami",
+      "failed": "Esalemi te"
+    },
+    "submit": "Kotínda",
+    "upload": "Kotómbisa",
+    "video": "Vidéo",
+    "videos": "Ba vidéo",
+    "view": "Tála",
+    "yes": "Iyo"
+  },
+  "sidebar": {
+    "avatar": "Avatar na ngai",
+    "buy": "Kosomba",
+    "calendar": "Kalandriye IA",
+    "create": "Kokela",
+    "creditsAvailable": "Ba crédits oyo ezali",
+    "library": "Bibliotɛkɛ",
+    "media": "Mediá",
+    "settings": "Palamɛ́tɛlɛ"
+  },
+  "navbar": {
+    "logout": "Kolongwa"
+  },
+  "languageSelector": {
+    "label": "Monoko",
+    "partial": "ya ndambo"
+  },
+  "auth": {
+    "login": {
+      "connecting": "Ezali kokɔta...",
+      "email": "Email",
+      "emailPlaceholder": "yo@email.com",
+      "errorFillAll": "Tia makambo na bisika nyonso.",
+      "errorGeneric": "Libunga ya kokangana. Meká lisusu.",
+      "errorInvalid": "Email to mot de passe ezali malamu te.",
+      "facebook": "Kokoba na Facebook",
+      "google": "Kokoba na Google",
+      "noAccount": "Ozali naino na compte te?",
+      "or": "To",
+      "signup": "Komíkomisa",
+      "submit": "Kokɔta",
+      "subtitle": "Kokɔta na compte na yo ya Studiio",
+      "title": "Kokɔta"
+    },
+    "signup": {
+      "creditsPerMonth": "ba crédits na sanza",
+      "facebook": "Komíkomisa na Facebook",
+      "google": "Komíkomisa na Google",
+      "hasAccount": "Ozali na compte déjà?",
+      "login": "Kokɔta",
+      "month": "sanza",
+      "moreFeatures": "makambo mosusu ya malamu",
+      "planSelected": "Plan {plan} eponami",
+      "privacyLink": "Politíki ya viplívɛ",
+      "selectedPlan": "Plan eponami",
+      "subtitle": "Kela compte na yo ya Studiio ya ofele",
+      "termsAnd": "mpé",
+      "title": "Komíkomisa"
+    }
+  },
+  "dashboardHome": {
+    "createVideo": "Kokela vidéo",
+    "directAccess": {
+      "calendar": "Kalandriye",
+      "create": "Kokela",
+      "library": "Bibliotɛkɛ",
+      "settings": "Palamɛ́tɛlɛ",
+      "title": "Kokɔta noki",
+      "createDesc": "Infographie to vidéo ya sika"
+    },
+    "welcome": "Boyei malamu, {name}",
+    "stats": {
+      "creditsRemaining": "Ba crédits oyo etikali",
+      "publications": "Makambo oyo ebimisami",
+      "videosCreated": "Ba vidéo ekelami"
+    },
+    "quickActions": "Misala ya noki"
+  },
+  "billing": {
+    "buyCredits": "Kosomba ba crédits",
+    "currentSubscription": "Abonnement ya sikoyo",
+    "plan": "Plan",
+    "tableHeaders": {
+      "balance": "Oyo etikali",
+      "credits": "Ba crédits",
+      "date": "Mokɔlɔ",
+      "description": "Ndimbola"
+    },
+    "transactions": {
+      "bonusCredits": "Ba crédits ya bonus",
+      "buyCredits": "Kosomba ba crédits {count}",
+      "subscriptionPro": "Abonnement Pro"
+    }
+  },
+  "library": {
+    "actions": {
+      "delete": "Kolimwisa",
+      "duplicate": "Kosala kopi",
+      "edit": "Kobɔngisa",
+      "export": "Komɛmɛ",
+      "preview": "Botáli"
+    },
+    "createFirstVideo": "Kokela vidéo na ngai ya liboso",
+    "createVideo": "Kokela vidéo",
+    "deleteConfirm": {
+      "title": "Kolimwisa vidéo?",
+      "message": "Olingi solo kolimwisa \"{title}\"? Likambo oyo ekozongisama te."
+    },
+    "formatLabels": {
+      "reel": "Reel 9:16",
+      "tv": "TV 16:9"
+    },
+    "noVideos": "Vidéo moko te",
+    "searchPlaceholder": "Koluka vidéo...",
+    "status": {
+      "published": "Ebimisami",
+      "completed": "Esili"
+    },
+    "subtitle": "Ba vidéo {count} ekelami",
+    "title": "Bibliotɛkɛ",
+    "typeLabels": {
+      "video": "Vidéo"
+    },
+    "toasts": {
+      "deleted": "Vidéo elimwisami",
+      "duplicated": "Kopi ya vidéo esalemi",
+      "deleteError": "Libunga na kolimwisa",
+      "exportError": "Libunga na komɛmɛ"
+    }
+  },
+  "calendar": {
+    "actions": {
+      "delete": "Kolimwisa",
+      "duplicate": "Kosala kopi",
+      "edit": "Kobɔngisa",
+      "export": "Komɛmɛ",
+      "preview": "Botáli"
+    },
+    "aiAgent": {
+      "stages": {
+        "done": "Esili !"
+      },
+      "filesCount": "Ba fichiers {count}",
+      "rushFiles": {
+        "filesSelected": "Ba fichiers {count} eponami",
+        "selectFiles": "Kopona ba fichiers"
+      },
+      "musicFile": {
+        "fileSelected": "Miziki eponami",
+        "selectFile": "Kopona fichier ya audio"
+      }
+    },
+    "bulkDelete": "Kolimwisa",
+    "bulkDuplicate": "Kosala kopi",
+    "editModal": {
+      "date": "Mokɔlɔ",
+      "save": "Kobómbisa",
+      "published": "Kobimisa",
+      "time": "Ntángo",
+      "title": "Kobɔngisa post",
+      "captionPlaceholder": "Limbola post na yo..."
+    },
+    "fullPreview": {
+      "close": "Kokanga",
+      "edit": "Kobɔngisa",
+      "music": "Miziki",
+      "publishNow": "Kobimisa sikoyo"
+    },
+    "import": "Kokɔtisa",
+    "select": "Kopona",
+    "stats": {
+      "published": "Ebimisami",
+      "total": "Total"
+    },
+    "status": {
+      "published": "Ebimisami",
+      "failed": "Esalemi te",
+      "publishing": "Ezali kobimisa..."
+    },
+    "title": "Kalandriye IA",
+    "addPost": "Kobakisa post",
+    "newPost": "Post ya sika",
+    "bulkDateModal": {
+      "newDate": "Mokɔlɔ ya sika"
+    },
+    "selectAll": "Kopona nyonso",
+    "noPosts": "Post moko te mokɔlɔ oyo",
+    "post": "post",
+    "posts": "ba post",
+    "postCount": "Ba post {count}",
+    "selectDate": "Pona mokɔlɔ",
+    "previewModal": {
+      "title": "Botáli ya post",
+      "at": "na"
+    }
+  },
+  "creator": {
+    "render": {
+      "done": "Esili !",
+      "errorCreate": "Libunga na kokela",
+      "creating": "Ezali kokela...",
+      "launchCreation": "Kobanda kokela"
+    },
+    "title": "Kokela vidéo",
+    "format": {
+      "reel": "Reel 9:16",
+      "tv": "TV 16:9"
+    },
+    "rushVideos": {
+      "add": "Kobakisa",
+      "settings": "Palamɛ́tɛlɛ"
+    },
+    "textCards": {
+      "apply": "Kosalela",
+      "color": "Langi"
+    },
+    "batch": {
+      "calendar": "Kalandriye",
+      "export": "Komɛmɛ"
+    },
+    "character": {
+      "upload": "Kotómbisa",
+      "noImageFound": "Elilingi moko te ezwami"
+    },
+    "uploadCharacter": "Kotómbisa",
+    "change": "Kobóngola",
+    "summary": {
+      "videos": "Ba vidéo"
+    },
+    "montageSequences": {
+      "noVideo": "Vidéo moko te"
+    },
+    "addLogo": "Kobakisa logo",
+    "logo": {
+      "upload": "Kokɔtisa logo"
+    },
+    "stepOf": "Etape {current} na {total}",
+    "clickToAddImage": "Finá mpo na kobakisa elilingi",
+    "credits": "Ba crédits 15"
+  },
+  "assistant": {
+    "close": "Kokanga",
+    "send": "Kotínda",
+    "error": "Limbisá ngáí, libunga ebimi. Meká lisusu.",
+    "greeting": "Mbote ! Nazali assistant ya Studiio. Nakoki kosunga yo boni lelo ?",
+    "placeholder": "Tuna motuna na yo...",
+    "thinking": "Assistant azali kokanisa...",
+    "unauthorized": "Kɔta mpo na kosalela assistant."
+  },
+  "social": {
+    "confirmDisconnect": {
+      "cancel": "Kolongola"
+    },
+    "selfPublish": {
+      "cta": "Kokitisa mpo na kobimisa",
+      "step1": "Kitisa vidéo na yo",
+      "step2": "Fungola application {platform}"
+    },
+    "platforms": {
+      "facebook": {
+        "description": "Ba vidéo, Reels, Stories"
+      },
+      "instagram": {
+        "description": "Reels, Stories, Ba post"
+      }
+    },
+    "status": {
+      "connected": "Ekangani",
+      "notConnected": "Ekangani te"
+    },
+    "toasts": {
+      "connectionError": "Libunga na kokangana",
+      "connectionInProgress": "Ezali kokangana..."
+    }
+  },
+  "objectives": {
+    "form": {
+      "description": "Ndimbola",
+      "name": "Nkómbó"
+    }
+  },
+  "audioStudio": {
+    "backToCalendar": "Kozonga na Kalandriye",
+    "destination": {
+      "calendar": "Kalandriye"
+    },
+    "export": {
+      "done": "Esili!",
+      "error": "Libunga"
+    },
+    "music": {
+      "import": "Kokɔtisa miziki",
+      "noMusic": "Miziki te",
+      "title": "MIZIKI"
+    },
+    "nextVideo": "Oyo elandi",
+    "noVideoSelected": "Vidéo moko te eponami",
+    "previousVideo": "Oyo ya liboso",
+    "timeline": {
+      "music": "Miziki",
+      "video": "Vidéo",
+      "voice": "Mongongo"
+    },
+    "videoPreview": "Botáli ya vidéo"
+  },
+  "infographic": {
+    "backButton": "Kozonga",
+    "characterImage": {
+      "upload": "Kokɔtisa elilingi"
+    },
+    "destination": {
+      "calendar": "Kalandriye"
+    },
+    "exportButton": {
+      "exporting": "KOMƐMƐ... {progress}%"
+    },
+    "finalizeButton": "Kosilisa",
+    "infoCards": {
+      "add": "Kobakisa"
+    },
+    "logoSection": {
+      "add": "Kobakisa logo"
+    },
+    "logoUpload": {
+      "upload": "Kotómbisa logo"
+    },
+    "posterPhoto": {
+      "import": "Kokɔtisa",
+      "remove": "Kolimwisa"
+    },
+    "preview": {
+      "noVideoLabel": "Vidéo moko te",
+      "seqVideo": "Vidéo"
+    },
+    "sequenceOrder": {
+      "noVideo": "Vidéo moko te"
+    },
+    "videoRush": {
+      "title": "Vidéo",
+      "upload": "Kotómbisa vidéo"
+    },
+    "videoSection": {
+      "choose": "Kopona vidéo"
+    }
+  },
+  "landing": {
+    "nav": {
+      "login": "Kokɔta"
+    },
+    "pricing": {
+      "creditsPerMonth": "ba crédits/sanza",
+      "monthly": "Na sanza",
+      "yearly": "Na mbula"
+    },
+    "stats": {
+      "videosCreated": "Ba vidéo ekelami"
+    }
+  },
+  "ui": {
+    "appDashboardAvatar": {
+      "modifier": "Kobɔngisa",
+      "video": "vidéo",
+      "mon_avatar": "Avatar na ngai",
+      "creer_une_video": "Kokela vidéo",
+      "creer_mon_avatar": "Kokela avatar na ngai",
+      "creer_mon_avatar_video": "Kokela avatar vidéo na ngai",
+      "supprimer_mon_avatar": "Kolimwisa avatar na ngai",
+      "choisir_une_photo": "Kopona photo",
+      "choisir_une_video": "Kopona vidéo",
+      "importer_ma_video": "Kokɔtisa vidéo na ngai",
+      "telecharger_la_video": "Kokitisa vidéo",
+      "ma_voix": "Mongongo na ngai",
+      "voix": "Mongongo",
+      "confirmer_la_suppression": "Kondima kolimwisa",
+      "connexion_impossible_reessayez": "Libunga ya kokangana. Meká lisusu."
+    },
+    "appDashboardBillingPlanPreselectionne": {
+      "credits_mois": "ba crédits / sanza",
+      "erreur_de_connexion": "Libunga ya kokangana"
+    },
+    "appDashboardCalendar": {
+      "annuler": "Kolongola",
+      "fermer": "Kokanga",
+      "retour": "Kozonga"
+    },
+    "appDashboardCinema": {
+      "annuler": "Kolongola",
+      "continuer": "Kokoba",
+      "image": "Elilingi",
+      "supprimer_ce_film": "Kolimwisa film oyo",
+      "exporter_le_film": "Komɛmɛ film",
+      "telecharger_le_mp4": "Kokitisa MP4",
+      "titre_du_film": "Titre ya film",
+      "previsualisation": "Botáli"
+    },
+    "appDashboardCreerAssistantWizard": {
+      "annuler": "Kolongola",
+      "apercu": "Botáli",
+      "combien_de_videos": "Ba vidéo boní?",
+      "continuer_avec": "Kokoba na",
+      "couleur": "Langi",
+      "couleur_zonelabel": "Langi — {zoneLabel}",
+      "credits_medias": "Ba crédits ya mediá",
+      "creer_une_video": "Kokela vidéo",
+      "enregistre": "Ebómbami",
+      "envoye_au_calendrier": "Etíndami na Kalandriye",
+      "envoyer_au_calendrier": "Kotínda na Kalandriye",
+      "importer_un_rush": "Kokɔtisa rush",
+      "ma_photo": "Photo na ngai",
+      "mon_avatar": "Avatar na ngai",
+      "musique_et_voix": "Miziki mpé mongongo",
+      "ou_votre_sujet": "To likambo na yo",
+      "ouvrir_le_calendrier": "Kofungola Kalandriye",
+      "rechercher": "Koluka",
+      "rechercher_une_photo": "Koluka photo",
+      "rechercher_une_photo_2": "Koluka photo…",
+      "reessayer": "Meká lisusu",
+      "reinitialiser": "Kobanda na sika",
+      "retirer_le_rush": "Kolimwisa rush",
+      "retour": "Kozonga",
+      "rush_importe": "Rush ekɔtisami",
+      "selectionnee": "eponami",
+      "supprimer": "Kolimwisa",
+      "supprimer_l_element": "Kolimwisa eloko",
+      "taille": "Monene",
+      "taille_libelle": "Monene — {libelle}",
+      "telecharger_la_video": "Kokitisa vidéo",
+      "telecharger_mp4": "Kokitisa MP4",
+      "video": "Vidéo",
+      "voir_mon_abonnement": "Tála abonnement na ngai"
+    },
+    "componentsAvatarStudioPreparationPhoto": {
+      "annuler": "Kolongola",
+      "modifier": "Kobɔngisa",
+      "connexion_impossible_reessayez": "Libunga ya kokangana. Meká lisusu."
+    },
+    "componentsAvatarStudioPreparationSource": {
+      "annuler": "Kolongola",
+      "modifier": "Kobɔngisa",
+      "reglages": "Palamɛ́tɛlɛ",
+      "connexion_impossible_reessayez": "Libunga ya kokangana. Meká lisusu."
+    },
+    "componentsCinemaDialogueGenerationIA": {
+      "annuler": "Kolongola",
+      "fermer": "Kokanga"
+    },
+    "componentsCinemaModelesFilm": {
+      "annuler": "Kolongola"
+    },
+    "componentsCreerAgentIAModal": {
+      "annuler": "Kolongola"
+    },
+    "componentsCreerAiImageTools": {
+      "annuler": "Kolongola"
+    },
+    "appDashboardMedia": {
+      "supprimer": "Kolimwisa",
+      "fermer": "Kokanga",
+      "media": "Mediá",
+      "ajouter_une_video": "Kobakisa vidéo",
+      "rechercher_un_rush": "Koluka rush…"
+    },
+    "componentsAvatarFluxSourceAvatar": {
+      "modifier": "Kobɔngisa",
+      "fermer": "Kokanga",
+      "connexion_impossible_reessayez": "Libunga ya kokangana. Meká lisusu.",
+      "importer_une_video": "Kokɔtisa vidéo"
+    },
+    "componentsCinemaWizardCinema": {
+      "retour": "Kozonga"
+    },
+    "componentsAvatarMesAvatars": {
+      "fermer": "Kokanga"
+    },
+    "appDashboardSettings": {
+      "reglages": "Palamɛ́tɛlɛ",
+      "se_deconnecter": "Kolongwa"
+    },
+    "componentsAvatarAvatarVideoDid": {
+      "connexion_impossible_reessayez": "Libunga ya kokangana. Meká lisusu.",
+      "creation": "Kokela"
+    },
+    "componentsCreerAfficheIA": {
+      "generer": "Kokela"
+    },
+    "componentsCreerAutopilotPanel": {
+      "ajouter": "Kobakisa",
+      "annuler": "Kolongola",
+      "supprimer": "Kolimwisa",
+      "video": "vidéo",
+      "credits": "ba crédits",
+      "precedent": "Oyo ya liboso",
+      "musique": "Miziki",
+      "enregistre": "Ebómbisami.",
+      "ouvrir_le_calendrier": "Kofungola Kalandriye",
+      "mon_avatar": "Avatar na ngai",
+      "rechercher_des_medias": "Koluka mediá",
+      "retirer_la_musique": "Kolimwisa miziki"
+    },
+    "componentsCreerMediasSequenceVideo": {
+      "ajouter": "Kobakisa",
+      "supprimer": "Kolimwisa"
+    },
+    "componentsCreerAudioStudioPanel": {
+      "supprimer": "Kolimwisa",
+      "enregistrer": "Kobómbisa",
+      "reessayer": "Meká lisusu",
+      "video": "Vidéo",
+      "musique": "Miziki",
+      "generer": "Kokela"
+    },
+    "componentsCreerCompleterRushesStock": {
+      "supprimer": "Kolimwisa"
+    },
+    "componentsCreerAttenteAvatarMontage": {
+      "reessayer": "Meká lisusu"
+    },
+    "componentsCreerApercuMedia": {
+      "video": "Vidéo",
+      "ajoute": "Ebakisami",
+      "apercu_du_media": "Botáli ya mediá",
+      "choisir_un_autre_media": "Kopona mediá mosusu"
+    },
+    "componentsCreerCartesEditeur": {
+      "description": "Ndimbola"
+    },
+    "componentsCreerApercuMontageListe": {
+      "aucun_media": "Mediá moko te"
+    },
+    "componentsCreerAudioDuckingTimeline": {
+      "musique": "Miziki"
+    },
+    "componentsCreerAudioMixPreview": {
+      "musique": "Miziki"
+    },
+    "componentsCreerAvatarPrincipalAutopilote": {
+      "mon_avatar": "Avatar na ngai"
+    },
+    "componentsCreerPlanAvantGeneration": {
+      "rechercher": "Koluka",
+      "supprimer": "Kolimwisa"
+    },
+    "componentsCreerRecadrerRush": {
+      "fermer": "Kokanga",
+      "reinitialiser": "Kobanda na sika"
+    },
+    "componentsCreerRechercheStockSequence": {
+      "ajoute": "Ebakisami",
+      "ajouter": "Kobakisa",
+      "apercu": "Botáli",
+      "fermer": "Kokanga",
+      "rechercher": "Koluka"
+    },
+    "componentsCreerSequenceVoicesPanel": {
+      "enregistrer": "Kobómbisa"
+    },
+    "componentsCreerStockRechercheAutopilote": {
+      "ajoute": "Ebakisami",
+      "ajouter": "Kobakisa",
+      "rechercher": "Koluka"
+    },
+    "componentsCreerVideosPretes": {
+      "aucune_video_pour_l_instant": "Vidéo moko te naino.",
+      "telecharger": "Kokitisa"
+    },
+    "componentsDashboardRecentVideos": {
+      "terminee": "Esili"
+    },
+    "componentsFournisseursConfirmationCoutFournisseur": {
+      "annuler": "Kolongola"
+    },
+    "componentsLayoutNavbar": {
+      "credits_restants": "Ba crédits oyo etikali"
+    },
+    "componentsMediaClipDetectorModal": {
+      "annuler": "Kolongola",
+      "apercu": "Botáli",
+      "fermer": "Kokanga",
+      "tout_selectionner": "Kopona nyonso"
+    },
+    "componentsMediasCarteMedia": {
+      "apercu": "Botáli"
+    },
+    "componentsSettingsBillingContent": {
+      "acheter_des_credits": "Kosomba ba crédits",
+      "aucune_transaction": "Transaction moko te",
+      "credits": "Ba crédits",
+      "credits_restants": "ba crédits oyo etikali"
+    },
+    "componentsSharedBrandingIndicator": {
+      "modifier": "Kobɔngisa"
+    },
+    "componentsSharedExportBar": {
+      "creditcost_credits": "ba crédits {creditCost}",
+      "telecharger": "Kokitisa"
+    },
+    "componentsSharedMediaLibrary": {
+      "fermer": "Kokanga",
+      "reessayer": "Meká lisusu",
+      "supprimer": "Kolimwisa",
+      "tout_selectionner": "Kopona nyonso"
+    },
+    "componentsSocialReglagesPublicationReseaux": {
+      "reessayer": "Meká lisusu",
+      "supprimer": "Kolimwisa"
+    },
+    "componentsUiFloatingPanel": {
+      "fermer": "Kokanga"
+    },
+    "componentsUiInfoBulle": {
+      "fermer": "Kokanga"
+    },
+    "componentsUiModal": {
+      "fermer": "Kokanga"
+    },
+    "componentsUiSelect": {
+      "selectionner": "Kopona..."
+    },
+    "componentsUxProgressStatus": {
+      "echec": "Esalemi te"
+    },
+    "componentsVoiceMaVoixPanel": {
+      "annuler": "Kolongola",
+      "ecouter": "Koyoka",
+      "enregistrer": "Kobómbisa",
+      "modifier": "Kobɔngisa",
+      "supprimer": "Kolimwisa"
+    },
+    "componentsVoiceVoiceCloneRecorder": {
+      "enregistrer": "Kobómbisa"
+    },
+    "libelles": {
+      "h1fr8rort": "Ba crédits 150/sanza (~ba vidéo 15)",
+      "h1lt7u2zt": "Ba crédits 600/sanza (~ba vidéo 60)",
+      "h1qennt1i": "Ba crédits 2 500/sanza",
+      "h2w4tw96": "Ba vidéo",
+      "haukudym": "Kalandriye IA ya mikɔlɔ 30",
+      "hj5yrlma": "Avatar na ngai",
+      "hnwqhsxa": "Ba photo na ngai",
+      "hthgb8ol": "Kalandriye IA ya mikɔlɔ 7",
+      "htxhidcc": "Avatar moko te",
+      "hug424q": "Ba crédits 10/sanza (~vidéo 1)",
+      "hykmuts5": "Vidéo"
+    }
+  }
+}

@@ -8,6 +8,7 @@ import { importerStockClient, rechercherStockClient } from '@/lib/stock/client';
 import type { FormatStock, MediaStock, TypeStock } from '@/lib/stock/types';
 import type { MediaStockRetenu } from '@/lib/autopilot/sources';
 import { accepteAutomatiquement, descriptionMediaStock, MESSAGE_PEU_PERTINENTS, pertinenceMedia, scenarioPertinence } from '@/lib/autopilot/pertinence-medias';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * Rechercher et RETENIR des médias stock pour l'Autopilote — vidéos Pexels,
@@ -91,6 +92,7 @@ export default function StockRechercheAutopilote({
   onFermer?: () => void;
   ident?: string;
 }) {
+  const tUi = useTranslations('ui.componentsCreerStockRechercheAutopilote');
   const [requete, setRequete] = useState(sujet);
   const [filtre, setFiltre] = useState<Filtre>('tout');
   const [resultats, setResultats] = useState<MediaStock[] | null>(null);
@@ -109,7 +111,7 @@ export default function StockRechercheAutopilote({
       const ajout = r.medias.filter((m) => !deja.some((x) => cleMediaStock(x) === cleMediaStock(m)));
       return [...deja, ...ajout].slice(0, MAX_RESULTATS_RECHERCHE);
     });
-    if (r.echec) setMessage('Certains résultats sont indisponibles pour le moment.');
+    if (r.echec) setMessage(tUi('certains_resultats_sont_indisponibles'));
     setSuite(null);
     setEnCours(false);
   }, [suite, format]);
@@ -129,7 +131,7 @@ export default function StockRechercheAutopilote({
       ? { type: types[0], texte } : null);
     setResultats(medias.slice(0, MAX_RESULTATS_RECHERCHE));
     if (medias.length === 0) setMessage(echec ? MESSAGE_RECHERCHE_INDISPONIBLE : 'Aucun résultat pour cette recherche.');
-    else if (echec) setMessage('Certains résultats sont indisponibles pour le moment.');
+    else if (echec) setMessage(tUi('certains_resultats_sont_indisponibles'));
     setEnCours(false);
   }, [format]);
 
@@ -176,13 +178,13 @@ export default function StockRechercheAutopilote({
         <div className="flex items-center justify-between gap-2">
           <p className="text-[11px] font-medium text-gray-300 min-w-0 truncate">{titre}</p>
           {onFermer && (
-            <button type="button" onClick={onFermer} aria-label="Fermer la recherche" className="shrink-0 text-gray-500 hover:text-white">
+            <button type="button" onClick={onFermer} aria-label={tUi('fermer_la_recherche')} className="shrink-0 text-gray-500 hover:text-white">
               <X className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
       )}
-      <div className="flex gap-1" role="group" aria-label="Type de média">
+      <div className="flex gap-1" role="group" aria-label={tUi('type_de_media')}>
         {FILTRES.map((t) => (
           <button
             key={t.v}
@@ -192,7 +194,7 @@ export default function StockRechercheAutopilote({
             data-autopilot-stock-mode={t.v}
             className={`rounded px-2 py-0.5 text-[10px] border ${filtre === t.v ? 'border-purple-500 text-white bg-purple-500/10' : 'border-gray-800 text-gray-400 hover:text-white'}`}
           >
-            {t.label}
+            {tUi.fr(t.label)}
           </button>
         ))}
       </div>
@@ -204,8 +206,8 @@ export default function StockRechercheAutopilote({
           type="text"
           value={requete}
           onChange={(e) => setRequete(e.target.value)}
-          placeholder="Que recherchez-vous ?"
-          aria-label="Que recherchez-vous ?"
+          placeholder={tUi('que_recherchez_vous')}
+          aria-label={tUi('que_recherchez_vous')}
           data-autopilot-stock-requete={ident}
           className="flex-1 min-w-0 rounded border border-gray-800 bg-gray-950 px-1.5 py-1 text-[11px] text-gray-200 placeholder:text-gray-600"
         />
@@ -215,7 +217,7 @@ export default function StockRechercheAutopilote({
           data-autopilot-stock-lancer={ident}
           className="shrink-0 flex items-center gap-1 rounded border border-gray-800 px-2 py-1 text-[10px] text-gray-300 hover:text-white disabled:opacity-40"
         >
-          {enCours ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />} Rechercher
+          {enCours ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />} {tUi('rechercher')}
         </button>
       </form>
       {message && (
@@ -248,17 +250,17 @@ export default function StockRechercheAutopilote({
                   accent={accent}
                   actions={[deja
                     ? {
-                      cle: 'ajoute', libelle: 'Ajouté', icone: Check, variante: 'fait', disabled: true, onClick: () => {},
+                      cle: 'ajoute', libelle: tUi('ajoute'), icone: Check, variante: 'fait', disabled: true, onClick: () => {},
                       attrs: { 'data-autopilot-stock-ajoute': cle },
                     }
                     : {
-                      cle: 'ajouter', libelle: 'Ajouter', icone: Plus, variante: 'principal',
+                      cle: 'ajouter', libelle: tUi('ajouter'), icone: Plus, variante: 'principal',
                       onClick: () => { void retenir(m); }, disabled: etat === 'import', enCours: etat === 'import',
                       ariaLabel: `Ajouter cette ${LIBELLES_ORIGINE[origine].toLowerCase()}`,
                       attrs: { 'data-autopilot-stock-retenir': cle },
                     }]}
                 />
-                {etat === 'erreur' && <p className="text-[10px] text-amber-400" data-autopilot-stock-retenir-erreur>Ajout impossible pour le moment — réessayez.</p>}
+                {etat === 'erreur' && <p className="text-[10px] text-amber-400" data-autopilot-stock-retenir-erreur>{tUi('ajout_impossible_pour_le_moment_reessa')}</p>}
               </li>
             );
           })}
@@ -278,7 +280,7 @@ export default function StockRechercheAutopilote({
       {/* L'attribution COLLECTIVE reste, repliée et discrète (jamais supprimée) ;
           celle de chaque média vit dans « Informations du média ». */}
       <details className="text-[9px] text-gray-600" data-credit-media data-autopilot-stock-credit>
-        <summary className="cursor-pointer select-none">Crédits médias</summary>
+        <summary className="cursor-pointer select-none">{tUi('credits_medias')}</summary>
         <p className="mt-0.5">{CREDIT_FOURNISSEURS}</p>
       </details>
     </div>

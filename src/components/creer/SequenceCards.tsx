@@ -12,6 +12,7 @@ import { ajusterBadge, badgeValide, taillesBadge } from '@/lib/creer/surimpressi
 import { RETRAIT_DROIT_CARTES_916 } from '@/lib/creer/zones-sures-916';
 import { taillesCartesLisibles } from '@/lib/creer/cartes-lisibles-formats';
 import { estVoile, haloTexteCss, CONTOUR_TEXTE_ALPHA, couleurValeurLisible } from '@/lib/creer/contraste';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * Planchers de lisibilité des cartes en 9:16 (fraction de la largeur vidéo) :
@@ -230,6 +231,7 @@ export default function SequenceCards({
   fondsContraste = null,
   plancherHauteurVideo = null,
 }: SequenceCardsProps) {
+  const tUi = useTranslations('ui.componentsCreerSequenceCards');
   const vw = containerWidth;
   // 9:16 en flux : planchers de LISIBILITE sur téléphone (`LISIBILITE_916`).
   // Les ratios d'origine (≈ 29 px sur 1080) se lisaient mal une fois la vidéo
@@ -340,8 +342,8 @@ export default function SequenceCards({
         onPointerLeave={it?.onCardResizeStart ? () => setSurvolee((v) => (v === c.id ? null : v)) : undefined}
         title={
           it?.onCardDoubleClick
-            ? 'Double-clic pour changer l’icône'
-            : editable ? 'Glisser pour déplacer la carte' : undefined
+            ? tUi('double_clic_pour_changer_l_icone')
+            : editable ? tUi('glisser_pour_deplacer_la_carte') : undefined
         }
         // En grille, la carte s'empile comme la carte « Compact » du
         // compositeur : icone, libelle, valeur. En ligne sur un tiers de
@@ -580,7 +582,7 @@ export default function SequenceCards({
             onPointerUp={(e) => { setEnCours(null); it.onDragEnd?.(); void e; }}
             onPointerCancel={() => { setEnCours(null); it.onDragEnd?.(); }}
             onLostPointerCapture={() => { setEnCours(null); it.onDragEnd?.(); }}
-            title="Tirer pour agrandir le texte de la carte"
+            title={tUi('tirer_pour_agrandir_le_texte_de_la_car')}
             style={{
               position: 'absolute',
               top: p.top,

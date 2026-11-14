@@ -299,6 +299,7 @@ import { Card, CardTitle, CardContent } from '@/components/ui/Card';
 import DeuxColonnes, { ColonneTravail, ColonneApercu } from '@/components/ux/DeuxColonnes';
 import { ratioEnVariables } from '@/components/ux/ZoneApercu';
 import { Button } from '@/components/ui/Button';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * Parcours « Créer avec l'assistant » (F5) — couche NON DESTRUCTIVE.
@@ -1070,10 +1071,11 @@ function CreerEntete({
   /** Retour aux deux cartes. Aucun reglage n'est perdu : l'etat reste monte. */
   onRetour: () => void;
 }) {
+  const tUi = useTranslations('ui.appDashboardCreerAssistantWizard');
   const texte = {
-    choix: { titre: 'Créer du contenu', sous: 'Choisissez comment vous voulez créer.' },
-    assistant: { titre: 'Créer une vidéo', sous: 'Une vidéo, étape par étape.' },
-    autopilote: { titre: 'Autopilote', sous: 'Configurez une fois, Studiio crée ensuite vos contenus.' },
+    choix: { titre: tUi('creer_du_contenu'), sous: tUi('choisissez_comment_vous_voulez_creer') },
+    assistant: { titre: tUi('creer_une_video'), sous: tUi('une_video_etape_par_etape') },
+    autopilote: { titre: 'Autopilote', sous: tUi('configurez_une_fois_studiio_cree_ensui') },
   }[mode];
   return (
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4" data-creer-entete={mode}>
@@ -1096,7 +1098,7 @@ function CreerEntete({
           data-creer-retour-choix
           className="inline-flex items-center gap-2 self-start rounded-lg border border-gray-700 bg-gray-900/60 px-3 py-2 text-sm text-gray-200 hover:border-gray-500 hover:text-white transition flex-shrink-0"
         >
-          <ArrowLeft className="w-4 h-4" /> Revenir au choix des modes
+          <ArrowLeft className="w-4 h-4" /> {tUi('revenir_au_choix_des_modes')}
         </button>
       )}
     </div>
@@ -1435,6 +1437,7 @@ const TextResizeHandles: React.FC<{
    */
   visible?: boolean;
 }> = ({ el, onStart, onWidthStart, uiPx, capturing, visible, onDragMove, onDragEnd }) => {
+  const tUi = useTranslations('ui.appDashboardCreerAssistantWizard');
   if (!onStart || capturing || !visible) return null;
   return (
     <>
@@ -1442,7 +1445,7 @@ const TextResizeHandles: React.FC<{
         <span
           data-text-width-handle={el}
           onPointerDown={(e) => { e.stopPropagation(); onWidthStart(el, e); }}
-          title="Tirer pour élargir ou rétrécir le bloc"
+          title={tUi('tirer_pour_elargir_ou_retrecir_le_bloc')}
           style={{
             // Jamais sous les poignées de coin : sur un bloc d'une seule
             // ligne (≈ 17 px à l'écran), une poignée de 22 px les chevauchait
@@ -1471,7 +1474,7 @@ const TextResizeHandles: React.FC<{
           onPointerUp={onDragEnd}
           onPointerCancel={onDragEnd}
           onLostPointerCapture={onDragEnd}
-          title="Tirer pour agrandir le texte"
+          title={tUi('tirer_pour_agrandir_le_texte')}
           style={{
             position: 'absolute',
             top: p.top,
@@ -1633,6 +1636,7 @@ function PlateContent({
     draggingCtaCopie?: string | null;
   };
 }) {
+  const tUi = useTranslations('ui.appDashboardCreerAssistantWizard');
   const vw = VIDEO_SIZE[format].w;
   // Jumeau à bandes incrustées : l'aperçu montre la MÊME version plein cadre
   // que l'export (même résolveur, même cache). `rushUrl` reste l'URL d'origine
@@ -1738,7 +1742,7 @@ function PlateContent({
                     >
                       <UserSquare2 style={{ width: uiPx(36), height: uiPx(36) }} className="text-gray-500" />
                       <p className="text-gray-200" style={{ fontSize: uiPx(14), lineHeight: 1.5 }}>
-                        Votre avatar n’est pas encore prêt pour vos vidéos.
+                        {tUi('votre_avatar_n_est_pas_encore_pret_pou')}
                       </p>
                       <Link
                         href="/dashboard/avatar"
@@ -1747,7 +1751,7 @@ function PlateContent({
                         style={{ fontSize: uiPx(13) }}
                         onPointerDown={(e) => e.stopPropagation()}
                       >
-                        Gérer mon avatar
+                        {tUi('gerer_mon_avatar')}
                       </Link>
                     </div>
                   ) : (
@@ -1774,7 +1778,7 @@ function PlateContent({
                       <UserSquare2 style={{ width: uiPx(14), height: uiPx(14), flexShrink: 0 }} />
                       <span>
                         {avatar.etat === 'chargement'
-                          ? 'Chargement de votre avatar…'
+                          ? tUi('chargement_de_votre_avatar')
                           : `Votre avatar apparaîtra ici${avatar.version ? ` · v${avatar.version}` : ''}`}
                       </span>
                     </div>
@@ -1861,8 +1865,8 @@ function PlateContent({
               data-title-block
               title={
                 onTextDoubleClick
-                  ? 'Glisser pour déplacer · double-clic pour la police et la taille'
-                  : onDragStart ? 'Glisser pour déplacer le titre' : undefined
+                  ? tUi('glisser_pour_deplacer_double_clic_pour')
+                  : onDragStart ? tUi('glisser_pour_deplacer_le_titre') : undefined
               }
               style={{
                 // Cadre PARTAGE avec la composition Remotion : la position et
@@ -1969,8 +1973,8 @@ function PlateContent({
               data-cta-block
               title={
                 onTextDoubleClick
-                  ? 'Glisser pour déplacer · double-clic pour la police et la taille'
-                  : onDragStart ? 'Glisser pour déplacer le CTA' : undefined
+                  ? tUi('glisser_pour_deplacer_double_clic_pour')
+                  : onDragStart ? tUi('glisser_pour_deplacer_le_cta') : undefined
               }
               style={{
                 ...ctaFrameStyle(ctaPos, ctaWidth),
@@ -2012,7 +2016,7 @@ function PlateContent({
                 onPointerCancel={onDragEnd}
                 onLostPointerCapture={onDragEnd}
                 onDoubleClick={onCtaCopieDoubleClick ? () => onCtaCopieDoubleClick(copie.id) : undefined}
-                title={onCtaCopieDoubleClick ? 'Glisser pour déplacer · double-clic pour modifier cette copie' : undefined}
+                title={onCtaCopieDoubleClick ? tUi('glisser_pour_deplacer_double_clic_pour_2') : undefined}
                 style={{
                   ...ctaFrameStyle(copie.pos, copie.width),
                   cursor: onCtaCopieDragStart ? (draggingCtaCopie === copie.id ? 'grabbing' : 'grab') : undefined,
@@ -2079,7 +2083,7 @@ function PlateContent({
                           onPointerUp={onDragEnd}
                           onPointerCancel={onDragEnd}
                           onLostPointerCapture={onDragEnd}
-                          title="Tirer pour redimensionner"
+                          title={tUi('tirer_pour_redimensionner')}
                           style={{
                             position: 'absolute',
                             top: p.top,
@@ -2102,7 +2106,7 @@ function PlateContent({
                         type="button"
                         onPointerDown={(e) => e.stopPropagation()}
                         onClick={(e) => { e.stopPropagation(); onElementDelete(el.id); }}
-                        title="Supprimer l’élément"
+                        title={tUi('supprimer_l_element')}
                         style={{
                           position: 'absolute',
                           top: -uiPx(10),
@@ -2617,6 +2621,7 @@ export function Preview({
    */
   activeOrder: string[];
 }) {
+  const tUi = useTranslations('ui.appDashboardCreerAssistantWizard');
   // La resolution video, la disposition des cartes et la visibilite des
   // sequences vivent desormais dans `PlateContent`, rendu ici ET par les
   // calques de lecture.
@@ -2699,7 +2704,7 @@ export function Preview({
         <div className="flex items-center gap-2 mb-3">
           <MonitorPlay className="w-4 h-4 text-gray-500" />
           <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-            Aperçu du style
+            {tUi('apercu_du_style')}
           </span>
         </div>
       )}
@@ -2708,7 +2713,7 @@ export function Preview({
           la composition complete, celle qui part a l'export : ces onglets ne
           changent que ce qui est MONTRE, jamais le montage. */}
       {generated && onFocusChange && (
-        <div className="flex gap-1 mb-3 min-w-0 overflow-x-auto" role="tablist" aria-label="Élément mis en avant">
+        <div className="flex gap-1 mb-3 min-w-0 overflow-x-auto" role="tablist" aria-label={tUi('element_mis_en_avant')}>
           {ongletsApercu(activeOrder).map((t) => (
             <button
               key={t.id}
@@ -2719,12 +2724,12 @@ export function Preview({
               disabled={t.id !== 'all' && !activeOrder.includes(t.id)}
               title={
                 t.id !== 'all' && !activeOrder.includes(t.id)
-                  ? 'Séquence masquée — activez-la dans Séquences'
+                  ? tUi('sequence_masquee_activez_la_dans_seque')
                   : undefined
               }
               className={`flex-1 min-w-0 justify-center whitespace-nowrap text-[11px] disabled:opacity-30 ${classesOnglet(focus === t.id)} !px-1.5`}
             >
-              {t.label}
+              {tUi.fr(t.label)}
               {/* Marqueur de forme, pas seulement la couleur : barre sous l'onglet actif. */}
               {focus === t.id && <span aria-hidden="true" data-barre className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-purple-400" />}
             </button>
@@ -2833,9 +2838,9 @@ export function Preview({
                 textShadow: '0 1px 4px rgba(0,0,0,0.6)',
               }}
             >
-              Déposez la photo ici
+              {tUi('deposez_la_photo_ici')}
               <br />
-              {focus === 'all' ? 'pour l’affiche globale' : 'pour la séquence affichée'}
+              {focus === 'all' ? tUi('pour_l_affiche_globale') : tUi('pour_la_sequence_affichee')}
             </span>
           </div>
         )}
@@ -2892,7 +2897,7 @@ export function Preview({
                 onPointerUp={onDragEnd}
                 onPointerCancel={onDragEnd}
                 onLostPointerCapture={onDragEnd}
-                title="Glisser pour repositionner la photo"
+                title={tUi('glisser_pour_repositionner_la_photo')}
                 style={{
                   position: 'absolute',
                   inset: 0,
@@ -2918,7 +2923,7 @@ export function Preview({
                   onPointerUp={onDragEnd}
                   onPointerCancel={onDragEnd}
                   onLostPointerCapture={onDragEnd}
-                  title="Tirer pour zoomer"
+                  title={tUi('tirer_pour_zoomer')}
                   style={{
                     position: 'absolute',
                     top: p.top,
@@ -2962,7 +2967,7 @@ export function Preview({
             <p className="text-gray-400" style={{ fontSize: uiPx(15), lineHeight: 1.5 }}>
               L&apos;aperçu apparaîtra à l&apos;étape Style,
               <br />
-              une fois votre sujet choisi.
+              {tUi('une_fois_votre_sujet_choisi')}
             </p>
           </div>
         ) : (
@@ -3064,7 +3069,7 @@ export function Preview({
             type="button"
             onClick={() => setReperesCentre((v) => !v)}
             aria-pressed={reperesCentre}
-            title={reperesCentre ? 'Masquer les repères' : 'Afficher les repères (centre + tiers)'}
+            title={reperesCentre ? tUi('masquer_les_reperes') : tUi('afficher_les_reperes_centre_tiers')}
             className={`flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition ${
               reperesCentre
                 ? 'bg-purple-600/40 text-purple-200 ring-1 ring-purple-400/50'
@@ -3077,7 +3082,7 @@ export function Preview({
             type="button"
             onClick={() => setReperesGrille((v) => !v)}
             aria-pressed={reperesGrille}
-            title={reperesGrille ? 'Masquer la grille' : 'Afficher la grille'}
+            title={reperesGrille ? tUi('masquer_la_grille') : tUi('afficher_la_grille')}
             className={`flex items-center justify-center w-7 h-7 rounded-lg backdrop-blur transition ${
               reperesGrille
                 ? 'bg-cyan-600/40 text-cyan-200 ring-1 ring-cyan-400/50'
@@ -3093,7 +3098,7 @@ export function Preview({
 
       {generated && !hideFootnote && (
         <p className="mt-3 text-[10px] text-gray-600 leading-relaxed">
-          Les cartes de la vidéo seront exactement celles-ci. Le titre et le CTA, eux, apparaissent en séquences successives dans le montage.
+          {tUi('les_cartes_de_la_video_seront_exacteme')}
           {showRush && !avatarApercu && ' Le rush occupe seul sa séquence, cadré comme ici.'}
           {showAvatar && ' Votre avatar occupe la séquence Vidéo : sa vidéo parlante est produite à l’envoi.'}
         </p>
@@ -3121,6 +3126,7 @@ const TextZonePanel: React.FC<{
   valeurs: AutopilotTextZone;
   onChange: (patch: Partial<AutopilotTextZone>) => void;
 }> = ({ zone, valeurs, onChange }) => {
+  const tUi = useTranslations('ui.appDashboardCreerAssistantWizard');
   const defauts = zone === 'cta'
     ? DEFAULT_TEXT_STYLES.cta
     // Le sous-titre herite de la graisse et de l'interligne du titre : ce
@@ -3135,20 +3141,20 @@ const TextZonePanel: React.FC<{
   return (
     <div className="space-y-3" data-autopilot-texte-panneau={zone}>
       <p className="text-[11px] text-gray-500">
-        {libelle} — ces réglages valent pour
-        {' '}<span className="text-gray-300">toutes les vidéos</span>.
+        {libelle} {tUi('ces_reglages_valent_pour')}
+        {' '}<span className="text-gray-300">{tUi('toutes_les_videos')}</span>.
       </p>
       {/* ⚠️ LE CONTENU N'EST PAS EDITABLE ICI, ET C'EST VOULU. L'Autopilote
           genere un texte DIFFERENT a chaque video : y figer une phrase
           detruirait la variete qui fait tout son interet. Le dire, plutot que
           de laisser l'utilisateur chercher un champ qui n'existe pas. */}
       <p className="text-[11px] text-gray-600">
-        Le texte, lui, change à chaque vidéo — seul le style est constant.
+        {tUi('le_texte_lui_change_a_chaque_video_seu')}
       </p>
 
       <div>
         <label htmlFor={`ap-font-${zone}`} className="block text-[10px] uppercase tracking-wider text-gray-500 mb-1">
-          Police
+          {tUi('police')}
         </label>
         <select
           id={`ap-font-${zone}`}
@@ -3181,7 +3187,7 @@ const TextZonePanel: React.FC<{
       </div>
 
       <div className="flex items-center gap-2">
-        <span className="text-[11px] text-gray-500 w-20 flex-shrink-0">Taille</span>
+        <span className="text-[11px] text-gray-500 w-20 flex-shrink-0">{tUi('taille')}</span>
         <input
           type="range"
           min={Math.round(SCALE_MIN * 100)}
@@ -3189,7 +3195,7 @@ const TextZonePanel: React.FC<{
           step={5}
           value={Math.round(echelle * 100)}
           onChange={(e) => onChange({ scale: Number(e.target.value) / 100 })}
-          aria-label={`Taille — ${libelle}`}
+          aria-label={tUi('taille_libelle', { libelle })}
           data-autopilot-scale={zone}
           className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
         />
@@ -3336,6 +3342,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
    */
   onPatch?: (patch: Partial<AutopilotConfig>) => void;
 }) {
+  const tUi = useTranslations('ui.appDashboardCreerAssistantWizard');
   // La MEME regle que l'assistant : mesurer au moment ou le noeud s'attache.
   // Cet apercu-ci n'etait pas touche — il se monte en meme temps que son
   // cadre — mais laisser deux mesures dont une seule est robuste, c'est
@@ -3514,7 +3521,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
     () => (mediaVideo.type === 'avatar'
       ? (mediaVideo.chargement
         ? { etat: 'chargement' }
-        : { etat: 'pret', nom: 'Mon avatar', version: null, type: mediaVideo.media, url: mediaVideo.url })
+        : { etat: 'pret', nom: tUi('mon_avatar'), version: null, type: mediaVideo.media, url: mediaVideo.url })
       : null),
     [mediaVideo],
   );
@@ -3736,7 +3743,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
     // centre, sinon on centrerait le bord gauche du titre sur l'axe.
     const autres: ElementPos[] = geste.el === 'title'
       ? [{ key: 'cta', x: ctaPosRef.current.x, y: ctaPosRef.current.y, label: 'CTA' }]
-      : [{ key: 'title', x: titlePosRef.current.x, y: titlePosRef.current.y, label: 'Titre' }];
+      : [{ key: 'title', x: titlePosRef.current.x, y: titlePosRef.current.y, label: tUi('titre') }];
     const centre = anchorToCenter(brut, ancre, geste.box);
     // Memes regles que le Mode simple et que l'editeur avance : centre, tiers,
     // centres des autres blocs et milieux des espaces libres.
@@ -3902,17 +3909,16 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
             (exemple ≠ prochaine vidéo, vue de composition, double-clic pour
             régler) vit derrière UNE icône — deux icônes Info côte à côte
             se confondraient. */}
-        <InfoBulle label="En savoir plus sur l’aperçu du style" titre="Aperçu du style" marqueur="apercu-style">
+        <InfoBulle label={tUi('en_savoir_plus_sur_l_apercu_du_style')} titre={tUi('apercu_du_style')} marqueur="apercu-style">
           <span className="block" data-autopilot-apercu-mention>
-            <span className="text-gray-200" data-autopilot-apercu-badge="style">Aperçu du style</span>
-            {' '}— textes et affiche d’<span className="text-gray-400">exemple</span> sur le thème
-            {' '}«&nbsp;{themeLabel(sample.topic)}&nbsp;». Le sujet, l’affiche et les textes
+            <span className="text-gray-200" data-autopilot-apercu-badge="style">{tUi('apercu_du_style')}</span>
+            {' '}{tUi('textes_et_affiche_d')}<span className="text-gray-400">exemple</span> {tUi('sur_le_theme')}
+            {' '}«&nbsp;{tUi.fr(themeLabel(sample.topic))}&nbsp;». Le sujet, l’affiche et les textes
             changent à chaque vidéo ; le style, non.
             {/* Une DÉMONSTRATION, pas le script des futures vidéos : celui-ci
                 est généré à chaque production, à partir du brief récurrent. */}
             <span data-autopilot-script-exemple>
-              {' '}Exemple de démonstration — le script de chaque vidéo est généré à sa
-              production à partir de votre brief.
+              {' '}{tUi('exemple_de_demonstration_le_script_de')}
             </span>
             {/* Ce que l'onglet « Tout » montre : une composition ou le montage. */}
             {focus === 'all' && (
@@ -3926,9 +3932,8 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
           {/* Police, taille, position et icônes se règlent SUR l'aperçu (le
               wizard reste à six étapes). Ancien grand encadré violet. */}
           <span className="block" data-autopilot-apercu-aide>
-            <span className="font-medium text-white">Double-cliquez un élément</span>
-            {' '}— titre, CTA ou carte — pour régler sa police, sa taille et son icône.
-            Glissez pour le déplacer, tirez les coins pour l’agrandir.
+            <span className="font-medium text-white">{tUi('double_cliquez_un_element')}</span>
+            {' '}{tUi('titre_cta_ou_carte_pour_regler_sa_poli')}
           </span>
         </InfoBulle>
       </h3>
@@ -4052,7 +4057,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
           l'InfoBulle du titre. */}
       {/* Texte seul : une icône sans action serait décorative (règle 7 de docs/UX-PREMIUM.md). */}
       <p className="mt-2 text-[11px] text-gray-400" data-autopilot-apercu-indice-double-clic>
-        Double-cliquez un élément pour le régler
+        {tUi('double_cliquez_un_element_pour_le_regl')}
       </p>
 
       {/* ── A5 — LE JUMEAU : DURÉE ESTIMÉE ET VOIX ─────────────────────────
@@ -4068,15 +4073,15 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
           <Mic className="w-3 h-3 shrink-0" aria-hidden="true" />
           {/* Information honnête : visible, en UNE ligne. Le pourquoi est à la demande. */}
           <span className="min-w-0">
-            <span className="text-gray-200" data-autopilot-apercu-badge="duree-estimee">Durée estimée</span>
+            <span className="text-gray-200" data-autopilot-apercu-badge="duree-estimee">{tUi('duree_estimee')}</span>
             {' '}— avatar ≈&nbsp;{secondesLisibles(sequenceJumeau)}, vidéo ≈&nbsp;{secondesLisibles(dureeVideoApercu)}
           </span>
-          <InfoBulle label="En savoir plus sur la durée estimée" titre="Durée estimée" marqueur="apercu-duree">
+          <InfoBulle label={tUi('en_savoir_plus_sur_la_duree_estimee')} titre={tUi('duree_estimee')} marqueur="apercu-duree">
             <span className="block">
               Séquence avatar ≈&nbsp;{secondesLisibles(sequenceJumeau)}, vidéo ≈&nbsp;{secondesLisibles(dureeVideoApercu)}.
               {' '}La vidéo finale prend la durée réelle de la parole de l’avatar (jamais accélérée) ; si elle est plus courte que la durée cible, une clôture avec le CTA complète la vidéo.
             </span>
-            <span className="block" data-autopilot-apercu-voix-avatar>La voix de l’avatar s’entend dans la vidéo finale (elle n’est pas générée pour l’aperçu).</span>
+            <span className="block" data-autopilot-apercu-voix-avatar>{tUi('la_voix_de_l_avatar_s_entend_dans_la_v')}</span>
           </InfoBulle>
         </p>
       )}
@@ -4092,11 +4097,11 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
         >
           <Film className="w-3 h-3 shrink-0" aria-hidden="true" />
           <span className="min-w-0 truncate text-gray-300" data-autopilot-apercu-media-etiquette>{mediaVideo.etiquette}</span>
-          <InfoBulle label="En savoir plus sur les médias du plan" marqueur="apercu-medias">
+          <InfoBulle label={tUi('en_savoir_plus_sur_les_medias_du_plan')} marqueur="apercu-medias">
             <span className="block">
-              <span className="text-gray-200" data-autopilot-apercu-badge="medias">Médias réels du plan</span>
-              {' '}— la séquence Vidéo de l’aperçu n’est pas un exemple : elle montre le premier média réel de votre plan,
-              {' '}contrairement à l’affiche et aux textes d’exemple. Vous le remplacez à l’étape Rushes.
+              <span className="text-gray-200" data-autopilot-apercu-badge="medias">{tUi('medias_reels_du_plan')}</span>
+              {' '}{tUi('la_sequence_video_de_l_apercu_n_est_pa')}
+              {' '}{tUi('contrairement_a_l_affiche_et_aux_texte')}
             </span>
           </InfoBulle>
         </p>
@@ -4121,7 +4126,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
             vignetteAvatar={medias?.avatar.vignette ?? null}
             vignettes={vignettesMontage}
             onRemplacer={allerAuxMedias}
-            titre="Aperçu de mon montage"
+            titre={tUi('apercu_de_mon_montage')}
             // Le mode d'emploi est à la demande ; lecture, durée et chronologie restent visibles.
             sousTitreEnInfo
             sousTitre={montagePrevu.ctaEnSurimpression
@@ -4136,8 +4141,8 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
       {/* ── RÉGLAGES DU TEXTE ─────────────────────────────────────────── */}
       <FloatingPanel
         title={panneau?.type === 'texte'
-          ? (panneau.zone === 'cta' ? 'CTA' : panneau.zone === 'subtitle' ? 'Sous-titre' : 'Titre')
-          : 'Titre'}
+          ? (panneau.zone === 'cta' ? 'CTA' : panneau.zone === 'subtitle' ? 'Sous-titre' : tUi('titre'))
+          : tUi('titre')}
         isOpen={panneau?.type === 'texte'}
         onClose={() => setPanneau(null)}
         initialX={panneauPos.x}
@@ -4175,7 +4180,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
                 place en haut du panneau, avant l'icone qui, elle, ne
                 concerne que ce rang. */}
             <div>
-              <p className="text-xs font-medium text-gray-300 mb-1.5">Style des cartes</p>
+              <p className="text-xs font-medium text-gray-300 mb-1.5">{tUi('style_des_cartes')}</p>
               <select
                 value={style.cardStyle ?? DEFAULT_CARD_STYLE}
                 onChange={(e) => poser({ ...style, cardStyle: e.target.value })}
@@ -4183,11 +4188,11 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
                 className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-purple-500 outline-none px-2 py-1.5 text-sm"
               >
                 {CARD_STYLES.map((c) => (
-                  <option key={c.label} value={c.label}>{c.label} — {c.sublabel}</option>
+                  <option key={c.label} value={c.label}>{tUi.fr(c.label)} — {tUi.fr(c.sublabel)}</option>
                 ))}
               </select>
               <p className="text-[11px] text-gray-500 mt-1">
-                « Sans cadre » affiche le texte seul, sans rectangle de fond.
+                {tUi('sans_cadre_affiche_le_texte_seul_sans')}
               </p>
             </div>
 
@@ -4198,7 +4203,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
                 celles-ci — extraite, pas recopiee — et elle vaut pour toutes
                 les cartes, pas seulement celle qu'on a double-cliquee. */}
             <div>
-              <p className="text-xs font-medium text-gray-300 mb-1.5">Texte des cartes</p>
+              <p className="text-xs font-medium text-gray-300 mb-1.5">{tUi('texte_des_cartes')}</p>
               <select
                 value={style.cards?.font ?? DEFAULT_TEXT_STYLES.title.font}
                 onChange={(e) => {
@@ -4221,7 +4226,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
               </select>
 
               <div className="flex items-center gap-2 mt-2">
-                <span className="text-[11px] text-gray-500 w-20 flex-shrink-0">Taille</span>
+                <span className="text-[11px] text-gray-500 w-20 flex-shrink-0">{tUi('taille')}</span>
                 <input
                   type="range"
                   min={Math.round(SCALE_MIN * 100)}
@@ -4229,7 +4234,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
                   step={5}
                   value={Math.round((style.cards?.scale ?? 1) * 100)}
                   onChange={(e) => poserZoneCartes({ scale: Number(e.target.value) / 100 })}
-                  aria-label="Taille du texte des cartes"
+                  aria-label={tUi('taille_du_texte_des_cartes')}
                   data-autopilot-scale="cards"
                   className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
                 />
@@ -4251,8 +4256,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
             </div>
 
             <p className="text-[11px] text-gray-500">
-              L’icône choisie vaut pour cette carte sur <span className="text-gray-300">toutes
-              les vidéos</span>. Le texte de la carte, lui, change à chaque fois.
+              {tUi('l_icone_choisie_vaut_pour_cette_carte')} <span className="text-gray-300">{tUi('toutes_les_videos')}</span>{tUi('le_texte_de_la_carte_lui_change_a_chaq')}
             </p>
             {/* La MEME grille que « Ajouter un element » de l'assistant. */}
             <IconPicker
@@ -4279,7 +4283,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
                 data-autopilot-icone-reset
                 className="w-full rounded-lg border border-gray-800 px-2 py-1.5 text-[11px] text-gray-400 hover:text-white transition-colors"
               >
-                Laisser l’icône du contenu généré
+                {tUi('laisser_l_icone_du_contenu_genere')}
               </button>
             )}
           </div>
@@ -4290,6 +4294,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
 }
 
 export default function AssistantWizard() {
+  const tUi = useTranslations('ui.appDashboardCreerAssistantWizard');
   // Kit de marque (F7). `useBranding` fournit deja des defauts neutres ; les
   // `||` couvrent une valeur vide heritee d'un ancien enregistrement.
   const { branding } = useBranding();
@@ -6507,7 +6512,7 @@ export default function AssistantWizard() {
   const alignmentTargets = useCallback((exclure: string): ElementPos[] => {
     const out: ElementPos[] = [];
     if (exclure !== 'title') {
-      out.push({ key: 'title', x: titlePosRef.current.x, y: titlePosRef.current.y, label: 'Titre' });
+      out.push({ key: 'title', x: titlePosRef.current.x, y: titlePosRef.current.y, label: tUi('titre') });
     }
     if (exclure !== 'cta') {
       out.push({ key: 'cta', x: ctaPosRef.current.x, y: ctaPosRef.current.y, label: 'CTA' });
@@ -6518,7 +6523,7 @@ export default function AssistantWizard() {
     }
     for (const el of freeElementsRef.current) {
       if (el.id === exclure) continue;
-      out.push({ key: 'element', x: el.x, y: el.y, label: 'Élément' });
+      out.push({ key: 'element', x: el.x, y: el.y, label: tUi('element') });
     }
     return out;
   }, []);
@@ -7911,7 +7916,7 @@ export default function AssistantWizard() {
      pourcentage, parce que celui-là est mesuré frame par frame. */
   const suiviJumeau = (compact: boolean) => jumeauPhase ? (
     <ProgressStatus
-      titre="Génération de votre jumeau"
+      titre={tUi('generation_de_votre_jumeau')}
       statut="en_cours"
       etapes={etapesJumeau(jumeauPhase.phase)}
       {...(jumeauPhase.phase === 'rendu' ? { pourcentage: renderProgress } : {})}
@@ -7935,7 +7940,7 @@ export default function AssistantWizard() {
         <div className="w-5/6" data-jumeau-suivi="cadre">{suiviJumeau(true)}</div>
       ) : (<>
       <Loader2 className="w-6 h-6 animate-spin text-purple-300" />
-      <p className="text-xs text-gray-300">Composition du montage…</p>
+      <p className="text-xs text-gray-300">{tUi('composition_du_montage')}</p>
       <div className="w-2/3 h-1 rounded-full bg-gray-800 overflow-hidden">
         <div
           className="h-full rounded-full"
@@ -7978,11 +7983,11 @@ export default function AssistantWizard() {
         type="button"
         onClick={() => setPreviewFocus('intro')}
         data-play-retour-edition
-        title="Revenir à l’aperçu d’édition — le montage reste en mémoire"
+        title={tUi('revenir_a_l_apercu_d_edition_le_montag')}
         className="absolute top-2 right-2 flex items-center gap-1.5 rounded-lg border border-gray-700 bg-black/70 px-2 py-1 text-[11px] text-gray-200 hover:text-white hover:border-gray-500 backdrop-blur-sm transition-colors"
       >
         <X className="w-3 h-3" />
-        Revenir à l’édition
+        {tUi('revenir_a_l_edition')}
       </button>
       {/* ── TÉLÉCHARGER EN MP4 ───────────────────────────────────────
           Le même chemin que l'export « Bureau » (`downloadBlob`) : le WebM
@@ -7993,11 +7998,11 @@ export default function AssistantWizard() {
         onClick={() => { void telechargerApercuMp4(); }}
         disabled={telechargementApercu}
         data-play-telecharger-mp4
-        title="Télécharger le montage en MP4"
+        title={tUi('telecharger_le_montage_en_mp4')}
         className="absolute top-2 left-2 flex items-center gap-1.5 rounded-lg border border-gray-700 bg-black/70 px-2 py-1 text-[11px] text-gray-200 hover:text-white hover:border-gray-500 disabled:opacity-60 backdrop-blur-sm transition-colors"
       >
         {telechargementApercu ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />}
-        {telechargementApercu ? 'Conversion MP4…' : 'Télécharger MP4'}
+        {telechargementApercu ? 'Conversion MP4…' : tUi('telecharger_mp4')}
       </button>
     </div>
   ) : null;
@@ -8989,7 +8994,7 @@ export default function AssistantWizard() {
         setJumeauReprise('inactif');
         setJumeauPhase(null);
         if (posee) {
-          setJumeauNotice('Votre jumeau est prêt : il est monté dans la séquence « Vidéo ».');
+          setJumeauNotice(tUi('votre_jumeau_est_pret_il_est_monte_dan'));
           montrerJumeauPose();
           // Génération lancée AVANT un éventuel changement d'avatar : on le dit.
           if (typeof avatarVersion === 'number') verifierAncienJumeau(url, avatarVersion);
@@ -9061,14 +9066,14 @@ export default function AssistantWizard() {
         setJumeauReprise('inactif');
         setJumeauPhase(null);
         if (posee) {
-          setJumeauNotice(`Votre jumeau (v${video.avatarVersion}) est monté dans la séquence « Vidéo ».`);
+          setJumeauNotice(tUi('votre_jumeau_v_avatarversion_est_monte', { avatarVersion: video.avatarVersion }));
           montrerJumeauPose();
         }
       } catch (e) {
         // Coût fournisseur refusé : rien n'a été lancé, l'écran revient à l'échec d'avant.
         if (e instanceof LancementAnnule) {
           setJumeauPhase(null);
-          setJumeauRepriseErreur({ titre: 'Relance annulée.', message: e.message, reprendreId: null });
+          setJumeauRepriseErreur({ titre: tUi('relance_annulee'), message: e.message, reprendreId: null });
           setJumeauReprise('echec');
           return;
         }
@@ -9106,7 +9111,7 @@ export default function AssistantWizard() {
           ctaSub: tone.ctaSub,
         }, brief));
       } catch {
-        setError("La génération du contenu a échoué. Réessayez.");
+        setError(tUi('la_generation_du_contenu_a_echoue_rees'));
       } finally {
         setGenerating(false);
       }
@@ -9355,7 +9360,7 @@ export default function AssistantWizard() {
     // pendant le rendu) : on ne lance pas une SECONDE génération par-dessus —
     // ce serait un double débit. On attend qu'elle aboutisse d'elle-même.
     if (jumeauMode === 'avatar' && jumeauReprise === 'encours') {
-      setError('Votre jumeau se prépare encore. Patientez quelques instants, puis renvoyez.');
+      setError(tUi('votre_jumeau_se_prepare_encore_patient'));
       return;
     }
     // BUG D — un ancien échec affiché ne décrit plus rien : une nouvelle
@@ -9370,11 +9375,11 @@ export default function AssistantWizard() {
     // rushes conservés), la MÊME que l'aperçu du montage.
     const listeEnvoi: MediaVideo[] | null = listeMontage;
     if (listeEnvoi && avatarAProduire(listeEnvoi) && jumeauMode !== 'avatar') {
-      setError('« Mon avatar » est dans la séquence Vidéo mais votre jumeau est désactivé : réactivez-le ou retirez ce média avant d’envoyer.');
+      setError(tUi('mon_avatar_est_dans_la_sequence_video'));
       return;
     }
     if (listeEnvoi && !avatarAProduire(listeEnvoi) && jumeauMode === 'avatar') {
-      setError('Votre jumeau est activé : ajoutez « Mon avatar » aux médias de la séquence Vidéo (Ajouter → Mon avatar) pour choisir sa place, ou désactivez-le.');
+      setError(tUi('votre_jumeau_est_active_ajoutez_mon_av'));
       return;
     }
     // Le jumeau lui-meme est produit plus bas, apres le solde et avant la
@@ -9471,7 +9476,7 @@ export default function AssistantWizard() {
         // serait un refus inventé, sur un compte qui ne paie pas en crédits.
         if (politiqueFraiche === 'credits'
           && readable && typeof balance === 'number' && balance < coutTotal) {
-          setError(`Crédits insuffisants : ${coutTotal} requis, ${balance} disponible(s).`);
+          setError(tUi('credits_insuffisants_couttotal_requis', { coutTotal, balance }));
           return;
         }
       } catch {
@@ -9505,7 +9510,7 @@ export default function AssistantWizard() {
       //    que l'écran l'ait dit.
       const videoActive = plateau.sequences.some((q) => q.key === 'video' && q.enabled);
       if (jumeauMode !== 'avatar' && plateau.rushUrl && (!videoActive || plateau.videoDuration <= 0)) {
-        setError("Un rush est choisi mais la séquence Vidéo est désactivée ou à 0 s : réactivez-la (œil) ou retirez le rush avant d'envoyer.");
+        setError(tUi('un_rush_est_choisi_mais_la_sequence_vi'));
         return;
       }
       // 2. Un fichier du montage supprimé entre-temps (post supprimé,
@@ -9602,7 +9607,7 @@ export default function AssistantWizard() {
             // CHAQUE créneau « Mon avatar » ; les autres médias restent.
             ? await poserJumeauDansListe(video.url, video.avatarVersion, textesJumeau)
             : await applyRush(video.url, `Mon jumeau (v${video.avatarVersion})`, false);
-          setJumeauNotice(`Votre jumeau (v${video.avatarVersion}) est monté dans la séquence « Vidéo ».`);
+          setJumeauNotice(tUi('votre_jumeau_v_avatarversion_est_monte', { avatarVersion: video.avatarVersion }));
         } catch (e) {
           // 404 : la génération n'existe pas pour ce compte — la garder dans le
           // brouillon ferait boucler la reprise à chaque ouverture. Tout autre
@@ -9615,7 +9620,7 @@ export default function AssistantWizard() {
           return;
         }
         if (!posee) {
-          setError('Le rush a été remplacé pendant la génération de votre jumeau. Relancez l’envoi.');
+          setError(tUi('le_rush_a_ete_remplace_pendant_la_gene'));
           return;
         }
         // L'intention est honoree : la video du jumeau EST le rush. Un
@@ -9661,7 +9666,7 @@ export default function AssistantWizard() {
           return;
         }
         if (res.ignores > 0 || res.plan.length === 0) {
-          setError('Un média de la séquence Vidéo n’est pas prêt (avatar non produit ?) : rien n’a été composé ni débité.');
+          setError(tUi('un_media_de_la_sequence_video_n_est_pa'));
           return;
         }
         planListe = res.plan;
@@ -9731,7 +9736,7 @@ export default function AssistantWizard() {
       let fichesCreer: Promise<FichesParUrl> | null = null;
       setMontageNotice(null);
       if (duree('video') > 0 && rushsDurables.length >= 2 && rushsDurables.length !== (plateau.rushs ?? []).length) {
-        setMontageNotice('Analyse intelligente indisponible (un rush n’est pas encore enregistré) — montage simple utilisé.');
+        setMontageNotice(tUi('analyse_intelligente_indisponible_un_r'));
       }
       if (duree('video') > 0 && rushsDurables.length >= 2 && rushsDurables.length === (plateau.rushs ?? []).length) {
         setRenderStage('Analyse des rushes…');
@@ -9814,7 +9819,7 @@ export default function AssistantWizard() {
             }
             duree = dureeDeSequence(ordre, { intro: introDuration, cards: cardsDuration, video: plateau.videoDuration, cta: ctaDuration });
             setMontageNotice(raccourciRepli?.message ?? `Analyse intelligente indisponible — montage simple, ${flous.size} rush${flous.size > 1 ? 's' : ''} trop flou${flous.size > 1 ? 's' : ''} écarté${flous.size > 1 ? 's' : ''}.`);
-          } else setMontageNotice('Analyse intelligente indisponible — montage simple utilisé (rushes enchaînés).');
+          } else setMontageNotice(tUi('analyse_intelligente_indisponible_mont'));
         } else if (dureePlan(planMontageRushs) < duree('video') - 0.05) {
           const dispo = Math.round(dureePlan(planMontageRushs) * 10) / 10;
           // #504 : vidéo nettement plus courte faute de matière unique — on
@@ -9827,7 +9832,7 @@ export default function AssistantWizard() {
             setDemandeRaccourci(null);
             if (!continuer) throw new ArretPourAjouterDesRushs();
           }
-          setMontageNotice(`Matière exploitable dans les rushes : ${dispo} s — séquence Vidéo ramenée à ${dispo} s (extraits jamais rallongés).`);
+          setMontageNotice(tUi('matiere_exploitable_dans_les_rushes_di', { dispo, dispo2: dispo }));
           plateau = { ...plateau, videoDuration: dureePlan(planMontageRushs) };
           duree = dureeDeSequence(ordre, { intro: introDuration, cards: cardsDuration, video: plateau.videoDuration, cta: ctaDuration });
         }
@@ -10001,7 +10006,7 @@ export default function AssistantWizard() {
             console.log('[Surimpressions] CARD_IMAGES_GENERATED =', Object.keys(images.cartes).length, '/', overlaysCreer.cartes.length);
             surimpressionsItem = { fenetres: overlaysCreer, images };
           }
-          else setMontageNotice('Textes sur la vidéo indisponibles pour ce rendu — titre, cartes et CTA en plein écran.');
+          else setMontageNotice(tUi('textes_sur_la_video_indisponibles_pour'));
         }
         duree = surimpressionsItem ? dureeSurimpression : dureePleinEcran;
 
@@ -10536,7 +10541,7 @@ export default function AssistantWizard() {
         }
 
         if (!composed.url) {
-          setError("Le montage a été rendu mais son envoi a échoué. Réessayez.");
+          setError(tUi('le_montage_a_ete_rendu_mais_son_envoi'));
           return;
         }
 
@@ -10905,7 +10910,7 @@ export default function AssistantWizard() {
       // sinon cinq fenetres d'enregistrement.
       if (destination === 'bureau') {
         if (blobsBureau.length === 0) {
-          setError('Aucun montage à télécharger.');
+          setError(tUi('aucun_montage_a_telecharger'));
           return;
         }
         setRenderStage('Préparation du téléchargement…');
@@ -11249,7 +11254,7 @@ export default function AssistantWizard() {
     return (
       <div className="flex items-center gap-3 rounded-xl border border-gray-800 bg-gray-900/50 px-4 py-6 text-sm text-gray-400">
         <Loader2 className="w-5 h-5 animate-spin text-purple-300 flex-shrink-0" />
-        <span>Chargement de votre contenu…</span>
+        <span>{tUi('chargement_de_votre_contenu')}</span>
       </div>
     );
   }
@@ -11282,7 +11287,7 @@ export default function AssistantWizard() {
               className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-1.5 text-[13px] text-gray-300 hover:bg-gray-800 transition"
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              Réessayer
+              {tUi('reessayer')}
             </button>
           )}
         </div>
@@ -11299,15 +11304,14 @@ export default function AssistantWizard() {
         <div className="max-w-md w-full rounded-2xl border border-gray-800 bg-gray-950 p-5 space-y-4">
           <p className="text-sm text-gray-100" data-raccourci-message>{demandeRaccourci.message}</p>
           <p className="text-xs text-gray-400" data-raccourci-detail>
-            Rushs uniques utilisés : {demandeRaccourci.rushs} · rushs à ajouter (estimation) : environ {demandeRaccourci.supplementaires}.
-            Aucun passage n’est répété.
+            {tUi('rushs_uniques_utilises_rushs_rushs_a_a', { rushs: demandeRaccourci.rushs, supplementaires: demandeRaccourci.supplementaires })}
           </p>
           <div className="flex flex-col sm:flex-row gap-2">
             <button type="button" data-raccourci-continuer onClick={() => demandeRaccourci.resoudre(true)} className="flex-1 rounded-lg bg-purple-600 hover:bg-purple-500 px-3 py-2 text-sm font-medium text-white">
-              Continuer avec {Math.round(demandeRaccourci.possible)} s
+              {tUi('continuer_avec')} {Math.round(demandeRaccourci.possible)} s
             </button>
             <button type="button" data-raccourci-ajouter onClick={() => demandeRaccourci.resoudre(false)} className="flex-1 rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-200 hover:text-white">
-              Ajouter des rushs
+              {tUi('ajouter_des_rushs')}
             </button>
           </div>
         </div>
@@ -11406,11 +11410,11 @@ export default function AssistantWizard() {
                 : <Check className="w-4 h-4" />}
               {enregistrement.etat === 'encours'
                 ? 'Enregistrement…'
-                : 'Enregistrer les modifications'}
+                : tUi('enregistrer_les_modifications')}
             </button>
 
             {enregistrement.etat === 'ok' && (
-              <span className="text-[13px] text-emerald-300">Modifications enregistrées.</span>
+              <span className="text-[13px] text-emerald-300">{tUi('modifications_enregistrees')}</span>
             )}
 
             {enregistrement.etat === 'echec' && (
@@ -11419,14 +11423,14 @@ export default function AssistantWizard() {
                   // Le message DIT que rien n'a ete ecrit. « Une erreur est
                   // survenue » laisserait croire a un enregistrement partiel,
                   // et l'utilisateur repartirait en pensant son travail sauve.
-                  ? 'Ce contenu a été modifié ailleurs entre-temps. Rien n’a été enregistré : vos modifications sont toujours à l’écran.'
+                  ? tUi('ce_contenu_a_ete_modifie_ailleurs_entr')
                   : enregistrement.issue === 'reseau'
                     ? 'La connexion a été interrompue. Rien n’a été enregistré ; vos modifications sont toujours à l’écran, réessayez.'
                     : enregistrement.issue === 'session'
-                      ? 'Votre session a expiré. Reconnectez-vous, puis réessayez : rien n’est perdu.'
+                      ? tUi('votre_session_a_expire_reconnectez_vou')
                       : enregistrement.issue === 'refuse' || enregistrement.issue === 'introuvable'
-                        ? 'Ce contenu est introuvable, ou ne vous appartient pas.'
-                        : 'L’enregistrement a échoué. Vos modifications sont toujours à l’écran.'}
+                        ? tUi('ce_contenu_est_introuvable_ou_ne_vous')
+                        : tUi('l_enregistrement_a_echoue_vos_modifica')}
               </span>
             )}
 
@@ -11446,29 +11450,28 @@ export default function AssistantWizard() {
                 {rechargement.etat === 'encours'
                   ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   : <RotateCcw className="w-3.5 h-3.5" />}
-                Recharger la version récente
+                {tUi('recharger_la_version_recente')}
               </button>
             )}
 
             {rechargement.etat === 'demande' && (
               <div className="flex flex-wrap items-center gap-2 basis-full">
                 <span className="text-[13px] text-amber-200">
-                  Recharger remplacera ce qui est à l’écran par la version enregistrée.
-                  Vos modifications non enregistrées seront perdues.
+                  {tUi('recharger_remplacera_ce_qui_est_a_l_ec')}
                 </span>
                 <button
                   type="button"
                   onClick={rechargerVersionRecente}
                   className="inline-flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-[13px] text-amber-100 hover:bg-amber-500/20 transition"
                 >
-                  Confirmer le rechargement
+                  {tUi('confirmer_le_rechargement')}
                 </button>
                 <button
                   type="button"
                   onClick={() => setRechargement({ etat: 'repos' })}
                   className="inline-flex items-center gap-2 rounded-lg border border-gray-700 px-3 py-1.5 text-[13px] text-gray-300 hover:bg-gray-800 transition"
                 >
-                  Annuler
+                  {tUi('annuler')}
                 </button>
               </div>
             )}
@@ -11476,10 +11479,10 @@ export default function AssistantWizard() {
             {rechargement.etat === 'echec' && (
               <span role="alert" className="text-[13px] text-amber-300 basis-full">
                 {rechargement.issue === 'reseau'
-                  ? 'Le rechargement a échoué : la connexion a été interrompue. Rien n’a changé à l’écran.'
+                  ? tUi('le_rechargement_a_echoue_la_connexion')
                   : rechargement.issue === 'session'
-                    ? 'Le rechargement a échoué : votre session a expiré. Rien n’a changé à l’écran.'
-                    : 'Le rechargement a échoué. Rien n’a changé à l’écran.'}
+                    ? tUi('le_rechargement_a_echoue_votre_session')
+                    : tUi('le_rechargement_a_echoue_rien_n_a_chan')}
               </span>
             )}
           </div>
@@ -11517,12 +11520,12 @@ export default function AssistantWizard() {
                           <button type="button" data-media-retrouver
                             onClick={() => setMediathequeListe({ remplacer: i, type: m.type === 'image' ? 'all' : 'video', retrouver: true })}
                             className="rounded-lg bg-purple-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-purple-500">
-                            Retrouver ce fichier
+                            {tUi('retrouver_ce_fichier')}
                           </button>
                           <button type="button" data-media-remplacer
                             onClick={() => ouvrirRemplacementMedia(i)}
                             className="rounded-lg border border-gray-600 px-2.5 py-1 text-xs font-semibold text-gray-200 hover:bg-white/10">
-                            Remplacer ce média
+                            {tUi('remplacer_ce_media')}
                           </button>
                         </span>
                       )}
@@ -11535,7 +11538,7 @@ export default function AssistantWizard() {
             {/* Quota UTILISATEUR épuisé : le chemin vers son abonnement Studiio. */}
             {error === MESSAGES_AVATAR.quotaEpuise && (
               <a href={URL_ABONNEMENT} data-creer-erreur-abonnement className="ml-auto shrink-0 rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-500">
-                Voir mon abonnement
+                {tUi('voir_mon_abonnement')}
               </a>
             )}
           </div>
@@ -11555,12 +11558,12 @@ export default function AssistantWizard() {
             <span className="flex-1">
               {AVERTISSEMENT_ANCIENNE_VERSION}
               <span className="block text-[12px] text-amber-100/90 mt-0.5">
-                {libelleCreeAvecVersion(jumeauAncienneVersion.versionRush)} — {libelleAvatarActif(jumeauAncienneVersion.versionActive)}. Régénérer produit une nouvelle vidéo ({coutJumeau} crédits).
+                {libelleCreeAvecVersion(jumeauAncienneVersion.versionRush)} — {libelleAvatarActif(jumeauAncienneVersion.versionActive)}{tUi('regenerer_produit_une_nouvelle_video')}{coutJumeau} {tUi('credits')}
               </span>
             </span>
             <div className="flex flex-col items-end gap-1.5">
-              <button type="button" data-jumeau-ancienne-action="garder" onClick={garderAncienJumeau} className="text-xs text-amber-300 hover:text-white">Garder cette vidéo</button>
-              <button type="button" data-jumeau-ancienne-action="regenerer" onClick={regenererAvecAvatarActif} className="text-xs text-amber-100 underline hover:text-white">Régénérer avec l’avatar actif</button>
+              <button type="button" data-jumeau-ancienne-action="garder" onClick={garderAncienJumeau} className="text-xs text-amber-300 hover:text-white">{tUi('garder_cette_video')}</button>
+              <button type="button" data-jumeau-ancienne-action="regenerer" onClick={regenererAvecAvatarActif} className="text-xs text-amber-100 underline hover:text-white">{tUi('regenerer_avec_l_avatar_actif')}</button>
             </div>
           </div>
         )}
@@ -11579,7 +11582,7 @@ export default function AssistantWizard() {
           <div data-jumeau-reprise="encours" className="space-y-2 rounded-xl border border-purple-500/30 bg-purple-500/10 px-4 py-2.5 text-[13px] text-purple-200">
             <div className="flex items-center gap-3">
               <Loader2 className="w-4 h-4 flex-shrink-0 animate-spin" />
-              <span>Votre jumeau se prépare… (vous pouvez quitter cette page et revenir plus tard)</span>
+              <span>{tUi('votre_jumeau_se_prepare_vous_pouvez_qu')}</span>
             </div>
             {jumeauPhase && <div data-jumeau-suivi="reprise">{suiviJumeau(true)}</div>}
             {jumeauRepriseEtape && jumeauRepriseEtape !== DETAIL_PHASE_JUMEAU.traitement && (
@@ -11591,14 +11594,14 @@ export default function AssistantWizard() {
           <div data-jumeau-erreur className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200">
             <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
             <span className="flex-1">
-              {jumeauRepriseErreur?.titre ?? 'La génération de votre jumeau n’a pas abouti.'}
+              {jumeauRepriseErreur?.titre ?? tUi('la_generation_de_votre_jumeau_n_a_pas')}
               {jumeauRepriseErreur?.message && (
                 <span data-jumeau-erreur-motif className="block text-[12px] text-amber-100/90 mt-0.5">{jumeauRepriseErreur.message}</span>
               )}
               {/* ADMIN : ce que coûte (ou non) le bouton chez le fournisseur, AVANT le clic. */}
               {politiqueFacturation === 'partner_cost_only' && (
                 <span data-jumeau-cout-relance className="block text-[12px] text-amber-100/70 mt-0.5">
-                  {jumeauRepriseErreur?.reprendreId ? MESSAGE_AUCUN_APPEL : 'Réessayer lance une NOUVELLE vidéo HeyGen : son coût sera affiché avant l’envoi.'}
+                  {jumeauRepriseErreur?.reprendreId ? MESSAGE_AUCUN_APPEL : tUi('reessayer_lance_une_nouvelle_video_hey')}
                 </span>
               )}
             </span>
@@ -11611,7 +11614,7 @@ export default function AssistantWizard() {
                 onClick={() => { const id = jumeauRepriseErreur.reprendreId; if (id) reprendreJumeau(id); }}
                 className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-[13px] text-amber-100 hover:bg-amber-500/20 transition"
               >
-                Reprendre le suivi
+                {tUi('reprendre_le_suivi')}
               </button>
             ) : (
             <button
@@ -11619,7 +11622,7 @@ export default function AssistantWizard() {
               onClick={relancerJumeau}
               className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-[13px] text-amber-100 hover:bg-amber-500/20 transition"
             >
-              Réessayer
+              {tUi('reessayer')}
             </button>
             )}
           </div>
@@ -11637,12 +11640,12 @@ export default function AssistantWizard() {
               onClick={discardDraft}
               className="text-gray-500 underline underline-offset-2 hover:text-white transition"
             >
-              Repartir de zéro
+              {tUi('repartir_de_zero')}
             </button>
             <button
               type="button"
               onClick={() => setRestoredNotice(null)}
-              aria-label="Masquer ce message"
+              aria-label={tUi('masquer_ce_message')}
               className="text-gray-600 hover:text-white transition"
             >
               <X className="w-3.5 h-3.5" />
@@ -11669,17 +11672,16 @@ export default function AssistantWizard() {
                   <Wand2 className="w-5 h-5" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <CardTitle className="text-lg">Créer une vidéo</CardTitle>
+                  <CardTitle className="text-lg">{tUi('creer_une_video')}</CardTitle>
                   <CardContent className="mt-1 text-sm text-gray-400">
-                    Je veux créer <strong className="text-gray-200">une vidéo maintenant</strong>,
-                    étape par étape. Le texte et les cartes sont générés pour vous.
+                    {tUi('je_veux_creer')} <strong className="text-gray-200">{tUi('une_video_maintenant')}</strong>{tUi('etape_par_etape_le_texte_et_les_cartes')}
                   </CardContent>
                   <p className="mt-2 text-[11px] text-gray-500">
                     Sujet → Style → Audio → Contenu → Envoi
                   </p>
                   <div className="mt-4">
                     <Button variant="primary" size="sm" onClick={() => setStarted(true)} data-parcours-assistant>
-                      Créer une vidéo
+                      {tUi('creer_une_video')}
                     </Button>
                   </div>
                 </div>
@@ -11709,11 +11711,10 @@ export default function AssistantWizard() {
                     </span>
                   </div>
                   <CardContent className="mt-1 text-sm text-gray-400">
-                    Je donne mes rushes et mes réglages, Studiio prépare
-                    automatiquement <strong className="text-gray-200">plusieurs contenus</strong>.
+                    {tUi('je_donne_mes_rushes_et_mes_reglages_st')} <strong className="text-gray-200">plusieurs contenus</strong>.
                   </CardContent>
                   <p className="mt-2 text-[11px] text-gray-500">
-                    Pour produire plusieurs vidéos sans refaire les réglages à chaque fois.
+                    {tUi('pour_produire_plusieurs_videos_sans_re')}
                   </p>
                   <div className="mt-4">
                     <Button variant="secondary" size="sm" onClick={() => setParcours('autopilote')} data-parcours-autopilote>
@@ -11798,7 +11799,7 @@ export default function AssistantWizard() {
                     <span
                       className={`text-[11px] truncate ${i === step ? 'text-white font-medium' : 'text-gray-500'}`}
                     >
-                      {label}
+                      {tUi.fr(label)}
                     </span>
                   </div>
                   {i < STEPS.length - 1 && (
@@ -11816,9 +11817,9 @@ export default function AssistantWizard() {
             {step === S.sujet && (
               <div className="space-y-4">
                 <div>
-                  <h3 className="font-semibold mb-1">De quoi parle votre contenu ?</h3>
+                  <h3 className="font-semibold mb-1">{tUi('de_quoi_parle_votre_contenu')}</h3>
                   <p className="text-sm text-gray-400">
-                    Choisissez un thème, ou saisissez votre propre sujet.
+                    {tUi('choisissez_un_theme_ou_saisissez_votre')}
                   </p>
                 </div>
 
@@ -11852,18 +11853,18 @@ export default function AssistantWizard() {
                       }`}
                     >
                       <CardIcon name={t.icon} size={13} color="currentColor" className="inline-block mr-1.5 align-[-2px]" />
-                      {t.label}
+                      {tUi.fr(t.label)}
                     </button>
                   ))}
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2">Ou votre sujet</label>
+                  <label className="block text-sm font-medium mb-2">{tUi('ou_votre_sujet')}</label>
                   <input
                     type="text"
                     value={customTopic}
                     onChange={(e) => setCustomTopic(e.target.value)}
-                    placeholder="Ex. : récupération après le sport"
+                    placeholder={tUi('ex_recuperation_apres_le_sport')}
                     className="w-full rounded-xl bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2.5 text-sm"
                   />
                 </div>
@@ -11888,7 +11889,7 @@ export default function AssistantWizard() {
                 <div className="flex justify-end pt-2">
                   <Button variant="primary" size="sm" onClick={goToStyle}>
                     <span className="flex items-center gap-2">
-                      Continuer vers Style <ArrowRight className="w-4 h-4" />
+                      {tUi('continuer_vers_style')} <ArrowRight className="w-4 h-4" />
                     </span>
                   </Button>
                 </div>
@@ -11916,7 +11917,7 @@ export default function AssistantWizard() {
                     n'a ete retire : ils sont seulement regroupes. */}
                 <StyleSection
                   id="format"
-                  title="Ton et format"
+                  title={tUi('ton_et_format')}
                   hint={`${tone.label} · ${format}`}
                   open={openSection === 'format'}
                   onToggle={toggleSection}
@@ -11935,9 +11936,9 @@ export default function AssistantWizard() {
                           <div
                             className={`text-sm font-medium ${toneId === t.id ? 'text-white' : 'text-gray-300'}`}
                           >
-                            {t.label}
+                            {tUi.fr(t.label)}
                           </div>
-                          <div className="text-[11px] text-gray-500 mt-0.5">{t.hint}</div>
+                          <div className="text-[11px] text-gray-500 mt-0.5">{tUi.fr(t.hint)}</div>
                         </button>
                       ))}
                     </div>
@@ -11957,7 +11958,7 @@ export default function AssistantWizard() {
                           >
                             {f}
                             <span className="block text-[10px] text-gray-500">
-                              {FORMAT_HINT[f]}
+                              {tUi.fr(FORMAT_HINT[f])}
                             </span>
                           </button>
                         ))}
@@ -11982,15 +11983,15 @@ export default function AssistantWizard() {
                             onClick={() => { setColors(null); setEditedColor(null); }}
                             className="text-[11px] text-gray-500 hover:text-white transition"
                           >
-                            Revenir au kit de marque
+                            {tUi('revenir_au_kit_de_marque')}
                           </button>
                         )}
                       </div>
                       <div className="flex gap-2">
                         {([
                           { key: 'accent' as const, label: 'Accent', value: accent },
-                          { key: 'gradStart' as const, label: 'Dégradé — début', value: gradStart },
-                          { key: 'gradEnd' as const, label: 'Dégradé — fin', value: gradEnd },
+                          { key: 'gradStart' as const, label: tUi('degrade_debut'), value: gradStart },
+                          { key: 'gradEnd' as const, label: tUi('degrade_fin'), value: gradEnd },
                         ]).map((c) => (
                           <button
                             key={c.key}
@@ -12007,7 +12008,7 @@ export default function AssistantWizard() {
                               className="block h-5 w-full rounded-md border border-white/10"
                               style={{ backgroundColor: c.value }}
                             />
-                            <span className="mt-1.5 block text-[10px] text-gray-400 truncate">{c.label}</span>
+                            <span className="mt-1.5 block text-[10px] text-gray-400 truncate">{tUi.fr(c.label)}</span>
                           </button>
                         ))}
                       </div>
@@ -12023,8 +12024,8 @@ export default function AssistantWizard() {
                               editedColor === 'accent'
                                 ? 'Accent'
                                 : editedColor === 'gradStart'
-                                  ? 'Dégradé — début'
-                                  : 'Dégradé — fin'
+                                  ? tUi('degrade_debut')
+                                  : tUi('degrade_fin')
                             }
                           />
                         </div>
@@ -12036,14 +12037,14 @@ export default function AssistantWizard() {
                       </p>
 
                       <div className="mt-2 flex items-center gap-2">
-                        <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">Opacité du fond</span>
+                        <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">{tUi('opacite_du_fond')}</span>
                         <input
                           type="range"
                           min={0}
                           max={100}
                           value={Math.round(gradientOpacity * 100)}
                           onChange={(e) => setColor({ gradientOpacity: Number(e.target.value) / 100 })}
-                          aria-label="Opacité du dégradé de fond"
+                          aria-label={tUi('opacite_du_degrade_de_fond')}
                           className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
                         />
                         <span className="text-[11px] text-gray-400 w-9 text-right tabular-nums">
@@ -12054,8 +12055,8 @@ export default function AssistantWizard() {
                       {/* Habillage de la séquence Vidéo / jumeau : les couleurs du
                           style par-dessus la vidéo, jamais un filtre sur l'image. */}
                       <div className="mt-3" data-habillage-video-choix>
-                        <span className="block text-[11px] text-gray-500 mb-1.5">Habillage vidéo</span>
-                        <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="Habillage de la séquence Vidéo">
+                        <span className="block text-[11px] text-gray-500 mb-1.5">{tUi('habillage_video')}</span>
+                        <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label={tUi('habillage_de_la_sequence_video')}>
                           {MODES_HABILLAGE.map((m) => (
                             <button
                               key={m.id}
@@ -12069,12 +12070,12 @@ export default function AssistantWizard() {
                                   : 'bg-gray-800/60 text-gray-400 hover:text-white'
                               }`}
                             >
-                              {m.label}
+                              {tUi.fr(m.label)}
                             </button>
                           ))}
                         </div>
                         <p className="mt-1.5 text-[11px] text-gray-500">
-                          Dégradé : le voile coloré des cartes sur la vidéo. Cadre : une bordure aux couleurs du style.
+                          {tUi('degrade_le_voile_colore_des_cartes_sur')}
                         </p>
                       </div>
                     </div>
@@ -12089,7 +12090,7 @@ export default function AssistantWizard() {
                 >
                   <div className="space-y-3">
                     <p className="text-xs text-gray-500">
-                      Sans photo, le fond reste le dégradé de vos couleurs.
+                      {tUi('sans_photo_le_fond_reste_le_degrade_de')}
                     </p>
 
                     {/* ── RECHERCHE UNIQUE ─────────────────────────────────
@@ -12098,8 +12099,8 @@ export default function AssistantWizard() {
                         résultats. Le crédit reste dû — ligne discrète sous
                         la grille. */}
                     <div className="space-y-1" data-poster-recherche>
-                      <p className="text-xs text-gray-400">Choisissez une image pour illustrer votre vidéo.</p>
-                      <p className="text-[11px] text-gray-500">Décrivez simplement ce que vous voulez montrer.</p>
+                      <p className="text-xs text-gray-400">{tUi('choisissez_une_image_pour_illustrer_vo')}</p>
+                      <p className="text-[11px] text-gray-500">{tUi('decrivez_simplement_ce_que_vous_voulez')}</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5">
                       <div className="relative grow basis-48 min-w-0">
@@ -12115,8 +12116,8 @@ export default function AssistantWizard() {
                             }
                           }}
                           data-poster-query
-                          aria-label="Rechercher une photo"
-                          placeholder="Rechercher une photo…"
+                          aria-label={tUi('rechercher_une_photo')}
+                          placeholder={tUi('rechercher_une_photo_2')}
                           className="w-full rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none pl-8 pr-2.5 py-2 text-sm"
                         />
                       </div>
@@ -12128,7 +12129,7 @@ export default function AssistantWizard() {
                         className="flex grow sm:grow-0 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-purple-600 px-3 py-2 text-xs font-medium text-white hover:bg-purple-500 disabled:opacity-40 transition-colors"
                       >
                         {photosLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
-                        Rechercher
+                        {tUi('rechercher')}
                       </button>
                     </div>
 
@@ -12137,7 +12138,7 @@ export default function AssistantWizard() {
                         MÊME recherche que « Rechercher ». */}
                     {suggestionsPhotos.length > 0 && (
                       <div className="space-y-1" data-suggestions-photos>
-                        <p className="text-[11px] text-gray-500">Suggestions pour cette séquence</p>
+                        <p className="text-[11px] text-gray-500">{tUi('suggestions_pour_cette_sequence')}</p>
                         <div className="flex flex-wrap gap-1.5">
                           {suggestionsPhotos.map((sug) => (
                             <button
@@ -12180,7 +12181,7 @@ export default function AssistantWizard() {
                             }}
                             className="shrink-0 rounded-lg border border-gray-800 px-2.5 py-1 text-xs text-gray-400 hover:text-white hover:border-gray-700 disabled:opacity-40"
                           >
-                            Réessayer
+                            {tUi('reessayer')}
                           </button>
                         )}
                       </div>
@@ -12192,7 +12193,7 @@ export default function AssistantWizard() {
                       <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-3 space-y-2">
                         <div className="flex items-center gap-1.5">
                           <span className="text-[11px] uppercase tracking-wide text-gray-500 flex-1">
-                            Affiches du lot
+                            {tUi('affiches_du_lot')}
                           </span>
                           {(['auto', 'manuel'] as const).map((m) => (
                             <button
@@ -12213,8 +12214,7 @@ export default function AssistantWizard() {
 
                         {batchPhotoMode === 'auto' && affichesDisponibles < batchCount && (
                           <p className="text-xs text-gray-500">
-                            Pas assez de photos distinctes ({affichesDisponibles} pour {batchCount})
-                            — élargissez la recherche ou demandez d’autres photos.
+                            {tUi('pas_assez_de_photos_distinctes_affiche', { affichesDisponibles, batchCount })}
                           </p>
                         )}
 
@@ -12240,7 +12240,7 @@ export default function AssistantWizard() {
                                   <span className="h-8 w-8 rounded border border-dashed border-gray-700" />
                                 )}
                                 <span className="flex-1 truncate text-xs text-gray-500">
-                                  {url ? 'Affiche choisie' : 'Aucune affiche'}
+                                  {url ? 'Affiche choisie' : tUi('aucune_affiche')}
                                 </span>
                                 <button
                                   type="button"
@@ -12273,7 +12273,7 @@ export default function AssistantWizard() {
                                         assignerAffiche(b, envoye.url);
                                         if (envoye.dataUrl) {
                                           setPhotosError(
-                                            'Photo utilisée localement : l’envoi au stockage a échoué, elle ne survivra pas au rechargement.',
+                                            tUi('photo_utilisee_localement_l_envoi_au_s'),
                                           );
                                         }
                                       } finally {
@@ -12289,8 +12289,7 @@ export default function AssistantWizard() {
 
                         {!affichesCompletes && (
                           <p className="text-xs text-gray-500">
-                            {affichesRetenues} / {batchCount} — l’envoi est
-                            bloqué tant que chaque vidéo n’a pas sa propre affiche.
+                            {tUi('affichesretenues_batchcount_l_envoi_es', { affichesRetenues, batchCount })}
                           </p>
                         )}
                       </div>
@@ -12384,7 +12383,7 @@ export default function AssistantWizard() {
                                 // l'infobulle (crédits : « Crédits médias »,
                                 // replié) ; une photo À SOI (importée, générée
                                 // par l'IA) garde son libellé.
-                                title={photo.source === 'upload' && photo.photographer ? `Photo : ${photo.photographer}` : 'Choisir cette photo'}
+                                title={photo.source === 'upload' && photo.photographer ? `Photo : ${photo.photographer}` : tUi('choisir_cette_photo')}
                                 className={`relative overflow-hidden rounded-lg border transition-colors ${
                                   retenue ? 'border-purple-500' : 'border-gray-800 hover:border-gray-600'
                                 }`}
@@ -12439,7 +12438,7 @@ export default function AssistantWizard() {
                     {/* Ma photo */}
                     <label className="flex items-center justify-center gap-1.5 rounded-lg border border-dashed border-gray-700 px-3 py-2 text-xs text-gray-400 cursor-pointer hover:border-purple-500 hover:text-white transition-colors">
                       {posterUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                      {posterUploading ? 'Envoi…' : 'Ma photo'}
+                      {posterUploading ? 'Envoi…' : tUi('ma_photo')}
                       <input
                         type="file"
                         accept="image/*"
@@ -12471,7 +12470,7 @@ export default function AssistantWizard() {
                             applyPhoto(envoye.url);
                             if (envoye.dataUrl) {
                               setPhotosError(
-                                'Photo utilisée localement : l’envoi au stockage a échoué, elle ne survivra pas au rechargement.',
+                                tUi('photo_utilisee_localement_l_envoi_au_s'),
                               );
                             }
                           } finally {
@@ -12491,7 +12490,7 @@ export default function AssistantWizard() {
                         className="flex items-center justify-center gap-1.5 rounded-lg border border-gray-800 px-3 py-2 text-xs text-gray-400 hover:border-gray-700 hover:text-white transition-colors"
                       >
                         <FolderOpen className="w-3.5 h-3.5" />
-                        Médiathèque
+                        {tUi('mediatheque')}
                       </button>
                       <button
                         type="button"
@@ -12503,7 +12502,7 @@ export default function AssistantWizard() {
                         }`}
                       >
                         <Sparkles className="w-3.5 h-3.5" />
-                        Générer avec l’IA
+                        {tUi('generer_avec_l_ia')}
                       </button>
                     </div>
                     {afficheIAOuvert && (
@@ -12521,12 +12520,12 @@ export default function AssistantWizard() {
                     {/* Recapitulatif : qui a son fond, qui herite. */}
                     <div className="rounded-xl border border-gray-800 bg-gray-900/50 p-3 space-y-1.5">
                       <p className="text-[11px] uppercase tracking-wide text-gray-500">
-                        Fond par séquence
+                        {tUi('fond_par_sequence')}
                       </p>
                       {([
-                        { cle: 'titre', label: 'Titre', focus: 'intro' },
+                        { cle: 'titre', label: tUi('titre'), focus: 'intro' },
                         { cle: 'cartes', label: 'Cartes', focus: 'cards' },
-                        { cle: 'video', label: 'Vidéo', focus: 'video' },
+                        { cle: 'video', label: tUi('video'), focus: 'video' },
                         { cle: 'cta', label: 'CTA', focus: 'cta' },
                       ] as const).map((seq) => {
                         const propre = seqBackgrounds[seq.cle];
@@ -12549,17 +12548,17 @@ export default function AssistantWizard() {
                               <span className="h-7 w-7 rounded border border-dashed border-gray-700" />
                             )}
                             <span className="flex-1 truncate text-[11px] text-gray-500">
-                              {propre ? 'Fond propre' : 'Hérite de l’affiche'}
+                              {propre ? 'Fond propre' : tUi('herite_de_l_affiche')}
                             </span>
                             {propre && (
                               <button
                                 type="button"
                                 onClick={() => resetSeqBackground(seq.cle)}
                                 data-seq-bg-reset={seq.cle}
-                                title="Rendre cette séquence à l’affiche globale"
+                                title={tUi('rendre_cette_sequence_a_l_affiche_glob')}
                                 className="rounded-lg border border-gray-800 px-2 py-1 text-[11px] text-gray-400 hover:text-white hover:border-gray-700 transition-colors"
                               >
-                                Réinitialiser
+                                {tUi('reinitialiser')}
                               </button>
                             )}
                           </div>
@@ -12568,7 +12567,7 @@ export default function AssistantWizard() {
                       <p className="text-[11px] text-gray-600">
                         {seqCible
                           ? `Les photos choisies s’appliquent à la séquence « ${previewFocus === 'intro' ? 'Titre' : previewFocus === 'cards' ? 'Cartes' : previewFocus === 'video' ? 'Vidéo' : 'CTA'} ». Glissez-en une dans l’aperçu.`
-                          : 'Onglet « Tout » : les photos choisies deviennent l’affiche globale.'}
+                          : tUi('onglet_tout_les_photos_choisies_devien')}
                       </p>
                       {fondAffiche.url && stockMedias[fondAffiche.url] && (
                         // Attribution du fond REPLIÉE (« Crédits médias ») : exigée
@@ -12576,7 +12575,7 @@ export default function AssistantWizard() {
                         <details className="text-[11px] text-gray-500" data-fond-attribution data-credit-media data-media-infos>
                           <summary className="flex cursor-pointer list-none items-center gap-1 hover:text-gray-300">
                             <Info className="w-3 h-3" aria-hidden="true" />
-                            Crédits médias
+                            {tUi('credits_medias')}
                           </summary>
                           <p className="mt-1 pl-4 break-words">
                             {stockMedias[fondAffiche.url].attribution}{' '}
@@ -12600,7 +12599,7 @@ export default function AssistantWizard() {
                         className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-400 hover:border-gray-700 hover:text-white transition-colors"
                       >
                         <Search className="w-3.5 h-3.5" />
-                        Médias suggérés
+                        {tUi('medias_suggeres')}
                       </button>
                     </div>
 
@@ -12616,12 +12615,12 @@ export default function AssistantWizard() {
                         }`}
                       >
                         <Crop className="w-3.5 h-3.5" />
-                        {cropping ? 'Terminer le recadrage' : 'Recadrer'}
+                        {cropping ? tUi('terminer_le_recadrage') : 'Recadrer'}
                       </button>
                     )}
                     {cropping && (
                       <p className="text-xs text-gray-500">
-                        Glissez la photo pour la repositionner, tirez un coin pour zoomer.
+                        {tUi('glissez_la_photo_pour_la_repositionner')}
                         {fondAffiche.transform.scale > 1 && ` Zoom ${fondAffiche.transform.scale.toFixed(1)}×.`}
                         {' '}
                         <button
@@ -12630,7 +12629,7 @@ export default function AssistantWizard() {
                           data-poster-crop-reset
                           className="underline underline-offset-2 hover:text-white transition-colors"
                         >
-                          Rétablir le cadrage d’origine
+                          {tUi('retablir_le_cadrage_d_origine')}
                         </button>
                       </p>
                     )}
@@ -12641,7 +12640,7 @@ export default function AssistantWizard() {
                         className="w-full flex items-center justify-center gap-1.5 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:border-gray-700 transition-colors"
                       >
                         <ImagePlus className="w-3.5 h-3.5" />
-                        Revenir au fond dégradé
+                        {tUi('revenir_au_fond_degrade')}
                       </button>
                     )}
 
@@ -12654,9 +12653,9 @@ export default function AssistantWizard() {
                     <div className="pt-1 border-t border-gray-800/60 space-y-2">
                       <p className="text-xs font-medium text-gray-300">Retouche IA</p>
                       <p className="text-xs text-gray-500">
-                        Le résultat remplace {seqBgKeyForFocus(previewFocus)
-                          ? 'le fond de la séquence affichée'
-                          : 'l’affiche globale'} et reste recadrable.
+                        {tUi('le_resultat_remplace')} {seqBgKeyForFocus(previewFocus)
+                          ? tUi('le_fond_de_la_sequence_affichee')
+                          : 'l’affiche globale'} {tUi('et_reste_recadrable')}
                       </p>
                       <AiImageTools
                         imageUrl={fondAffiche.url}
@@ -12702,7 +12701,7 @@ export default function AssistantWizard() {
                         disabled={lutLoading}
                         className={`w-full rounded-xl bg-gray-900/60 px-3 py-2.5 text-sm text-gray-300 transition hover:bg-gray-800/70 ${DISABLED}`}
                       >
-                        {lutLoading ? 'Lecture du filtre…' : 'Importer un filtre…'}
+                        {lutLoading ? tUi('lecture_du_filtre') : tUi('importer_un_filtre')}
                       </button>
                     ) : (
                       <div className="space-y-3">
@@ -12718,7 +12717,7 @@ export default function AssistantWizard() {
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="w-24 flex-shrink-0 text-[11px] text-gray-500">
-                            Intensité
+                            {tUi('intensite')}
                           </span>
                           <input
                             type="range"
@@ -12731,7 +12730,7 @@ export default function AssistantWizard() {
                                 prev ? { ...prev, intensite: Number(e.target.value) } : prev,
                               )
                             }
-                            aria-label="Intensité du filtre"
+                            aria-label={tUi('intensite_du_filtre')}
                             className="h-1 flex-1 cursor-pointer appearance-none rounded-lg bg-gray-700 accent-purple-500"
                           />
                           <span className="w-9 text-right text-[11px] tabular-nums text-gray-400">
@@ -12767,7 +12766,7 @@ export default function AssistantWizard() {
 
                 <StyleSection
                   id="texte"
-                  title="Texte"
+                  title={tUi('texte')}
                   hint={`${textStyles.title.font} · filigrane ${watermarkVisible ? 'affiché' : 'masqué'}`}
                   open={openSection === 'texte'}
                   onToggle={toggleSection}
@@ -12779,7 +12778,7 @@ export default function AssistantWizard() {
                         que les autres zones — extraite, pas recopiee. */}
                     <div className="mb-4">
                       <label htmlFor="cards-font" className="block text-sm font-medium mb-2">
-                        Texte des cartes
+                        {tUi('texte_des_cartes')}
                       </label>
                       <select
                         id="cards-font"
@@ -12802,7 +12801,7 @@ export default function AssistantWizard() {
                         ))}
                       </select>
                       <div className="flex items-center gap-2 mt-2">
-                        <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">Taille</span>
+                        <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">{tUi('taille')}</span>
                         <input
                           type="range"
                           min={Math.round(SCALE_MIN * 100)}
@@ -12810,7 +12809,7 @@ export default function AssistantWizard() {
                           step={5}
                           value={Math.round((cardsTypography.scale ?? 1) * 100)}
                           onChange={(e) => patchCards({ scale: Number(e.target.value) / 100 })}
-                          aria-label="Taille du texte des cartes"
+                          aria-label={tUi('taille_du_texte_des_cartes')}
                           data-cards-scale
                           className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
                         />
@@ -12838,7 +12837,7 @@ export default function AssistantWizard() {
                         a l'utilisateur. */}
                     <div className="mb-4">
                       <label htmlFor="card-style" className="block text-sm font-medium mb-2">
-                        Style des cartes
+                        {tUi('style_des_cartes')}
                       </label>
                       <select
                         id="card-style"
@@ -12848,17 +12847,17 @@ export default function AssistantWizard() {
                         className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-purple-500 outline-none px-2 py-1.5 text-sm"
                       >
                         {CARD_STYLES.map((c) => (
-                          <option key={c.label} value={c.label}>{c.label} — {c.sublabel}</option>
+                          <option key={c.label} value={c.label}>{tUi.fr(c.label)} — {tUi.fr(c.sublabel)}</option>
                         ))}
                       </select>
                       <p className="text-[11px] text-gray-500 mt-1">
-                        « Sans cadre » affiche le texte seul, sans rectangle de fond.
+                        {tUi('sans_cadre_affiche_le_texte_seul_sans')}
                       </p>
                     </div>
 
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <label className="block text-sm font-medium">Texte</label>
+                        <label className="block text-sm font-medium">{tUi('texte')}</label>
                         <button
                           type="button"
                           onClick={() => {
@@ -12869,15 +12868,15 @@ export default function AssistantWizard() {
                           }}
                           className="text-[11px] text-gray-500 hover:text-white transition"
                         >
-                          Réinitialiser
+                          {tUi('reinitialiser')}
                         </button>
                       </div>
 
                       <div className="flex gap-2 mb-2">
                         {([
-                          { key: 'title' as const, label: 'Titre', hint: 'le grand texte' },
-                          { key: 'subtitle' as const, label: 'Sous-titre', hint: 'sous le titre' },
-                          { key: 'cta' as const, label: 'CTA', hint: 'et sous-texte' },
+                          { key: 'title' as const, label: tUi('titre'), hint: tUi('le_grand_texte') },
+                          { key: 'subtitle' as const, label: 'Sous-titre', hint: tUi('sous_le_titre') },
+                          { key: 'cta' as const, label: 'CTA', hint: tUi('et_sous_texte') },
                         ]).map((z) => (
                           <button
                             key={z.key}
@@ -12939,7 +12938,7 @@ export default function AssistantWizard() {
                                 htmlFor="txt-font"
                                 className="block text-[10px] uppercase tracking-wider text-gray-500 mb-1"
                               >
-                                Police
+                                {tUi('police')}
                               </label>
                               <select
                                 id="txt-font"
@@ -12968,7 +12967,7 @@ export default function AssistantWizard() {
                             </div>
 
                             <div className="flex items-center gap-2">
-                              <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">Taille</span>
+                              <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">{tUi('taille')}</span>
                               <input
                                 type="range"
                                 min={60}
@@ -12976,7 +12975,7 @@ export default function AssistantWizard() {
                                 step={5}
                                 value={Math.round(zone.scale * 100)}
                                 onChange={(e) => patch({ scale: Number(e.target.value) / 100 })}
-                                aria-label={`Taille du texte — ${zoneLabel}`}
+                                aria-label={tUi('taille_du_texte_zonelabel', { zoneLabel })}
                                 className="flex-1 h-1 rounded-lg appearance-none bg-gray-700 accent-purple-500 cursor-pointer"
                               />
                               <span className="text-[11px] text-gray-400 w-11 text-right tabular-nums">
@@ -13071,14 +13070,14 @@ export default function AssistantWizard() {
                             })()}
 
                             <div className="flex items-center gap-2">
-                              <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">Couleur</span>
+                              <span className="text-[11px] text-gray-500 w-24 flex-shrink-0">{tUi('couleur')}</span>
                               <button
                                 type="button"
                                 onClick={() =>
                                   setEditedTextColor(editedTextColor === 'color' ? null : 'color')
                                 }
                                 aria-pressed={editedTextColor === 'color'}
-                                aria-label={`Couleur — ${zoneLabel}`}
+                                aria-label={tUi('couleur_zonelabel', { zoneLabel })}
                                 className={`h-6 flex-1 rounded-md border transition ${
                                   editedTextColor === 'color' ? 'border-purple-400' : 'border-white/10'
                                 }`}
@@ -13091,7 +13090,7 @@ export default function AssistantWizard() {
                                     setEditedTextColor(editedTextColor === 'subColor' ? null : 'subColor')
                                   }
                                   aria-pressed={editedTextColor === 'subColor'}
-                                  aria-label="Couleur du sous-texte du CTA"
+                                  aria-label={tUi('couleur_du_sous_texte_du_cta')}
                                   className={`h-6 flex-1 rounded-md border transition ${
                                     editedTextColor === 'subColor'
                                       ? 'border-purple-400'
@@ -13108,23 +13107,22 @@ export default function AssistantWizard() {
                                   editedTextColor === 'subColor' ? textStyles.cta.subColor : zone.color
                                 }
                                 onChange={(value) => patch({ [editedTextColor]: value })}
-                                label={editedTextColor === 'subColor' ? 'Sous-texte' : 'Texte'}
+                                label={editedTextColor === 'subColor' ? 'Sous-texte' : tUi('texte')}
                               />
                             )}
 
                             {missingFonts.includes(zone.font) && (
                               <p className="text-[11px] text-amber-400/90">
-                                « {zone.font} » n’a pas pu être chargée : l’aperçu et la
-                                vidéo utiliseront une police de repli.
+                                {tUi('font_n_a_pas_pu_etre_chargee_l_apercu', { font: zone.font })}
                               </p>
                             )}
 
                             <p className="text-[11px] text-gray-500">
                               {isTitle
-                                ? 'Sans réglage propre, le sous-titre suit le titre.'
+                                ? tUi('sans_reglage_propre_le_sous_titre_suit')
                                 : isSubtitle
-                                  ? 'Graisse, italique et interligne restent ceux du titre : le montage les lui impose.'
-                                  : 'La même police sert au CTA et à son sous-texte.'}
+                                  ? tUi('graisse_italique_et_interligne_restent')
+                                  : tUi('la_meme_police_sert_au_cta_et_a_son_so')}
                             </p>
                           </div>
                         );
@@ -13138,11 +13136,11 @@ export default function AssistantWizard() {
                         <button
                           type="button"
                           onClick={() => setWatermarkEnabled((v) => !v)}
-                          title={watermarkEnabled ? 'Masquer le filigrane' : 'Afficher le filigrane'}
+                          title={watermarkEnabled ? tUi('masquer_le_filigrane') : tUi('afficher_le_filigrane')}
                           className="flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-white transition"
                         >
                           {watermarkVisible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                          {watermarkVisible ? 'Affiché' : 'Masqué'}
+                          {watermarkVisible ? tUi('affiche') : tUi('masque')}
                         </button>
                       </div>
                       <input
@@ -13156,7 +13154,7 @@ export default function AssistantWizard() {
                         className="w-full rounded-xl bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2.5 text-sm disabled:opacity-40"
                       />
                       <p className="mt-1 text-[11px] text-gray-500">
-                        Affiché en bas de chaque séquence du montage.
+                        {tUi('affiche_en_bas_de_chaque_sequence_du_m')}
                         {watermarkEnabled && !watermarkVisible && ' Champ vide : rien ne sera affiché.'}
                       </p>
                     </div>
@@ -13164,13 +13162,13 @@ export default function AssistantWizard() {
 
                 <StyleSection
                   id="sequences"
-                  title="Séquences"
+                  title={tUi('sequences')}
                   hint={`${activeOrder.length} active${activeOrder.length > 1 ? 's' : ''}${rushUrl ? ' · rush' : ''}`}
                   open={openSection === 'sequences'}
                   onToggle={toggleSection}
                 >
                     <div>
-                      <label className="block text-sm font-medium mb-2">Séquences</label>
+                      <label className="block text-sm font-medium mb-2">{tUi('sequences')}</label>
                       <p className="text-xs text-gray-500 mb-2">
                         Glissez pour réordonner. L&apos;œil active ou masque une séquence.
                       </p>
@@ -13223,13 +13221,13 @@ export default function AssistantWizard() {
                                 {seq.enabled ? position + 1 : '—'}
                               </span>
                               <div className="min-w-0 flex-1">
-                                <div className="text-sm font-medium truncate">{meta.label}</div>
+                                <div className="text-sm font-medium truncate">{tUi.fr(meta.label)}</div>
                                 <div className="text-[11px] text-gray-500 truncate" title={isVideo && rushUrl ? (listeMedias[0] ? titreMedia(listeMedias[0]) : undefined) : undefined}>
                                   {isVideo && mediasVideo
                                     ? `${mediasVideo.length} média${mediasVideo.length > 1 ? 's' : ''} enchaîné${mediasVideo.length > 1 ? 's' : ''}`
                                     : isVideo && rushUrl
                                     // Jamais le nom du fichier (gardé en infobulle) : sa provenance.
-                                    ? (rushSuivants.length ? `${rushListe.length} rushes enchaînés` : listeMedias[0] ? libelleMedia(listeMedias[0]) : 'Rush importé')
+                                    ? (rushSuivants.length ? tUi('length_rushes_enchaines', { length: rushListe.length }) : listeMedias[0] ? libelleMedia(listeMedias[0]) : tUi('rush_importe'))
                                     : meta.hint}
                                 </div>
                                 {/* La protection anti-rétention a échoué en base : le rush
@@ -13240,10 +13238,10 @@ export default function AssistantWizard() {
                                   <div
                                     data-rush-non-protege
                                     className="mt-0.5 flex items-center gap-1 text-[11px] text-amber-400"
-                                    title="La protection de ce rush contre le nettoyage automatique n'a pas pu être enregistrée côté serveur."
+                                    title={tUi('la_protection_de_ce_rush_contre_le_net')}
                                   >
                                     <AlertTriangle className="w-3 h-3 flex-shrink-0" />
-                                    <span className="truncate">Rush non protégé — risque de suppression sous 24 h. Ré-importez-le.</span>
+                                    <span className="truncate">{tUi('rush_non_protege_risque_de_suppression')}</span>
                                   </div>
                                 )}
                               </div>
@@ -13262,8 +13260,8 @@ export default function AssistantWizard() {
                                     type="button"
                                     onClick={() => { rushAjoutRef.current = false; setRushLibOpen(true); }}
                                     disabled={rushLoading}
-                                    title={rushUrl ? 'Remplacer le rush' : 'Importer un rush'}
-                                    aria-label={rushUrl ? 'Remplacer le rush' : 'Importer un rush'}
+                                    title={rushUrl ? tUi('remplacer_le_rush') : tUi('importer_un_rush')}
+                                    aria-label={rushUrl ? tUi('remplacer_le_rush') : tUi('importer_un_rush')}
                                     className="flex items-center gap-1 rounded-lg bg-gray-800 hover:bg-gray-700 px-2 py-1 text-[10px] font-medium text-gray-300 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
                                   >
                                     {rushLoading ? (
@@ -13279,7 +13277,7 @@ export default function AssistantWizard() {
                                       onClick={() => setClipSource({ url: rushUrl, name: rushName || 'rush' })}
                                       disabled={rushLoading}
                                       title="Découper les temps forts du rush. Le premier extrait devient la séquence Vidéo ; les autres restent dans la médiathèque."
-                                      aria-label="Découper les temps forts du rush"
+                                      aria-label={tUi('decouper_les_temps_forts_du_rush')}
                                       className="flex items-center gap-1 rounded-lg bg-gray-800 hover:bg-gray-700 px-2 py-1 text-[10px] font-medium text-gray-300 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
                                     >
                                       <Sparkles className="w-3 h-3" />
@@ -13292,8 +13290,8 @@ export default function AssistantWizard() {
                                       data-rush-recadrer
                                       onClick={() => setRecadrerRushOuvert(rushUrl)}
                                       disabled={rushLoading}
-                                      title="Choisir ce qui reste visible : la vidéo remplit tout le format, l'export utilise ce cadrage."
-                                      aria-label="Recadrer la vidéo"
+                                      title={tUi('choisir_ce_qui_reste_visible_la_video')}
+                                      aria-label={tUi('recadrer_la_video')}
                                       className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium transition disabled:opacity-40 ${recadrageRushActif(rushTransform) ? 'bg-studiio-primary/25 text-purple-100' : 'bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white'}`}
                                     >
                                       <Crop className="w-3 h-3" />
@@ -13304,8 +13302,8 @@ export default function AssistantWizard() {
                                     <button
                                       type="button"
                                       onClick={() => retirerRush(rushUrl)}
-                                      title="Retirer le rush"
-                                      aria-label="Retirer le rush"
+                                      title={tUi('retirer_le_rush')}
+                                      aria-label={tUi('retirer_le_rush')}
                                       className="text-gray-500 hover:text-red-400 transition"
                                     >
                                       <Trash2 className="w-3.5 h-3.5" />
@@ -13411,7 +13409,7 @@ export default function AssistantWizard() {
                         // Crédits exigés par les banques d'images, REPLIÉS : jamais un
                         // nom de fournisseur dans l'interface principale.
                         <details className="mt-1" data-rush-attributions data-credit-media>
-                          <summary className="cursor-pointer text-[11px] text-gray-500 hover:text-gray-300">Crédits médias</summary>
+                          <summary className="cursor-pointer text-[11px] text-gray-500 hover:text-gray-300">{tUi('credits_medias')}</summary>
                           <div className="mt-1 space-y-0.5">
                           {urlsRecadrables(listeMedias).filter((u, k, t) => stockMedias[u] && t.indexOf(u) === k).map((u) => (
                             <p key={u} className="text-[11px] text-gray-500 truncate">
@@ -13496,11 +13494,10 @@ export default function AssistantWizard() {
                 >
                     <div>
                       <label className="block text-sm font-medium mb-2">
-                        Entre chaque séquence
+                        {tUi('entre_chaque_sequence')}
                       </label>
                       <p className="text-xs text-gray-500 mb-2">
-                        Un seul style pour tout le montage. Le choisir le rejoue aussitôt
-                        dans l’aperçu, sur votre contenu.
+                        {tUi('un_seul_style_pour_tout_le_montage_le')}
                       </p>
                       <div className="grid grid-cols-2 gap-1.5">
                         {/* La liste vient du compositeur : recopiée ici, elle
@@ -13533,7 +13530,7 @@ export default function AssistantWizard() {
                                   montage — `transitionLayerStyles` transcrit
                                   `drawTransition`, pas une illustration. */}
                               <TransitionMiniPreview style={style} playing={joue} aspect={ASPECT_CSS[format]} height={40} />
-                              <span className="min-w-0">{TRANSITION_LABELS[style]}</span>
+                              <span className="min-w-0">{tUi.fr(TRANSITION_LABELS[style])}</span>
                               {choisi && <Check size={12} aria-hidden="true" data-coche className="ml-auto shrink-0 text-purple-300" />}
                             </button>
                             {/* Lecture explicite : mobile (pas de survol) et
@@ -13559,21 +13556,21 @@ export default function AssistantWizard() {
                         })}
                       </div>
                       <p className="text-xs text-gray-500 mt-2">
-                        {TRANSITION_HINTS[transition]}
+                        {tUi.fr(TRANSITION_HINTS[transition])}
                       </p>
                     </div>
                 </StyleSection>
 
                 <StyleSection
                   id="animation"
-                  title="Animation du texte"
+                  title={tUi('animation_du_texte')}
                   hint={TEXT_ANIMATION_LABELS[textAnimation]}
                   open={openSection === 'animation'}
                   onToggle={toggleSection}
                 >
                     <div>
                       <label className="block text-sm font-medium mb-2">
-                        Apparition du texte
+                        {tUi('apparition_du_texte')}
                       </label>
                       <p className="text-xs text-gray-500 mb-2">
                         Jouée au début de chaque séquence. Chaque option s’anime au survol ;
@@ -13627,8 +13624,7 @@ export default function AssistantWizard() {
                       </p>
                       {textAnimation === 'typewriter' && (
                         <p className="text-xs text-amber-400 mt-1.5">
-                          Les cartes sont photographiées : elles apparaissent d’un bloc, sans
-                          frappe lettre par lettre.
+                          {tUi('les_cartes_sont_photographiees_elles_a')}
                         </p>
                       )}
                     </div>
@@ -13637,12 +13633,12 @@ export default function AssistantWizard() {
                 <div className="flex justify-between pt-2">
                   <Button variant="ghost" size="sm" onClick={() => setStep(S.sujet)}>
                     <span className="flex items-center gap-2">
-                      <ArrowLeft className="w-4 h-4" /> Retour
+                      <ArrowLeft className="w-4 h-4" /> {tUi('retour')}
                     </span>
                   </Button>
                   <Button variant="primary" size="sm" onClick={() => setStep(S.audio)}>
                     <span className="flex items-center gap-2">
-                      <Music className="w-4 h-4" /> Continuer vers Audio
+                      <Music className="w-4 h-4" /> {tUi('continuer_vers_audio')}
                     </span>
                   </Button>
                 </div>
@@ -13653,7 +13649,7 @@ export default function AssistantWizard() {
             {step === S.audio && (
               <div className="space-y-4">
                 <div>
-                  <h3 className="text-base font-semibold">Musique et voix</h3>
+                  <h3 className="text-base font-semibold">{tUi('musique_et_voix')}</h3>
                   <p className="text-xs text-gray-500 mt-1">
                     Facultatif. Sans piste, le montage est rendu bien plus vite ;
                     avec une piste, le son est intégré au fichier exporté.
@@ -13712,7 +13708,7 @@ export default function AssistantWizard() {
                 <div className="flex justify-between pt-2">
                   <Button variant="ghost" size="sm" onClick={() => setStep(S.style)}>
                     <span className="flex items-center gap-2">
-                      <ArrowLeft className="w-4 h-4" /> Retour
+                      <ArrowLeft className="w-4 h-4" /> {tUi('retour')}
                     </span>
                   </Button>
                   {/* ⚠️ Ce bouton ne GENERE rien de nouveau : le contenu est
@@ -13722,7 +13718,7 @@ export default function AssistantWizard() {
                       donc le fil d'etapes ; le libelle dit ou l'on va. */}
                   <Button variant="primary" size="sm" onClick={goToGeneration}>
                     <span className="flex items-center gap-2">
-                      Continuer vers Contenu <ArrowRight className="w-4 h-4" />
+                      {tUi('continuer_vers_contenu')} <ArrowRight className="w-4 h-4" />
                     </span>
                   </Button>
                 </div>
@@ -13733,7 +13729,7 @@ export default function AssistantWizard() {
             {step === S.contenu && (
               <div className="space-y-4">
                 <div>
-                  <h3 className="font-semibold mb-1">Votre contenu</h3>
+                  <h3 className="font-semibold mb-1">{tUi('votre_contenu')}</h3>
                   <p className="text-sm text-gray-400">
                     Ajustez le texte des cartes ici — l&apos;aperçu suit. Relancez
                     si le résultat ne vous convient pas.
@@ -13742,7 +13738,7 @@ export default function AssistantWizard() {
 
                 {generating && (
                   <div className="flex items-center justify-center gap-3 py-10 text-sm text-gray-400">
-                    <Loader2 className="w-5 h-5 animate-spin" /> Génération…
+                    <Loader2 className="w-5 h-5 animate-spin" /> {tUi('generation')}
                   </div>
                 )}
 
@@ -13750,7 +13746,7 @@ export default function AssistantWizard() {
                   <div className="space-y-3">
                     <div className="rounded-xl bg-gray-900/60 p-3">
                       <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">
-                        Titre
+                        {tUi('titre')}
                       </div>
                       <div className="text-sm font-bold">{generated.title}</div>
                       <div className="text-xs text-gray-400 mt-1">{generated.subtitle}</div>
@@ -13865,7 +13861,7 @@ export default function AssistantWizard() {
                 <div className="flex justify-between pt-2 gap-2 flex-wrap">
                   <Button variant="ghost" size="sm" onClick={() => setStep(S.audio)}>
                     <span className="flex items-center gap-2">
-                      <ArrowLeft className="w-4 h-4" /> Retour
+                      <ArrowLeft className="w-4 h-4" /> {tUi('retour')}
                     </span>
                   </Button>
                   <div className="flex gap-2">
@@ -13888,7 +13884,7 @@ export default function AssistantWizard() {
                       className={DISABLED}
                     >
                       <span className="flex items-center gap-2">
-                        Continuer vers Envoi <ArrowRight className="w-4 h-4" />
+                        {tUi('continuer_vers_envoi')} <ArrowRight className="w-4 h-4" />
                       </span>
                     </Button>
                   </div>
@@ -13908,12 +13904,12 @@ export default function AssistantWizard() {
                       <Check className="w-6 h-6" />
                     </div>
                     <div>
-                      <div className="font-semibold">Envoyé au calendrier</div>
+                      <div className="font-semibold">{tUi('envoye_au_calendrier')}</div>
                       {envoiIntention === 'programmer' && reseauxProgrammes.length > 0 ? (
                         <p className="text-sm text-gray-400 mt-1" data-envoi-confirmation="programmer">
                           {batchCount > 1
-                            ? `Les ${batchCount} vidéos sont composées et les posts programmés`
-                            : 'La vidéo est composée et le post programmé'}{' '}
+                            ? tUi('les_batchcount_videos_sont_composees_e', { batchCount })
+                            : tUi('la_video_est_composee_et_le_post_progr')}{' '}
                           sur {reseauxProgrammes.map((r) => LIBELLE_RESEAU[r]).join(', ')}, à {scheduledTime}.
                           La publication est automatique, à l&apos;heure dite — vous pouvez encore
                           la modifier ou l&apos;annuler depuis le calendrier avant qu&apos;elle parte.
@@ -13921,8 +13917,8 @@ export default function AssistantWizard() {
                       ) : (
                         <p className="text-sm text-gray-400 mt-1" data-envoi-confirmation="brouillon">
                           {batchCount > 1
-                            ? `Les ${batchCount} vidéos sont composées et les posts enregistrés en brouillon.`
-                            : 'La vidéo est composée et le post enregistré en brouillon.'}{' '}
+                            ? tUi('les_batchcount_videos_sont_composees_e_2', { batchCount })
+                            : tUi('la_video_est_composee_et_le_post_enreg')}{' '}
                           Le calendrier les lit telles quelles — aucun nouveau rendu n&apos;est
                           nécessaire. Rien n&apos;est publié : la diffusion se déclenche depuis le
                           calendrier, une fois le brouillon programmé.
@@ -13931,19 +13927,19 @@ export default function AssistantWizard() {
                     </div>
                     <div className="flex gap-2 justify-center flex-wrap">
                       <a href="/dashboard/calendar" className="button-primary px-4 py-2 text-sm">
-                        Ouvrir le calendrier
+                        {tUi('ouvrir_le_calendrier')}
                       </a>
                       <Button variant="ghost" size="sm" onClick={reset}>
-                        Créer un autre contenu
+                        {tUi('creer_un_autre_contenu')}
                       </Button>
                     </div>
                   </div>
                 ) : (
                   <>
                     <div>
-                      <h3 className="font-semibold mb-1">Envoyer au calendrier</h3>
+                      <h3 className="font-semibold mb-1">{tUi('envoyer_au_calendrier')}</h3>
                       <p className="text-sm text-gray-400">
-                        {batchCount > 1 ? 'Les vidéos sont composées' : 'La vidéo est composée'}{' '}
+                        {batchCount > 1 ? tUi('les_videos_sont_composees') : tUi('la_video_est_composee')}{' '}
                         maintenant, exactement telle que l&apos;aperçu l&apos;affiche, puis
                         {envoiIntention === 'programmer' && reseauxProgrammes.length > 0
                           ? ` programmée${batchCount > 1 ? 's' : ''} sur vos réseaux.`
@@ -13958,7 +13954,7 @@ export default function AssistantWizard() {
                         {politiqueFacturation === 'partner_cost_only'
                           ? `— ${MENTION_AUCUN_CREDIT}`
                           : tarifsServeur
-                            ? 'seront débités une fois le rendu terminé.'
+                            ? tUi('seront_debites_une_fois_le_rendu_termi')
                             : '— le tarif du serveur fait foi.'}
                       </p>
                     </div>
@@ -13970,7 +13966,7 @@ export default function AssistantWizard() {
                         `batchCount` reste la SEULE source de verite — le mode
                         s'en deduit, deux etats se desynchroniseraient. */}
                     <div>
-                      <label className="block text-sm font-medium mb-2">Que voulez-vous produire ?</label>
+                      <label className="block text-sm font-medium mb-2">{tUi('que_voulez_vous_produire')}</label>
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
@@ -13983,8 +13979,8 @@ export default function AssistantWizard() {
                               : 'border-gray-800 text-gray-400 hover:text-white hover:border-gray-700'
                           }`}
                         >
-                          <span className="block font-medium">Un seul contenu</span>
-                          <span className="block text-[11px] text-gray-500 mt-0.5">Le montage affiché</span>
+                          <span className="block font-medium">{tUi('un_seul_contenu')}</span>
+                          <span className="block text-[11px] text-gray-500 mt-0.5">{tUi('le_montage_affiche')}</span>
                         </button>
                         {/* La carte reste VISIBLE : la masquer laisserait croire
                             que la serie n'a jamais existe. `disabled` sur un
@@ -14007,7 +14003,7 @@ export default function AssistantWizard() {
                           }`}
                         >
                           <span className="flex items-center gap-1.5">
-                            <span className="block font-medium">Série</span>
+                            <span className="block font-medium">{tUi('serie')}</span>
                             {/* La pastille reste, et change de sens : elle
                                 disait « Bientôt disponible », elle dit
                                 maintenant « Pilote ». Un mode rouvert à deux
@@ -14029,9 +14025,9 @@ export default function AssistantWizard() {
                     {modeLot === 'serie' && (
                     <div>
                       <label className="block text-sm font-medium mb-2">
-                        Combien de vidéos ?
+                        {tUi('combien_de_videos')}
                         <span className="ml-2 text-[11px] font-normal text-gray-500" data-serie-plafond>
-                          De 2 à {BATCH_SERIE_MAX}
+                          {tUi('de_2_a_batch_serie_max', { BATCH_SERIE_MAX })}
                         </span>
                       </label>
                       <div className="flex flex-wrap gap-1.5">
@@ -14055,8 +14051,7 @@ export default function AssistantWizard() {
                         ))}
                       </div>
                       <p className="mt-2 text-xs text-gray-500">
-                        Chaque vidéo reçoit un angle différent et sa propre date, un jour après
-                        l’autre. La première garde le contenu affiché ci-contre.
+                        {tUi('chaque_video_recoit_un_angle_different')}
                         {/* Les attributs disent l'etat que la garde d'envoi
                             lira : combien d'affiches sont posees, et si le
                             lot peut partir. */}
@@ -14113,7 +14108,7 @@ export default function AssistantWizard() {
                         Absent en modification : l'envoi n'y existe pas. */}
                     {!editPostId && (
                     <div data-envoi-intentions>
-                      <label className="block text-sm font-medium mb-2">Que faire de {batchCount > 1 ? 'ces vidéos' : 'cette vidéo'} ?</label>
+                      <label className="block text-sm font-medium mb-2">{tUi('que_faire_de')} {batchCount > 1 ? tUi('ces_videos') : tUi('cette_video')} ?</label>
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
@@ -14124,7 +14119,7 @@ export default function AssistantWizard() {
                         >
                           <span className="block font-medium">Garder en brouillon</span>
                           <span className="block text-[11px] text-gray-500 mt-0.5">
-                            Dans le calendrier, sans publication automatique.
+                            {tUi('dans_le_calendrier_sans_publication_au')}
                           </span>
                         </button>
                         <button
@@ -14134,14 +14129,14 @@ export default function AssistantWizard() {
                           disabled={reseauxConnectes.length === 0}
                           aria-disabled={reseauxConnectes.length === 0}
                           title={reseauxConnectes.length === 0
-                            ? 'Aucun réseau connecté : connectez-en un dans « Réseaux sociaux » pour programmer.'
+                            ? tUi('aucun_reseau_connecte_connectez_en_un')
                             : undefined}
                           onClick={() => setEnvoiIntention('programmer')}
                           className={`rounded-lg border px-3 py-2.5 text-sm text-left ${classesCarteOption(envoiIntention === 'programmer')}`}
                         >
-                          <span className="block font-medium">Programmer la publication</span>
+                          <span className="block font-medium">{tUi('programmer_la_publication')}</span>
                           <span className="block text-[11px] text-gray-500 mt-0.5">
-                            Publiée automatiquement à la date et l’heure choisies, sur les réseaux sélectionnés.
+                            {tUi('publiee_automatiquement_a_la_date_et_l')}
                           </span>
                         </button>
                       </div>
@@ -14150,15 +14145,15 @@ export default function AssistantWizard() {
                           cron marquerait « failed » a l'heure dite. */}
                       {!etatReseaux.chargement && reseauxConnectes.length === 0 && (
                         <p className="mt-2 text-xs text-gray-500" data-envoi-aucun-reseau>
-                          Aucun réseau connecté : la vidéo restera en brouillon.{' '}
+                          {tUi('aucun_reseau_connecte_la_video_restera')}{' '}
                           <Link href="/dashboard/social" className="text-purple-300 hover:text-white underline">
-                            Connecter un réseau
+                            {tUi('connecter_un_reseau')}
                           </Link>
                         </p>
                       )}
                       {envoiIntention === 'programmer' && reseauxConnectes.length > 0 && (
                         <div className="mt-2" data-envoi-reseaux>
-                          <p className="text-xs text-gray-400 mb-1.5">Sur quels réseaux ?</p>
+                          <p className="text-xs text-gray-400 mb-1.5">{tUi('sur_quels_reseaux')}</p>
                           <div className="flex flex-wrap gap-1.5">
                             {reseauxConnectes.map((r) => {
                               const retenu = reseauxProgrammes.includes(r);
@@ -14182,7 +14177,7 @@ export default function AssistantWizard() {
                           </div>
                           {reseauxProgrammes.length === 0 && (
                             <p className="mt-1.5 text-[11px] text-amber-400" data-envoi-reseaux-vides>
-                              Choisissez au moins un réseau — sinon la vidéo restera en brouillon.
+                              {tUi('choisissez_au_moins_un_reseau_sinon_la')}
                             </p>
                           )}
                           {/* Miniature / couverture + réglages TikTok. Le montage
@@ -14234,21 +14229,19 @@ export default function AssistantWizard() {
                           {batchCount > 1 ? ', un par jour' : ''}
                         </>
                       ) : dateRequiseManquante(envoiIntention, scheduledDate) ? (
-                        <>{' · '}<span className="text-amber-400" data-envoi-date-requise>choisissez une date</span></>
+                        <>{' · '}<span className="text-amber-400" data-envoi-date-requise>{tUi('choisissez_une_date')}</span></>
                       ) : null}
                       {/* La phrase suit l'intention : elle est la derniere
                           chose lue avant de confirmer, elle doit dire ce qui
                           va VRAIMENT se passer. */}
                       {envoiIntention === 'programmer' && reseauxProgrammes.length > 0 ? (
                         <span className="block mt-1 text-gray-500" data-envoi-recap="programmer">
-                          Programmé{batchCount > 1 ? 's' : ''}{scheduledDate ? ` le ${scheduledDate}` : ''} à {scheduledTime}
-                          {' '}sur {reseauxProgrammes.map((r) => LIBELLE_RESEAU[r]).join(', ')} — publication
-                          automatique par le cron, à l’heure dite ({fuseauNavigateur()}).
+                          {tUi.pluriel(tUi('programme'), batchCount)}{scheduledDate ? ` le ${scheduledDate}` : ''} à {scheduledTime}
+                          {' '}sur {reseauxProgrammes.map((r) => LIBELLE_RESEAU[r]).join(', ')} {tUi('publication_automatique_par_le_cron_a')}{fuseauNavigateur()}).
                         </span>
                       ) : (
                         <span className="block mt-1 text-gray-500" data-envoi-recap="brouillon">
-                          Enregistré{batchCount > 1 ? 's' : ''} en brouillon. Aucune publication
-                          automatique : la diffusion reste déclenchée depuis le calendrier.
+                          {tUi.pluriel(tUi('enregistre'), batchCount)} {tUi('en_brouillon_aucune_publication_automa')}
                         </span>
                       )}
                     </div>
@@ -14257,8 +14250,8 @@ export default function AssistantWizard() {
                         Visible seulement si le serveur l'autorise ; absente en
                         modification. B : Bureau et Aperçu seulement. */}
                     {methodeBDisponible && !editPostId && (
-                      <div className="rounded-lg border border-gray-800 px-3 py-2 text-xs text-gray-300" data-methode-montage={methodeMontage} role="radiogroup" aria-label="Méthode de sélection des extraits">
-                        <span className="block text-gray-500 mb-1">Méthode de sélection des extraits (essai administrateur)</span>
+                      <div className="rounded-lg border border-gray-800 px-3 py-2 text-xs text-gray-300" data-methode-montage={methodeMontage} role="radiogroup" aria-label={tUi('methode_de_selection_des_extraits')}>
+                        <span className="block text-gray-500 mb-1">{tUi('methode_de_selection_des_extraits_essa')}</span>
                         <div className="flex gap-2">
                           {(['A', 'B'] as const).map((m) => (
                             <button
@@ -14271,13 +14264,13 @@ export default function AssistantWizard() {
                               onClick={() => setMethodeMontage(m)}
                               className={`flex-1 rounded-md border px-2 py-1 transition-colors ${methodeMontage === m ? 'border-violet-500 text-white' : 'border-gray-800 text-gray-400 hover:text-white'}`}
                             >
-                              {m === 'A' ? 'Méthode A (actuelle)' : 'Méthode B (passages)'}
+                              {m === 'A' ? tUi('methode_a_actuelle') : tUi('methode_b_passages')}
                             </button>
                           ))}
                         </div>
                         {methodeMontage === 'B' && (
                           <span className="block mt-1 text-gray-500" data-methode-b-note>
-                            Téléchargement et aperçu seulement : aucun envoi au calendrier avec la méthode B.
+                            {tUi('telechargement_et_apercu_seulement_auc')}
                           </span>
                         )}
                       </div>
@@ -14303,13 +14296,13 @@ export default function AssistantWizard() {
                       onClick={() => runRender('bureau')}
                       disabled={sending || actif(VERROU.serie)}
                       data-export-bureau
-                      title="Composer le montage et l’enregistrer sur votre ordinateur, sans créer de post ni publier — rendu facturé"
+                      title={tUi('composer_le_montage_et_l_enregistrer_s')}
                       className="w-full flex items-center justify-center gap-2 rounded-lg border border-gray-800 px-3 py-2 text-xs text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                     >
                       <Download className="w-3.5 h-3.5" />
                       {batchCount > 1
-                        ? `Télécharger les ${batchCount} vidéos (.zip)`
-                        : 'Télécharger la vidéo'}
+                        ? tUi('telecharger_les_batchcount_videos_zip', { batchCount })
+                        : tUi('telecharger_la_video')}
                       <span className="text-gray-500">·</span>
                       <span data-export-bureau-cout>
                         {annonceCout(
@@ -14324,7 +14317,7 @@ export default function AssistantWizard() {
                     <div className="flex justify-between pt-2">
                       <Button variant="ghost" size="sm" onClick={() => setStep(S.contenu)}>
                         <span className="flex items-center gap-2">
-                          <ArrowLeft className="w-4 h-4" /> Retour
+                          <ArrowLeft className="w-4 h-4" /> {tUi('retour')}
                         </span>
                       </Button>
                       {/* Absent en modification : il ferait un `POST /api/posts`,
@@ -14355,8 +14348,8 @@ export default function AssistantWizard() {
                             <>
                               <CalendarPlus className="w-4 h-4" />{' '}
                               {envoiIntention === 'programmer'
-                                ? (batchCount > 1 ? `Composer et programmer ${batchCount} vidéos` : 'Composer et programmer')
-                                : (batchCount > 1 ? `Composer et envoyer ${batchCount} vidéos` : 'Composer et envoyer')}
+                                ? (batchCount > 1 ? tUi('composer_et_programmer_batchcount_vide', { batchCount }) : tUi('composer_et_programmer'))
+                                : (batchCount > 1 ? tUi('composer_et_envoyer_batchcount_videos', { batchCount }) : tUi('composer_et_envoyer'))}
                             </>
                           )}
                         </span>
@@ -14370,7 +14363,7 @@ export default function AssistantWizard() {
                         {suiviJumeau(false)}
                         {batchProgress && batchProgress.total > 1 && (
                           <p className="text-center text-xs text-gray-400">
-                            Vidéo {batchProgress.done + 1} / {batchProgress.total}
+                            {tUi('video')} {batchProgress.done + 1} / {batchProgress.total}
                           </p>
                         )}
                       </div>
@@ -14387,7 +14380,7 @@ export default function AssistantWizard() {
                             aria-valuenow={renderProgress}
                             aria-valuemin={0}
                             aria-valuemax={100}
-                            aria-label="Progression du rendu"
+                            aria-label={tUi('progression_du_rendu')}
                           >
                             <div
                               className="h-full rounded-full"
@@ -14407,7 +14400,7 @@ export default function AssistantWizard() {
                         </div>
                         {batchProgress && batchProgress.total > 1 && (
                           <p className="text-center text-xs text-gray-400">
-                            Vidéo {batchProgress.done + 1} / {batchProgress.total}
+                            {tUi('video')} {batchProgress.done + 1} / {batchProgress.total}
                           </p>
                         )}
                         {renderStage && (
@@ -14461,11 +14454,11 @@ export default function AssistantWizard() {
                                         : it.etat === 'rendu' ? '#93C5FD' : '#4B5563',
                                 }}
                               />
-                              <span className="text-gray-400">Vidéo {it.index + 1}</span>
+                              <span className="text-gray-400">{tUi('video')} {it.index + 1}</span>
                               <span className="text-gray-500">
-                                {it.etat === 'pret' ? 'prête'
+                                {it.etat === 'pret' ? tUi('prete')
                                   : it.etat === 'echoue' ? `échec — ${it.erreur || 'raison inconnue'}`
-                                    : it.etat === 'rendu' ? 'rendu interrompu' : 'jamais démarrée'}
+                                    : it.etat === 'rendu' ? 'rendu interrompu' : tUi('jamais_demarree')}
                               </span>
                             </li>
                           ))}
@@ -14623,19 +14616,19 @@ export default function AssistantWizard() {
             className="mt-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] leading-snug text-gray-300"
           >
             {modeApercuPlan ? (
-              <p>Aperçu rapide — son, filtre couleur et rendu exact des textes appliqués à l’export.</p>
+              <p>{tUi('apercu_rapide_son_filtre_couleur_et_re')}</p>
             ) : planApercuEnCalcul ? (
-              <p>Plan du montage en préparation… l’aperçu montre le premier rush en attendant.</p>
+              <p>{tUi('plan_du_montage_en_preparation_l_aperc')}</p>
             ) : (
               <p data-apercu-simplifie>
-                Aperçu simplifié : {problemeApercuCourant === 'positionnement'
-                  ? 'un rush ne permet pas de se positionner dans la vidéo'
-                  : 'un rush n’a pas pu être analysé ou lu'} — le montage complet n’est visible qu’à l’export.
+                {tUi('apercu_simplifie')} {problemeApercuCourant === 'positionnement'
+                  ? tUi('un_rush_ne_permet_pas_de_se_positionne')
+                  : tUi('un_rush_n_a_pas_pu_etre_analyse_ou_lu')} {tUi('le_montage_complet_n_est_visible_qu_a')}
               </p>
             )}
             {prepApercu?.raccourci && (
               <p data-apercu-raccourci className="mt-1 text-amber-300">
-                {prepApercu.raccourci.message} À l’export, vous choisirez de continuer avec {Math.round(prepApercu.raccourci.possible)} s ou d’ajouter des rushs.
+                {prepApercu.raccourci.message} {tUi('a_l_export_vous_choisirez_de_continuer')} {Math.round(prepApercu.raccourci.possible)} {tUi('s_ou_d_ajouter_des_rushs')}
               </p>
             )}
             {alerteApercu && <p data-apercu-alerte className="mt-1 text-red-300">{alerteApercu}</p>}
@@ -14664,7 +14657,7 @@ export default function AssistantWizard() {
         {apercuMontage && apercuMontage.exclus.length > 0 && (
           <div data-medias-exclus className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] text-amber-200">
             <p className="font-medium">
-              {apercuMontage.exclus.length === 1 ? '1 média ne sera pas dans la vidéo :' : `${apercuMontage.exclus.length} médias ne seront pas dans la vidéo :`}
+              {apercuMontage.exclus.length === 1 ? tUi('1_media_ne_sera_pas_dans_la_video') : tUi('length_medias_ne_seront_pas_dans_la_vi', { length: apercuMontage.exclus.length })}
             </p>
             <ul className="mt-1 list-disc pl-4 space-y-0.5">
               {apercuMontage.exclus.map((e) => (
@@ -14673,7 +14666,7 @@ export default function AssistantWizard() {
                 </li>
               ))}
             </ul>
-            <p className="mt-1 text-amber-300/80">Raccourcissez ou retirez-les pour pouvoir envoyer.</p>
+            <p className="mt-1 text-amber-300/80">{tUi('raccourcissez_ou_retirez_les_pour_pouv')}</p>
           </div>
         )}
 
@@ -14706,7 +14699,7 @@ export default function AssistantWizard() {
                     htmlFor={`zone-texte-${zoneOuverte}`}
                     className="block text-[10px] uppercase tracking-wider text-gray-500 mb-1"
                   >
-                    {zoneOuverte === 'cta' ? 'Texte principal' : 'Texte'}
+                    {zoneOuverte === 'cta' ? tUi('texte_principal') : tUi('texte')}
                   </label>
                   <textarea
                     id={`zone-texte-${zoneOuverte}`}
@@ -14770,15 +14763,14 @@ export default function AssistantWizard() {
                     className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-purple-500 outline-none px-2 py-1.5 text-sm"
                   />
                   <p className="mt-1 text-[11px] text-gray-500">
-                    Petite ligne sous l’appel à l’action. Champ vide : rien ne s’affiche.
+                    {tUi('petite_ligne_sous_l_appel_a_l_action_c')}
                   </p>
                 </div>
               )}
               {zoneOuverte === 'cards' && (
                 <p className="text-[11px] text-gray-500">
-                  Le texte des cartes se règle à l’étape
-                  {' '}<span className="text-gray-300">Contenu</span>, carte par carte.
-                  Ici, leur mise en forme.
+                  {tUi('le_texte_des_cartes_se_regle_a_l_etape')}
+                  {' '}<span className="text-gray-300">Contenu</span>{tUi('carte_par_carte_ici_leur_mise_en_forme')}
                 </p>
               )}
 
@@ -14852,7 +14844,7 @@ export default function AssistantWizard() {
                           : 'Séparer les cartes de leur groupe',
                       },
                       {
-                        id: 'supprimer', libelle: 'Supprimer', Icone: Trash2, danger: true,
+                        id: 'supprimer', libelle: tUi('supprimer'), Icone: Trash2, danger: true,
                         onClick: () => { for (const id of Array.from(selectedCards)) supprimerCarte(id); },
                         disabled: nbSel === 0 || nbSel >= nbCartes,
                         aide: nbSel === 0 ? 'Sélectionnez une carte dans l’aperçu'
@@ -14876,9 +14868,9 @@ export default function AssistantWizard() {
                     },
                     // L'original ne se supprime pas d'ici : seule une copie.
                     ...(copieCtaCible ? [{
-                      id: 'supprimer', libelle: 'Supprimer', Icone: Trash2, danger: true,
+                      id: 'supprimer', libelle: tUi('supprimer'), Icone: Trash2, danger: true,
                       onClick: () => supprimerCtaCopie(copieCtaCible.id),
-                      aide: 'Supprimer cette copie du CTA',
+                      aide: tUi('supprimer_cette_copie_du_cta'),
                     }] : []),
                   ]}
                 />
@@ -14900,16 +14892,16 @@ export default function AssistantWizard() {
         {generated && !editPostId && (() => {
           const recomposer = () => { setPreviewRender(null, null); runRender('apercu'); };
           const etat = !previewUrl
-            ? { onClick: () => runRender('apercu'), icone: <Play className="w-3.5 h-3.5" />, label: 'Voir le rendu',
-                titre: 'Composer la vidéo et la regarder — animations et transitions comprises' }
+            ? { onClick: () => runRender('apercu'), icone: <Play className="w-3.5 h-3.5" />, label: tUi('voir_le_rendu'),
+                titre: tUi('composer_la_video_et_la_regarder_anima') }
             : !renduAJour
-              ? { onClick: recomposer, icone: <RefreshCw className="w-3.5 h-3.5" />, label: 'Recomposer le rendu',
-                  titre: 'Les réglages ont changé depuis le dernier rendu — un nouveau rendu est débité' }
+              ? { onClick: recomposer, icone: <RefreshCw className="w-3.5 h-3.5" />, label: tUi('recomposer_le_rendu'),
+                  titre: tUi('les_reglages_ont_change_depuis_le_dern') }
             : renduJoue
-              ? { onClick: recomposer, icone: <RefreshCw className="w-3.5 h-3.5" />, label: 'Recomposer le rendu',
-                  titre: 'Refaire le montage avec les réglages actuels — un nouveau rendu est débité' }
-              : { onClick: () => setPreviewFocus('all'), icone: <Play className="w-3.5 h-3.5" />, label: 'Revoir le rendu',
-                  titre: 'Rejouer le montage déjà composé — aucun nouveau débit' };
+              ? { onClick: recomposer, icone: <RefreshCw className="w-3.5 h-3.5" />, label: tUi('recomposer_le_rendu'),
+                  titre: tUi('refaire_le_montage_avec_les_reglages_a') }
+              : { onClick: () => setPreviewFocus('all'), icone: <Play className="w-3.5 h-3.5" />, label: tUi('revoir_le_rendu'),
+                  titre: tUi('rejouer_le_montage_deja_compose_aucun') };
           return (
             <button
               type="button"
@@ -14934,24 +14926,24 @@ export default function AssistantWizard() {
             texte `sr-only`) et au clavier (anneau de focus). Rien n'est
             retiré, seule la place change. */}
         {generated && (
-          <div role="toolbar" aria-label="Actions de l’aperçu" data-actions-apercu className="mt-2 flex items-center justify-center gap-1">
+          <div role="toolbar" aria-label={tUi('actions_de_l_apercu')} data-actions-apercu className="mt-2 flex items-center justify-center gap-1">
             <button
               type="button"
               onClick={basculerAgrandi}
-              title={enlargedOpen ? 'Fermer l’aperçu agrandi' : 'Agrandir l’aperçu'}
-              aria-label={enlargedOpen ? 'Fermer la fenêtre' : 'Agrandir'}
+              title={enlargedOpen ? tUi('fermer_l_apercu_agrandi') : tUi('agrandir_l_apercu')}
+              aria-label={enlargedOpen ? tUi('fermer_la_fenetre') : 'Agrandir'}
               aria-pressed={enlargedOpen}
               className={`${ICONE_ACTION} ${enlargedOpen ? 'bg-gray-800 text-white' : ''}`}
             >
               <Maximize2 className="w-3.5 h-3.5" />
-              <span className="sr-only">{enlargedOpen ? 'Fermer la fenêtre' : 'Agrandir'}</span>
+              <span className="sr-only">{enlargedOpen ? tUi('fermer_la_fenetre') : 'Agrandir'}</span>
             </button>
             <button
               type="button"
               onClick={() => downloadPoster('png')}
               disabled={posterExporting}
-              title="Télécharger l’affiche — l’aperçu affiché en image, sans débiter de crédit"
-              aria-label="Télécharger l’affiche"
+              title={tUi('telecharger_l_affiche_l_apercu_affiche')}
+              aria-label={tUi('telecharger_l_affiche')}
               className={ICONE_ACTION}
             >
               {posterExporting ? (
@@ -14959,14 +14951,14 @@ export default function AssistantWizard() {
               ) : (
                 <ImageDown className="w-3.5 h-3.5" />
               )}
-              <span className="sr-only">{posterExporting ? 'Capture…' : 'Télécharger l’affiche'}</span>
+              <span className="sr-only">{posterExporting ? 'Capture…' : tUi('telecharger_l_affiche')}</span>
             </button>
             <button
               type="button"
               onClick={() => downloadPoster('jpeg')}
               disabled={posterExporting}
-              title="Même image, au format JPG"
-              aria-label="Télécharger l’affiche en JPG"
+              title={tUi('meme_image_au_format_jpg')}
+              aria-label={tUi('telecharger_l_affiche_en_jpg')}
               className={`${ICONE_ACTION} w-auto px-2 text-[11px] font-medium`}
             >
               JPG
@@ -14975,20 +14967,20 @@ export default function AssistantWizard() {
             <button
               type="button"
               onClick={() => setElementPickerOpen((v) => !v)}
-              title={elementPickerOpen ? 'Masquer les éléments' : 'Ajouter un élément'}
-              aria-label={elementPickerOpen ? 'Masquer les éléments' : 'Ajouter un élément'}
+              title={elementPickerOpen ? tUi('masquer_les_elements') : tUi('ajouter_un_element')}
+              aria-label={elementPickerOpen ? tUi('masquer_les_elements') : tUi('ajouter_un_element')}
               aria-expanded={elementPickerOpen}
               className={`${ICONE_ACTION} ${elementPickerOpen ? 'bg-gray-800 text-white' : ''}`}
             >
               <Shapes className="w-3.5 h-3.5" />
-              <span className="sr-only">{elementPickerOpen ? 'Masquer les éléments' : 'Ajouter un élément'}</span>
+              <span className="sr-only">{elementPickerOpen ? tUi('masquer_les_elements') : tUi('ajouter_un_element')}</span>
             </button>
             {layoutTouched && (
               <button
                 type="button"
                 onClick={resetLayout}
-                title="Rétablir la disposition d’origine"
-                aria-label="Rétablir la disposition d’origine"
+                title={tUi('retablir_la_disposition_d_origine')}
+                aria-label={tUi('retablir_la_disposition_d_origine')}
                 className={ICONE_ACTION}
               >
                 <RotateCcw className="w-3.5 h-3.5" />
@@ -15005,8 +14997,7 @@ export default function AssistantWizard() {
             sinon elle parlait d'un rendu que personne n'avait demandé. */}
         {renduAJour && (
           <p className="mt-2 text-[11px] text-gray-500" data-play-legende>
-            Ce montage sera réutilisé à l’envoi tant que rien ne change —
-            un seul rendu débité.
+            {tUi('ce_montage_sera_reutilise_a_l_envoi_ta')}
           </p>
         )}
 
@@ -15016,7 +15007,7 @@ export default function AssistantWizard() {
           <div aria-hidden data-fond-apercu-agrandi className="fixed inset-0 z-[99] bg-black/70 backdrop-blur-[2px]" onClick={() => setEnlargedOpen(false)} />
         )}
         <FloatingPanel
-          title="Aperçu"
+          title={tUi('apercu')}
           isOpen={enlargedOpen && !!generated}
           onClose={() => setEnlargedOpen(false)}
           initialX={enlargedGeometry.x}
@@ -15069,9 +15060,9 @@ export default function AssistantWizard() {
             )}
             {freeElements.length > 0 && (
               <p className="mt-2 text-center text-xs text-gray-400">
-                {freeElements.length} élément{freeElements.length > 1 ? 's' : ''} posé
+                {freeElements.length} {tUi.pluriel(tUi('element_2'), freeElements.length)} {tUi('pose')}
                 {freeElements.length > 1 ? 's' : ''}
-                <span className="text-gray-600"> — cliquer pour sélectionner, glisser pour déplacer</span>
+                <span className="text-gray-600"> {tUi('cliquer_pour_selectionner_glisser_pour')}</span>
               </p>
             )}
           </div>
@@ -15079,9 +15070,9 @@ export default function AssistantWizard() {
         {selectedCards.size > 0 && cardsVisible && (
           <div className="mt-2 flex flex-col items-center gap-1.5">
             <p className="text-center text-xs text-gray-400">
-              {selectedCards.size} carte{selectedCards.size > 1 ? 's' : ''} sélectionnée
+              {selectedCards.size} carte{selectedCards.size > 1 ? 's' : ''} {tUi('selectionnee')}
               {selectedCards.size > 1 ? 's' : ''}
-              <span className="text-gray-600"> — Maj+clic pour en ajouter, Échap pour désélectionner</span>
+              <span className="text-gray-600"> {tUi('maj_clic_pour_en_ajouter_echap_pour_de')}</span>
             </p>
             <div className="flex items-center gap-1.5">
             <button
@@ -15092,8 +15083,8 @@ export default function AssistantWizard() {
               // du compositeur, elle merite d'etre dite.
               title={
                 (generated?.cards.length ?? 0) >= limiteCartes
-                  ? `Maximum de ${limiteCartes} cartes dans ce format`
-                  : 'Dupliquer la sélection'
+                  ? tUi('maximum_de_limitecartes_cartes_dans_ce', { limiteCartes })
+                  : tUi('dupliquer_la_selection')
               }
               className="flex items-center gap-1.5 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
@@ -15104,11 +15095,11 @@ export default function AssistantWizard() {
               <button
                 type="button"
                 onClick={ungroupSelection}
-                title="Séparer les cartes de leur groupe"
+                title={tUi('separer_les_cartes_de_leur_groupe')}
                 className="flex items-center gap-1.5 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:border-gray-700 transition-colors"
               >
                 <Ungroup className="w-3.5 h-3.5" />
-                Dégrouper
+                {tUi('degrouper')}
               </button>
             ) : (
               <button
@@ -15118,8 +15109,8 @@ export default function AssistantWizard() {
                 // Grise sans raison, on ne sait pas quoi faire de plus.
                 title={
                   selectedCards.size < MIN_GROUP
-                    ? 'Sélectionnez au moins deux cartes'
-                    : 'Les déplacer ensemble'
+                    ? tUi('selectionnez_au_moins_deux_cartes')
+                    : tUi('les_deplacer_ensemble')
                 }
                 className="flex items-center gap-1.5 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
@@ -15135,7 +15126,7 @@ export default function AssistantWizard() {
         )}
         {layoutDropped && (
           <p className="mt-2 text-center text-xs text-gray-500">
-            Disposition des cartes réinitialisée : le contenu ou le format a changé.
+            {tUi('disposition_des_cartes_reinitialisee_l')}
           </p>
         )}
         </div>
@@ -15149,7 +15140,7 @@ export default function AssistantWizard() {
           descendre pour changer une couleur, et on perdait l'apercu de vue.
           Ici ils flottent par-dessus, sans pousser la mise en page. */}
       <FloatingPanel
-        title="Élément"
+        title={tUi('element')}
         icon="✦"
         isOpen={!!selectedElement}
         onClose={closeElementPanel}
@@ -15161,7 +15152,7 @@ export default function AssistantWizard() {
           <div className="space-y-3">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-[11px] uppercase tracking-wide text-gray-500 flex-1">
-                    Couleur
+                    {tUi('couleur')}
                   </span>
                   {/* Trois choix en un clic — le nuancier reste dessous pour
                       tout le reste. */}
@@ -15197,7 +15188,7 @@ export default function AssistantWizard() {
                 <div className="mt-3 border-t border-gray-800 pt-3">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-[11px] uppercase tracking-wide text-gray-500 flex-1">
-                      Taille
+                      {tUi('taille')}
                     </span>
                     <span className="text-[11px] text-gray-500 tabular-nums">
                       {Math.round(selectedElement.sizePct)} %
@@ -15209,8 +15200,8 @@ export default function AssistantWizard() {
                       onClick={() => resizeElement(selectedElement.sizePct - ELEMENT_SIZE_STEP)}
                       disabled={selectedElement.sizePct <= ELEMENT_SIZE_MIN}
                       data-element-smaller
-                      title="Rétrécir"
-                      aria-label="Rétrécir l’élément"
+                      title={tUi('retrecir')}
+                      aria-label={tUi('retrecir_l_element')}
                       className="flex h-7 w-7 items-center justify-center rounded-lg border border-gray-800 text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                     >
                       <Minus className="w-3.5 h-3.5" />
@@ -15223,7 +15214,7 @@ export default function AssistantWizard() {
                       value={Math.round(selectedElement.sizePct)}
                       onChange={(e) => resizeElement(Number(e.target.value))}
                       data-element-size
-                      aria-label="Taille de l’élément"
+                      aria-label={tUi('taille_de_l_element')}
                       className="flex-1 accent-purple-500"
                     />
                     <button
@@ -15232,7 +15223,7 @@ export default function AssistantWizard() {
                       disabled={selectedElement.sizePct >= ELEMENT_SIZE_MAX}
                       data-element-bigger
                       title="Agrandir"
-                      aria-label="Agrandir l’élément"
+                      aria-label={tUi('agrandir_l_element')}
                       className="flex h-7 w-7 items-center justify-center rounded-lg border border-gray-800 text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                     >
                       <Plus className="w-3.5 h-3.5" />
@@ -15242,8 +15233,8 @@ export default function AssistantWizard() {
                 <ActionsEdition
                   nom="Élément"
                   actions={[
-                    { id: 'dupliquer', libelle: 'Dupliquer', Icone: Copy, onClick: () => dupliquerElement(selectedElement.id), aide: 'Dupliquer cet élément' },
-                    { id: 'supprimer', libelle: 'Supprimer', Icone: Trash2, danger: true, onClick: () => deleteElement(selectedElement.id), aide: 'Retirer cet élément de la vidéo' },
+                    { id: 'dupliquer', libelle: 'Dupliquer', Icone: Copy, onClick: () => dupliquerElement(selectedElement.id), aide: tUi('dupliquer_cet_element') },
+                    { id: 'supprimer', libelle: tUi('supprimer'), Icone: Trash2, danger: true, onClick: () => deleteElement(selectedElement.id), aide: tUi('retirer_cet_element_de_la_video') },
                   ]}
                 />
           </div>

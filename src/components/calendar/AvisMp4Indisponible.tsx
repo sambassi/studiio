@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import { demanderMp4Durable } from '@/lib/rendus/mp4-durable-client';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * Avis NON BLOQUANT : la conversion MP4 durable de ce montage a échoué, la
@@ -10,6 +11,7 @@ import { demanderMp4Durable } from '@/lib/rendus/mp4-durable-client';
  * Rien n'est masqué ni empêché : le post reste lisible et modifiable.
  */
 export default function AvisMp4Indisponible({ postId, onReussi }: { postId: string; onReussi?: () => void }) {
+  const tUi = useTranslations('ui.componentsCalendarAvisMp4Indisponible');
   const [etat, setEtat] = useState<'repos' | 'encours' | 'echec' | 'ok'>('repos');
   if (etat === 'ok') return null;
   const reessayer = async () => {
@@ -26,7 +28,7 @@ export default function AvisMp4Indisponible({ postId, onReussi }: { postId: stri
     >
       <AlertTriangle className="w-4 h-4 shrink-0" />
       <span>
-        MP4 indisponible — la vidéo reste au format WebM.
+        {tUi('mp4_indisponible_la_video_reste_au_for')}
         {etat === 'echec' && ' Nouvel essai sans succès.'}
       </span>
       <button
@@ -37,7 +39,7 @@ export default function AvisMp4Indisponible({ postId, onReussi }: { postId: stri
         className="ml-1 flex items-center gap-1 rounded-md border border-amber-400/50 px-2 py-0.5 text-amber-100 hover:bg-amber-500/20 disabled:opacity-60"
       >
         {etat === 'encours' ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-        {etat === 'encours' ? 'Conversion…' : 'Réessayer'}
+        {etat === 'encours' ? 'Conversion…' : tUi('reessayer')}
       </button>
     </div>
   );

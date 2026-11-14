@@ -9,6 +9,7 @@ import type { MediaStockRetenu } from '@/lib/autopilot/sources';
 import { analyserCouvertureRushes, plansAutopilote, AVATAR_PRINCIPAL, type ManqueCouverture } from '@/lib/stock/couverture';
 import { importerStockClient, rechercherStockClient } from '@/lib/stock/client';
 import { orientationDuFormat, type FormatStock, type MediaStock } from '@/lib/stock/types';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * Compléter les rushes de l'Autopilote avec des vidéos STOCK — étape CLIENT,
@@ -168,6 +169,7 @@ export default function CompleterRushesStock({
   /** Photos suggérées déjà retenues : elles couvrent un plan comme un média stock accepté. */
   photosRetenues?: string[];
 }) {
+  const tUi = useTranslations('ui.componentsCreerCompleterRushesStock');
   // Les imports de CETTE session ne recalculent pas les plans : sinon chaque
   // « Conserver » relancerait la recherche et ferait disparaître la carte
   // qu'on vient de valider. Après rechargement, ils comptent comme « stock ».
@@ -393,7 +395,7 @@ export default function CompleterRushesStock({
     }
     const r = await importerStockClient({ provider: 'pexels', type: 'video', providerAssetId: m.providerAssetId });
     if ('erreur' in r || !r.url) {
-      majSlot(slot.manque.sequence, (s) => ({ ...s, etat: 'propose', erreur: 'Import impossible pour le moment — réessayez ou gardez vos rushes.' }));
+      majSlot(slot.manque.sequence, (s) => ({ ...s, etat: 'propose', erreur: tUi('import_impossible_pour_le_moment_reess') }));
       return;
     }
     setAcceptes((a) => [...a, m.providerAssetId]);
@@ -431,7 +433,7 @@ export default function CompleterRushesStock({
     return (
       <p className="flex items-start gap-1.5 text-[11px] text-emerald-400" data-autopilot-stock-suffisant>
         <Check className="w-3 h-3 mt-0.5 shrink-0" />
-        {avatar ? 'Votre avatar et vos rushes suffisent : aucun média suggéré nécessaire.' : 'Vos rushes suffisent : aucun média suggéré nécessaire.'}
+        {avatar ? tUi('votre_avatar_et_vos_rushes_suffisent_a') : tUi('vos_rushes_suffisent_aucun_media_sugge')}
       </p>
     );
   }
@@ -441,11 +443,10 @@ export default function CompleterRushesStock({
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-gray-300">
         {avatar && <span data-autopilot-stock-avatar>Avatar personnel : plan d’accroche</span>}
         <span data-autopilot-stock-personnels>Rushes personnels : {couverture.rushesPersonnels}</span>
-        <span data-autopilot-stock-proposes>Médias suggérés : {proposes}</span>
+        <span data-autopilot-stock-proposes>{tUi('medias_suggeres_proposes', { proposes })}</span>
       </div>
       <p className="text-[11px] text-gray-500">
-        Rien n’est ajouté sans votre accord : conservez une proposition pour l’ajouter à la banque,
-        après vos propres rushes.
+        {tUi('rien_n_est_ajoute_sans_votre_accord_co')}
       </p>
       {peuPertinents && (
         <p className="flex items-start gap-1.5 text-[11px] text-amber-300" data-autopilot-stock-peu-pertinents>
@@ -467,7 +468,7 @@ export default function CompleterRushesStock({
           if (s.etat === 'supprime') {
             return (
               <li key={cle} className="text-[11px] text-gray-500" data-autopilot-stock-slot={cle} data-etat="supprime">
-                {libellePlan(s.manque.role)} : proposition retirée — ce plan reprendra vos rushes.
+                {libellePlan(s.manque.role)} {tUi('proposition_retiree_ce_plan_reprendra')}
               </li>
             );
           }
@@ -502,7 +503,7 @@ export default function CompleterRushesStock({
                         attrs: { 'data-autopilot-stock-remplacer': cle },
                       },
                       {
-                        cle: 'supprimer', libelle: 'Supprimer', icone: Trash2, variante: 'danger',
+                        cle: 'supprimer', libelle: tUi('supprimer'), icone: Trash2, variante: 'danger',
                         onClick: () => majSlot(cle, (x) => ({ ...x, etat: 'supprime' })), disabled: s.etat === 'import',
                         ariaLabel: `Retirer cette proposition du ${libellePlan(s.manque.role).toLowerCase()}`,
                         attrs: { 'data-autopilot-stock-supprimer': cle },
@@ -510,7 +511,7 @@ export default function CompleterRushesStock({
                     ]}
                     badges={s.etat === 'conserve' ? (
                       <p className="flex items-center gap-1 text-[10px] text-emerald-400" data-autopilot-stock-conserve>
-                        <Check className="w-3 h-3 shrink-0" /> Ajoutée à la banque
+                        <Check className="w-3 h-3 shrink-0" /> {tUi('ajoutee_a_la_banque')}
                       </p>
                     ) : null}
                   />
@@ -553,7 +554,7 @@ export default function CompleterRushesStock({
                 )}
                 {s.etat !== 'recherche' && !media && (
                   <p className="text-[11px] text-gray-500" data-autopilot-stock-vide>
-                    {s.erreur ?? 'Aucun média assez pertinent pour ce plan — votre avatar ou vos rushes le couvriront.'}
+                    {s.erreur ?? tUi('aucun_media_assez_pertinent_pour_ce_pl')}
                   </p>
                 )}
                 {media && s.erreur && <p className="text-[10px] text-amber-400">{s.erreur}</p>}

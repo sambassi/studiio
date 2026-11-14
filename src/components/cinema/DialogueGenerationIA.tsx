@@ -18,6 +18,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { AlertTriangle, Check, Info, Loader2, Sparkles, X } from 'lucide-react';
+import { useTranslations } from '@/i18n/client';
 
 export interface Verification {
   /** `ok` : verifie ; `info` : a savoir, ne bloque rien ; `bloque` : empeche la creation. */
@@ -48,6 +49,7 @@ export default function DialogueGenerationIA({ donnees, enCours, erreur, surConf
   surConfirmer: () => void;
   surAnnuler: () => void;
 }) {
+  const tUi = useTranslations('ui.componentsCinemaDialogueGenerationIA');
   const verrou = useRef(false);
   const bloque = donnees.verifications.some((v) => v.etat === 'bloque');
   const premiereAction = useRef<HTMLButtonElement | null>(null);
@@ -79,7 +81,7 @@ export default function DialogueGenerationIA({ donnees, enCours, erreur, surConf
         <div className="mb-2 flex items-start gap-2">
           <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-violet-300" aria-hidden="true" />
           <h2 className="min-w-0 flex-1 text-sm font-semibold text-slate-50">{donnees.titre}</h2>
-          <button type="button" onClick={surAnnuler} disabled={enCours} aria-label="Fermer" title="Fermer"
+          <button type="button" onClick={surAnnuler} disabled={enCours} aria-label={tUi('fermer')} title={tUi('fermer')}
             className="rounded p-1 text-slate-400 hover:text-slate-100 disabled:opacity-40">
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
@@ -87,7 +89,7 @@ export default function DialogueGenerationIA({ donnees, enCours, erreur, surConf
         <p className="text-xs font-medium text-slate-200" data-cible>{donnees.cible}</p>
         {donnees.description && <p className="mt-0.5 line-clamp-3 text-[11px] text-slate-400">« {donnees.description} »</p>}
 
-        <ul className="mt-3 space-y-1.5" aria-label="Ce qui a été vérifié">
+        <ul className="mt-3 space-y-1.5" aria-label={tUi('ce_qui_a_ete_verifie')}>
           {donnees.verifications.map((v, k) => (
             <li key={k} className={`flex items-start gap-2 text-xs leading-snug ${v.etat === 'bloque' ? 'text-amber-200' : v.etat === 'info' ? 'text-slate-400' : 'text-slate-300'}`} data-verif={v.etat}>
               {v.etat === 'bloque' ? <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -115,19 +117,19 @@ export default function DialogueGenerationIA({ donnees, enCours, erreur, surConf
 
         <div
           role="group"
-          aria-label={donnees.payant ? 'Confirmer la generation payante' : 'Confirmer la creation du visuel de demonstration'}
+          aria-label={donnees.payant ? tUi('confirmer_la_generation_payante') : tUi('confirmer_la_creation_du_visuel_de_dem')}
           className="mt-4 flex flex-wrap items-center justify-end gap-2"
         >
           <button ref={premiereAction} type="button" onClick={surAnnuler} disabled={enCours}
             className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs text-slate-200 hover:border-slate-400 disabled:opacity-40">
-            Annuler
+            {tUi('annuler')}
           </button>
           <button
             type="button" onClick={confirmer} disabled={bloque || enCours} data-cinema-confirmer
             className="inline-flex items-center gap-1.5 rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {enCours ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Check className="h-3.5 w-3.5" aria-hidden="true" />}
-            {enCours ? 'Création en cours…' : donnees.libelleConfirmer}
+            {enCours ? tUi('creation_en_cours') : donnees.libelleConfirmer}
           </button>
         </div>
       </div>

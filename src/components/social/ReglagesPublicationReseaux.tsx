@@ -7,6 +7,7 @@ import {
   CONFIDENTIALITE_SECURITE, LIBELLES_CONFIDENTIALITE, resumeCouverture,
   type ConfidentialiteTiktok, type Couverture, type ModeCouverture, type ReglagesTiktok, type ReseauCouverture,
 } from '@/lib/social/couverture';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * « Miniature / couverture » + réglages TikTok — UNE zone, partagée par le
@@ -62,6 +63,7 @@ export default function ReglagesPublicationReseaux({
    */
   onChange: (modif: Partial<ValeurReglagesPublication>) => void;
 }) {
+  const tUi = useTranslations('ui.componentsSocialReglagesPublicationReseaux');
   const cover = value.cover;
   /**
    * ⚠️ « IMAGE » CHOISIE, MAIS PAS ENCORE D'IMAGE : un état LOCAL. Une
@@ -200,7 +202,7 @@ export default function ReglagesPublicationReseaux({
       const r = await uploadPosterFile(f);
       // Un repli `data:` n'est PAS une adresse publique : les réseaux ne
       // pourraient pas aller chercher l'image.
-      if (r.dataUrl) { setErreurImage('Envoi de l’image impossible. Réessayez.'); return; }
+      if (r.dataUrl) { setErreurImage(tUi('envoi_de_l_image_impossible_reessayez')); return; }
       setImageEnAttente(false);
       onChange({ cover: { mode: 'upload', imageUrl: r.url } });
     } finally {
@@ -234,8 +236,8 @@ export default function ReglagesPublicationReseaux({
         >
           {([
             ['auto', 'Automatique', 'Automatique', 'Auto', Sparkles],
-            ['upload', 'Choisir une image', 'Image', 'Image', ImageIcon],
-            ['frame', 'Image dans la vidéo', 'Dans la vidéo', 'Vidéo', Film],
+            ['upload', tUi('choisir_une_image'), 'Image', 'Image', ImageIcon],
+            ['frame', tUi('image_dans_la_video'), tUi('dans_la_video'), 'Vidéo', Film],
           ] as const).map(([m, libelle, moyen, court, Icone]) => (
             <button
               key={m}
@@ -272,7 +274,7 @@ export default function ReglagesPublicationReseaux({
                   </label>
                   <button type="button" className={`${lienDiscret} hover:text-red-300`}
                     onClick={() => { setImageEnAttente(false); onChange({ cover: { mode: 'auto' } }); }} data-couverture-supprimer>
-                    <Trash2 size={12} /> Supprimer
+                    <Trash2 size={12} /> {tUi('supprimer')}
                   </button>
                 </div>
               </div>
@@ -280,8 +282,8 @@ export default function ReglagesPublicationReseaux({
               <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-white/10 px-3 py-5 text-xs text-gray-400 transition-colors hover:border-purple-400/40 hover:text-gray-200">
                 {envoi ? <Loader2 size={14} className="animate-spin" /> : <ImageIcon size={14} />}
                 <span>
-                  {envoi ? 'Envoi…' : 'Importer une image'}
-                  {!envoi && <span className="block text-[10px] text-gray-500">JPEG, PNG ou WebP · 10 Mo max.</span>}
+                  {envoi ? 'Envoi…' : tUi('importer_une_image')}
+                  {!envoi && <span className="block text-[10px] text-gray-500">{tUi('jpeg_png_ou_webp_10_mo_max')}</span>}
                 </span>
                 <input ref={fichierRef} type="file" accept={TYPES_IMAGE_COUVERTURE.join(',')} className="hidden" disabled={envoi}
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) void envoyerImage(f); e.target.value = ''; }} />
@@ -316,26 +318,26 @@ export default function ReglagesPublicationReseaux({
                 <div className="min-w-0 flex-1" data-couverture-video-etat={etatVideo}>
                   {etatVideo === 'erreur' ? (
                     <div className="space-y-2">
-                      <p className="text-[11px] text-red-300" role="alert">Impossible de charger la vidéo</p>
+                      <p className="text-[11px] text-red-300" role="alert">{tUi('impossible_de_charger_la_video')}</p>
                       <button
                         type="button"
                         data-couverture-video-reessayer
                         onClick={() => { setDureeMs(0); setEtatVideo('chargement'); setEssaiVideo((n) => n + 1); }}
                         className={lienDiscret}
                       >
-                        <RefreshCw size={12} /> Réessayer
+                        <RefreshCw size={12} /> {tUi('reessayer')}
                       </button>
                     </div>
                   ) : (
                     <>
                       <div className="mb-2 flex items-baseline justify-between gap-2">
-                        <span className={sousTitre}>{etatVideo === 'chargement' ? 'Chargement de la vidéo…' : 'Moment choisi'}</span>
+                        <span className={sousTitre}>{etatVideo === 'chargement' ? tUi('chargement_de_la_video') : 'Moment choisi'}</span>
                         <span className="font-mono text-[11px] tabular-nums text-gray-300" data-couverture-temps>{formatMs(cover?.frameMs ?? 1000)}</span>
                       </div>
                       {etatVideo === 'chargement' ? (
                         /* Progression INDÉTERMINÉE : aucun pourcentage fiable n'existe
                            pour un WebM sans durée — jamais de faux chiffre. */
-                        <div className="relative h-1 w-full overflow-hidden rounded-full bg-white/10" role="progressbar" aria-label="Chargement de la vidéo" data-couverture-progression>
+                        <div className="relative h-1 w-full overflow-hidden rounded-full bg-white/10" role="progressbar" aria-label={tUi('chargement_de_la_video_2')} data-couverture-progression>
                           <div className="absolute inset-y-0 left-0 w-1/3 animate-pulse rounded-full bg-purple-400/60" />
                         </div>
                       ) : (
@@ -345,7 +347,7 @@ export default function ReglagesPublicationReseaux({
                           max={Math.max(dureeMs, 1)}
                           step={50}
                           value={Math.min(cover?.frameMs ?? 1000, Math.max(dureeMs, 1))}
-                          aria-label="Moment de la couverture"
+                          aria-label={tUi('moment_de_la_couverture')}
                           data-couverture-curseur
                           className="h-1 w-full cursor-pointer appearance-auto accent-purple-400"
                           onChange={(e) => {
@@ -363,7 +365,7 @@ export default function ReglagesPublicationReseaux({
             ) : (
               <p className="flex items-start gap-2 rounded-xl bg-white/[0.03] px-3 py-2.5 text-[11px] leading-relaxed text-gray-400" data-couverture-frame-indisponible>
                 <Info size={13} className="mt-px shrink-0 text-gray-500" />
-                <span>Disponible une fois le montage prêt : choisissez le moment depuis le Calendrier. En attendant, le moment par défaut ({formatMs(cover?.frameMs ?? 1000)}) sera utilisé.</span>
+                <span>{tUi('disponible_une_fois_le_montage_pret_ch')}{formatMs(cover?.frameMs ?? 1000)}{tUi('sera_utilise')}</span>
               </p>
             )}
           </div>
@@ -384,30 +386,30 @@ export default function ReglagesPublicationReseaux({
       {avecTiktok && (
         <section className={carte} data-reglages-tiktok>
           <div className="flex items-baseline justify-between gap-3">
-            <p className={titre}>Réglages TikTok</p>
+            <p className={titre}>{tUi('reglages_tiktok')}</p>
             {infoTt?.nickname && <span className="truncate text-[11px] text-gray-500">@{infoTt.nickname}</span>}
           </div>
           {!infoTt || !tt ? (
-            <p className="mt-4 inline-flex items-center gap-1.5 text-xs text-gray-500"><Loader2 size={12} className="animate-spin" /> Lecture des réglages du compte…</p>
+            <p className="mt-4 inline-flex items-center gap-1.5 text-xs text-gray-500"><Loader2 size={12} className="animate-spin" /> {tUi('lecture_des_reglages_du_compte')}</p>
           ) : (
             <>
               <div className="mt-4 grid gap-5 sm:grid-cols-[minmax(0,10rem)_1fr]">
                 {/* Visibilité */}
                 <div className="min-w-0">
-                  <p className={`${sousTitre} mb-2`}>Visibilité</p>
+                  <p className={`${sousTitre} mb-2`}>{tUi('visibilite')}</p>
                   {infoTt.fiable ? (
                     <select
                       data-tiktok-confidentialite
-                      aria-label="Visibilité TikTok"
+                      aria-label={tUi('visibilite_tiktok')}
                       value={tt.privacy_level}
                       onChange={(e) => majTt({ privacy_level: e.target.value as ConfidentialiteTiktok })}
                       className="w-full rounded-lg bg-white/[0.05] px-2.5 py-1.5 text-xs text-white transition-colors hover:bg-white/[0.08] focus:outline-none focus:ring-1 focus:ring-purple-400/50"
                     >
-                      {infoTt.confidentialites.map((c) => <option key={c} value={c}>{LIBELLES_CONFIDENTIALITE[c]}</option>)}
+                      {infoTt.confidentialites.map((c) => <option key={c} value={c}>{tUi.fr(LIBELLES_CONFIDENTIALITE[c])}</option>)}
                     </select>
                   ) : (
                     <p className="text-[11px] leading-relaxed text-amber-300/90" data-tiktok-moi-uniquement>
-                      TikTok sera publié en « Moi uniquement » (réglages du compte indisponibles).
+                      {tUi('tiktok_sera_publie_en_moi_uniquement_r')}
                     </p>
                   )}
                 </div>
@@ -423,7 +425,7 @@ export default function ReglagesPublicationReseaux({
                       return (
                         <label
                           key={k}
-                          title={autorise ? undefined : 'Désactivé par le compte TikTok'}
+                          title={autorise ? undefined : tUi('desactive_par_le_compte_tiktok')}
                           className={`inline-flex select-none items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] transition-colors focus-within:ring-1 focus-within:ring-purple-400/50 ${
                             !autorise
                               ? 'cursor-not-allowed bg-white/[0.02] text-gray-600 line-through decoration-gray-700'
@@ -447,7 +449,7 @@ export default function ReglagesPublicationReseaux({
                     })}
                   </div>
                   {infoTt.interactions && (['allow_comment', 'allow_duet', 'allow_stitch'] as const).some((k) => infoTt.interactions?.[k]?.enabled === false) && (
-                    <p className="mt-1.5 text-[10px] text-gray-600">Barré : désactivé par le compte</p>
+                    <p className="mt-1.5 text-[10px] text-gray-600">{tUi('barre_desactive_par_le_compte')}</p>
                   )}
                 </div>
               </div>
@@ -463,12 +465,12 @@ export default function ReglagesPublicationReseaux({
                     className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-purple-400"
                   />
                   <span className={`text-xs leading-relaxed ${tt.consentement ? 'text-white' : 'text-gray-300'}`}>
-                    Je confirme avoir vérifié ce contenu et j’accepte sa publication sur TikTok
+                    {tUi('je_confirme_avoir_verifie_ce_contenu_e')}
                   </span>
                 </label>
                 {!tt.consentement && (
                   <p className="mt-1 pl-[26px] text-[11px] text-gray-500" data-tiktok-consentement-requis>
-                    Requis pour TikTok — les autres réseaux partent quand même.
+                    {tUi('requis_pour_tiktok_les_autres_reseaux')}
                   </p>
                 )}
               </div>

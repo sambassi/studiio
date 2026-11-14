@@ -22,6 +22,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { ArrowLeft, ArrowRight, type LucideIcon } from 'lucide-react';
+import { useTranslations } from '@/i18n/client';
 
 export interface EtapeWizard {
   titre: string;
@@ -51,6 +52,7 @@ export default function WizardCinema({
   /** Une phrase courte a la place de « Etape x sur y » : ce qui manque, et si l'on peut continuer. */
   indice?: string | null;
 }) {
+  const tUi = useTranslations('ui.componentsCinemaWizardCinema');
   const zone = useRef<HTMLDivElement | null>(null);
 
   // Changer d'etape remet la zone de travail en haut : on ne reprend jamais au milieu
@@ -152,7 +154,7 @@ export default function WizardCinema({
             disabled={active === 0}
             className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-200 transition-colors hover:border-violet-500/50 disabled:opacity-40"
           >
-            <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" /> Retour
+            <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" /> {tUi('retour')}
           </button>
           {actionPrincipale && (
             <button

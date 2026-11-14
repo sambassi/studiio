@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Play } from 'lucide-react';
+import { useTranslations } from '@/i18n/client';
 
 const videos = [
   {
@@ -33,10 +34,11 @@ const videos = [
 ];
 
 export function RecentVideos() {
+  const tUi = useTranslations('ui.componentsDashboardRecentVideos');
   return (
     <Card>
       <CardHeader className="border-b border-gray-800 pb-4">
-        <CardTitle>Vidéos récentes</CardTitle>
+        <CardTitle>{tUi('videos_recentes')}</CardTitle>
       </CardHeader>
       <CardContent className="pt-4">
         <div className="space-y-4">
@@ -53,14 +55,14 @@ export function RecentVideos() {
               </div>
               <div className="flex items-center gap-3">
                 <Badge variant={video.status === 'completed' ? 'success' : video.status === 'rendering' ? 'warning' : 'default'}>
-                  {video.status === 'completed' ? 'Terminée' : video.status === 'rendering' ? 'Rendu' : 'Brouillon'}
+                  {video.status === 'completed' ? tUi('terminee') : video.status === 'rendering' ? 'Rendu' : 'Brouillon'}
                 </Badge>
               </div>
             </div>
           ))}
         </div>
         <Link href="/dashboard/library" className="block text-center mt-4 text-studiio-primary hover:text-purple-400 font-semibold text-sm">
-          Voir toutes les vidéos →
+          {tUi('voir_toutes_les_videos')}
         </Link>
       </CardContent>
     </Card>

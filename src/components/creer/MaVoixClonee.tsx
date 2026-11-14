@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { Check, Loader2, Mic } from 'lucide-react';
 import type { TtsVoice } from '@/lib/tts/edge-tts-client';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * MA VOIX CLONÉE — la carte de Créer > Audio.
@@ -35,30 +36,31 @@ export interface MaVoixCloneeProps {
 }
 
 export default function MaVoixClonee({ voices, loading, voiceId, onVoiceIdChange }: MaVoixCloneeProps) {
+  const tUi = useTranslations('ui.componentsCreerMaVoixClonee');
   const clonees = voices.filter((v) => v.cloned === true);
 
   return (
     <div data-ma-voix-clonee className="rounded-lg border border-purple-500/30 bg-purple-500/[0.06] p-3 space-y-2">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-purple-200">
-          <Mic size={12} className="text-purple-400" /> Ma voix clonée
+          <Mic size={12} className="text-purple-400" /> {tUi('ma_voix_clonee')}
         </div>
         <Link
           href={LIEN_GERER_MA_VOIX}
           data-ma-voix-clonee-gerer
           className="text-[10px] text-purple-300 underline underline-offset-2 hover:text-white"
         >
-          Gérer / cloner ma voix
+          {tUi('gerer_cloner_ma_voix')}
         </Link>
       </div>
 
       {loading ? (
         <div data-ma-voix-clonee-chargement className="flex items-center gap-1.5 text-[11px] text-gray-400">
-          <Loader2 size={12} className="animate-spin" /> Recherche de votre voix clonée…
+          <Loader2 size={12} className="animate-spin" /> {tUi('recherche_de_votre_voix_clonee')}
         </div>
       ) : clonees.length === 0 ? (
         <p data-ma-voix-clonee-aucune className="text-[11px] text-gray-400">
-          Aucune voix clonée sur ce compte.
+          {tUi('aucune_voix_clonee_sur_ce_compte')}
         </p>
       ) : (
         <ul className="space-y-1.5">
@@ -78,11 +80,11 @@ export default function MaVoixClonee({ voices, loading, voiceId, onVoiceIdChange
                   <span className="block truncate text-xs font-medium text-white">{v.name}</span>
                   <span className="mt-0.5 inline-flex items-center gap-1.5 text-[9px]">
                     <span className="rounded bg-purple-500/20 px-1.5 py-0.5 font-semibold uppercase tracking-wide text-purple-200">
-                      voix clonée
+                      {tUi('voix_clonee')}
                     </span>
                     {utilisee && (
                       <span className="inline-flex items-center gap-0.5 text-emerald-300">
-                        <Check size={10} /> utilisée
+                        <Check size={10} /> {tUi('utilisee')}
                       </span>
                     )}
                   </span>
@@ -93,7 +95,7 @@ export default function MaVoixClonee({ voices, loading, voiceId, onVoiceIdChange
                     onClick={() => onVoiceIdChange(v.id)}
                     className="flex-shrink-0 rounded-md bg-purple-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-purple-500 transition"
                   >
-                    Utiliser ma voix
+                    {tUi('utiliser_ma_voix')}
                   </button>
                 )}
               </li>

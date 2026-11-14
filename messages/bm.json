@@ -1,0 +1,184 @@
+{
+  "common": {
+    "create": "Da",
+    "edit": "Yɛlɛma",
+    "search": "Ɲini",
+    "cancel": "A bali",
+    "delete": "A bɔ",
+    "remove": "A bɔ",
+    "save": "A mara",
+    "close": "Datugu",
+    "open": "Dayɛlɛ",
+    "hide": "Dogo",
+    "show": "Jira",
+    "view": "Filɛ",
+    "add": "Fara",
+    "back": "Segin",
+    "more": "Wɛrɛ",
+    "all": "Bɛɛ",
+    "yes": "Awɔ",
+    "no": "Ayi",
+    "and": "ani",
+    "or": "Walima",
+    "page": "Ɲɛ",
+    "error": "Fili",
+    "errorOccurred": "Fili kɛra",
+    "submit": "Ci",
+    "status": {
+      "completed": "Banna"
+    },
+    "video": "Vidéo",
+    "videos": "Vidéow"
+  },
+  "sidebar": {
+    "create": "Da",
+    "buy": "San"
+  },
+  "dashboardHome": {
+    "directAccess": {
+      "create": "Da"
+    },
+    "createVideo": "Vidéo da"
+  },
+  "library": {
+    "actions": {
+      "edit": "Yɛlɛma",
+      "delete": "A bɔ"
+    },
+    "status": {
+      "completed": "Banna"
+    },
+    "typeLabels": {
+      "video": "Vidéo"
+    },
+    "createVideo": "Vidéo da",
+    "searchPlaceholder": "Vidéo ɲini..."
+  },
+  "auth": {
+    "login": {
+      "or": "Walima",
+      "password": "Gundo daɲɛ",
+      "submit": "Don"
+    },
+    "signup": {
+      "login": "Don"
+    }
+  },
+  "languageSelector": {
+    "label": "Kan"
+  },
+  "navbar": {
+    "logout": "Bɔ"
+  },
+  "assistant": {
+    "close": "Datugu",
+    "send": "Ci"
+  },
+  "calendar": {
+    "fullPreview": {
+      "close": "Datugu",
+      "edit": "Yɛlɛma"
+    },
+    "actions": {
+      "edit": "Yɛlɛma",
+      "delete": "A bɔ"
+    },
+    "editModal": {
+      "save": "A mara"
+    },
+    "aiAgent": {
+      "stages": {
+        "done": "Banna !"
+      }
+    }
+  },
+  "social": {
+    "confirmDisconnect": {
+      "cancel": "A bali"
+    },
+    "platforms": {
+      "facebook": {
+        "name": "Facebook"
+      },
+      "instagram": {
+        "name": "Instagram"
+      },
+      "tiktok": {
+        "name": "TikTok"
+      },
+      "youtube": {
+        "name": "YouTube"
+      }
+    }
+  },
+  "creator": {
+    "preview": {
+      "seqVideo": "Vidéo",
+      "audio": "Audio"
+    },
+    "logo": {
+      "title": "Logo"
+    },
+    "render": {
+      "done": "Banna !"
+    },
+    "rushVideos": {
+      "add": "Fara"
+    },
+    "change": "Yɛlɛma"
+  },
+  "objectives": {
+    "form": {
+      "name": "Tɔgɔ"
+    }
+  },
+  "audioStudio": {
+    "timeline": {
+      "video": "Vidéo"
+    },
+    "export": {
+      "error": "Fili"
+    }
+  },
+  "infographic": {
+    "preview": {
+      "seqVideo": "Vidéo"
+    },
+    "sequences": {
+      "video": "Vidéo"
+    },
+    "videoRush": {
+      "title": "Vidéo"
+    },
+    "backButton": "Segin",
+    "infoCards": {
+      "add": "Fara"
+    },
+    "posterPhoto": {
+      "remove": "A bɔ"
+    }
+  },
+  "landing": {
+    "nav": {
+      "login": "Don"
+    }
+  },
+  "ui": {
+    "appDashboardAvatar": {
+      "creer_une_video": "Vidéo da",
+      "modifier": "Yɛlɛma",
+      "video": "vidéo"
+    },
+    "appDashboardCalendar": {
+      "annuler": "A bali",
+      "fermer": "Datugu",
+      "retour": "Segin"
+    },
+    "appDashboardCinema": {
+      "annuler": "A bali"
+    },
+    "appDashboardCreerAssistantWizard": {
+      "annuler": "A bali"
+    }
+  }
+}

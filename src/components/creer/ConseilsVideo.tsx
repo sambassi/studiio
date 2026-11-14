@@ -9,6 +9,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronUp, Copy, Check, EyeOff, Lightbulb, Info } from 'lucide-react';
 import { conseilsDepuisMetadata, ORDRE_SECTIONS } from '@/lib/creer/conseiller';
 import type { Conseil, PrioriteConseil } from '@/lib/creer/conseiller/types';
+import { useTranslations } from '@/i18n/client';
 
 const COULEUR_PRIORITE: Record<PrioriteConseil, { fond: string; texte: string; libelle: string }> = {
   IMPORTANTE: { fond: 'rgba(239,68,68,0.15)', texte: '#FCA5A5', libelle: 'Important' },
@@ -23,6 +24,7 @@ function lireIgnores(postId: string): string[] {
 }
 
 export function ConseilsVideo({ postId, metadata }: { postId: string; metadata: unknown }) {
+  const tUi = useTranslations('ui.componentsCreerConseilsVideo');
   const rapport = useMemo(() => conseilsDepuisMetadata((metadata as { conseils?: unknown } | null)?.conseils), [metadata]);
   const [ouvert, setOuvert] = useState(false);
   const [ignores, setIgnores] = useState<string[]>([]);
@@ -55,7 +57,7 @@ export function ConseilsVideo({ postId, metadata }: { postId: string; metadata: 
         aria-expanded={ouvert}
       >
         <Lightbulb className="w-4 h-4 text-amber-300 shrink-0" />
-        <span className="text-sm font-medium text-white flex-1">Conseils pour améliorer cette vidéo</span>
+        <span className="text-sm font-medium text-white flex-1">{tUi('conseils_pour_ameliorer_cette_video')}</span>
         <span className="text-xs text-gray-400">
           {visibles.length === 0 ? 'aucun' : `${visibles.length}${importants ? ` · ${importants} important${importants > 1 ? 's' : ''}` : ''}`}
         </span>
@@ -63,7 +65,7 @@ export function ConseilsVideo({ postId, metadata }: { postId: string; metadata: 
       </button>
       {ouvert && (
         <div className="px-3 pb-3 space-y-3 max-h-96 overflow-y-auto">
-          {visibles.length === 0 && <p className="text-xs text-gray-400">Rien à signaler sur ce qui a été mesuré.</p>}
+          {visibles.length === 0 && <p className="text-xs text-gray-400">{tUi('rien_a_signaler_sur_ce_qui_a_ete_mesur')}</p>}
           {ORDRE_SECTIONS.map((section) => {
             const liste = visibles.filter((c) => c.section === section);
             if (!liste.length) return null;
@@ -76,14 +78,14 @@ export function ConseilsVideo({ postId, metadata }: { postId: string; metadata: 
                     return (
                       <div key={c.id} className="rounded-md bg-gray-800/60 p-2.5">
                         <div className="flex items-start gap-2">
-                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0" style={{ background: p.fond, color: p.texte }}>{p.libelle}</span>
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0" style={{ background: p.fond, color: p.texte }}>{tUi.fr(p.libelle)}</span>
                           <p className="text-xs text-gray-200 flex-1">{c.probleme}</p>
                         </div>
                         <p className="text-xs text-white mt-1.5">{c.conseil}</p>
                         {c.propositionReecrite && (
                           <div className="flex items-center gap-2 mt-1.5">
                             <span className="text-xs text-purple-200 bg-purple-500/15 rounded px-2 py-1 flex-1">« {c.propositionReecrite} »</span>
-                            <button type="button" onClick={() => copier(c)} className="text-gray-400 hover:text-white" title="Copier la proposition">
+                            <button type="button" onClick={() => copier(c)} className="text-gray-400 hover:text-white" title={tUi('copier_la_proposition')}>
                               {copie === c.id ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
                             </button>
                           </div>
@@ -92,7 +94,7 @@ export function ConseilsVideo({ postId, metadata }: { postId: string; metadata: 
                           <p className="text-[11px] text-gray-400 mt-1.5">
                             {c.placementRecommande && <>Placement : {c.placementRecommande}</>}
                             {c.placementRecommande && c.dureeRecommandee && ' · '}
-                            {c.dureeRecommandee && <>Durée : {c.dureeRecommandee}</>}
+                            {c.dureeRecommandee && <>{tUi('duree_dureerecommandee', { dureeRecommandee: c.dureeRecommandee })}</>}
                           </p>
                         )}
                         <div className="flex justify-end mt-1">
@@ -110,8 +112,8 @@ export function ConseilsVideo({ postId, metadata }: { postId: string; metadata: 
           <p className="flex items-start gap-1.5 text-[11px] text-gray-500">
             <Info className="w-3 h-3 mt-0.5 shrink-0" />
             <span>
-              Ces conseils ne modifient rien. Ils portent uniquement sur ce que Studiio a mesuré
-              {rapport.couverture.lisibilite ? '' : ' (taille et contraste des textes non mesurés pour cette vidéo)'} : il ne reconnaît pas encore les visages ni les types de plans.
+              {tUi('ces_conseils_ne_modifient_rien_ils_por')}
+              {rapport.couverture.lisibilite ? '' : ' (taille et contraste des textes non mesurés pour cette vidéo)'} {tUi('il_ne_reconnait_pas_encore_les_visages')}
             </span>
           </p>
         </div>

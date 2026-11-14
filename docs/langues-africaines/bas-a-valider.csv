@@ -1,0 +1,6 @@
+cle;francais;traduction;confiance;source
+"languageSelector.label";"Langue";"Hɔp";"attestée";"corpus:corpus-bas.json"
+"common.yes";"Oui";"Èè";"attestée";"lexique"
+"common.no";"Non";"Tô";"attestée";"lexique"
+"common.more";"Plus";"Ǹtoŋ";"à vérifier en priorité";"corpus:corpus-bas.json (More, menu wiki)"
+"dashboardHome.welcome";"Bienvenue, {name}";"Malô malam, {name}";"à vérifier en priorité";"lexique (bienvenue) + variable"

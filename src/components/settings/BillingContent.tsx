@@ -23,6 +23,7 @@ interface Transaction {
 }
 
 export function BillingContent() {
+  const tUi = useTranslations('ui.componentsSettingsBillingContent');
   const t = useTranslations('billing');
   const tc = useTranslations('common');
   const [loadingPortal, setLoadingPortal] = useState(false);
@@ -51,7 +52,7 @@ export function BillingContent() {
       if (data.url) window.location.href = data.url;
       else alert(data.error || 'Erreur');
     } catch {
-      alert('Erreur de connexion');
+      alert(tUi('erreur_de_connexion'));
     } finally {
       setLoadingPortal(false);
     }
@@ -67,7 +68,7 @@ export function BillingContent() {
       <div className="grid md:grid-cols-3 gap-6">
         <Card className="md:col-span-1">
           <CardHeader className="border-b border-gray-800">
-            <CardTitle>Crédits</CardTitle>
+            <CardTitle>{tUi('credits')}</CardTitle>
           </CardHeader>
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
@@ -80,11 +81,11 @@ export function BillingContent() {
                       ? <span data-facturation-libelle className="text-xl font-semibold text-gray-300">{libelleFacturation}</span>
                       : '—'}
                 </div>
-                <div className="text-xs text-gray-400">crédits restants</div>
+                <div className="text-xs text-gray-400">{tUi('credits_restants')}</div>
               </div>
             </div>
             <Button variant="primary" className="w-full mt-4" onClick={() => setShowBuy(true)}>
-              Acheter des crédits
+              {tUi('acheter_des_credits')}
             </Button>
           </CardContent>
         </Card>
@@ -113,7 +114,7 @@ export function BillingContent() {
               onClick={handleManageSubscription}
               disabled={loadingPortal}
             >
-              {loadingPortal ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{tc('loading')}</> : 'Gérer l\'abonnement'}
+              {loadingPortal ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{tc('loading')}</> : tUi('gerer_l_abonnement')}
             </Button>
           </CardContent>
         </Card>
@@ -121,7 +122,7 @@ export function BillingContent() {
 
       <Card>
         <CardHeader className="border-b border-gray-800">
-          <CardTitle>Dernières transactions</CardTitle>
+          <CardTitle>{tUi('dernieres_transactions')}</CardTitle>
         </CardHeader>
         <CardContent className="pt-6">
           <div className="overflow-x-auto">
@@ -130,12 +131,12 @@ export function BillingContent() {
                 <tr className="border-b border-gray-800">
                   <th className="text-left py-2 text-gray-400 font-medium">Date</th>
                   <th className="text-left py-2 text-gray-400 font-medium">Type</th>
-                  <th className="text-right py-2 text-gray-400 font-medium">Crédits</th>
+                  <th className="text-right py-2 text-gray-400 font-medium">{tUi('credits')}</th>
                 </tr>
               </thead>
               <tbody>
                 {transactions.length === 0 && (
-                  <tr><td colSpan={3} className="py-6 text-center text-gray-500">Aucune transaction</td></tr>
+                  <tr><td colSpan={3} className="py-6 text-center text-gray-500">{tUi('aucune_transaction')}</td></tr>
                 )}
                 {transactions.map((tx) => (
                   <tr key={tx.id} className="border-b border-gray-800 last:border-0">

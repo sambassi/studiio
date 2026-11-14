@@ -102,6 +102,7 @@ const SALES_PHRASES = [
 ];
 
 export default function InfographiePage() {
+  const tUi = useTranslations('ui.appDashboardInfographic');
   const t = useTranslations('infographic');
   const tc = useTranslations('common');
   const { branding } = useBranding();
@@ -114,9 +115,9 @@ export default function InfographiePage() {
   const [title, setTitle] = useState('ÉNERGIE & CARDIO');
   const [subtitle, setSubtitle] = useState('Pousse tes limites avec Afroboost');
   const [cards, setCards] = useState<InfoCard[]>([
-    { id: '1', emoji: 'Zap', label: 'Intensité', value: 'MAX', color: '#ec4899' },
-    { id: '2', emoji: 'Heart', label: 'Fréquence', value: '140+', color: '#ef4444' },
-    { id: '3', emoji: 'PersonStanding', label: 'Chorégraphie', value: '50+', color: '#a855f7' },
+    { id: '1', emoji: 'Zap', label: tUi('intensite'), value: 'MAX', color: '#ec4899' },
+    { id: '2', emoji: 'Heart', label: tUi('frequence'), value: '140+', color: '#ef4444' },
+    { id: '3', emoji: 'PersonStanding', label: tUi('choregraphie'), value: '50+', color: '#a855f7' },
   ]);
 
   // Format and batch state
@@ -281,10 +282,10 @@ export default function InfographiePage() {
 
   const handleGenerateTitleAndSubtitle = () => {
     const suggestions = [
-      { title: 'TRANSFORME TON CORPS', subtitle: 'La danse est ton arme secrète' },
-      { title: 'ÉNERGIE SANS LIMITE', subtitle: 'Repousse tes limites chaque jour' },
-      { title: 'DANSE & PERFORMANCE', subtitle: 'Atteins tes objectifs plus vite' },
-      { title: 'BIEN-ÊTRE TOTAL', subtitle: 'Corps et esprit en harmonie' },
+      { title: tUi('transforme_ton_corps'), subtitle: tUi('la_danse_est_ton_arme_secrete') },
+      { title: tUi('energie_sans_limite'), subtitle: tUi('repousse_tes_limites_chaque_jour') },
+      { title: 'DANSE & PERFORMANCE', subtitle: tUi('atteins_tes_objectifs_plus_vite') },
+      { title: tUi('bien_etre_total'), subtitle: tUi('corps_et_esprit_en_harmonie') },
     ];
     const pick = suggestions[Math.floor(Math.random() * suggestions.length)];
     setTitle(pick.title);
@@ -391,20 +392,20 @@ export default function InfographiePage() {
 
   // --- BATCH ---
   const BATCH_TITLE_VARIATIONS: Record<string, string[]> = {
-    sommeil: ['SOMMEIL & SPORT', 'REPOS RÉPARATEUR', 'DORS MIEUX', 'NUIT DE CHAMPION', 'RÉCUPÉRATION MAX', 'SLEEP BETTER', 'REPOS ACTIF', 'BIEN DORMIR', 'NUIT PROFONDE', 'SOMMEIL SPORTIF'],
-    nutrition: ['NUTRITION & DANSE', 'MANGE & DANSE', 'FUEL YOUR BODY', 'HEALTHY MOVES', 'EAT CLEAN', 'SUPER FOOD', 'ÉNERGIE SAINE', 'NUTRITION FIT', 'BON & SAIN', 'BIEN MANGER'],
-    energie: ['ÉNERGIE & CARDIO', 'CARDIO MAX', 'FULL ENERGY', 'BOOST TOTAL', 'FIRE UP', 'POWER MOVE', 'HIGH INTENSITY', 'CARDIO BLAST', 'ÉNERGIE PURE', 'MAX EFFORT'],
-    stress: ['STRESS & MENTAL', 'MENTAL FORT', 'ZÉRO STRESS', 'INNER PEACE', 'BIEN-ÊTRE', 'MIND POWER', 'CALME INTÉRIEUR', 'FEEL GOOD', 'ANTI-STRESS', 'ÉQUILIBRE'],
-    communaute: ['COMMUNAUTÉ', 'TEAM SPIRIT', 'ENSEMBLE', 'LA TRIBU', 'CREW GOALS', 'REJOINS-NOUS', 'ON EST LÀ', 'UNITED', 'SQUAD UP', 'FAMILY FIRST'],
-    custom: ['DÉCOUVRE', 'À TESTER', 'NOUVEAU', 'EXCLUSIF', 'INÉDIT', 'TENDANCE', 'HOT TOPIC', 'VIRAL', 'MUST SEE', 'TOP CONTENU'],
+    sommeil: ['SOMMEIL & SPORT', tUi('repos_reparateur'), 'DORS MIEUX', 'NUIT DE CHAMPION', tUi('recuperation_max'), 'SLEEP BETTER', 'REPOS ACTIF', 'BIEN DORMIR', 'NUIT PROFONDE', 'SOMMEIL SPORTIF'],
+    nutrition: ['NUTRITION & DANSE', 'MANGE & DANSE', 'FUEL YOUR BODY', 'HEALTHY MOVES', 'EAT CLEAN', 'SUPER FOOD', tUi('energie_saine'), 'NUTRITION FIT', 'BON & SAIN', 'BIEN MANGER'],
+    energie: [tUi('energie_cardio'), 'CARDIO MAX', 'FULL ENERGY', 'BOOST TOTAL', 'FIRE UP', 'POWER MOVE', 'HIGH INTENSITY', 'CARDIO BLAST', tUi('energie_pure'), 'MAX EFFORT'],
+    stress: ['STRESS & MENTAL', 'MENTAL FORT', tUi('zero_stress'), 'INNER PEACE', 'BIEN-ÊTRE', 'MIND POWER', tUi('calme_interieur'), 'FEEL GOOD', 'ANTI-STRESS', 'ÉQUILIBRE'],
+    communaute: ['COMMUNAUTÉ', 'TEAM SPIRIT', 'ENSEMBLE', tUi('la_tribu'), 'CREW GOALS', 'REJOINS-NOUS', tUi('on_est_la'), 'UNITED', 'SQUAD UP', 'FAMILY FIRST'],
+    custom: ['DÉCOUVRE', tUi('a_tester'), 'NOUVEAU', 'EXCLUSIF', 'INÉDIT', 'TENDANCE', 'HOT TOPIC', 'VIRAL', 'MUST SEE', 'TOP CONTENU'],
   };
   const BATCH_SUB_VARIATIONS: Record<string, string[]> = {
-    sommeil: ['Danse pour mieux dormir', 'Booste ta récupération', 'Le sport améliore ton sommeil', 'Qualité de sommeil x2', 'Repose-toi comme un champion', 'Nuit réparatrice garantie', 'Endors-toi plus vite', 'Récupère comme un pro', 'Ton sommeil optimisé', 'Le repos du guerrier'],
-    nutrition: ['Nourris ton corps', 'L\'énergie vient de l\'assiette', 'Mange bien, danse mieux', 'Alimente ta performance', 'Recettes de champion', 'Nutrition sportive', 'Boost naturel', 'Ton corps te remerciera', 'Aliments magiques', 'La clé de la forme'],
-    energie: ['Pousse tes limites', 'Dépasse-toi', 'Ton cardio au max', 'Brûle des calories', 'Énergie explosive', 'Full puissance', 'Intensité maximale', 'Le feu intérieur', 'Repousse tes limites', 'Énergie sans fin'],
-    stress: ['Libère ton esprit', 'Danse ta sérénité', 'Le mouvement guérit', 'Respire et danse', 'Trouve ton équilibre', 'Paix intérieure', 'Zéro pression', 'Calme et puissance', 'L\'esprit libre', 'Bien dans ta peau'],
-    communaute: ['Rejoins la tribu', 'On danse ensemble', 'La force du groupe', 'Partage l\'énergie', 'Communauté de feu', 'Ensemble on est fort', 'La team grandit', 'Bienvenue dans la famille', 'L\'union fait la force', 'Danse et partage'],
-    custom: ['Contenu exclusif', 'Découvre maintenant', 'Ne rate rien', 'Nouveau concept', 'À toi de jouer', 'C\'est le moment', 'Fais le premier pas', 'Tu vas adorer', 'Essaie maintenant', 'Le changement commence ici'],
+    sommeil: [tUi('danse_pour_mieux_dormir'), tUi('booste_ta_recuperation'), tUi('le_sport_ameliore_ton_sommeil'), tUi('qualite_de_sommeil_x2'), tUi('repose_toi_comme_un_champion'), tUi('nuit_reparatrice_garantie'), 'Endors-toi plus vite', tUi('recupere_comme_un_pro'), tUi('ton_sommeil_optimise'), tUi('le_repos_du_guerrier')],
+    nutrition: [tUi('nourris_ton_corps'), tUi('l_energie_vient_de_l_assiette'), 'Mange bien, danse mieux', tUi('alimente_ta_performance'), 'Recettes de champion', 'Nutrition sportive', 'Boost naturel', tUi('ton_corps_te_remerciera'), 'Aliments magiques', tUi('la_cle_de_la_forme')],
+    energie: [tUi('pousse_tes_limites'), 'Dépasse-toi', tUi('ton_cardio_au_max'), tUi('brule_des_calories'), tUi('energie_explosive'), 'Full puissance', tUi('intensite_maximale'), tUi('le_feu_interieur'), tUi('repousse_tes_limites'), tUi('energie_sans_fin')],
+    stress: [tUi('libere_ton_esprit'), tUi('danse_ta_serenite'), tUi('le_mouvement_guerit'), tUi('respire_et_danse'), tUi('trouve_ton_equilibre'), tUi('paix_interieure'), tUi('zero_pression'), tUi('calme_et_puissance'), 'L\'esprit libre', tUi('bien_dans_ta_peau')],
+    communaute: [tUi('rejoins_la_tribu'), 'On danse ensemble', tUi('la_force_du_groupe'), tUi('partage_l_energie'), tUi('communaute_de_feu'), tUi('ensemble_on_est_fort'), tUi('la_team_grandit'), tUi('bienvenue_dans_la_famille'), tUi('l_union_fait_la_force'), tUi('danse_et_partage')],
+    custom: ['Contenu exclusif', tUi('decouvre_maintenant'), tUi('ne_rate_rien'), 'Nouveau concept', tUi('a_toi_de_jouer'), tUi('c_est_le_moment'), tUi('fais_le_premier_pas'), tUi('tu_vas_adorer'), 'Essaie maintenant', tUi('le_changement_commence_ici')],
   };
 
   const generateBatchVariations = async (customQuery?: string): Promise<BatchVariation[]> => {
@@ -838,7 +839,7 @@ export default function InfographiePage() {
         <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ background: `linear-gradient(135deg, ${accent}CC, #FF2DAA99, ${accent}66)` }}>
           <div className="text-center px-4">
             <p className="text-sm font-black text-white uppercase tracking-wider mb-2" style={{ textShadow: `0 0 15px ${accent}` }}>
-              {branding.ctaText || 'CHAT POUR PLUS D\'INFOS'}
+              {branding.ctaText || tUi('chat_pour_plus_d_infos')}
             </p>
             <p className="text-[8px] text-white/70 uppercase tracking-wider">{branding.ctaSubText || 'LIEN EN BIO'}</p>
             {salesPhrase && <p className="text-[9px] text-white/90 mt-2 italic font-medium">{salesPhrase}</p>}
@@ -911,7 +912,7 @@ export default function InfographiePage() {
 
               {/* Format selector */}
               <div className="mb-6">
-                <h3 className="text-sm font-semibold text-gray-300 mb-3">Format vidéo</h3>
+                <h3 className="text-sm font-semibold text-gray-300 mb-3">{tUi('format_video')}</h3>
                 <div className="flex gap-2">
                   <button onClick={() => setFormat('9:16')} className={`flex-1 py-2.5 px-4 rounded-lg font-medium text-sm transition-all flex items-center justify-center gap-2 ${format === '9:16' ? 'bg-gradient-to-r from-pink-600 to-pink-400 text-white' : 'bg-gray-800 text-gray-300 border border-gray-700 hover:border-gray-600'}`}>
                     <svg width="14" height="20" viewBox="0 0 14 20" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="0.5" y="0.5" width="13" height="19" rx="1.5" stroke="currentColor" strokeWidth="1"/></svg>
@@ -949,7 +950,7 @@ export default function InfographiePage() {
                       onChange={(e) => setBatchSearchQuery(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter' && batchSearchQuery.trim()) { batchPageRef.current = 0; generateBatchVariations(batchSearchQuery.trim()); } }}
                       className="w-full rounded-lg border border-gray-700 bg-gray-800 pl-9 pr-3 py-2 text-sm text-white placeholder-gray-500 focus:border-pink-500 focus:outline-none"
-                      placeholder="Rechercher des photos... (ex: yoga, manioc, danse)"
+                      placeholder={tUi('rechercher_des_photos_ex_yoga_manioc_d')}
                     />
                   </div>
                   <button

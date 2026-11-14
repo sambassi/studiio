@@ -7,6 +7,7 @@ import SelecteurAvatar from '@/components/avatar/SelecteurAvatar';
 import { lireEtatJumeau, libelleFournisseurAvatar, type EtatJumeau, type JumeauMode } from '@/lib/creer/jumeau';
 import { libelleAvatarActif } from '@/lib/avatar/identite';
 import type { SequenceKey } from '@/lib/types/voice';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * JUMEAU NUMÉRIQUE — le bloc de l'étape Sujet.
@@ -54,6 +55,7 @@ export default function JumeauPanel(props: {
   avatarId?: string | null;
   onAvatarIdChange?: (avatarId: string | null) => void;
 }) {
+  const tUi = useTranslations('ui.componentsCreerJumeauPanel');
   const { mode, onModeChange, onVoixJumeau } = props;
   const [etat, setEtat] = useState<EtatJumeau | null | 'chargement'>('chargement');
   const [voixCompte, setVoixCompte] = useState<VoixCompte[] | null>(null);
@@ -104,8 +106,8 @@ export default function JumeauPanel(props: {
 
   const action = (motif: string | null): { libelle: string; href: string } => (
     motif === 'voix_absente' || motif === 'choix_voix_requis' || motif === 'voix_inutilisable'
-      ? { libelle: 'Configurer ma voix', href: '/dashboard/avatar' }
-      : { libelle: 'Gérer mon avatar', href: '/dashboard/avatar' }
+      ? { libelle: tUi('configurer_ma_voix'), href: '/dashboard/avatar' }
+      : { libelle: tUi('gerer_mon_avatar'), href: '/dashboard/avatar' }
   );
 
   const dira = ORDRE.map((k) => ({ key: k, libelle: LIBELLES[k], texte: (props.textes[k] ?? '').trim() })).filter((s) => s.key !== 'video' || s.texte.length > 0);
@@ -123,13 +125,13 @@ export default function JumeauPanel(props: {
 
   return (
     <div data-jumeau-panel data-jumeau-mode={mode} className="rounded-xl border border-white/10 bg-gray-900/60 p-4 space-y-3">
-      <div className="flex items-center gap-2 font-semibold text-sm"><UserSquare2 className="w-4 h-4" /> Jumeau numérique</div>
+      <div className="flex items-center gap-2 font-semibold text-sm"><UserSquare2 className="w-4 h-4" /> {tUi('jumeau_numerique')}</div>
 
       {chargement && (
-        <div className="text-xs text-gray-500 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Vérification de votre jumeau…</div>
+        <div className="text-xs text-gray-500 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> {tUi('verification_de_votre_jumeau')}</div>
       )}
       {etat === null && (
-        <div data-jumeau-etat="indisponible" className="text-xs text-gray-400">Votre jumeau n’a pas pu être vérifié pour le moment.</div>
+        <div data-jumeau-etat="indisponible" className="text-xs text-gray-400">{tUi('votre_jumeau_n_a_pas_pu_etre_verifie_p')}</div>
       )}
       {etatLu && !etatLu.pret && (
         <div data-jumeau-etat={etatLu.motif ?? 'inconnu'} className="text-xs space-y-1">
@@ -141,32 +143,32 @@ export default function JumeauPanel(props: {
       {jumeau && !voixEnAttente && (
         <div data-jumeau-etat="pret" className="text-xs space-y-3">
           <div className="space-y-0.5">
-            <div className="text-emerald-300 flex items-center gap-1.5"><Check className="w-3.5 h-3.5" /> Votre jumeau est prêt</div>
+            <div className="text-emerald-300 flex items-center gap-1.5"><Check className="w-3.5 h-3.5" /> {tUi('votre_jumeau_est_pret')}</div>
             <div className="text-gray-300" data-jumeau-avatar>
               {/* L'identité unique (`resoudreJumeauDuCompte`) : la même que Mon avatar et l'Autopilote. */}
               <span className="text-gray-100 font-medium" data-jumeau-avatar-actif={jumeau.avatar.version}>{libelleAvatarActif(jumeau.avatar.version)}</span>
               {' '}— {libelleFournisseurAvatar(jumeau.avatar.fournisseur)}
             </div>
-            <div className="text-gray-300" data-jumeau-voix>Voix : Ma voix — {jumeau.voix.nom}</div>
+            <div className="text-gray-300" data-jumeau-voix>{tUi('voix_ma_voix_nom', { nom: jumeau.voix.nom })}</div>
             {jumeau.prononciations > 0 && (
-              <div className="text-gray-500">{jumeau.prononciations} prononciation{jumeau.prononciations > 1 ? 's' : ''} personnalisée{jumeau.prononciations > 1 ? 's' : ''} seront appliquées au texte prononcé.</div>
+              <div className="text-gray-500">{jumeau.prononciations} prononciation{jumeau.prononciations > 1 ? 's' : ''} {tUi('personnalisee')}{jumeau.prononciations > 1 ? 's' : ''} {tUi('seront_appliquees_au_texte_prononce')}</div>
             )}
           </div>
 
-          <fieldset className="space-y-2" aria-label="Utilisation du jumeau">
+          <fieldset className="space-y-2" aria-label={tUi('utilisation_du_jumeau')}>
             <label className="flex items-start gap-2 cursor-pointer">
               <input type="radio" name="jumeau-mode" value="aucun" data-jumeau-choix="aucun" checked={mode === 'aucun'} onChange={() => choisir('aucun')} className="mt-0.5 accent-purple-500" />
-              <span className="text-gray-300">Ne pas utiliser mon jumeau</span>
+              <span className="text-gray-300">{tUi('ne_pas_utiliser_mon_jumeau')}</span>
             </label>
 
             <label className={`flex items-start gap-2 ${voixPossible ? 'cursor-pointer' : 'opacity-60 cursor-not-allowed'}`}>
               <input type="radio" name="jumeau-mode" value="voix" data-jumeau-choix="voix" checked={mode === 'voix'} disabled={!voixPossible} onChange={() => choisir('voix')} className="mt-0.5 accent-purple-500" />
               <span>
-                <span className="text-gray-100 font-medium">Utiliser ma voix clonée</span>
-                <span className="block text-gray-400">Narration seulement : les séquences Titre, Cartes et CTA sont dites avec votre voix. Votre avatar n’apparaît pas à l’image.</span>
+                <span className="text-gray-100 font-medium">{tUi('utiliser_ma_voix_clonee')}</span>
+                <span className="block text-gray-400">{tUi('narration_seulement_les_sequences_titr')}</span>
                 {!voixReliee && (
                   <span data-jumeau-voix-non-reliee className="block text-amber-200 mt-0.5">
-                    La voix de votre jumeau (« {jumeau.voix.nom} ») n’est pas dans la liste des voix clonées de votre compte : elle ne peut pas être posée. Rechargez la page ou vérifiez votre voix dans Mon avatar.
+                    {tUi('la_voix_de_votre_jumeau_nom_n_est_pas', { nom: jumeau.voix.nom })}
                   </span>
                 )}
               </span>
@@ -175,12 +177,12 @@ export default function JumeauPanel(props: {
             <label className={`flex items-start gap-2 ${avatarPossible ? 'cursor-pointer' : 'opacity-60 cursor-not-allowed'}`}>
               <input type="radio" name="jumeau-mode" value="avatar" data-jumeau-choix="avatar" checked={mode === 'avatar'} disabled={!avatarPossible} onChange={() => choisir('avatar')} className="mt-0.5 accent-purple-500" />
               <span>
-                <span className="text-gray-100 font-medium">Faire apparaître mon avatar parlant</span>
-                <span className="block text-gray-400">Présence vidéo réelle : à l’envoi, votre avatar dit ces textes avec votre voix et devient la séquence « Vidéo ». {props.coutAvatar} crédits en plus du rendu.</span>
+                <span className="text-gray-100 font-medium">{tUi('faire_apparaitre_mon_avatar_parlant')}</span>
+                <span className="block text-gray-400">{tUi('presence_video_reelle_a_l_envoi_votre', { coutAvatar: props.coutAvatar })}</span>
                 {!etatLu?.moteurDisponible && (
                   <span data-jumeau-moteur="indisponible" className="block text-amber-200 mt-0.5 flex items-start gap-1">
                     <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                    <span>{etatLu?.messageMoteur || 'La génération vidéo avec votre jumeau n’est pas disponible pour cet avatar.'}</span>
+                    <span>{etatLu?.messageMoteur || tUi('la_generation_video_avec_votre_jumeau')}</span>
                   </span>
                 )}
               </span>
@@ -188,16 +190,16 @@ export default function JumeauPanel(props: {
           </fieldset>
 
           <div data-jumeau-dira className="rounded-lg border border-white/10 bg-black/20 p-2.5 space-y-1">
-            <div className="text-gray-200 font-medium">Ce qu’il dira</div>
+            <div className="text-gray-200 font-medium">{tUi('ce_qu_il_dira')}</div>
             {aucunTexte ? (
-              <div className="text-gray-500">Les textes de narration seront ceux générés à l’étape Contenu.</div>
+              <div className="text-gray-500">{tUi('les_textes_de_narration_seront_ceux_ge')}</div>
             ) : dira.map((s) => (
               <div key={s.key} data-jumeau-dira-sequence={s.key} className="text-gray-300">
                 <span className="text-gray-500">{s.libelle} : </span>
                 {s.texte || <span className="text-gray-600">(rien)</span>}
               </div>
             ))}
-            <div className="text-gray-500">Modifiable dans le panneau « Voix-off par séquence » (étape Contenu).</div>
+            <div className="text-gray-500">{tUi('modifiable_dans_le_panneau_voix_off_pa')}</div>
           </div>
 
           {mode === 'avatar' && props.onAvatarIdChange && (
@@ -205,9 +207,9 @@ export default function JumeauPanel(props: {
           )}
 
           <div data-jumeau-sequences className="text-gray-400">
-            {mode === 'avatar' && 'Où il apparaît : séquence « Vidéo » (à l’image, avec votre voix).'}
-            {mode === 'voix' && 'Où il apparaît : séquences Titre, Cartes, CTA (voix seulement).'}
-            {mode === 'aucun' && 'Où il apparaît : nulle part.'}
+            {mode === 'avatar' && tUi('ou_il_apparait_sequence_video_a_l_imag')}
+            {mode === 'voix' && tUi('ou_il_apparait_sequences_titre_cartes')}
+            {mode === 'aucun' && tUi('ou_il_apparait_nulle_part')}
           </div>
           {recap && <div data-jumeau-recap className="text-gray-300">{recap}</div>}
         </div>

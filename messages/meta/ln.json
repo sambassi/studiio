@@ -1,0 +1,1754 @@
+{
+ "common.add": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.all": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.and": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.apply": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "common.back": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.cancel": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.clear": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "common.close": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "common.confirm": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "common.connectionError": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "common.create": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.credits": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "common.delete": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.download": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "common.duplicate": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "common.edit": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.error": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.errorOccurred": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "common.export": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.filter": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "common.formats.reel": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "common.formats.tv": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "common.hide": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.image": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.import": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "common.less": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "common.more": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "common.next": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.no": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.noResults": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "common.none": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.of": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "common.open": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.or": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.page": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.perMonth": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.preview": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.previous": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "common.publish": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.remove": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.reset": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "common.retry": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "common.save": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.search": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.select": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.selected": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "common.show": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.status.active": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "common.status.completed": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "common.status.published": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "common.status.failed": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "common.submit": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.upload": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.video": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "common.videos": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "common.view": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "common.yes": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "sidebar.avatar": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "sidebar.buy": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "sidebar.calendar": {
+  "c": "m",
+  "s": "web:glosbe.com"
+ },
+ "sidebar.create": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "sidebar.creditsAvailable": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "sidebar.library": {
+  "c": "m",
+  "s": "web:lingala.uk"
+ },
+ "sidebar.media": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "sidebar.settings": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "navbar.logout": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "languageSelector.label": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "languageSelector.partial": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "auth.login.connecting": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "auth.login.email": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "auth.login.emailPlaceholder": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "auth.login.errorFillAll": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "auth.login.errorGeneric": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "auth.login.errorInvalid": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "auth.login.facebook": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "auth.login.google": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "auth.login.noAccount": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "auth.login.or": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "auth.login.signup": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "auth.login.submit": {
+  "c": "h",
+  "s": "corpus:corpus-ln (Kota na kati)"
+ },
+ "auth.login.subtitle": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "auth.login.title": {
+  "c": "h",
+  "s": "corpus:corpus-ln (Kota na kati)"
+ },
+ "auth.signup.creditsPerMonth": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "auth.signup.facebook": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "auth.signup.google": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "auth.signup.hasAccount": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "auth.signup.login": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "auth.signup.month": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "auth.signup.moreFeatures": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "auth.signup.planSelected": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "auth.signup.privacyLink": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "auth.signup.selectedPlan": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "auth.signup.subtitle": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "auth.signup.termsAnd": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "auth.signup.title": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "dashboardHome.createVideo": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "dashboardHome.directAccess.calendar": {
+  "c": "m",
+  "s": "web:glosbe.com"
+ },
+ "dashboardHome.directAccess.create": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "dashboardHome.directAccess.library": {
+  "c": "m",
+  "s": "web:lingala.uk"
+ },
+ "dashboardHome.directAccess.settings": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "dashboardHome.directAccess.title": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "dashboardHome.directAccess.createDesc": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "dashboardHome.welcome": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "dashboardHome.stats.creditsRemaining": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "dashboardHome.stats.publications": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "dashboardHome.stats.videosCreated": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "dashboardHome.quickActions": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "billing.buyCredits": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "billing.currentSubscription": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "billing.plan": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "billing.tableHeaders.balance": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "billing.tableHeaders.credits": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "billing.tableHeaders.date": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "billing.tableHeaders.description": {
+  "c": "m",
+  "s": "corpus:corpus-ln (Bakisa ndimbola)"
+ },
+ "billing.transactions.bonusCredits": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "billing.transactions.buyCredits": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "billing.transactions.subscriptionPro": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "library.actions.delete": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "library.actions.duplicate": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "library.actions.edit": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "library.actions.export": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "library.actions.preview": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "library.createFirstVideo": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "library.createVideo": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "library.deleteConfirm.title": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "library.formatLabels.reel": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "library.formatLabels.tv": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "library.noVideos": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "library.searchPlaceholder": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "library.status.published": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "library.status.completed": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "library.subtitle": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "library.title": {
+  "c": "m",
+  "s": "web:lingala.uk"
+ },
+ "library.typeLabels.video": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "library.toasts.deleted": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "library.toasts.duplicated": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "library.toasts.deleteError": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "library.toasts.exportError": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "library.deleteConfirm.message": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "calendar.actions.delete": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "calendar.actions.duplicate": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "calendar.actions.edit": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "calendar.actions.export": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "calendar.actions.preview": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "calendar.aiAgent.stages.done": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "calendar.bulkDelete": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "calendar.bulkDuplicate": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "calendar.editModal.date": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "calendar.editModal.save": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "calendar.editModal.published": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "calendar.fullPreview.close": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "calendar.fullPreview.edit": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "calendar.import": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "calendar.select": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "calendar.stats.published": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "calendar.status.published": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "calendar.status.failed": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "calendar.title": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "creator.render.done": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "creator.title": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "creator.format.reel": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "creator.format.tv": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "creator.rushVideos.add": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "creator.rushVideos.settings": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "creator.textCards.apply": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "creator.batch.calendar": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "creator.batch.export": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "creator.character.upload": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "creator.uploadCharacter": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "creator.change": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "creator.summary.videos": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "assistant.close": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "assistant.send": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "social.confirmDisconnect.cancel": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "objectives.form.description": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "objectives.form.name": {
+  "c": "h",
+  "s": "corpus:corpus-ln.json"
+ },
+ "creator.montageSequences.noVideo": {
+  "c": "m",
+  "s": "corpus:corpus-ln.json"
+ },
+ "calendar.editModal.time": {
+  "c": "m",
+  "s": "corpus:corpus-ln.json"
+ },
+ "calendar.fullPreview.music": {
+  "c": "m",
+  "s": "corpus:corpus-ln.json"
+ },
+ "assistant.error": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "assistant.greeting": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "assistant.placeholder": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "assistant.thinking": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "assistant.unauthorized": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "calendar.addPost": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "calendar.newPost": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "calendar.aiAgent.filesCount": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "calendar.aiAgent.rushFiles.filesSelected": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "calendar.aiAgent.rushFiles.selectFiles": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "calendar.aiAgent.musicFile.fileSelected": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "calendar.aiAgent.musicFile.selectFile": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "calendar.bulkDateModal.newDate": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "calendar.selectAll": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "calendar.editModal.title": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "calendar.editModal.captionPlaceholder": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "calendar.fullPreview.publishNow": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "calendar.noPosts": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "calendar.post": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "calendar.posts": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "calendar.postCount": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "calendar.selectDate": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "calendar.previewModal.title": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "calendar.previewModal.at": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "calendar.stats.total": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "calendar.status.publishing": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "creator.addLogo": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "creator.logo.upload": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "creator.render.errorCreate": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "creator.render.creating": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "creator.render.launchCreation": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "creator.stepOf": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "creator.textCards.color": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "creator.clickToAddImage": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "creator.character.noImageFound": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "creator.credits": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "social.selfPublish.cta": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "social.selfPublish.step1": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "social.selfPublish.step2": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "social.platforms.facebook.description": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "social.platforms.instagram.description": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "social.status.connected": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "social.status.notConnected": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "social.toasts.connectionError": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "social.toasts.connectionInProgress": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "audioStudio.backToCalendar": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "audioStudio.destination.calendar": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "audioStudio.export.done": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "audioStudio.export.error": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "audioStudio.music.import": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "audioStudio.music.noMusic": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "audioStudio.music.title": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "audioStudio.nextVideo": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "audioStudio.noVideoSelected": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "audioStudio.previousVideo": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "audioStudio.timeline.music": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "audioStudio.timeline.video": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "audioStudio.timeline.voice": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "audioStudio.videoPreview": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "infographic.backButton": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "infographic.characterImage.upload": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "infographic.destination.calendar": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "infographic.exportButton.exporting": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "infographic.finalizeButton": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "infographic.infoCards.add": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "infographic.logoSection.add": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "infographic.logoUpload.upload": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "infographic.posterPhoto.import": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "infographic.posterPhoto.remove": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "infographic.preview.noVideoLabel": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "infographic.preview.seqVideo": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "infographic.sequenceOrder.noVideo": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "infographic.videoRush.title": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "infographic.videoRush.upload": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "infographic.videoSection.choose": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "landing.nav.login": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "landing.pricing.creditsPerMonth": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "landing.pricing.monthly": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "landing.pricing.yearly": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "landing.stats.videosCreated": {
+  "c": "m",
+  "s": "lexique ln-core"
+ },
+ "ui.appDashboardAvatar.modifier": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardAvatar.video": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardAvatar.mon_avatar": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardAvatar.creer_une_video": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardAvatar.creer_mon_avatar": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardAvatar.creer_mon_avatar_video": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardAvatar.supprimer_mon_avatar": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardAvatar.choisir_une_photo": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardAvatar.choisir_une_video": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardAvatar.importer_ma_video": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardAvatar.telecharger_la_video": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardAvatar.ma_voix": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardAvatar.voix": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardAvatar.confirmer_la_suppression": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardAvatar.connexion_impossible_reessayez": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardBillingPlanPreselectionne.credits_mois": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardBillingPlanPreselectionne.erreur_de_connexion": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardCalendar.annuler": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardCalendar.fermer": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardCalendar.retour": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardCinema.annuler": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardCinema.continuer": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardCinema.image": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardCinema.supprimer_ce_film": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardCinema.exporter_le_film": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardCinema.telecharger_le_mp4": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardCinema.titre_du_film": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardCinema.previsualisation": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardCreerAssistantWizard.annuler": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardCreerAssistantWizard.apercu": {
+  "c": "m",
+  "s": "corpus:corpus-ln + out/ln-core.json"
+ },
+ "ui.appDashboardCreerAssistantWizard.combien_de_videos": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCreerAssistantWizard.continuer_avec": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCreerAssistantWizard.couleur": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCreerAssistantWizard.couleur_zonelabel": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCreerAssistantWizard.credits_medias": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCreerAssistantWizard.creer_une_video": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.appDashboardCreerAssistantWizard.enregistre": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCreerAssistantWizard.envoye_au_calendrier": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCreerAssistantWizard.envoyer_au_calendrier": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCreerAssistantWizard.importer_un_rush": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCreerAssistantWizard.ma_photo": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCreerAssistantWizard.mon_avatar": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.appDashboardCreerAssistantWizard.musique_et_voix": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCreerAssistantWizard.ou_votre_sujet": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCreerAssistantWizard.ouvrir_le_calendrier": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCreerAssistantWizard.rechercher": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.appDashboardCreerAssistantWizard.rechercher_une_photo": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCreerAssistantWizard.rechercher_une_photo_2": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCreerAssistantWizard.reessayer": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.appDashboardCreerAssistantWizard.reinitialiser": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.appDashboardCreerAssistantWizard.retirer_le_rush": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCreerAssistantWizard.retour": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.appDashboardCreerAssistantWizard.rush_importe": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCreerAssistantWizard.selectionnee": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCreerAssistantWizard.supprimer": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.appDashboardCreerAssistantWizard.supprimer_l_element": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCreerAssistantWizard.taille": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCreerAssistantWizard.taille_libelle": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCreerAssistantWizard.telecharger_la_video": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCreerAssistantWizard.telecharger_mp4": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCreerAssistantWizard.video": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.appDashboardCreerAssistantWizard.voir_mon_abonnement": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsAvatarStudioPreparationPhoto.annuler": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsAvatarStudioPreparationSource.annuler": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsCinemaDialogueGenerationIA.annuler": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsCinemaModelesFilm.annuler": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsCreerAgentIAModal.annuler": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsCreerAiImageTools.annuler": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.appDashboardMedia.supprimer": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsAvatarFluxSourceAvatar.modifier": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsAvatarStudioPreparationPhoto.modifier": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsAvatarStudioPreparationSource.modifier": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsCinemaWizardCinema.retour": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.appDashboardMedia.fermer": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsAvatarFluxSourceAvatar.fermer": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsAvatarMesAvatars.fermer": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsCinemaDialogueGenerationIA.fermer": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardSettings.reglages": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsAvatarStudioPreparationSource.reglages": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.appDashboardSettings.se_deconnecter": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.appDashboardMedia.media": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsAvatarAvatarVideoDid.connexion_impossible_reessayez": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsAvatarFluxSourceAvatar.connexion_impossible_reessayez": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsAvatarStudioPreparationPhoto.connexion_impossible_reessayez": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsAvatarStudioPreparationSource.connexion_impossible_reessayez": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.appDashboardMedia.ajouter_une_video": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsAvatarFluxSourceAvatar.importer_une_video": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.appDashboardMedia.rechercher_un_rush": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsCreerAfficheIA.generer": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsAvatarAvatarVideoDid.creation": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsCreerAutopilotPanel.ajouter": {
+  "c": "h",
+  "s": "ln-core"
+ },
+ "ui.componentsCreerMediasSequenceVideo.ajouter": {
+  "c": "h",
+  "s": "ln-core"
+ },
+ "ui.componentsCreerAutopilotPanel.annuler": {
+  "c": "h",
+  "s": "ln-core"
+ },
+ "ui.componentsCreerAudioStudioPanel.supprimer": {
+  "c": "h",
+  "s": "ln-core"
+ },
+ "ui.componentsCreerAutopilotPanel.supprimer": {
+  "c": "h",
+  "s": "ln-core"
+ },
+ "ui.componentsCreerCompleterRushesStock.supprimer": {
+  "c": "h",
+  "s": "ln-core"
+ },
+ "ui.componentsCreerAudioStudioPanel.enregistrer": {
+  "c": "h",
+  "s": "ln-core"
+ },
+ "ui.componentsCreerAttenteAvatarMontage.reessayer": {
+  "c": "h",
+  "s": "ln-core"
+ },
+ "ui.componentsCreerAudioStudioPanel.reessayer": {
+  "c": "h",
+  "s": "ln-core"
+ },
+ "ui.componentsCreerApercuMedia.video": {
+  "c": "h",
+  "s": "ln-core"
+ },
+ "ui.componentsCreerAudioStudioPanel.video": {
+  "c": "h",
+  "s": "ln-core"
+ },
+ "ui.componentsCreerAutopilotPanel.video": {
+  "c": "h",
+  "s": "ln-core"
+ },
+ "ui.componentsCreerAutopilotPanel.credits": {
+  "c": "h",
+  "s": "ln-core"
+ },
+ "ui.componentsCreerAutopilotPanel.precedent": {
+  "c": "h",
+  "s": "ln-core"
+ },
+ "ui.componentsCreerCartesEditeur.description": {
+  "c": "h",
+  "s": "ln-core"
+ },
+ "ui.componentsCreerApercuMedia.ajoute": {
+  "c": "m",
+  "s": "savoir:passif de kobakisa"
+ },
+ "ui.componentsCreerApercuMedia.apercu_du_media": {
+  "c": "m",
+  "s": "ln-core"
+ },
+ "ui.componentsCreerApercuMontageListe.aucun_media": {
+  "c": "m",
+  "s": "ln-core"
+ },
+ "ui.componentsCreerAudioDuckingTimeline.musique": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsCreerAudioMixPreview.musique": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsCreerAudioStudioPanel.musique": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsCreerAutopilotPanel.musique": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsCreerAutopilotPanel.enregistre": {
+  "c": "m",
+  "s": "ln-core"
+ },
+ "ui.componentsCreerAutopilotPanel.ouvrir_le_calendrier": {
+  "c": "m",
+  "s": "ln-core"
+ },
+ "ui.componentsCreerAvatarPrincipalAutopilote.mon_avatar": {
+  "c": "h",
+  "s": "ln-core"
+ },
+ "ui.componentsCreerAutopilotPanel.mon_avatar": {
+  "c": "h",
+  "s": "ln-core"
+ },
+ "ui.componentsCreerApercuMedia.choisir_un_autre_media": {
+  "c": "m",
+  "s": "ln-core"
+ },
+ "ui.componentsCreerAutopilotPanel.rechercher_des_medias": {
+  "c": "m",
+  "s": "ln-core"
+ },
+ "ui.componentsCreerAutopilotPanel.retirer_la_musique": {
+  "c": "m",
+  "s": "ln-core"
+ },
+ "ui.componentsCreerAudioStudioPanel.generer": {
+  "c": "m",
+  "s": "ln-core"
+ },
+ "ui.componentsCreerMediasSequenceVideo.supprimer": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsCreerPlanAvantGeneration.rechercher": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsCreerPlanAvantGeneration.supprimer": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsCreerRecadrerRush.fermer": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsCreerRecadrerRush.reinitialiser": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsCreerRechercheStockSequence.ajoute": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsCreerRechercheStockSequence.ajouter": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsCreerRechercheStockSequence.apercu": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsCreerRechercheStockSequence.fermer": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsCreerRechercheStockSequence.rechercher": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsCreerSequenceVoicesPanel.enregistrer": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsCreerStockRechercheAutopilote.ajoute": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsCreerStockRechercheAutopilote.ajouter": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsCreerStockRechercheAutopilote.rechercher": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsCreerVideosPretes.aucune_video_pour_l_instant": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsCreerVideosPretes.telecharger": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsDashboardRecentVideos.terminee": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsFournisseursConfirmationCoutFournisseur.annuler": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsLayoutNavbar.credits_restants": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsMediaClipDetectorModal.annuler": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsMediaClipDetectorModal.apercu": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsMediaClipDetectorModal.fermer": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsMediaClipDetectorModal.tout_selectionner": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsMediasCarteMedia.apercu": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsSettingsBillingContent.acheter_des_credits": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsSettingsBillingContent.aucune_transaction": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsSettingsBillingContent.credits": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsSettingsBillingContent.credits_restants": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsSharedBrandingIndicator.modifier": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsSharedExportBar.creditcost_credits": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsSharedExportBar.telecharger": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsSharedMediaLibrary.fermer": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsSharedMediaLibrary.reessayer": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsSharedMediaLibrary.supprimer": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsSharedMediaLibrary.tout_selectionner": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsSocialReglagesPublicationReseaux.reessayer": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsSocialReglagesPublicationReseaux.supprimer": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsUiFloatingPanel.fermer": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsUiInfoBulle.fermer": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsUiModal.fermer": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsUiSelect.selectionner": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsUxProgressStatus.echec": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsVoiceMaVoixPanel.annuler": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsVoiceMaVoixPanel.ecouter": {
+  "c": "m",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsVoiceMaVoixPanel.enregistrer": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsVoiceMaVoixPanel.modifier": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsVoiceMaVoixPanel.supprimer": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.componentsVoiceVoiceCloneRecorder.enregistrer": {
+  "c": "h",
+  "s": "corpus:corpus-ln"
+ },
+ "ui.libelles.h1fr8rort": {
+  "c": "m",
+  "s": "corpus:ln-core"
+ },
+ "ui.libelles.h1lt7u2zt": {
+  "c": "m",
+  "s": "corpus:ln-core"
+ },
+ "ui.libelles.h1qennt1i": {
+  "c": "m",
+  "s": "corpus:ln-core"
+ },
+ "ui.libelles.h2w4tw96": {
+  "c": "m",
+  "s": "corpus:ln-core"
+ },
+ "ui.libelles.haukudym": {
+  "c": "m",
+  "s": "corpus:ln-core"
+ },
+ "ui.libelles.hj5yrlma": {
+  "c": "m",
+  "s": "corpus:ln-core"
+ },
+ "ui.libelles.hnwqhsxa": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.libelles.hthgb8ol": {
+  "c": "m",
+  "s": "corpus:ln-core"
+ },
+ "ui.libelles.htxhidcc": {
+  "c": "m",
+  "s": "corpus:ln-core"
+ },
+ "ui.libelles.hug424q": {
+  "c": "m",
+  "s": "corpus:ln-core"
+ },
+ "ui.libelles.hykmuts5": {
+  "c": "h",
+  "s": "lexique"
+ }
+}

@@ -12,6 +12,7 @@ import { DUREE_ESTIMEE_SANS_CIBLE, horodatage, minutagePlan, secondesLisibles } 
 import { RYTHME_LABELS, type RythmeBrief } from '@/lib/creer/brief';
 import { planCompletAutopilote, type SegmentPlanComplet } from '@/lib/autopilot/plan-complet';
 import type { ContexteTextesAutopilote } from '@/lib/autopilot/montage-avatar';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * « Plan avant génération » — le GABARIT de la séquence Vidéo, édité avant
@@ -63,6 +64,7 @@ export function libelleCreneau(c: CreneauGabarit, stock: MediaStockRetenu[], rus
  * MÊME extraction que la miniature (cache partagé) : aucun second chargement.
  */
 function InfosRush({ url }: { url: string }) {
+  const tUi = useTranslations('ui.componentsCreerPlanAvantGeneration');
   const e = useVignetteVideo(url);
   const nom = nomTechnique(url);
   const duree = e.etat === 'pret' ? dureeLisible(e.vignette.duree) : null;
@@ -70,8 +72,8 @@ function InfosRush({ url }: { url: string }) {
     <p className="min-w-0 truncate text-[10px] text-gray-500" data-plan-infos-rush>
       {nom ? <span className="text-gray-400">{nom}</span> : null}
       {duree ? <span data-plan-duree>{nom ? ' · ' : ''}{duree}</span> : null}
-      {e.etat === 'echec' ? <span data-plan-statut="indisponible">{nom || duree ? ' · ' : ''}Aperçu indisponible</span> : null}
-      {e.etat === 'chargement' ? <span data-plan-statut="chargement">{nom || duree ? ' · ' : ''}Lecture de l’aperçu…</span> : null}
+      {e.etat === 'echec' ? <span data-plan-statut="indisponible">{nom || duree ? ' · ' : ''}{tUi('apercu_indisponible')}</span> : null}
+      {e.etat === 'chargement' ? <span data-plan-statut="chargement">{nom || duree ? ' · ' : ''}{tUi('lecture_de_l_apercu')}</span> : null}
     </p>
   );
 }
@@ -137,6 +139,7 @@ export default function PlanAvantGeneration({
   /** Ouvre la recherche stock pour CETTE ligne (les lignes courantes, suggestion comprise). */
   onRechercher: (id: string, lignes: CreneauGabarit[]) => void;
 }) {
+  const tUi = useTranslations('ui.componentsCreerPlanAvantGeneration');
   const fixe = gabarit.length > 0;
   const lignes = fixe ? gabarit : suggestion;
   const cible = duree?.cible ?? null;
@@ -194,13 +197,13 @@ export default function PlanAvantGeneration({
       {videos.map((u) => <SondeDuree key={u} url={u} onDuree={noterDuree} />)}
       <div className="flex items-center justify-between gap-2">
         <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-gray-500">
-          Plan avant génération
+          {tUi('plan_avant_generation')}
           {/* Le fonctionnement du plan et du minutage : à la demande (docs/UX-PREMIUM.md). */}
-          <InfoBulle label="En savoir plus sur le plan avant génération" titre="Plan avant génération" marqueur="plan">
+          <InfoBulle label={tUi('en_savoir_plus_sur_le_plan_avant_gener')} titre={tUi('plan_avant_generation')} marqueur="plan">
             <span className="block" data-plan-cta-annonce={ctaEnSurimpression ? 'surimpression' : 'sequence'}>
               {ctaEnSurimpression
                 ? 'Chaque montage remplit ce plan avec ses médias réels. Avec votre avatar, le CTA s’affiche en surimpression sur la fin de la vidéo ; si la parole est plus courte que la durée cible, une clôture (plans de coupe, musique) la complète et porte le CTA jusqu’à la dernière image.'
-                : 'Chaque montage remplit ce plan avec ses médias réels. La séquence CTA reste toujours à la fin.'}
+                : tUi('chaque_montage_remplit_ce_plan_avec_se')}
             </span>
             {lignes.length > 0 && (
               <span className="block" data-plan-duree-avertissement>
@@ -219,28 +222,28 @@ export default function PlanAvantGeneration({
             data-plan-reinitialiser
             className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-white disabled:opacity-40"
           >
-            <RotateCcw className="w-3 h-3" /> Laisser Studiio décider
+            <RotateCcw className="w-3 h-3" /> {tUi('laisser_studiio_decider')}
           </button>
         ) : lignes.length > 0 ? (
-          <span className="flex items-center gap-1 text-[10px] text-gray-500" data-plan-suggere><Wand2 className="w-3 h-3" /> Plan suggéré</span>
+          <span className="flex items-center gap-1 text-[10px] text-gray-500" data-plan-suggere><Wand2 className="w-3 h-3" /> {tUi('plan_suggere')}</span>
         ) : null}
       </div>
       {lignes.length > 0 && (
         <dl className="grid grid-cols-2 gap-x-3 gap-y-0.5 rounded-lg bg-gray-900/60 px-2 py-1.5 text-[11px]" data-plan-duree>
-          <dt className="text-gray-500">Durée cible</dt>
+          <dt className="text-gray-500">{tUi('duree_cible')}</dt>
           <dd className="text-gray-200" data-plan-duree-cible={cible ?? ''}>{cible ? `${cible} s` : `automatique (≈ ${DUREE_ESTIMEE_SANS_CIBLE} s)`}</dd>
-          <dt className="text-gray-500">Durée planifiée</dt>
+          <dt className="text-gray-500">{tUi('duree_planifiee')}</dt>
           <dd className="text-gray-200" data-plan-duree-planifiee={planifiee} data-plan-duree-estimee={estimee ? 'oui' : 'non'}>
-            {estimee ? '≈ ' : ''}{secondesLisibles(planifiee)}{estimee ? <span className="text-gray-500"> (estimée)</span> : null}
+            {estimee ? '≈ ' : ''}{secondesLisibles(planifiee)}{estimee ? <span className="text-gray-500"> {tUi('estimee')}</span> : null}
           </dd>
-          <dt className="text-gray-500">Nombre de séquences</dt>
+          <dt className="text-gray-500">{tUi('nombre_de_sequences')}</dt>
           <dd className="text-gray-200" data-plan-nombre={lignes.length}>{lignes.length}</dd>
           <dt className="text-gray-500">Rythme</dt>
           <dd className="text-gray-200" data-plan-rythme={duree?.rythme ?? 'normal'}>{RYTHME_LABELS[duree?.rythme ?? 'normal']}</dd>
         </dl>
       )}
       {lignes.length === 0 && (
-        <p className="text-[11px] text-gray-400" data-plan-vide>Activez une source pour construire le plan.</p>
+        <p className="text-[11px] text-gray-400" data-plan-vide>{tUi('activez_une_source_pour_construire_le')}</p>
       )}
       <ol className="space-y-1.5">
         {lignes.map((c, i) => {
@@ -271,41 +274,41 @@ export default function PlanAvantGeneration({
                     </span>
                   )}
                 <p className="min-w-0 flex-1 text-[11px] text-gray-300">
-                  <span className="font-medium text-white">Séquence {n}</span>
+                  <span className="font-medium text-white">{tUi('sequence_n', { n })}</span>
                   <span className="text-gray-500"> — </span>
                   <span className="break-words" data-plan-libelle title={c.media ? nomTechnique(c.media) : undefined}>{libelleCreneau(c, stock, rushesPerso)}</span>
                 </p>
               </div>
               {minutage[i] && (
                 <p className="text-[10px] text-gray-400" data-plan-minutage={i}>
-                  {horodatage(minutage[i].debut)} → {horodatage(minutage[i].fin)} · Durée : {secondesLisibles(minutage[i].duree)}
+                  {horodatage(minutage[i].debut)} → {horodatage(minutage[i].fin)} {tUi('duree')} {secondesLisibles(minutage[i].duree)}
                 </p>
               )}
               {rushChoisi && <InfosRush url={rushChoisi} />}
               {c.type === 'avatar' && !avatarDisponible && (
-                <p className="text-[10px] text-amber-400" data-plan-avatar-inactif>Avatar inactif : Studiio prendra une autre source.</p>
+                <p className="text-[10px] text-amber-400" data-plan-avatar-inactif>{tUi('avatar_inactif_studiio_prendra_une_aut')}</p>
               )}
               <div className="flex flex-wrap items-center gap-1">
                 <select
                   value={c.type}
                   disabled={disabled}
                   onChange={(e) => maj((l) => { l[i] = { id: c.id, type: e.target.value as TypeCreneau }; return l; })}
-                  aria-label={`Type de la séquence ${n}`}
+                  aria-label={tUi('type_de_la_sequence_n', { n })}
                   data-plan-forcer={i}
                   className="rounded border border-gray-800 bg-gray-950 px-1 py-0.5 text-[10px] text-gray-200"
                 >
-                  {TYPES.map((t) => <option key={t.v} value={t.v}>{t.label}</option>)}
+                  {TYPES.map((t) => <option key={t.v} value={t.v}>{tUi.fr(t.label)}</option>)}
                 </select>
                 {options.length > 0 && (
                   <select
                     value={c.media ?? ''}
                     disabled={disabled}
                     onChange={(e) => maj((l) => { l[i] = { id: c.id, type: c.type, ...(e.target.value ? { media: e.target.value } : {}) }; return l; })}
-                    aria-label={`Média de la séquence ${n}`}
+                    aria-label={tUi('media_de_la_sequence_n', { n })}
                     data-plan-media={i}
                     className="min-w-0 max-w-full flex-1 basis-32 rounded border border-gray-800 bg-gray-950 px-1 py-0.5 text-[10px] text-gray-200"
                   >
-                    <option value="">Au choix à chaque montage</option>
+                    <option value="">{tUi('au_choix_a_chaque_montage')}</option>
                     {options.map((o) => <option key={o.v} value={o.v}>{o.label}</option>)}
                   </select>
                 )}
@@ -314,41 +317,41 @@ export default function PlanAvantGeneration({
                     type="button"
                     onClick={() => onRechercher(c.id, lignes)}
                     disabled={disabled}
-                    aria-label={`Rechercher un média pour la séquence ${n}`}
-                    title="Rechercher un média pour cette séquence"
+                    aria-label={tUi('rechercher_un_media_pour_la_sequence_n', { n })}
+                    title={tUi('rechercher_un_media_pour_cette_sequenc')}
                     data-plan-rechercher={i}
                     className={BOUTON}
                   >
-                    <Search className="w-3 h-3" /> Rechercher
+                    <Search className="w-3 h-3" /> {tUi('rechercher')}
                   </button>
                   <button
                     type="button"
                     onClick={() => suivant && maj((l) => { l[i] = { id: c.id, type: c.type, media: suivant.v }; return l; })}
                     disabled={disabled || !remplacable}
-                    aria-label={`Remplacer le média de la séquence ${n}`}
-                    title={remplacable ? 'Passer au média suivant de cette source' : 'Aucun autre média dans cette source'}
+                    aria-label={tUi('remplacer_le_media_de_la_sequence_n', { n })}
+                    title={remplacable ? tUi('passer_au_media_suivant_de_cette_sourc') : tUi('aucun_autre_media_dans_cette_source')}
                     data-plan-remplacer={i}
                     className={BOUTON}
                   >
                     <RefreshCw className="w-3 h-3" /> Remplacer
                   </button>
-                  <span className="flex items-center gap-0.5 rounded border border-gray-800 pl-1.5 text-[10px] text-gray-400" role="group" aria-label={`Déplacer la séquence ${n}`}>
-                    Déplacer
+                  <span className="flex items-center gap-0.5 rounded border border-gray-800 pl-1.5 text-[10px] text-gray-400" role="group" aria-label={tUi('deplacer_la_sequence_n', { n })}>
+                    {tUi('deplacer')}
                     <button type="button" onClick={() => deplacer(i, -1)} disabled={disabled || i === 0}
-                      aria-label={`Déplacer la séquence ${n} vers le haut`} title="Déplacer vers le haut" data-plan-monter={i}
+                      aria-label={tUi('deplacer_la_sequence_n_vers_le_haut', { n })} title={tUi('deplacer_vers_le_haut')} data-plan-monter={i}
                       className="p-1 text-gray-300 hover:text-white disabled:opacity-30">
                       <ArrowUp className="w-3 h-3" />
                     </button>
                     <button type="button" onClick={() => deplacer(i, 1)} disabled={disabled || i === lignes.length - 1}
-                      aria-label={`Déplacer la séquence ${n} vers le bas`} title="Déplacer vers le bas" data-plan-descendre={i}
+                      aria-label={tUi('deplacer_la_sequence_n_vers_le_bas', { n })} title={tUi('deplacer_vers_le_bas')} data-plan-descendre={i}
                       className="p-1 text-gray-300 hover:text-white disabled:opacity-30">
                       <ArrowDown className="w-3 h-3" />
                     </button>
                   </span>
                   <button type="button" onClick={() => maj((l) => l.filter((_, k) => k !== i))} disabled={disabled}
-                    aria-label={`Supprimer la séquence ${n}`} title="Supprimer cette séquence" data-plan-supprimer={i}
+                    aria-label={tUi('supprimer_la_sequence_n', { n })} title={tUi('supprimer_cette_sequence')} data-plan-supprimer={i}
                     className={`${BOUTON} hover:text-red-400`}>
-                    <Trash2 className="w-3 h-3" /> Supprimer
+                    <Trash2 className="w-3 h-3" /> {tUi('supprimer')}
                   </button>
                 </span>
               </div>
@@ -358,13 +361,13 @@ export default function PlanAvantGeneration({
         <li className="flex items-center gap-2 rounded-lg border border-dashed border-gray-800 px-2 py-1.5 text-[11px] text-gray-400" data-plan-cta data-plan-cta-mode={ctaEnSurimpression ? 'surimpression' : 'sequence'}>
           <Megaphone className="w-3.5 h-3.5 shrink-0" />
           {ctaEnSurimpression
-            ? <span><span className="font-medium text-gray-300">CTA</span> — {avecCloture && complet?.cta ? `en surimpression sur la clôture, ${horodatage(complet.cta[0])} → ${horodatage(complet.cta[1])}` : 'en surimpression sur la fin de la vidéo'}</span>
+            ? <span><span className="font-medium text-gray-300">CTA</span> — {avecCloture && complet?.cta ? `en surimpression sur la clôture, ${horodatage(complet.cta[0])} → ${horodatage(complet.cta[1])}` : tUi('en_surimpression_sur_la_fin_de_la_vide')}</span>
             : <span><span className="font-medium text-gray-300">CTA</span> — fixe, toujours en dernier</span>}
         </li>
       </ol>
       {complet && complet.segments.length > 0 && (
         <div className="space-y-1 rounded-lg bg-gray-900/60 px-2 py-1.5" data-plan-montage data-plan-montage-nombre={complet.segments.length}>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Montage prévu, plan par plan</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{tUi('montage_prevu_plan_par_plan')}</p>
           <ol className="space-y-0.5">
             {complet.segments.map((x, i) => (
               <li
@@ -392,7 +395,7 @@ export default function PlanAvantGeneration({
           data-plan-ajouter
           className="flex items-center gap-1 rounded-lg border border-gray-800 px-2 py-1 text-[11px] text-gray-300 hover:text-white disabled:opacity-40"
         >
-          <Plus className="w-3 h-3" /> Ajouter une séquence
+          <Plus className="w-3 h-3" /> {tUi('ajouter_une_sequence')}
         </button>
       )}
     </section>

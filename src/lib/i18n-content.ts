@@ -170,7 +170,9 @@ const DE: ContentPools = {
   },
 };
 
-const CONTENT_POOLS: Record<Locale, ContentPools> = { fr: FR, en: EN, de: DE };
+// Contenus d'exemple : fr/en/de seulement. Les autres langues retombent sur le français (voir
+// `getContentPools`) — ce sont des CONTENUS générés, pas de l'interface.
+const CONTENT_POOLS: Partial<Record<Locale, ContentPools>> = { fr: FR, en: EN, de: DE };
 
 export function getContentPools(locale: Locale): ContentPools {
   return CONTENT_POOLS[locale] || FR;

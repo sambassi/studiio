@@ -10,6 +10,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Loader2, ShieldCheck } from 'lucide-react';
+import { useTranslations } from '@/i18n/client';
 
 type Statut = 'pending' | 'accepted' | 'rejected' | null;
 
@@ -21,6 +22,7 @@ const LIBELLES: Record<Exclude<Statut, null> | 'aucun', string> = {
 };
 
 export default function ConsentementJumeauAdmin({ statutInitial, onAccepte }: { statutInitial: Statut; onAccepte: () => void }) {
+  const tUi = useTranslations('ui.componentsAvatarConsentementJumeauAdmin');
   const [statut, setStatut] = useState<Statut>(statutInitial);
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -57,7 +59,7 @@ export default function ConsentementJumeauAdmin({ statutInitial, onAccepte }: { 
       } else onglet?.close();
     } catch {
       onglet?.close();
-      setErreur('Le consentement n’a pas pu être lancé.');
+      setErreur(tUi('le_consentement_n_a_pas_pu_etre_lance'));
     } finally {
       setEnvoi(false);
     }
@@ -68,14 +70,14 @@ export default function ConsentementJumeauAdmin({ statutInitial, onAccepte }: { 
   }
   return (
     <div data-jumeau-consentement={statut ?? 'aucun'} className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-3 text-sm">
-      <p className="text-amber-200">{LIBELLES[statut ?? 'aucun']}</p>
-      <p className="text-xs text-gray-400">Accès administrateur — test interne. Une page externe s’ouvre pour enregistrer votre déclaration à la webcam (lien valable 24 h).</p>
+      <p className="text-amber-200">{tUi.fr(LIBELLES[statut ?? 'aucun'])}</p>
+      <p className="text-xs text-gray-400">{tUi('acces_administrateur_test_interne_une')}</p>
       <div className="flex gap-3">
         <button onClick={enregistrer} disabled={envoi} className="rounded-lg bg-amber-500/20 px-3 py-2 text-xs text-amber-100 hover:bg-amber-500/30 disabled:opacity-50 flex items-center gap-2">
-          {envoi && <Loader2 className="w-3.5 h-3.5 animate-spin" />}Enregistrer mon consentement
+          {envoi && <Loader2 className="w-3.5 h-3.5 animate-spin" />}{tUi('enregistrer_mon_consentement')}
         </button>
         {statut === 'pending' && (
-          <button onClick={verifier} className="text-xs text-gray-400 hover:text-white">Vérifier maintenant</button>
+          <button onClick={verifier} className="text-xs text-gray-400 hover:text-white">{tUi('verifier_maintenant')}</button>
         )}
       </div>
       {erreur && <p className="text-xs text-red-300">{erreur}</p>}

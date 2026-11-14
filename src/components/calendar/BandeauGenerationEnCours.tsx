@@ -17,6 +17,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import ProgressStatus from '@/components/ux/ProgressStatus';
 import { generationEnCoursDepuisLecture, type GenerationEnCours } from '@/lib/autopilot/progression';
 import { lireProductionSuivie, parametresSuivi } from '@/lib/autopilot/etat-production-manuelle';
+import { useTranslations } from '@/i18n/client';
 
 /** Relecture pendant une production (le panneau relit toutes les 2 s ; ici, moins souvent). */
 export const DELAI_RELECTURE_GENERATION_MS = 5000;
@@ -29,6 +30,7 @@ export default function BandeauGenerationEnCours({
   /** Injectable pour les tests. */
   fetcher?: typeof fetch;
 }) {
+  const tUi = useTranslations('ui.componentsCalendarBandeauGenerationEnCours');
   const [generation, setGeneration] = useState<GenerationEnCours | null>(null);
   const enCoursRef = useRef(false);
   const onTermineeRef = useRef(onTerminee);
@@ -80,22 +82,22 @@ export default function BandeauGenerationEnCours({
     <div className="px-4 sm:px-8 mb-4" data-calendrier-generation-en-cours data-generation-sorte={generation.sorte}>
       {generation.sorte === 'rendu' ? (
         <ProgressStatus
-          titre="Génération en cours"
+          titre={tUi('generation_en_cours')}
           statut="en_cours"
           etapes={generation.etapes}
           {...(generation.pourcentage !== undefined ? { pourcentage: generation.pourcentage } : {})}
           detail={generation.message}
-          note="Autopilote — durée indicative : quelques minutes. Le brouillon apparaîtra dans le Calendrier une fois la vidéo finale vérifiée."
+          note={tUi('autopilote_duree_indicative_quelques_m')}
         />
       ) : (
         <ProgressStatus
-          titre="Génération en cours"
+          titre={tUi('generation_en_cours')}
           statut="en_cours"
           etapes={generation.etapes}
           description={generation.message}
           detail={generation.detail ?? undefined}
           {...(generation.depuis ? { debutLe: generation.depuis } : {})}
-          note="Autopilote avec votre avatar — durée indicative : quelques minutes à une heure selon la file. Le brouillon apparaîtra dans le Calendrier une fois la vidéo finale montée et vérifiée."
+          note={tUi('autopilote_avec_votre_avatar_duree_ind')}
         />
       )}
     </div>

@@ -2,6 +2,7 @@
 
 import { X } from 'lucide-react';
 import { ETAT_INTERACTIF_SANS_FOND } from '@/lib/ui/etats';
+import { useTranslations } from '@/i18n/client';
 
 interface ModalProps {
   isOpen: boolean;
@@ -12,6 +13,7 @@ interface ModalProps {
 }
 
 export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalProps) {
+  const tUi = useTranslations('ui.componentsUiModal');
   if (!isOpen) return null;
 
   const sizeClass = {
@@ -29,7 +31,7 @@ export function Modal({ isOpen, onClose, title, children, size = 'md' }: ModalPr
       <div className={`${sizeClass} w-full card-base animate-fade-in max-h-[90vh] flex flex-col`}>
         <div className="flex justify-between items-center px-6 pt-6 pb-4 border-b border-gray-800 flex-shrink-0">
           <h2 className="text-xl font-bold text-white">{title}</h2>
-          <button onClick={onClose} aria-label="Fermer" className={`text-gray-400 hover:text-white rounded-md ${ETAT_INTERACTIF_SANS_FOND}`}>
+          <button onClick={onClose} aria-label={tUi('fermer')} className={`text-gray-400 hover:text-white rounded-md ${ETAT_INTERACTIF_SANS_FOND}`}>
             <X size={20} />
           </button>
         </div>

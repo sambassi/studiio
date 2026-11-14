@@ -13,6 +13,7 @@ import {
 } from '@/lib/creer/brief-assistant';
 import { themeLabel } from '@/lib/themes';
 import { SEQUENCE_KEYS, type SequenceKey } from '@/lib/types/voice';
+import { useTranslations } from '@/i18n/client';
 
 /** « l'objectif », « le message »… — pour « Adapter l'objectif au thème Finance ». */
 const CHAMP_ARTICLE: Record<BriefKey, string> = {
@@ -86,6 +87,7 @@ export default function BriefVideo({
    */
   conseilDuree?: { message: string; recommandee: number } | null;
 }) {
+  const tUi = useTranslations('ui.componentsCreerBriefVideo');
   const listeSujets = useMemo(() => (sujets ?? []).filter((s) => s && s.trim()), [sujets]);
   const profil = useMemo(() => profilBrief(listeSujets), [listeSujets]);
   const placeholders = useMemo(() => placeholdersBrief(listeSujets), [listeSujets]);
@@ -176,13 +178,13 @@ export default function BriefVideo({
             className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-purple-500/40 px-2 py-1 text-[11px] text-purple-200 hover:text-white hover:border-purple-400 disabled:opacity-40 transition-colors"
           >
             <Sparkles className="w-3 h-3" />
-            M’aider à remplir
+            {tUi('m_aider_a_remplir')}
           </button>
         )}
       </div>
       {profil?.personnalise && (
         <p className="text-[11px] text-gray-500" data-brief-theme-personnalise>
-          Thème personnalisé : les exemples reprennent simplement vos mots « {profil.libelle} ».
+          {tUi('theme_personnalise_les_exemples_repren', { libelle: profil.libelle })}
         </p>
       )}
       {annonce && (
@@ -199,7 +201,7 @@ export default function BriefVideo({
           <div key={cle}>
             <div className="flex items-center justify-between gap-2 mb-1">
               <label htmlFor={id} className="block text-xs font-medium text-gray-300">
-                {BRIEF_LABELS[cle]}
+                {tUi.fr(BRIEF_LABELS[cle])}
                 <span className="text-gray-600 font-normal"> · facultatif</span>
               </label>
               {profil && (
@@ -211,7 +213,7 @@ export default function BriefVideo({
                   className="inline-flex items-center gap-1 text-[11px] text-purple-300 hover:text-white disabled:opacity-40 transition-colors"
                 >
                   <Wand2 className="w-3 h-3" />
-                  Suggérer
+                  {tUi('suggerer')}
                 </button>
               )}
             </div>
@@ -235,7 +237,7 @@ export default function BriefVideo({
                 data-brief-retablir={cle}
                 className="mt-1 text-[11px] text-gray-400 underline hover:text-white disabled:opacity-40"
               >
-                Rétablir mon texte
+                {tUi('retablir_mon_texte')}
               </button>
             )}
             {rapides.length > 0 && (
@@ -261,7 +263,7 @@ export default function BriefVideo({
                     data-brief-adapter={cle}
                     className="rounded-md border border-amber-500/40 px-2 py-0.5 text-[11px] text-amber-200 hover:text-white disabled:opacity-40"
                   >
-                    Adapter {CHAMP_ARTICLE[cle]} au thème {libelleTheme}
+                    Adapter {tUi.fr(CHAMP_ARTICLE[cle])} {tUi('au_theme')} {libelleTheme}
                   </button>
                   {onChangerTheme && (
                     <button
@@ -271,7 +273,7 @@ export default function BriefVideo({
                       data-brief-changer-theme
                       className="rounded-md border border-gray-700 px-2 py-0.5 text-[11px] text-gray-300 hover:text-white disabled:opacity-40"
                     >
-                      Changer le thème
+                      {tUi('changer_le_theme')}
                     </button>
                   )}
                   <button
@@ -280,7 +282,7 @@ export default function BriefVideo({
                     data-brief-continuer={cle}
                     className="rounded-md px-2 py-0.5 text-[11px] text-gray-500 hover:text-white"
                   >
-                    Continuer quand même
+                    {tUi('continuer_quand_meme')}
                   </button>
                 </div>
               </div>
@@ -292,7 +294,7 @@ export default function BriefVideo({
         <div className="space-y-2 pt-1" data-brief-duree-rythme>
           <div>
             <p className="text-xs font-medium text-gray-300 mb-1">
-              Durée souhaitée<span className="text-gray-600 font-normal"> · facultatif</span>
+              {tUi('duree_souhaitee')}<span className="text-gray-600 font-normal"> · facultatif</span>
             </p>
             <div className="flex flex-wrap items-center gap-1">
               {DUREES_BRIEF.map((d) => {
@@ -319,7 +321,7 @@ export default function BriefVideo({
                 data-brief-duree="personnalisee"
                 className={chip(dureePersonnalisee)}
               >
-                Personnalisée
+                {tUi('personnalisee')}
               </button>
               {dureePersonnalisee && (
                 <input
@@ -333,7 +335,7 @@ export default function BriefVideo({
                     if (Number.isFinite(n) && n >= DUREE_BRIEF_MIN && n <= DUREE_BRIEF_MAX) poserDuree(Math.round(n));
                   }}
                   disabled={disabled}
-                  aria-label="Durée personnalisée en secondes"
+                  aria-label={tUi('duree_personnalisee_en_secondes')}
                   data-brief-duree-libre
                   className="w-16 rounded-md bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none px-1.5 py-0.5 text-[11px]"
                 />
@@ -350,7 +352,7 @@ export default function BriefVideo({
                   data-brief-conseil-duree-appliquer
                   className="shrink-0 rounded-md border border-amber-500/40 px-1.5 py-0.5 text-amber-200 hover:bg-amber-500/10"
                 >
-                  Passer à {conseilDuree.recommandee} s
+                  {tUi('passer_a_recommandee_s', { recommandee: conseilDuree.recommandee })}
                 </button>
               </div>
             )}
@@ -406,17 +408,18 @@ export function NarrationRecap({
   onModifier?: () => void;
   brief?: VideoBrief;
 }) {
+  const tUi = useTranslations('ui.componentsCreerBriefVideo');
   const lignes = textes
     ? SEQUENCE_KEYS.map((k) => [k, (textes[k] ?? '').trim()] as const).filter(([, t]) => t.length > 0)
     : [];
   return (
     <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-3 space-y-2" data-brief-narration>
-      <div className="text-sm font-medium text-white">Ce que la vidéo dira</div>
+      <div className="text-sm font-medium text-white">{tUi('ce_que_la_video_dira')}</div>
       {lignes.length > 0 ? (
         <ul className="space-y-1.5">
           {lignes.map(([k, t]) => (
             <li key={k} className="text-xs" data-brief-narration-sequence={k}>
-              <span className="text-[10px] uppercase tracking-wider text-gray-500 mr-1.5">{SEQUENCE_LABELS[k]}</span>
+              <span className="text-[10px] uppercase tracking-wider text-gray-500 mr-1.5">{tUi.fr(SEQUENCE_LABELS[k])}</span>
               <span className="text-gray-300">{t}</span>
             </li>
           ))}
@@ -425,8 +428,8 @@ export function NarrationRecap({
         <p className="flex items-start gap-1.5 text-[11px] text-gray-500" data-brief-narration-vide>
           <Info className="w-3 h-3 mt-0.5 shrink-0" />
           <span>
-            La narration est pré-remplie à partir du contenu généré à l’étape Contenu
-            {briefRempli(brief) ? ', en tenant compte de ce brief' : ''}. Rien n’est généré ni facturé ici.
+            {tUi('la_narration_est_pre_remplie_a_partir')}
+            {briefRempli(brief) ? ', en tenant compte de ce brief' : ''}{tUi('rien_n_est_genere_ni_facture_ici')}
           </span>
         </p>
       )}
@@ -438,7 +441,7 @@ export function NarrationRecap({
           className="inline-flex items-center gap-1.5 text-[11px] text-purple-300 hover:text-white transition-colors"
         >
           <Pencil className="w-3 h-3" />
-          Modifier le texte de la narration (étape Contenu)
+          {tUi('modifier_le_texte_de_la_narration_etap')}
         </button>
       )}
     </div>
@@ -463,6 +466,7 @@ export function BriefRecurrentRecap({ brief, sujets, admin = false }: {
   /** Montre le score brut de cohérence (diagnostic). */
   admin?: boolean;
 }) {
+  const tUi = useTranslations('ui.componentsCreerBriefVideo');
   const rempli = briefRempli(brief);
   const liste = (sujets ?? []).filter((s) => s && s.trim());
   const coherence = analyserCoherenceBrief(liste, brief);
@@ -477,7 +481,7 @@ export function BriefRecurrentRecap({ brief, sujets, admin = false }: {
     const v = (brief[k] ?? '').trim();
     if (v) lignes.push({ cle: k, libelle: LIBELLES_COURTS[k], valeur: brief[k] as string, attr: { 'data-autopilot-brief-recap-champ': k } });
   }
-  if (brief.duree) lignes.push({ cle: 'duree', libelle: 'Durée', valeur: `${brief.duree} s`, attr: { 'data-autopilot-brief-recap-duree': true } });
+  if (brief.duree) lignes.push({ cle: 'duree', libelle: tUi('duree'), valeur: `${brief.duree} s`, attr: { 'data-autopilot-brief-recap-duree': true } });
   if (brief.rythme) lignes.push({ cle: 'rythme', libelle: 'Rythme', valeur: RYTHME_LABELS[brief.rythme], attr: { 'data-autopilot-brief-recap-rythme': true } });
   return (
     <div
@@ -487,7 +491,7 @@ export function BriefRecurrentRecap({ brief, sujets, admin = false }: {
       data-brief-score={coherence.score ?? ''}
     >
       <div className="flex items-center gap-1.5">
-        <div className="text-sm font-medium text-white">Ce que dira chaque vidéo</div>
+        <div className="text-sm font-medium text-white">{tUi('ce_que_dira_chaque_video')}</div>
         {coherence.niveau === 'bonne' && (
           <span
             className="ml-auto inline-flex items-center gap-1 text-[11px] text-emerald-400 order-last"
@@ -495,21 +499,20 @@ export function BriefRecurrentRecap({ brief, sujets, admin = false }: {
             title={`Brief cohérent avec ${liste.length > 1 ? 'les thèmes choisis' : `le thème ${coherence.sujet}`}`}
           >
             <CheckCircle2 className="w-3 h-3" aria-hidden="true" />
-            Cohérent
+            {tUi('coherent')}
           </span>
         )}
-        <InfoBulle label="En savoir plus sur ce que dira chaque vidéo" titre="Ce que dira chaque vidéo" marqueur="brief-recap">
+        <InfoBulle label={tUi('en_savoir_plus_sur_ce_que_dira_chaque')} titre={tUi('ce_que_dira_chaque_video')} marqueur="brief-recap">
           <span className="block" data-autopilot-brief-recap-note>
-            La narration exacte de chaque vidéo est produite à chaque cycle, à partir de ce brief et du
-            sujet du jour. Aucun audio n’existe avant le rendu — rien n’est généré ni facturé ici.
+            {tUi('la_narration_exacte_de_chaque_video_es')}
           </span>
           {coherence.niveau === 'bonne' && (
             <span className="block text-emerald-400">
-              Brief cohérent avec {liste.length > 1 ? 'les thèmes choisis' : `le thème ${coherence.sujet}`}.
+              {tUi('brief_coherent_avec')} {liste.length > 1 ? tUi('les_themes_choisis') : tUi('le_theme_sujet', { sujet: coherence.sujet })}.
             </span>
           )}
           {admin && coherence.score !== null && (
-            <span className="block text-[10px] text-gray-500" data-autopilot-brief-recap-score>Score de cohérence (admin) : {coherence.score}/100</span>
+            <span className="block text-[10px] text-gray-500" data-autopilot-brief-recap-score>{tUi('score_de_coherence_admin_score_100', { score: coherence.score })}</span>
           )}
         </InfoBulle>
       </div>
@@ -528,7 +531,7 @@ export function BriefRecurrentRecap({ brief, sujets, admin = false }: {
       )}
       {!rempli && (
         <p className="text-[11px] text-gray-500" data-autopilot-brief-recap-vide>
-          Aucun brief : chaque vidéo ne dira que ce que son sujet du jour inspire.
+          {tUi('aucun_brief_chaque_video_ne_dira_que_c')}
         </p>
       )}
       {coherence.niveau === 'a-verifier' && (
@@ -537,12 +540,12 @@ export function BriefRecurrentRecap({ brief, sujets, admin = false }: {
           <span>
             {coherence.conflits[0]
               ? `Une incohérence a été détectée entre le sujet ${coherence.sujet} et ${CHAMP_ARTICLE[coherence.conflits[0].champ]} « ${brief[coherence.conflits[0].champ]} ».`
-              : `Brief à vérifier : il parle peu du sujet ${coherence.sujet}.`}
+              : tUi('brief_a_verifier_il_parle_peu_du_sujet', { sujet: coherence.sujet })}
           </span>
         </p>
       )}
       {/* Information de COÛT : jamais masquée, en une ligne. */}
-      <p className="text-[11px] text-gray-500" data-autopilot-brief-recap-cout>Aucun coût à cette étape</p>
+      <p className="text-[11px] text-gray-500" data-autopilot-brief-recap-cout>{tUi('aucun_cout_a_cette_etape')}</p>
     </div>
   );
 }

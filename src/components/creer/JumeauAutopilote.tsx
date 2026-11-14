@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Loader2, Check, UserSquare2, AlertTriangle } from 'lucide-react';
 import { lireEtatJumeau, type EtatJumeau } from '@/lib/creer/jumeau';
 import { libelleAvatarActif } from '@/lib/avatar/identite';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * MON JUMEAU DANS L'AUTOPILOTE — le meme etat serveur que le bloc de Creer
@@ -45,6 +46,7 @@ export default function JumeauAutopilote(props: {
   avatarId?: string | null;
   onAvatarIdChange?: (avatarId: string | null) => void;
 }) {
+  const tUi = useTranslations('ui.componentsCreerJumeauAutopilote');
   const [etat, setEtat] = useState<EtatJumeau | null | 'chargement'>('chargement');
   useEffect(() => {
     let vivant = true;
@@ -67,38 +69,37 @@ export default function JumeauAutopilote(props: {
   return (
     <div data-jumeau-autopilote className="rounded-xl border border-white/10 bg-gray-900/60 p-4 space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 font-semibold text-sm"><UserSquare2 className="w-4 h-4" /> Mon jumeau</div>
+        <div className="flex items-center gap-2 font-semibold text-sm"><UserSquare2 className="w-4 h-4" /> {tUi('mon_jumeau')}</div>
         <label className={`flex items-center gap-2 text-sm ${pret ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}>
           <input
             type="checkbox"
             role="switch"
             data-jumeau-autopilote-interrupteur
-            aria-label="Utiliser mon jumeau"
+            aria-label={tUi('utiliser_mon_jumeau')}
             checked={props.actif && pret}
             disabled={!pret}
             onChange={(e) => props.onChange(e.target.checked && pret, voixId)}
             className="h-4 w-4 accent-purple-500"
           />
-          Utiliser mon jumeau
+          {tUi('utiliser_mon_jumeau')}
         </label>
       </div>
 
       {(etat === 'chargement' || voixEnAttente) && (
         <div className="text-xs text-gray-500 flex items-center gap-1.5" data-jumeau-autopilote-etat="chargement">
-          <Loader2 className="w-3.5 h-3.5 animate-spin" /> Vérification de votre jumeau…
+          <Loader2 className="w-3.5 h-3.5 animate-spin" /> {tUi('verification_de_votre_jumeau')}
         </div>
       )}
       {etat === null && (
         <div data-jumeau-autopilote-etat="indisponible" className="text-xs text-gray-400">
-          Votre jumeau n’a pas pu être vérifié pour le moment.
+          {tUi('votre_jumeau_n_a_pas_pu_etre_verifie_p')}
         </div>
       )}
       {jumeau && !voixEnAttente && !voixReliee && (
         <div data-jumeau-autopilote-etat="voix_non_reliee" className="text-xs space-y-1">
-          <div className="text-amber-200 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" /> La voix de votre jumeau doit être vérifiée</div>
+          <div className="text-amber-200 flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5" /> {tUi('la_voix_de_votre_jumeau_doit_etre_veri')}</div>
           <div className="text-gray-300">
-            Votre jumeau est prêt, mais sa voix (« {jumeau.voix.nom} ») n’est pas dans la liste des voix clonées de votre compte :
-            l’Autopilote ne peut pas la poser. Rechargez la page ou vérifiez votre voix dans Mon avatar.
+            {tUi('votre_jumeau_est_pret_mais_sa_voix_nom', { nom: jumeau.voix.nom })}
           </div>
         </div>
       )}
@@ -107,11 +108,11 @@ export default function JumeauAutopilote(props: {
           {/* Le titre dit CE QUI est prêt ici : la voix, pour la narration —
               pas « votre jumeau », qui laisserait croire à l'avatar à l'image
               que la ligne suivante dément. */}
-          <div className="text-emerald-300 flex items-center gap-1.5"><Check className="w-3.5 h-3.5" /> Voix du jumeau prête pour la narration</div>
+          <div className="text-emerald-300 flex items-center gap-1.5"><Check className="w-3.5 h-3.5" /> {tUi('voix_du_jumeau_prete_pour_la_narration')}</div>
           {/* Relu à CHAQUE génération côté serveur : aucune version n'est figée dans la configuration. */}
           <div className="text-gray-300"><span data-jumeau-autopilote-avatar-actif={jumeau.avatar.version}>{libelleAvatarActif(jumeau.avatar.version)}</span> · Voix : {jumeau.voix.nom}</div>
           <div className="text-gray-400">
-            Avec l’interrupteur, la narration de chaque vidéo produite par l’Autopilote est dite avec cette voix.
+            {tUi('avec_l_interrupteur_la_narration_de_ch')}
           </div>
 
           {/* ── La VIDÉO du jumeau, montée dans les montages ─────────────── */}
@@ -122,21 +123,21 @@ export default function JumeauAutopilote(props: {
                   type="checkbox"
                   role="switch"
                   data-jumeau-autopilote-avatar
-                  aria-label="Monter la vidéo de mon jumeau"
+                  aria-label={tUi('monter_la_video_de_mon_jumeau')}
                   checked={!!props.avatarActif}
                   onChange={(e) => props.onAvatarChange?.(e.target.checked)}
                   className="h-4 w-4 accent-purple-500"
                 />
-                <span className="text-emerald-200 font-medium">Monter la vidéo de mon jumeau</span>
+                <span className="text-emerald-200 font-medium">{tUi('monter_la_video_de_mon_jumeau')}</span>
               </label>
               {props.onAvatarIdChange && (
                 <SelecteurAvatar avatarId={props.avatarId ?? null} onChange={props.onAvatarIdChange} />
               )}
               <div className="text-gray-400">
-                Votre avatar parlant (sur votre voix clonée) devient la séquence « Vidéo » des montages produits — « Produire maintenant » et les générations programmées, même page fermée.
+                {tUi('votre_avatar_parlant_sur_votre_voix_cl')}
               </div>
               <div className="text-gray-500">
-                Chaque montage génère alors un avatar (facturé en plus du rendu) et arrive dans le Calendrier quelques minutes après. En cas d’échec, le montage sort sans l’avatar et le signale.
+                {tUi('chaque_montage_genere_alors_un_avatar')}
               </div>
             </div>
           )}
@@ -144,7 +145,7 @@ export default function JumeauAutopilote(props: {
             <div className="flex items-start gap-1.5 text-gray-500" data-jumeau-autopilote-video="migration">
               <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-300/80" />
               <span>
-                La vidéo du jumeau est disponible sur le serveur, mais le réglage n’est pas encore enregistrable (migration <code>2026-09-23-autopilot-jumeau.sql</code> à appliquer).
+                {tUi('la_video_du_jumeau_est_disponible_sur')} <code>2026-09-23-autopilot-jumeau.sql</code> {tUi('a_appliquer')}
               </span>
             </div>
           )}
@@ -153,7 +154,7 @@ export default function JumeauAutopilote(props: {
               <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-300/80" />
               <span>
                 {etatLu?.messageMoteur
-                  || 'La vidéo de votre avatar n’est pas disponible sur ce serveur pour le moment — la voix reste utilisable pour la narration.'}
+                  || tUi('la_video_de_votre_avatar_n_est_pas_dis')}
               </span>
             </div>
           )}
@@ -161,7 +162,7 @@ export default function JumeauAutopilote(props: {
       )}
       {etat !== 'chargement' && etat && !etat.pret && (
         <div data-jumeau-autopilote-etat={etat.motif ?? 'inconnu'} className="text-xs space-y-1">
-          <div className="text-gray-300">{etat.message || 'Votre jumeau n’est pas prêt.'}</div>
+          <div className="text-gray-300">{etat.message || tUi('votre_jumeau_n_est_pas_pret')}</div>
         </div>
       )}
 
@@ -170,7 +171,7 @@ export default function JumeauAutopilote(props: {
         data-jumeau-autopilote-lien
         className="inline-block text-xs text-purple-300 hover:text-purple-200 underline underline-offset-2"
       >
-        Gérer mon avatar
+        {tUi('gerer_mon_avatar')}
       </Link>
     </div>
   );

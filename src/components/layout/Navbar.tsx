@@ -7,6 +7,7 @@ import { signOut, useSession } from 'next-auth/react';
 import { Bell, User, LogOut, Shield, Zap, AlertTriangle } from 'lucide-react';
 import { useTranslations } from '@/i18n/client';
 import { LanguageSelector } from '@/components/LanguageSelector';
+import { localiserNotification } from '@/lib/notifications/affichage';
 import { ETAT_INTERACTIF_SANS_FOND } from '@/lib/ui/etats';
 
 const ADMIN_EMAILS = ['contact.artboost@gmail.com', 'bassicustomshoes@gmail.com'];
@@ -36,10 +37,12 @@ function anciennete(iso: string, now: number): string {
 }
 
 export function Navbar() {
+  const tUi = useTranslations('ui.componentsLayoutNavbar');
   const router = useRouter();
   const { data: session } = useSession();
   const isAdmin = ADMIN_EMAILS.includes(session?.user?.email?.toLowerCase() || '');
   const t = useTranslations('navbar');
+  const tNotif = useTranslations('notifications');
   const [credits, setCredits] = useState<number | null>(null);
   /** Renseigne quand le compte ne consomme pas de credits Studiio. */
   const [libelleFacturation, setLibelleFacturation] = useState<string | null>(null);
@@ -134,7 +137,7 @@ export function Navbar() {
             <button
               onClick={() => router.push('/dashboard/billing')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-600/20 border border-purple-500/40 text-purple-200 hover:bg-purple-600/30 text-sm font-semibold ${ETAT_INTERACTIF_SANS_FOND}`}
-              title="Crédits restants"
+              title={tUi('credits_restants')}
             >
               <Zap size={14} className="text-purple-300" />
               {credits}
@@ -144,7 +147,7 @@ export function Navbar() {
             <span
               data-facturation-libelle
               className="px-3 py-1.5 rounded-full border border-gray-700 text-gray-400 text-xs font-medium"
-              title="Ce compte ne consomme pas de crédits Studiio"
+              title={tUi('ce_compte_ne_consomme_pas_de_credits_s')}
             >
               {libelleFacturation}
             </span>
@@ -193,7 +196,7 @@ export function Navbar() {
                 </p>
                 {notifications.length === 0 ? (
                   <p className="px-3 py-6 text-center text-xs text-gray-500">
-                    Rien à signaler.
+                    {tUi('rien_a_signaler')}
                   </p>
                 ) : (
                   <ul>
@@ -211,9 +214,9 @@ export function Navbar() {
                           <span className="flex items-start gap-2">
                             <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-400" />
                             <span className="min-w-0">
-                              <span className="block text-xs font-medium text-gray-100">{n.title}</span>
+                              <span className="block text-xs font-medium text-gray-100">{localiserNotification(n, tNotif).title}</span>
                               {n.body && (
-                                <span className="block text-[11px] text-gray-400 mt-0.5">{n.body}</span>
+                                <span className="block text-[11px] text-gray-400 mt-0.5">{localiserNotification(n, tNotif).body}</span>
                               )}
                               <span className="block text-[10px] text-gray-600 mt-1">
                                 {anciennete(n.createdAt, Date.now())}
