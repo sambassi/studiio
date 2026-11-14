@@ -25,10 +25,20 @@
     "errorOccurred": "Fili kɛra",
     "submit": "Ci",
     "status": {
-      "completed": "Banna"
+      "completed": "Banna",
+      "published": "Jɛnsɛn banna",
+      "scheduled": "Ɲɛsigi banna"
     },
     "video": "Vidéo",
-    "videos": "Vidéow"
+    "videos": "Vidéow",
+    "next": "Nɔkanda",
+    "publish": "Jɛnsɛn",
+    "sort": "Woloma",
+    "filter": "Tɛntɛn",
+    "retry": "Lajɛ tugun",
+    "credits": "juru",
+    "success": "Sanga",
+    "perMonth": "/kalo"
   },
   "sidebar": {
     "create": "Da",
@@ -46,7 +56,8 @@
       "delete": "A bɔ"
     },
     "status": {
-      "completed": "Banna"
+      "completed": "Banna",
+      "published": "Jɛnsɛn banna"
     },
     "typeLabels": {
       "video": "Vidéo"
@@ -58,7 +69,10 @@
     "login": {
       "or": "Walima",
       "password": "Gundo daɲɛ",
-      "submit": "Don"
+      "submit": "Don",
+      "title": "Don",
+      "connecting": "Don",
+      "email": "Email"
     },
     "signup": {
       "login": "Don"
@@ -72,24 +86,41 @@
   },
   "assistant": {
     "close": "Datugu",
-    "send": "Ci"
+    "send": "Ci",
+    "title": "Studiio dɛmɛkɛla"
   },
   "calendar": {
     "fullPreview": {
       "close": "Datugu",
-      "edit": "Yɛlɛma"
+      "edit": "Yɛlɛma",
+      "music": "Fɔli",
+      "schedule": "Ɲɛsigi"
     },
     "actions": {
       "edit": "Yɛlɛma",
       "delete": "A bɔ"
     },
     "editModal": {
-      "save": "A mara"
+      "save": "A mara",
+      "time": "Waati",
+      "scheduled": "Ɲɛsigilen"
     },
     "aiAgent": {
       "stages": {
         "done": "Banna !"
+      },
+      "objectives": {
+        "label": "Laɲiniw"
       }
+    },
+    "stats": {
+      "published": "Jɛnsɛn banna",
+      "scheduled": "Ɲɛsigi banna"
+    },
+    "bulkDelete": "A bɔ",
+    "status": {
+      "scheduled": "Ɲɛsigilen",
+      "published": "Jɛnsɛnnen"
     }
   },
   "social": {
@@ -125,20 +156,47 @@
     "rushVideos": {
       "add": "Fara"
     },
-    "change": "Yɛlɛma"
+    "change": "Yɛlɛma",
+    "objective": {
+      "createObjective": "+ Laɲini da",
+      "title": "Laɲini"
+    },
+    "addLogo": "Logo fara",
+    "credits": "Juru 15",
+    "title": "Vidéo da",
+    "textCards": {
+      "color": "Ɲɛ"
+    },
+    "summary": {
+      "videos": "Vidéow"
+    }
   },
   "objectives": {
     "form": {
       "name": "Tɔgɔ"
+    },
+    "title": "Laɲiniw",
+    "newObjective": "Laɲini kura",
+    "createObjective": "+ Laɲini da",
+    "editObjective": "Laɲini yɛlɛma",
+    "labels": {
+      "audience": "Jama"
     }
   },
   "audioStudio": {
     "timeline": {
-      "video": "Vidéo"
+      "video": "Vidéo",
+      "music": "Fɔli",
+      "voice": "Kan"
     },
     "export": {
-      "error": "Fili"
-    }
+      "error": "Fili",
+      "done": "Banna !"
+    },
+    "music": {
+      "title": "FƆLI"
+    },
+    "nextVideo": "Nɔkanda"
   },
   "infographic": {
     "preview": {
@@ -156,18 +214,33 @@
     },
     "posterPhoto": {
       "remove": "A bɔ"
+    },
+    "creditsInfo": {
+      "single": "juru 25",
+      "batch": "juru 250 (vidéow 10)"
     }
   },
   "landing": {
     "nav": {
-      "login": "Don"
+      "login": "Don",
+      "pricing": "Sɔngɔ"
+    },
+    "footer": {
+      "pricing": "Sɔngɔ"
+    },
+    "pricing": {
+      "creditsPerMonth": "juru/kalo"
+    },
+    "hero": {
+      "cta2": "Démo filɛ"
     }
   },
   "ui": {
     "appDashboardAvatar": {
       "creer_une_video": "Vidéo da",
       "modifier": "Yɛlɛma",
-      "video": "vidéo"
+      "video": "vidéo",
+      "ma_voix": "N ka kan"
     },
     "appDashboardCalendar": {
       "annuler": "A bali",
@@ -178,7 +251,18 @@
       "annuler": "A bali"
     },
     "appDashboardCreerAssistantWizard": {
-      "annuler": "A bali"
+      "annuler": "A bali",
+      "cette_video": "nin vidéo",
+      "ces_videos": "nin vidéow"
+    }
+  },
+  "billing": {
+    "tableHeaders": {
+      "credits": "Juruw"
+    },
+    "buyCredits": "Juru san",
+    "transactions": {
+      "buyCredits": "Juru {count} san"
     }
   }
 }

@@ -318,5 +318,221 @@
  "ui.appDashboardCreerAssistantWizard.annuler": {
   "c": "h",
   "s": "corpus:corpus-bm.json (Cancel => A bali) ; out/bm-core.json"
+ },
+ "common.next": {
+  "c": "h",
+  "s": "glossaire:suivant"
+ },
+ "common.publish": {
+  "c": "m",
+  "s": "glossaire:publier"
+ },
+ "common.sort": {
+  "c": "h",
+  "s": "glossaire:trier"
+ },
+ "common.filter": {
+  "c": "h",
+  "s": "glossaire:filtrer"
+ },
+ "common.retry": {
+  "c": "m",
+  "s": "core:bm-core"
+ },
+ "common.credits": {
+  "c": "m",
+  "s": "glossaire:crédits"
+ },
+ "billing.tableHeaders.credits": {
+  "c": "m",
+  "s": "glossaire:crédits + pluriel -w"
+ },
+ "common.success": {
+  "c": "h",
+  "s": "glossaire:succès"
+ },
+ "common.perMonth": {
+  "c": "h",
+  "s": "glossaire:mois"
+ },
+ "common.status.published": {
+  "c": "m",
+  "s": "glossaire:publier + terminé"
+ },
+ "calendar.stats.published": {
+  "c": "m",
+  "s": "glossaire:publier + terminé"
+ },
+ "library.status.published": {
+  "c": "m",
+  "s": "glossaire:publier + terminé"
+ },
+ "common.status.scheduled": {
+  "c": "m",
+  "s": "glossaire:planifier + terminé"
+ },
+ "calendar.stats.scheduled": {
+  "c": "m",
+  "s": "glossaire:planifier + terminé"
+ },
+ "auth.login.title": {
+  "c": "m",
+  "s": "core:bm-core (connexion)"
+ },
+ "auth.login.connecting": {
+  "c": "m",
+  "s": "core:bm-core (connexion)"
+ },
+ "auth.login.email": {
+  "c": "m",
+  "s": "emprunt d'usage"
+ },
+ "ui.appDashboardAvatar.ma_voix": {
+  "c": "m",
+  "s": "glossaire:voix + possessif n ka"
+ },
+ "objectives.title": {
+  "c": "m",
+  "s": "glossaire:objectif + pluriel -w"
+ },
+ "calendar.aiAgent.objectives.label": {
+  "c": "m",
+  "s": "glossaire:objectif + pluriel -w"
+ },
+ "objectives.newObjective": {
+  "c": "m",
+  "s": "glossaire:objectif, nouveau"
+ },
+ "objectives.createObjective": {
+  "c": "m",
+  "s": "glossaire:objectif, créer"
+ },
+ "creator.objective.createObjective": {
+  "c": "m",
+  "s": "glossaire:objectif, créer"
+ },
+ "objectives.editObjective": {
+  "c": "m",
+  "s": "glossaire:objectif, modifier"
+ },
+ "objectives.labels.audience": {
+  "c": "m",
+  "s": "glossaire:public"
+ },
+ "billing.buyCredits": {
+  "c": "m",
+  "s": "glossaire:crédits, acheter"
+ },
+ "billing.transactions.buyCredits": {
+  "c": "m",
+  "s": "glossaire:crédits, acheter"
+ },
+ "assistant.title": {
+  "c": "m",
+  "s": "glossaire:assistant"
+ },
+ "calendar.bulkDelete": {
+  "c": "m",
+  "s": "core:common.delete"
+ },
+ "calendar.editModal.time": {
+  "c": "h",
+  "s": "glossaire:heure"
+ },
+ "calendar.editModal.scheduled": {
+  "c": "m",
+  "s": "glossaire:planifier+len"
+ },
+ "calendar.status.scheduled": {
+  "c": "m",
+  "s": "glossaire:planifier+len"
+ },
+ "calendar.status.published": {
+  "c": "m",
+  "s": "glossaire:publier+nen"
+ },
+ "calendar.fullPreview.music": {
+  "c": "h",
+  "s": "glossaire:musique"
+ },
+ "calendar.fullPreview.schedule": {
+  "c": "h",
+  "s": "glossaire:planifier"
+ },
+ "creator.addLogo": {
+  "c": "m",
+  "s": "glossaire:ajouter"
+ },
+ "creator.credits": {
+  "c": "m",
+  "s": "glossaire:crédits"
+ },
+ "creator.objective.title": {
+  "c": "h",
+  "s": "glossaire:objectif"
+ },
+ "creator.title": {
+  "c": "m",
+  "s": "core:dashboardHome.createVideo"
+ },
+ "creator.textCards.color": {
+  "c": "h",
+  "s": "glossaire:couleur"
+ },
+ "creator.summary.videos": {
+  "c": "m",
+  "s": "core:common.videos"
+ },
+ "audioStudio.music.title": {
+  "c": "h",
+  "s": "glossaire:musique"
+ },
+ "audioStudio.timeline.music": {
+  "c": "h",
+  "s": "glossaire:musique"
+ },
+ "audioStudio.timeline.voice": {
+  "c": "h",
+  "s": "glossaire:voix"
+ },
+ "audioStudio.nextVideo": {
+  "c": "m",
+  "s": "glossaire:suivant"
+ },
+ "audioStudio.export.done": {
+  "c": "m",
+  "s": "core:completed"
+ },
+ "landing.nav.pricing": {
+  "c": "h",
+  "s": "glossaire:prix"
+ },
+ "landing.footer.pricing": {
+  "c": "h",
+  "s": "glossaire:prix"
+ },
+ "landing.pricing.creditsPerMonth": {
+  "c": "m",
+  "s": "glossaire:crédits, mois"
+ },
+ "infographic.creditsInfo.single": {
+  "c": "m",
+  "s": "glossaire:crédits"
+ },
+ "infographic.creditsInfo.batch": {
+  "c": "m",
+  "s": "glossaire:crédits ; core:vidéow"
+ },
+ "landing.hero.cta2": {
+  "c": "m",
+  "s": "core:filɛ (voir) ; emprunt démo"
+ },
+ "ui.appDashboardCreerAssistantWizard.cette_video": {
+  "c": "m",
+  "s": "savoir:nin (ce) ; core:vidéo"
+ },
+ "ui.appDashboardCreerAssistantWizard.ces_videos": {
+  "c": "m",
+  "s": "savoir:nin ; core:vidéow"
  }
 }

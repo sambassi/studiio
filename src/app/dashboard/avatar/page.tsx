@@ -301,7 +301,7 @@ export default function AvatarPage() {
     cle: 'voix_manquante',
     niveau: 'avertissement',
     titre: tUi('votre_voix_personnelle_est_necessaire'),
-    detail: "L'aperçu fait parler votre avatar avec votre voix. Ajoutez ou choisissez-la dans « Ma voix ».",
+    detail: tUi('l_apercu_fait_parler_votre_avatar_avec'),
     // L'onglet « Voix & Prononciation » est d'abord AFFICHÉ (rendu synchrone), puis on y descend.
     action: { libelle: tUi('configurer_ma_voix'), onClick: () => { flushSync(() => setOnglet('voix')); maVoixRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); maVoixRef.current?.focus(); } },
   });
@@ -457,7 +457,7 @@ export default function AvatarPage() {
       });
       const json = await res.json();
       if (!json.success) { setError(json.error || 'La validation a échoué.'); await loadAvatar(false); return; }
-      setNotification({ niveau: 'succes', titre: tUi('avatar_valide'), detail: 'Il est prêt pour vos vidéos.', action: { libelle: tUi('creer_une_video'), onClick: () => window.location.assign('/dashboard/creer') }, actionSecondaire: true });
+      setNotification({ niveau: 'succes', titre: tUi('avatar_valide'), detail: tUi('il_est_pret_pour_vos_videos'), action: { libelle: tUi('creer_une_video'), onClick: () => window.location.assign('/dashboard/creer') }, actionSecondaire: true });
       setApercuOuvert(null);
       setApercuVisible(false);
       await loadAvatar(false);
@@ -761,7 +761,7 @@ export default function AvatarPage() {
             setNotification({
               niveau: 'succes',
               titre: tUi('votre_apercu_est_pret'),
-              detail: 'Regardez-le jusqu’au bout : le bouton « Valider mon avatar » apparaît dès que la lecture démarre.',
+              detail: tUi('regardez_le_jusqu_au_bout_le_bouton_va'),
             });
           }
           return;
@@ -1088,12 +1088,12 @@ export default function AvatarPage() {
     return { titre: tUi('l_entrainement_n_a_pas_abouti'), texte: tUi('changez_de_source_et_reessayez_avec_un') };
   })();
   const conseilsSource: string[] = kind === 'photo'
-    ? ['portrait net', 'visage de face', tUi('pas_de_masque_ni_lunettes_de_soleil'), tUi('bonne_lumiere'), tUi('visage_entier_non_coupe')]
+    ? [tUi('portrait_net'), tUi('visage_de_face'), tUi('pas_de_masque_ni_lunettes_de_soleil'), tUi('bonne_lumiere'), tUi('visage_entier_non_coupe')]
     : didVideoActif ? [] : [tUi('visage_de_face_bien_eclaire_en_train_d'), tUi('arriere_plan_calme_et_peu_de_mouvement'), tUi('c_est_la_limite_d_envoi_pensez_a_compr')];
 
   /** La notification affichée : celle de la page, sinon l'échec d'entraînement HeyGen (qui a sa sortie). */
   const notificationAffichee: NotificationPage | null = notification ?? (!viaDid && trainingFailed
-    ? { niveau: 'erreur', titre: tUi('l_entrainement_de_votre_avatar_n_a_pas'), detail: "La source n'a pas permis de créer l'avatar. Réessayez avec une autre photo : portrait net, de face, bien éclairé.", motif: avatar?.training_error && !trahitUnFournisseur(avatar.training_error) ? avatar.training_error : null, action: { libelle: 'Changer de source', onClick: changerDeSource } }
+    ? { niveau: 'erreur', titre: tUi('l_entrainement_de_votre_avatar_n_a_pas'), detail: tUi('la_source_n_a_pas_permis_de_creer_l_av'), motif: avatar?.training_error && !trahitUnFournisseur(avatar.training_error) ? avatar.training_error : null, action: { libelle: 'Changer de source', onClick: changerDeSource } }
     : null);
 
   /**
@@ -1169,12 +1169,12 @@ export default function AvatarPage() {
       const relance = { onClick: genererApercu, disabled: apercuEnCours || !apercu, principale: notification?.cle !== 'voix_manquante', attributs: { 'data-avatar-apercu': 'generer' } as const };
       if (!apercu || apercu.statut === 'aucun') return { titre: tUi('apercu_de_validation'), ratio: '9 / 16', media: null, etat: { statut: 'vide', message: tUi('apercu_de_validation_offert_une_courte'), action: { libelle: apercuEnCours ? 'Lancement de l’aperçu…' : 'Générer mon aperçu', ...relance } } };
       if (apercu.statut === 'echec') return { titre: tUi('apercu_de_validation'), ratio: '9 / 16', media: null, etat: { statut: 'erreur', message: tUi('l_apercu_n_a_pas_pu_etre_genere_vous_p'), detail: apercu.erreur ?? undefined, action: { libelle: tUi('relancer_l_apercu'), ...relance } } };
-      if (apercu.statut === 'en_cours') return { titre: tUi('apercu_de_validation'), ratio: '9 / 16', media: null, etat: { statut: 'chargement', message: tUi('votre_apercu_est_en_cours_de_generatio'), detail: 'Cela prend généralement 1 à 5 minutes. Cette page se met à jour toute seule.' } };
+      if (apercu.statut === 'en_cours') return { titre: tUi('apercu_de_validation'), ratio: '9 / 16', media: null, etat: { statut: 'chargement', message: tUi('votre_apercu_est_en_cours_de_generatio'), detail: tUi('cela_prend_generalement_1_a_5_minutes') } };
       // `indisponible` : la génération est terminée mais sa vidéo n'a pas pu être
       // conservée (ré-hébergement échoué). Côté serveur c'est définitif pour cette
       // version : relire ne répare rien, relancer est refusé. La seule sortie réelle
       // est une nouvelle source (nouvelle version → nouvel aperçu, offert).
-      if (apercu.statut === 'indisponible') return { titre: tUi('apercu_de_validation'), ratio: '9 / 16', media: null, etat: { statut: 'erreur', message: tUi('l_apercu_a_ete_genere_mais_sa_video_n'), detail: 'Importez une nouvelle source : un nouvel aperçu vous sera offert.', action: { libelle: 'Changer de source', onClick: changerDeSource } } };
+      if (apercu.statut === 'indisponible') return { titre: tUi('apercu_de_validation'), ratio: '9 / 16', media: null, etat: { statut: 'erreur', message: tUi('l_apercu_a_ete_genere_mais_sa_video_n'), detail: tUi('importez_une_nouvelle_source_un_nouvel'), action: { libelle: 'Changer de source', onClick: changerDeSource } } };
       // `pret` : d'abord la source et « Voir mon aperçu » ; puis la VRAIE vidéo, et « Valider » seulement après le démarrage réel de la lecture.
       if (!apercuVisible) return { titre: tUi('apercu_de_validation'), ratio: ratioSource, media: mediaSource, etat: { statut: 'pret', legende: tUi('votre_apercu_est_pret'), actionSuivante: { libelle: tUi('voir_mon_apercu'), onClick: voirApercu, attributs: { 'data-avatar-apercu': 'voir' } } } };
       const ouvert = !!apercuOuvert && apercuOuvert.generationId === apercu.generationId;
@@ -1430,8 +1430,8 @@ export default function AvatarPage() {
             <div className="space-y-5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {([
-                  { id: 'photo' as const, Icon: ImageIcon, title: tUi('a_partir_d_une_photo'), sub: 'Prêt en quelques minutes', soon: false },
-                  { id: 'video' as const, Icon: Clapperboard, title: tUi('a_partir_d_une_video'), sub: 'Plus réaliste, entraînement plus long', soon: !(didVideoActif || jumeauVideoActif) },
+                  { id: 'photo' as const, Icon: ImageIcon, title: tUi('a_partir_d_une_photo'), sub: tUi('pret_en_quelques_minutes'), soon: false },
+                  { id: 'video' as const, Icon: Clapperboard, title: tUi('a_partir_d_une_video'), sub: tUi('plus_realiste_entrainement_plus_long'), soon: !(didVideoActif || jumeauVideoActif) },
                 ]).map(({ id, Icon, title, sub, soon }) => (
                   <button
                     key={id}

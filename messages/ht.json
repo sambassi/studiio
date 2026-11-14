@@ -1806,7 +1806,17 @@
       "visage_de_face_bien_eclaire_en_train_d": "figi de fas, byen limen, k ap pale",
       "arriere_plan_calme_et_peu_de_mouvement": "dèyè sèn trankil ak ti mouvman, kadraj ki estab",
       "c_est_la_limite_d_envoi_pensez_a_compr": "sa a se limit voye a : konprese l anvan",
-      "rendu_recent": "Rann resan"
+      "rendu_recent": "Rann resan",
+      "l_apercu_fait_parler_votre_avatar_avec": "Apèsi a fè avatar ou a pale ak vwa ou. Ajoute l oswa chwazi l nan “Vwa mwen”.",
+      "il_est_pret_pour_vos_videos": "Li pare pou videyo ou yo.",
+      "regardez_le_jusqu_au_bout_le_bouton_va": "Gade l jouk nan bout: bouton “Valide avatar mwen” parèt le lekti a kòmanse.",
+      "la_source_n_a_pas_permis_de_creer_l_av": "Sous la pa t pèmèt kreye avatar la. Eseye ankò ak yon lòt foto: pòtrè klè, de fas, byen eklere.",
+      "cela_prend_generalement_1_a_5_minutes": "Sa pran jeneralman 1 a 5 minit. Paj sa a mete ajou poukont li.",
+      "importez_une_nouvelle_source_un_nouvel": "Enpòte yon nouvo sous: yo pral ba ou yon nouvo apèsi.",
+      "pret_en_quelques_minutes": "Pare nan kèk minit",
+      "plus_realiste_entrainement_plus_long": "Pi reyalis, antrènman pi long",
+      "portrait_net": "pòtrè klè",
+      "visage_de_face": "de fas"
     },
     "appDashboardBillingPlanPreselectionne": {
       "erreur_de_connexion": "Erè koneksyon",
@@ -2337,7 +2347,8 @@
       "revoir_le_rendu": "Revoye rezilta a",
       "rejouer_le_montage_deja_compose_aucun": "Jwe montaj ki deja konpoze a ankò — pa gen okenn nouvo debit",
       "dupliquer_cet_element": "Double eleman sa a",
-      "retirer_cet_element_de_la_video": "Retire eleman sa a nan videyo a"
+      "retirer_cet_element_de_la_video": "Retire eleman sa a nan videyo a",
+      "sujet_style_audio_contenu_envoi": "Sijè → Style → Odyo → Kontni → Voye"
     },
     "appDashboardInfographic": {
       "chat_pour_plus_d_infos": "CHAT POU PLIS ENFÒMASYON",
@@ -4015,5 +4026,9 @@
       "credits": "Kredi Ajoute - Studiio",
       "paiement": "Konfimasyon Peman - Studiio"
     }
+  },
+  "liensLegaux": {
+    "terms": "Kondisyon itilizasyon",
+    "privacy": "Politik konfidansyalite"
   }
 }

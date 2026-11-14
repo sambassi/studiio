@@ -1806,7 +1806,17 @@
       "visage_de_face_bien_eclaire_en_train_d": "Gesicht frontal, gut beleuchtet, beim Sprechen",
       "arriere_plan_calme_et_peu_de_mouvement": "ruhiger Hintergrund mit wenig Bewegung, stabiler Bildausschnitt",
       "c_est_la_limite_d_envoi_pensez_a_compr": "das ist das Upload-Limit: bitte komprimieren",
-      "rendu_recent": "Letzter Render"
+      "rendu_recent": "Letzter Render",
+      "l_apercu_fait_parler_votre_avatar_avec": "Die Vorschau lässt Ihren Avatar mit Ihrer Stimme sprechen. Fügen Sie sie unter „Meine Stimme“ hinzu oder wählen Sie sie dort aus.",
+      "il_est_pret_pour_vos_videos": "Er ist bereit für Ihre Videos.",
+      "regardez_le_jusqu_au_bout_le_bouton_va": "Sehen Sie es bis zum Ende an: Die Schaltfläche „Meinen Avatar bestätigen“ erscheint, sobald die Wiedergabe beginnt.",
+      "la_source_n_a_pas_permis_de_creer_l_av": "Aus der Quelle konnte kein Avatar erstellt werden. Versuchen Sie es mit einem anderen Foto: scharfes Porträt, von vorn, gut ausgeleuchtet.",
+      "cela_prend_generalement_1_a_5_minutes": "Das dauert in der Regel 1 bis 5 Minuten. Diese Seite aktualisiert sich von selbst.",
+      "importez_une_nouvelle_source_un_nouvel": "Importieren Sie eine neue Quelle: Sie erhalten eine neue Vorschau.",
+      "pret_en_quelques_minutes": "In wenigen Minuten fertig",
+      "plus_realiste_entrainement_plus_long": "Realistischer, längeres Training",
+      "portrait_net": "scharfes Porträt",
+      "visage_de_face": "Gesicht von vorn"
     },
     "appDashboardBillingPlanPreselectionne": {
       "erreur_de_connexion": "Verbindungsfehler",
@@ -2337,7 +2347,8 @@
       "revoir_le_rendu": "Rendering erneut ansehen",
       "rejouer_le_montage_deja_compose_aucun": "Den bereits zusammengestellten Schnitt erneut abspielen — keine neue Abbuchung",
       "dupliquer_cet_element": "Dieses Element duplizieren",
-      "retirer_cet_element_de_la_video": "Dieses Element aus dem Video entfernen"
+      "retirer_cet_element_de_la_video": "Dieses Element aus dem Video entfernen",
+      "sujet_style_audio_contenu_envoi": "Thema → Stil → Audio → Inhalt → Senden"
     },
     "appDashboardInfographic": {
       "chat_pour_plus_d_infos": "CHAT FÜR MEHR INFOS",
@@ -4015,5 +4026,9 @@
       "credits": "Credits gutgeschrieben - Studiio",
       "paiement": "Zahlungsbestätigung - Studiio"
     }
+  },
+  "liensLegaux": {
+    "terms": "Nutzungsbedingungen",
+    "privacy": "Datenschutzerklärung"
   }
 }

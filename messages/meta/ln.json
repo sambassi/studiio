@@ -1750,5 +1750,477 @@
  "ui.libelles.hykmuts5": {
   "c": "h",
   "s": "lexique"
+ },
+ "navbar.admin": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "navbar.notifications": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.componentsDashboardRecentVideos.voir_toutes_les_videos": {
+  "c": "m",
+  "s": "glossaire"
+ },
+ "ui.appDashboardCreerAssistantWizard.je_veux_creer": {
+  "c": "m",
+  "s": "glossaire"
+ },
+ "ui.appDashboardCreerAssistantWizard.une_video_maintenant": {
+  "c": "m",
+  "s": "glossaire"
+ },
+ "landing.pricing.plans.pro.name": {
+  "c": "h",
+  "s": "savoir"
+ },
+ "social.platforms.instagram.name": {
+  "c": "h",
+  "s": "marque"
+ },
+ "social.platforms.tiktok.name": {
+  "c": "h",
+  "s": "marque"
+ },
+ "social.platforms.youtube.name": {
+  "c": "h",
+  "s": "marque"
+ },
+ "social.platforms.facebook.name": {
+  "c": "h",
+  "s": "marque"
+ },
+ "common.active": {
+  "c": "m",
+  "s": "glossaire"
+ },
+ "common.generate": {
+  "c": "m",
+  "s": "glossaire"
+ },
+ "common.loadMore": {
+  "c": "m",
+  "s": "corpus:core"
+ },
+ "sidebar.cinema": {
+  "c": "h",
+  "s": "marque"
+ },
+ "sidebar.infographic": {
+  "c": "m",
+  "s": "emprunt"
+ },
+ "languageSelector.beta": {
+  "c": "m",
+  "s": "emprunt"
+ },
+ "billing.changePlan": {
+  "c": "m",
+  "s": "core"
+ },
+ "billing.errors.connectionError": {
+  "c": "h",
+  "s": "core"
+ },
+ "creator.objective.createObjective": {
+  "c": "m",
+  "s": "glossaire"
+ },
+ "objectives.newObjective": {
+  "c": "m",
+  "s": "glossaire"
+ },
+ "objectives.title": {
+  "c": "m",
+  "s": "glossaire"
+ },
+ "objectives.editObjective": {
+  "c": "m",
+  "s": "glossaire"
+ },
+ "creator.objective.title": {
+  "c": "m",
+  "s": "glossaire"
+ },
+ "calendar.aiAgent.objectives.label": {
+  "c": "m",
+  "s": "glossaire"
+ },
+ "calendar.aiAgent.generate": {
+  "c": "m",
+  "s": "glossaire"
+ },
+ "calendar.aiAgent.generating": {
+  "c": "m",
+  "s": "glossaire"
+ },
+ "calendar.aiAgent.generateWithDays": {
+  "c": "m",
+  "s": "lot"
+ },
+ "calendar.aiAgent.duration.7": {
+  "c": "m",
+  "s": "lot"
+ },
+ "calendar.aiAgent.duration.14": {
+  "c": "m",
+  "s": "lot"
+ },
+ "calendar.aiAgent.duration.30": {
+  "c": "m",
+  "s": "lot"
+ },
+ "calendar.editModal.titleField": {
+  "c": "m",
+  "s": "glossaire"
+ },
+ "calendar.editModal.format": {
+  "c": "m",
+  "s": "emprunt"
+ },
+ "creator.format.title": {
+  "c": "m",
+  "s": "emprunt"
+ },
+ "creator.preview.format": {
+  "c": "m",
+  "s": "emprunt"
+ },
+ "calendar.editModal.media": {
+  "c": "m",
+  "s": "core"
+ },
+ "calendar.editModal.mediaAdded": {
+  "c": "m",
+  "s": "core"
+ },
+ "library.typeLabels.infographic": {
+  "c": "m",
+  "s": "emprunt"
+ },
+ "calendar.fullPreview.infographic": {
+  "c": "m",
+  "s": "emprunt"
+ },
+ "creator.objective.subscription": {
+  "c": "m",
+  "s": "core"
+ },
+ "calendar.captionStyles.abonnement": {
+  "c": "m",
+  "s": "core"
+ },
+ "creator.logo.title": {
+  "c": "h",
+  "s": "emprunt"
+ },
+ "creator.character.ai": {
+  "c": "h",
+  "s": "sigle"
+ },
+ "creator.montageSequences.cta": {
+  "c": "h",
+  "s": "sigle"
+ },
+ "creator.preview.audio": {
+  "c": "h",
+  "s": "emprunt"
+ },
+ "ui.appDashboardAvatar.avatar_video": {
+  "c": "m",
+  "s": "core"
+ },
+ "creator.preview.seqCta": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "creator.preview.seqVideo": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "creator.render.generate": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "creator.render.generatePlural": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "creator.rush": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "creator.summary.destination": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "creator.summary.format": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "creator.summary.mode": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "creator.summary.titleLabel": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "creator.textCards.large": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "creator.textCards.small": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "creator.titleSubtitle.ia": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "creator.titleSubtitle.subtitle": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "creator.titleSubtitle.title": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "social.actions.connect": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "social.actions.connecting": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "social.actions.disconnect": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "social.actions.reconnect": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "social.toasts.disconnected": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "social.toasts.disconnectError": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "audioStudio.batchLabel": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "audioStudio.timeline.cta": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "audioStudio.voice.stop": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "infographic.format.title": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "infographic.format.landscape": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "infographic.format.portrait": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "infographic.logoUpload.title": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "infographic.preview.pause": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "infographic.preview.seqCta": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "infographic.subtitleField": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "infographic.titleField": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "infographic.sequences.video": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "infographic.exportButton.exportSingle": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "infographic.exportButton.exportBatch": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "infographic.creditsInfo.single": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "infographic.creditsInfo.batch": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "infographic.steps.2": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "landing.cta.button": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "landing.hero.cta1": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "landing.footer.contact": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "landing.footer.blog": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "landing.footer.api": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "landing.footer.pricing": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "landing.formats.reel.label": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "landing.formats.tv.label": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "landing.formats.batch.label": {
+  "c": "m",
+  "s": "glossaire/core"
+ },
+ "landing.nav.freeTrial": {
+  "c": "m",
+  "s": "glossaire+core"
+ },
+ "landing.nav.pricing": {
+  "c": "m",
+  "s": "glossaire+core"
+ },
+ "landing.pricing.plans.starter.cta": {
+  "c": "m",
+  "s": "glossaire+core"
+ },
+ "landing.pricing.plans.pro.cta": {
+  "c": "m",
+  "s": "glossaire+core"
+ },
+ "landing.hero.titlePart1": {
+  "c": "m",
+  "s": "glossaire+core"
+ },
+ "landing.howItWorks.steps.0.title": {
+  "c": "m",
+  "s": "glossaire+core"
+ },
+ "landing.howItWorks.steps.1.title": {
+  "c": "m",
+  "s": "glossaire+core"
+ },
+ "landing.howItWorks.steps.3.title": {
+  "c": "m",
+  "s": "glossaire+core"
+ },
+ "landing.testimonials.title": {
+  "c": "m",
+  "s": "glossaire+core"
+ },
+ "ui.appDashboardCreerAssistantWizard.ajouter_un_element": {
+  "c": "m",
+  "s": "glossaire+core"
+ },
+ "ui.appDashboardCreerAssistantWizard.ajouter_des_rushs": {
+  "c": "m",
+  "s": "glossaire+core"
+ },
+ "ui.appDashboardCreerAssistantWizard.choisir_cette_photo": {
+  "c": "m",
+  "s": "glossaire+core"
+ },
+ "ui.appDashboardCreerAssistantWizard.choisissez_une_date": {
+  "c": "m",
+  "s": "glossaire+core"
+ },
+ "ui.appDashboardCreerAssistantWizard.continuer_vers_audio": {
+  "c": "m",
+  "s": "glossaire+core"
+ },
+ "ui.appDashboardCreerAssistantWizard.credits": {
+  "c": "m",
+  "s": "glossaire+core"
+ },
+ "ui.appDashboardCreerAssistantWizard.element": {
+  "c": "m",
+  "s": "glossaire+core"
+ },
+ "ui.appDashboardCreerAssistantWizard.element_2": {
+  "c": "m",
+  "s": "glossaire+core"
+ },
+ "ui.appDashboardCreerAssistantWizard.dupliquer_cet_element": {
+  "c": "m",
+  "s": "glossaire+core"
+ },
+ "ui.appDashboardCreerAssistantWizard.generer_avec_l_ia": {
+  "c": "m",
+  "s": "glossaire+core"
+ },
+ "ui.appDashboardCreerAssistantWizard.masque": {
+  "c": "m",
+  "s": "glossaire+core"
+ },
+ "ui.appDashboardCreerAssistantWizard.mediatheque": {
+  "c": "m",
+  "s": "glossaire+core"
+ },
+ "ui.appDashboardCreerAssistantWizard.retirer_cet_element_de_la_video": {
+  "c": "m",
+  "s": "glossaire+core"
+ },
+ "ui.appDashboardCreerAssistantWizard.revenir_a_l_edition": {
+  "c": "m",
+  "s": "glossaire+core"
+ },
+ "ui.appDashboardCreerAssistantWizard.taille_de_l_element": {
+  "c": "m",
+  "s": "glossaire+core"
+ },
+ "ui.appDashboardCreerAssistantWizard.ces_videos": {
+  "c": "m",
+  "s": "glossaire+core"
+ },
+ "ui.appDashboardCreerAssistantWizard.cette_video": {
+  "c": "m",
+  "s": "glossaire+core"
+ },
+ "ui.appDashboardCreerAssistantWizard.garder_cette_video": {
+  "c": "m",
+  "s": "glossaire+core"
  }
 }

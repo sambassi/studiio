@@ -1806,7 +1806,17 @@
       "visage_de_face_bien_eclaire_en_train_d": "front-facing, well-lit face, speaking",
       "arriere_plan_calme_et_peu_de_mouvement": "calm background with little movement, steady framing",
       "c_est_la_limite_d_envoi_pensez_a_compr": "this is the upload limit: consider compressing",
-      "rendu_recent": "Recent render"
+      "rendu_recent": "Recent render",
+      "l_apercu_fait_parler_votre_avatar_avec": "The preview makes your avatar speak with your voice. Add or choose it in “My voice”.",
+      "il_est_pret_pour_vos_videos": "It is ready for your videos.",
+      "regardez_le_jusqu_au_bout_le_bouton_va": "Watch it to the end: the “Validate my avatar” button appears as soon as playback starts.",
+      "la_source_n_a_pas_permis_de_creer_l_av": "The source could not be used to create the avatar. Try again with another photo: sharp portrait, facing the camera, well lit.",
+      "cela_prend_generalement_1_a_5_minutes": "This usually takes 1 to 5 minutes. This page updates by itself.",
+      "importez_une_nouvelle_source_un_nouvel": "Import a new source: you will be offered a new preview.",
+      "pret_en_quelques_minutes": "Ready in a few minutes",
+      "plus_realiste_entrainement_plus_long": "More realistic, longer training",
+      "portrait_net": "sharp portrait",
+      "visage_de_face": "facing the camera"
     },
     "appDashboardBillingPlanPreselectionne": {
       "erreur_de_connexion": "Connection error",
@@ -2337,7 +2347,8 @@
       "revoir_le_rendu": "Watch the render again",
       "rejouer_le_montage_deja_compose_aucun": "Replay the edit already composed — no new charge",
       "dupliquer_cet_element": "Duplicate this element",
-      "retirer_cet_element_de_la_video": "Remove this element from the video"
+      "retirer_cet_element_de_la_video": "Remove this element from the video",
+      "sujet_style_audio_contenu_envoi": "Subject → Style → Audio → Content → Send"
     },
     "appDashboardInfographic": {
       "chat_pour_plus_d_infos": "CHAT FOR MORE INFO",
@@ -4015,5 +4026,9 @@
       "credits": "Credits Added - Studiio",
       "paiement": "Payment Confirmation - Studiio"
     }
+  },
+  "liensLegaux": {
+    "terms": "Terms of Service",
+    "privacy": "Privacy Policy"
   }
 }

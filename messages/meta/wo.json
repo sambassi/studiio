@@ -1550,5 +1550,393 @@
  "ui.libelles.h1kk2r126": {
   "c": "h",
   "s": "corpus:corpus-wo"
+ },
+ "sidebar.media": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "calendar.title": {
+  "c": "m",
+  "s": "glossaire:wo"
+ },
+ "sidebar.calendar": {
+  "c": "m",
+  "s": "glossaire:wo"
+ },
+ "dashboardHome.directAccess.calendar": {
+  "c": "m",
+  "s": "glossaire:wo"
+ },
+ "dashboardHome.stats.publications": {
+  "c": "m",
+  "s": "core"
+ },
+ "ui.componentsDashboardRecentVideos.videos_recentes": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.appDashboardCreerAssistantWizard.creer_du_contenu": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "ui.appDashboardCreerAssistantWizard.je_veux_creer": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "ui.appDashboardCreerAssistantWizard.une_video_maintenant": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "landing.pricing.plans.pro.name": {
+  "c": "m",
+  "s": "savoir"
+ },
+ "calendar.stats.scheduled": {
+  "c": "m",
+  "s": "glossaire:wo"
+ },
+ "calendar.stats.published": {
+  "c": "m",
+  "s": "core"
+ },
+ "common.status.scheduled": {
+  "c": "m",
+  "s": "glossaire:wo"
+ },
+ "calendar.status.scheduled": {
+  "c": "m",
+  "s": "glossaire:wo"
+ },
+ "calendar.editModal.scheduled": {
+  "c": "m",
+  "s": "glossaire:wo"
+ },
+ "common.sort": {
+  "c": "m",
+  "s": "glossaire:wo"
+ },
+ "calendar.selectDate": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "calendar.bulkDateModal.newDate": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "calendar.editModal.titleField": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "calendar.editModal.format": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "calendar.editModal.media": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "calendar.fullPreview.music": {
+  "c": "m",
+  "s": "glossaire:wo"
+ },
+ "calendar.fullPreview.schedule": {
+  "c": "h",
+  "s": "glossaire:wo"
+ },
+ "calendar.aiAgent.duration.7": {
+  "c": "m",
+  "s": "glossaire:wo"
+ },
+ "calendar.aiAgent.duration.14": {
+  "c": "m",
+  "s": "glossaire:wo"
+ },
+ "calendar.aiAgent.duration.30": {
+  "c": "m",
+  "s": "glossaire:wo"
+ },
+ "calendar.aiAgent.generateWithDays": {
+  "c": "m",
+  "s": "core"
+ },
+ "calendar.aiAgent.filesCount": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "calendar.aiAgent.rushFiles.filesSelected": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "dashboardHome.stats.pubsThisWeek": {
+  "c": "m",
+  "s": "glossaire:wo"
+ },
+ "dashboardHome.stats.videosThisWeek": {
+  "c": "m",
+  "s": "glossaire:wo"
+ },
+ "billing.plan": {
+  "c": "m",
+  "s": "glossaire:wo"
+ },
+ "auth.signup.selectedPlan": {
+  "c": "m",
+  "s": "glossaire:wo"
+ },
+ "auth.signup.planSelected": {
+  "c": "m",
+  "s": "glossaire:wo"
+ },
+ "library.toasts.duplicated": {
+  "c": "m",
+  "s": "core"
+ },
+ "library.toasts.exported": {
+  "c": "m",
+  "s": "core"
+ },
+ "creator.addLogo": {
+  "c": "m",
+  "s": "glossaire:wo"
+ },
+ "infographic.steps.1": {
+  "c": "m",
+  "s": "corpus:corpus-wo"
+ },
+ "social.selfPublish.step1": {
+  "c": "m",
+  "s": "glossaire:wo"
+ },
+ "liensLegaux.terms": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "liensLegaux.privacy": {
+  "c": "h",
+  "s": "corpus:corpus-wo"
+ },
+ "assistant.title": {
+  "c": "m",
+  "s": "glossaire:wo"
+ },
+ "ui.libelles.htxhidcc": {
+  "c": "m",
+  "s": "core"
+ },
+ "ui.appDashboardAvatar.choisir_une_photo": {
+  "c": "m",
+  "s": "glossaire:wo"
+ },
+ "ui.componentsVoiceVoiceCloneRecorder.enregistrer_ma_voix": {
+  "c": "m",
+  "s": "glossaire:wo"
+ },
+ "creator.audioNote.title": {
+  "c": "m",
+  "s": "glossaire:wo+corpus:wo-core"
+ },
+ "creator.batch.calendar": {
+  "c": "m",
+  "s": "glossaire:wo+corpus:wo-core"
+ },
+ "creator.batch.count": {
+  "c": "m",
+  "s": "glossaire:wo+corpus:wo-core"
+ },
+ "creator.character.noImageFound": {
+  "c": "m",
+  "s": "glossaire:wo+corpus:wo-core"
+ },
+ "creator.format.title": {
+  "c": "m",
+  "s": "glossaire:wo+corpus:wo-core"
+ },
+ "creator.logo.upload": {
+  "c": "m",
+  "s": "glossaire:wo+corpus:wo-core"
+ },
+ "creator.preview.format": {
+  "c": "m",
+  "s": "glossaire:wo+corpus:wo-core"
+ },
+ "creator.render.creating": {
+  "c": "m",
+  "s": "glossaire:wo+corpus:wo-core"
+ },
+ "creator.render.errorNoTitle": {
+  "c": "m",
+  "s": "glossaire:wo+corpus:wo-core"
+ },
+ "creator.render.generate": {
+  "c": "m",
+  "s": "glossaire:wo+corpus:wo-core"
+ },
+ "creator.render.generatePlural": {
+  "c": "m",
+  "s": "glossaire:wo+corpus:wo-core"
+ },
+ "creator.summary.format": {
+  "c": "m",
+  "s": "glossaire:wo+corpus:wo-core"
+ },
+ "creator.summary.titleLabel": {
+  "c": "m",
+  "s": "glossaire:wo+corpus:wo-core"
+ },
+ "creator.textCards.information": {
+  "c": "m",
+  "s": "glossaire:wo+corpus:wo-core"
+ },
+ "social.actions.disconnect": {
+  "c": "m",
+  "s": "glossaire:wo+corpus:wo-core"
+ },
+ "social.settings.title": {
+  "c": "m",
+  "s": "glossaire:wo+corpus:wo-core"
+ },
+ "social.toasts.connectionInProgress": {
+  "c": "m",
+  "s": "glossaire:wo+corpus:wo-core"
+ },
+ "audioStudio.backToCalendar": {
+  "c": "m",
+  "s": "glossaire:wo+corpus:wo-core"
+ },
+ "audioStudio.destination.calendar": {
+  "c": "m",
+  "s": "glossaire:wo+corpus:wo-core"
+ },
+ "audioStudio.noVideoSelected": {
+  "c": "m",
+  "s": "glossaire:wo+corpus:wo-core"
+ },
+ "audioStudio.voice.noVoice": {
+  "c": "m",
+  "s": "glossaire:wo+corpus:wo-core"
+ },
+ "infographic.audioNote.title": {
+  "c": "m",
+  "s": "glossaire:wo+corpus:wo-core"
+ },
+ "infographic.backToMedia": {
+  "c": "m",
+  "s": "glossaire:wo+corpus:wo-core"
+ },
+ "infographic.destination.calendar": {
+  "c": "m",
+  "s": "glossaire:wo+corpus:wo-core"
+ },
+ "infographic.format.title": {
+  "c": "m",
+  "s": "glossaire:wo+corpus:wo-core"
+ },
+ "infographic.steps.2": {
+  "c": "m",
+  "s": "glossaire:wo+corpus:wo-core"
+ },
+ "landing.nav.faq": {
+  "c": "h",
+  "s": "corpus:corpus-wo.json FAQ"
+ },
+ "landing.footer.privacyPolicy": {
+  "c": "h",
+  "s": "corpus:corpus-wo.json Privacy policy"
+ },
+ "landing.footer.termsOfUse": {
+  "c": "h",
+  "s": "corpus:corpus-wo.json Terms of Use"
+ },
+ "landing.footer.api": {
+  "c": "m",
+  "s": "emprunt"
+ },
+ "landing.footer.blog": {
+  "c": "m",
+  "s": "emprunt"
+ },
+ "landing.footer.contact": {
+  "c": "m",
+  "s": "emprunt"
+ },
+ "landing.formats.reel.label": {
+  "c": "h",
+  "s": "lexique:wo-core"
+ },
+ "landing.formats.tv.label": {
+  "c": "h",
+  "s": "lexique:wo-core"
+ },
+ "landing.nav.pricing": {
+  "c": "m",
+  "s": "glossaire:prix"
+ },
+ "landing.footer.pricing": {
+  "c": "m",
+  "s": "glossaire:prix"
+ },
+ "landing.pricing.monthly": {
+  "c": "m",
+  "s": "glossaire:mensuel"
+ },
+ "landing.pricing.yearly": {
+  "c": "m",
+  "s": "glossaire:annuel"
+ },
+ "ui.appDashboardCreerAssistantWizard.masque": {
+  "c": "h",
+  "s": "corpus:corpus-wo.json hidden"
+ },
+ "ui.appDashboardCreerAssistantWizard.masquer_ce_message": {
+  "c": "m",
+  "s": "corpus:Hide + glossaire message"
+ },
+ "ui.appDashboardCreerAssistantWizard.ouvrir_le_calendrier": {
+  "c": "m",
+  "s": "glossaire:ouvrir+calendrier"
+ },
+ "ui.appDashboardCreerAssistantWizard.ma_photo": {
+  "c": "m",
+  "s": "core:sidebar.avatar + glossaire"
+ },
+ "ui.appDashboardCreerAssistantWizard.enregistrer_les_modifications": {
+  "c": "m",
+  "s": "glossaire:enregistrer+modifier"
+ },
+ "ui.appDashboardCreerAssistantWizard.modifications_enregistrees": {
+  "c": "m",
+  "s": "glossaire + core:library.toasts.deleted"
+ },
+ "ui.appDashboardCreerAssistantWizard.envoyer_au_calendrier": {
+  "c": "m",
+  "s": "core:common.submit + glossaire"
+ },
+ "ui.appDashboardCreerAssistantWizard.envoye_au_calendrier": {
+  "c": "m",
+  "s": "core + glossaire"
+ },
+ "ui.appDashboardCreerAssistantWizard.continuer_avec": {
+  "c": "m",
+  "s": "glossaire:continuer"
+ },
+ "ui.appDashboardCreerAssistantWizard.choisir_cette_photo": {
+  "c": "m",
+  "s": "core:common.select + glossaire"
+ },
+ "ui.appDashboardCreerAssistantWizard.generer_avec_l_ia": {
+  "c": "m",
+  "s": "glossaire:générer"
+ },
+ "ui.appDashboardCreerAssistantWizard.generation": {
+  "c": "m",
+  "s": "core:auth.login.connecting pattern"
+ },
+ "ui.appDashboardCreerAssistantWizard.musique_et_voix": {
+  "c": "m",
+  "s": "glossaire:musique, voix"
+ },
+ "ui.appDashboardCreerAssistantWizard.apercu_du_style": {
+  "c": "m",
+  "s": "glossaire:aperçu, style"
  }
 }

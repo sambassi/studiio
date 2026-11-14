@@ -288,7 +288,7 @@ function traiter(fichier) {
           convertir(n, n.getStart(), n.end, v, norm(v), (k) => `${HOOK}('${k}')`, true);
         } else if (positionAffichee(n)) {
           convertir(n, n.getStart(), n.end, v, norm(v), (k) => `${HOOK}('${k}')`, true);
-        } else if (ts.isPropertyAssignment(p) && p.initializer === n && /^(label|title|titre|sous|description|placeholder|hint|name|nom|text|texte|subtitle|sousTitre|message|error|erreur|cta|aide|resume|legende|libelle)$/i.test(p.name.getText().replace(/['"]/g, ''))) {
+        } else if (ts.isPropertyAssignment(p) && p.initializer === n && /^(label|title|titre|sous|sub|description|detail|details|note|placeholder|hint|name|nom|text|texte|subtitle|sousTitre|message|error|erreur|cta|aide|resume|legende|libelle|caption|legend|badge|conseil|astuce)$/i.test(p.name.getText().replace(/['"]/g, ''))) {
           // Objet de libellés : converti s'il vit DANS un composant (le hook est alors dans la
           // portée) ; hors composant (constante de module) `convertir` l'ignore et le liste.
           convertir(n, n.getStart(), n.end, v, norm(v), (k) => `${HOOK}('${k}')`, true);

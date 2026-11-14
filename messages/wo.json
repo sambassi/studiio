@@ -51,7 +51,8 @@
       "active": "Yëngu",
       "completed": "Jeex",
       "failed": "Antuwul",
-      "published": "Fësal nañu ko"
+      "published": "Fësal nañu ko",
+      "scheduled": "Naal nañu ko"
     },
     "submit": "Yónne",
     "success": "Antu na",
@@ -59,14 +60,17 @@
     "video": "Vidéo",
     "videos": "Vidéo yi",
     "view": "Xool",
-    "yes": "Waaw"
+    "yes": "Waaw",
+    "sort": "Teqamtal"
   },
   "sidebar": {
     "avatar": "Sama avatar",
     "buy": "Jënd",
     "create": "Sos",
     "creditsAvailable": "Kredi yi am",
-    "settings": "Tànneef"
+    "settings": "Tànneef",
+    "media": "Xibaarukaay",
+    "calendar": "Limu bés yi IA"
   },
   "navbar": {
     "logout": "Génn",
@@ -102,19 +106,25 @@
       "privacyLink": "Politigu sutura",
       "termsAnd": "ak",
       "termsLink": "Anami Jëfandiku",
-      "title": "Bindu"
+      "title": "Bindu",
+      "selectedPlan": "Nas bi nga tànn",
+      "planSelected": "Nas {plan} bi nga tànn"
     }
   },
   "dashboardHome": {
     "createVideo": "Sos vidéo",
     "directAccess": {
       "create": "Sos",
-      "settings": "Tànneef"
+      "settings": "Tànneef",
+      "calendar": "Limu bés yi"
     },
     "stats": {
       "creditsRemaining": "Kredi yi des",
       "totalViews": "Wone yi yépp",
-      "videosCreated": "Vidéo yi ñu sos"
+      "videosCreated": "Vidéo yi ñu sos",
+      "publications": "Fësal yi",
+      "pubsThisWeek": "{count} ci ayu-bés bii",
+      "videosThisWeek": "{count} ci ayu-bés bii"
     },
     "welcome": "Dalal ak jàmm, {name}"
   },
@@ -130,7 +140,8 @@
     },
     "transactions": {
       "buyCredits": "Jënd {count} kredi"
-    }
+    },
+    "plan": "Nas"
   },
   "library": {
     "actions": {
@@ -162,7 +173,9 @@
       "deleteError": "Njuumte ci far gi",
       "deleted": "Vidéo bi far nañu ko",
       "duplicateError": "Njuumte ci duppiit gi",
-      "exportError": "Njuumte ci génne gi"
+      "exportError": "Njuumte ci génne gi",
+      "duplicated": "Vidéo bi duppiit nañu ko",
+      "exported": "Vidéo bi génne nañu ko ak ndam"
     },
     "typeLabels": {
       "video": "Vidéo"
@@ -170,13 +183,16 @@
   },
   "assistant": {
     "close": "Tëj",
-    "send": "Yónne"
+    "send": "Yónne",
+    "title": "Ndimbalkat Studiio"
   },
   "calendar": {
     "fullPreview": {
       "close": "Tëj",
       "edit": "Soppi",
-      "publishNow": "Fësal léegi"
+      "publishNow": "Fësal léegi",
+      "music": "Woy",
+      "schedule": "Naal"
     },
     "actions": {
       "delete": "Far",
@@ -192,28 +208,54 @@
       "date": "Taariix",
       "time": "Waxtu",
       "published": "Fësal",
-      "connectNetwork": "Lëkkale"
+      "connectNetwork": "Lëkkale",
+      "scheduled": "Naal nañu ko",
+      "titleField": "Koj",
+      "format": "Lim",
+      "media": "Xibaarukaay"
     },
     "import": "Duggal",
     "select": "Tànn",
     "selectAll": "Tànn yépp",
     "status": {
       "published": "Fësal nañu ko",
-      "failed": "Antuwul"
+      "failed": "Antuwul",
+      "scheduled": "Naal nañu ko"
     },
     "aiAgent": {
       "stages": {
         "done": "Jeex na !"
       },
       "generate": "Sos",
-      "generating": "Di sos..."
+      "generating": "Di sos...",
+      "duration": {
+        "7": "7 bés",
+        "14": "14 bés",
+        "30": "30 bés"
+      },
+      "generateWithDays": "Sos ({days} bés)",
+      "filesCount": "{count} dencukaay",
+      "rushFiles": {
+        "filesSelected": "{count} dencukaay yu ñu tànn"
+      }
+    },
+    "title": "Limu bés yi IA",
+    "stats": {
+      "scheduled": "Naal nañu ko",
+      "published": "Fësal nañu ko"
+    },
+    "selectDate": "Tànnal taariix",
+    "bulkDateModal": {
+      "newDate": "Taariix bu bees"
     }
   },
   "creator": {
     "change": "Soppi",
     "batch": {
       "export": "Génne",
-      "both": "Ñaar yépp"
+      "both": "Ñaar yépp",
+      "calendar": "Limu bés yi",
+      "count": "Lim vidéo yi"
     },
     "title": "Sos vidéo",
     "rushVideos": {
@@ -221,29 +263,51 @@
       "settings": "Tànneef"
     },
     "character": {
-      "upload": "Yeb"
+      "upload": "Yeb",
+      "noImageFound": "Amul nataal"
     },
     "uploadCharacter": "Yeb",
     "credits": "15 kredi",
     "preview": {
       "audio": "Audio",
-      "seqVideo": "Vidéo"
+      "seqVideo": "Vidéo",
+      "format": "Lim"
     },
     "montageSequences": {
       "noVideo": "Amul vidéo"
     },
     "render": {
       "done": "Jeex na !",
-      "errorCreate": "Njuumte ci sos gi"
+      "errorCreate": "Njuumte ci sos gi",
+      "creating": "Di sos...",
+      "errorNoTitle": "Duggal benn koj",
+      "generate": "Sos {count} vidéo",
+      "generatePlural": "Sos {count} vidéo"
     },
     "summary": {
-      "videos": "Vidéo yi"
+      "videos": "Vidéo yi",
+      "format": "Lim",
+      "titleLabel": "Koj"
+    },
+    "addLogo": "Yokk logo",
+    "audioNote": {
+      "title": "Woy ak Baat"
+    },
+    "format": {
+      "title": "Lim"
+    },
+    "logo": {
+      "upload": "Yeb logo"
+    },
+    "textCards": {
+      "information": "Xibaar yi"
     }
   },
   "social": {
     "actions": {
       "connect": "Lëkkale {platform}",
-      "connecting": "Di lëkkale..."
+      "connecting": "Di lëkkale...",
+      "disconnect": "Génn"
     },
     "confirmDisconnect": {
       "cancel": "Neenal"
@@ -264,7 +328,14 @@
     },
     "toasts": {
       "connectionError": "Njuumte ci lëkkale gi",
-      "disconnectError": "Njuumte ci génn gi"
+      "disconnectError": "Njuumte ci génn gi",
+      "connectionInProgress": "Di lëkkale..."
+    },
+    "selfPublish": {
+      "step1": "Yebbil sa vidéo"
+    },
+    "settings": {
+      "title": "Tànneef ci fësal"
     }
   },
   "objectives": {
@@ -276,7 +347,8 @@
   "audioStudio": {
     "batchLabel": "{count} vidéo",
     "destination": {
-      "both": "Ñaar yépp"
+      "both": "Ñaar yépp",
+      "calendar": "Limu bés yi"
     },
     "export": {
       "done": "Jeex na !",
@@ -297,8 +369,11 @@
     "videoPreview": "Wonendi vidéo",
     "voice": {
       "file": "Dencukaay",
-      "importFile": "Duggal dencukaay"
-    }
+      "importFile": "Duggal dencukaay",
+      "noVoice": "Amul baat"
+    },
+    "backToCalendar": "Dellu ci limu bés yi",
+    "noVideoSelected": "Amul vidéo bu ñu tànn"
   },
   "infographic": {
     "backButton": "Dellu",
@@ -348,17 +423,56 @@
     },
     "videoSection": {
       "choose": "Tànn vidéo"
+    },
+    "steps": {
+      "1": "Ëmbéef",
+      "2": "Xibaarukaay yi"
+    },
+    "audioNote": {
+      "title": "Woy ak Baat"
+    },
+    "backToMedia": "Dellu ci xibaarukaay yi",
+    "destination": {
+      "calendar": "Limu bés yi"
+    },
+    "format": {
+      "title": "Lim"
     }
   },
   "landing": {
     "nav": {
-      "login": "Dugg"
+      "login": "Dugg",
+      "faq": "Laaj yi ëpp",
+      "pricing": "Njëg yi"
     },
     "pricing": {
-      "creditsPerMonth": "kredi/weer"
+      "creditsPerMonth": "kredi/weer",
+      "plans": {
+        "pro": {
+          "name": "Pro"
+        }
+      },
+      "monthly": "ci weer",
+      "yearly": "ci at"
     },
     "stats": {
       "videosCreated": "Vidéo yi ñu sos"
+    },
+    "footer": {
+      "privacyPolicy": "Politigu sutura",
+      "termsOfUse": "Anami Jëfandiku",
+      "api": "API",
+      "blog": "Blog",
+      "contact": "Contact",
+      "pricing": "Njëg yi"
+    },
+    "formats": {
+      "reel": {
+        "label": "REEL 9:16"
+      },
+      "tv": {
+        "label": "TV 16:9"
+      }
     }
   },
   "ui": {
@@ -382,7 +496,8 @@
       "video": "vidéo",
       "voir_mon_apercu": "Xool sama wonendi",
       "voix": "Baat",
-      "votre_video": "Sa vidéo"
+      "votre_video": "Sa vidéo",
+      "choisir_une_photo": "Tànn nataal"
     },
     "appDashboardBillingPlanPreselectionne": {
       "erreur_de_connexion": "Njuumte ci lëkkale gi"
@@ -419,7 +534,24 @@
       "supprimer": "Far",
       "telecharger_la_video": "Yebbi vidéo bi",
       "telecharger_mp4": "Yebbi MP4",
-      "video": "Vidéo"
+      "video": "Vidéo",
+      "creer_du_contenu": "Sos ëmbéef",
+      "je_veux_creer": "Bëgg naa sos",
+      "une_video_maintenant": "benn vidéo léegi",
+      "masque": "Nëbbu",
+      "masquer_ce_message": "Nëbb bataaxal bii",
+      "ouvrir_le_calendrier": "Ubbi limu bés yi",
+      "ma_photo": "Sama nataal",
+      "enregistrer_les_modifications": "Denc soppi yi",
+      "modifications_enregistrees": "Soppi yi denc nañu ko.",
+      "envoyer_au_calendrier": "Yónne ci limu bés yi",
+      "envoye_au_calendrier": "Yónne nañu ko ci limu bés yi",
+      "continuer_avec": "Wéy ak",
+      "choisir_cette_photo": "Tànn nataal bii",
+      "generer_avec_l_ia": "Sos ak IA",
+      "generation": "Di sos…",
+      "musique_et_voix": "Woy ak baat",
+      "apercu_du_style": "Wonendi meliin bi"
     },
     "appDashboardMedia": {
       "ajouter_une_video": "Yokk vidéo",
@@ -592,7 +724,8 @@
     },
     "componentsDashboardRecentVideos": {
       "terminee": "Jeex",
-      "voir_toutes_les_videos": "Xool vidéo yépp →"
+      "voir_toutes_les_videos": "Xool vidéo yépp →",
+      "videos_recentes": "Vidéo yi mujj"
     },
     "componentsFournisseursConfirmationCoutFournisseur": {
       "annuler": "Neenal"
@@ -649,14 +782,20 @@
       "supprimer": "Far"
     },
     "componentsVoiceVoiceCloneRecorder": {
-      "enregistrer": "Denc"
+      "enregistrer": "Denc",
+      "enregistrer_ma_voix": "Denc sama baat"
     },
     "libelles": {
       "hykmuts5": "Vidéo",
       "h2w4tw96": "Vidéo yi",
       "hj5yrlma": "Sama avatar",
       "h14peoen5": "Antuwul",
-      "h1kk2r126": "Antu na"
+      "h1kk2r126": "Antu na",
+      "htxhidcc": "Amul avatar"
     }
+  },
+  "liensLegaux": {
+    "terms": "Anami Jëfandiku",
+    "privacy": "Politigu sutura"
   }
 }

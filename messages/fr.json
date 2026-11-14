@@ -1806,7 +1806,17 @@
       "visage_de_face_bien_eclaire_en_train_d": "visage de face, bien éclairé, en train de parler",
       "arriere_plan_calme_et_peu_de_mouvement": "arrière-plan calme et peu de mouvement, cadrage stable",
       "c_est_la_limite_d_envoi_pensez_a_compr": "c'est la limite d'envoi : pensez à compresser",
-      "rendu_recent": "Rendu récent"
+      "rendu_recent": "Rendu récent",
+      "l_apercu_fait_parler_votre_avatar_avec": "L'aperçu fait parler votre avatar avec votre voix. Ajoutez ou choisissez-la dans « Ma voix ».",
+      "il_est_pret_pour_vos_videos": "Il est prêt pour vos vidéos.",
+      "regardez_le_jusqu_au_bout_le_bouton_va": "Regardez-le jusqu’au bout : le bouton « Valider mon avatar » apparaît dès que la lecture démarre.",
+      "la_source_n_a_pas_permis_de_creer_l_av": "La source n'a pas permis de créer l'avatar. Réessayez avec une autre photo : portrait net, de face, bien éclairé.",
+      "cela_prend_generalement_1_a_5_minutes": "Cela prend généralement 1 à 5 minutes. Cette page se met à jour toute seule.",
+      "importez_une_nouvelle_source_un_nouvel": "Importez une nouvelle source : un nouvel aperçu vous sera offert.",
+      "pret_en_quelques_minutes": "Prêt en quelques minutes",
+      "plus_realiste_entrainement_plus_long": "Plus réaliste, entraînement plus long",
+      "portrait_net": "portrait net",
+      "visage_de_face": "visage de face"
     },
     "appDashboardBillingPlanPreselectionne": {
       "erreur_de_connexion": "Erreur de connexion",
@@ -2337,7 +2347,8 @@
       "revoir_le_rendu": "Revoir le rendu",
       "rejouer_le_montage_deja_compose_aucun": "Rejouer le montage déjà composé — aucun nouveau débit",
       "dupliquer_cet_element": "Dupliquer cet élément",
-      "retirer_cet_element_de_la_video": "Retirer cet élément de la vidéo"
+      "retirer_cet_element_de_la_video": "Retirer cet élément de la vidéo",
+      "sujet_style_audio_contenu_envoi": "Sujet → Style → Audio → Contenu → Envoi"
     },
     "appDashboardInfographic": {
       "chat_pour_plus_d_infos": "CHAT POUR PLUS D'INFOS",
@@ -4015,5 +4026,9 @@
       "credits": "Crédits Ajoutés - Studiio",
       "paiement": "Confirmation de Paiement - Studiio"
     }
+  },
+  "liensLegaux": {
+    "terms": "Conditions d'utilisation",
+    "privacy": "Politique de confidentialité"
   }
 }

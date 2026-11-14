@@ -1806,7 +1806,17 @@
       "visage_de_face_bien_eclaire_en_train_d": "uso unaotazama mbele, wenye mwanga mzuri, ukiwa unazungumza",
       "arriere_plan_calme_et_peu_de_mouvement": "mandharinyuma tulivu na mwendo mdogo, kamera thabiti",
       "c_est_la_limite_d_envoi_pensez_a_compr": "hiki ndicho kikomo cha kupakia: kumbuka kubana faili",
-      "rendu_recent": "Uchakataji wa hivi karibuni"
+      "rendu_recent": "Uchakataji wa hivi karibuni",
+      "l_apercu_fait_parler_votre_avatar_avec": "Hakiki humfanya avatar yako izungumze kwa sauti yako. Iongeze au ichague katika “Sauti yangu”.",
+      "il_est_pret_pour_vos_videos": "Iko tayari kwa video zako.",
+      "regardez_le_jusqu_au_bout_le_bouton_va": "Itazame hadi mwisho: kitufe cha “Thibitisha avatar yangu” kinaonekana mara tu uchezaji unapoanza.",
+      "la_source_n_a_pas_permis_de_creer_l_av": "Chanzo hakikuwezesha kuunda avatar. Jaribu tena kwa picha nyingine: picha ya uso iliyo wazi, ikitazama mbele, yenye mwanga mzuri.",
+      "cela_prend_generalement_1_a_5_minutes": "Kwa kawaida huchukua dakika 1 hadi 5. Ukurasa huu hujisasisha wenyewe.",
+      "importez_une_nouvelle_source_un_nouvel": "Leta chanzo kipya: utapewa hakiki mpya.",
+      "pret_en_quelques_minutes": "Tayari baada ya dakika chache",
+      "plus_realiste_entrainement_plus_long": "Halisi zaidi, mafunzo marefu zaidi",
+      "portrait_net": "picha ya uso iliyo wazi",
+      "visage_de_face": "uso unaotazama mbele"
     },
     "appDashboardBillingPlanPreselectionne": {
       "erreur_de_connexion": "Hitilafu ya muunganisho",
@@ -2337,7 +2347,8 @@
       "revoir_le_rendu": "Tazama matokeo tena",
       "rejouer_le_montage_deja_compose_aucun": "Cheza tena uhariri uliokwisha tengenezwa — hakuna makato mapya",
       "dupliquer_cet_element": "Nakili kipengele hiki",
-      "retirer_cet_element_de_la_video": "Ondoa kipengele hiki kwenye video"
+      "retirer_cet_element_de_la_video": "Ondoa kipengele hiki kwenye video",
+      "sujet_style_audio_contenu_envoi": "Mada → Mtindo → Sauti → Maudhui → Tuma"
     },
     "appDashboardInfographic": {
       "chat_pour_plus_d_infos": "GUSA CHAT KWA MAELEZO ZAIDI",
@@ -4015,5 +4026,9 @@
       "credits": "Krediti Zimeongezwa - Studiio",
       "paiement": "Uthibitisho wa Malipo - Studiio"
     }
+  },
+  "liensLegaux": {
+    "terms": "Masharti ya Matumizi",
+    "privacy": "Sera ya Faragha"
   }
 }

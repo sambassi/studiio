@@ -11677,7 +11677,7 @@ export default function AssistantWizard() {
                     {tUi('je_veux_creer')} <strong className="text-gray-200">{tUi('une_video_maintenant')}</strong>{tUi('etape_par_etape_le_texte_et_les_cartes')}
                   </CardContent>
                   <p className="mt-2 text-[11px] text-gray-500">
-                    Sujet → Style → Audio → Contenu → Envoi
+                    {tUi('sujet_style_audio_contenu_envoi')}
                   </p>
                   <div className="mt-4">
                     <Button variant="primary" size="sm" onClick={() => setStarted(true)} data-parcours-assistant>
