@@ -653,7 +653,7 @@ export function SequenceVoicesPanel({
           return (
             <div key={key} className={`min-w-0 rounded-md border p-2 ${SEQUENCE_ACCENT[key]}`}>
               <div className="mb-1.5 flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-0.5">
-                <span className="text-xs font-semibold text-white">{SEQUENCE_LABELS[key]}</span>
+                <span className="text-xs font-semibold text-white">{tUi.fr(SEQUENCE_LABELS[key])}</span>
                 <span style={{ fontVariantNumeric: 'tabular-nums' }} className={`text-[10px] ${
                   overrun ? 'text-orange-300' : fit?.status === 'ok' ? 'text-emerald-300' : 'text-gray-400'
                 }`}>
@@ -846,7 +846,7 @@ export function SequenceVoicesPanel({
                 <div className="mt-1.5 space-y-1">
                   <PreviewPlayer
                     src={sv.audioUrl}
-                    label={SEQUENCE_LABELS[key]}
+                    label={tUi.fr(SEQUENCE_LABELS[key])}
                     onDelete={() => removeAudio(key)}
                     onError={onAudioError}
                   />

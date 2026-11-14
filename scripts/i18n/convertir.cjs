@@ -25,6 +25,7 @@ const path = require('path');
 const ts = require('typescript');
 
 const racine = path.resolve(__dirname, '..', '..');
+const catalogue = JSON.parse(fs.readFileSync(path.join(racine, 'messages', 'fr.json'), 'utf8'));
 const args = process.argv.slice(2);
 const appliquer = args.includes('--appliquer');
 const rapportChemin = (args.find((a) => a.startsWith('--rapport=')) || '').slice(10);
@@ -37,6 +38,14 @@ const SETTERS = /^(alert|toast|setError|setMessage|setStatus|setSuccess|setNotic
 const MOTS_FR = /\b(le|la|les|des|du|un|une|et|est|vous|votre|vos|nous|notre|pour|avec|sur|dans|par|ton|ta|tes|tu|ce|cette|ces|qui|que|au|aux|ou|pas|ne|se|sont|mon|ma|mes|chez|ajouter|choisir|créer|supprimer|modifier|enregistrer|annuler|valider|générer|erreur|chargement|aucun|aucune|obligatoire|crédits?|vidéo|séquence|carte|titre|suivant|retour|fermer|continuer)\b/i;
 const ACCENT = /[àâçéèêëîïôùûüœÀÂÇÉÈÊËÎÏÔÙÛÜŒ]/;
 const MARQUES = /^(studiio|stripe|twint|paypal|visa|mastercard|instagram|tiktok|youtube|facebook|pexels|google|facebook|whatsapp|pro|starter|enterprise|ok|mp4|webm|json|hd|4k|9:16|16:9|chf|eur|usd)$/i;
+
+const ATTRS_NON_TEXTE = /^(className|class|style|href|src|id|key|type|name|value|htmlFor|data-.*|role|d|viewBox|fill|stroke|width|height|target|rel|method|action|accept|autoComplete|inputMode|pattern|ref|as|variant|size|color|slot|lang|dir|tabIndex|panneauId|icone|icon)$/;
+/** Attribut JSX de TEXTE hors liste fixe : nom évocateur (sousTitre, titre…) ou phrase de ≥ 2 mots. */
+function attributDeTexte(nom, valeur) {
+  if (ATTRS_NON_TEXTE.test(nom)) return false;
+  if (/^(sousTitre|titre|texte|text|hint|aide|caption|legend|message|heading|header|subtitle|libelle|legende|resume|intro|prompt|question|reponse)$/i.test(nom)) return true;
+  return valeur.trim().split(/\s+/).length >= 3;
+}
 
 function exclu(t) {
   const s = t.trim();
@@ -151,10 +160,16 @@ function traiter(fichier) {
   const cles = new Map();                  // slug -> texte
   const parTexte = new Map();              // texte -> slug
 
+  // Clés DÉJÀ présentes dans le catalogue pour ce fichier (exécutions précédentes) : une clé
+  // existante au texte différent n'est JAMAIS réutilisée (sinon la valeur serait écrasée et
+  // l'ancien emplacement afficherait le nouveau texte) ; un texte identique réutilise sa clé.
+  const existantes = (() => { let n = catalogue.ui; for (const p of ns.split('.').slice(1)) { n = n && n[p]; } return n && typeof n === 'object' ? n : {}; })();
+  const parTexteExistant = new Map(Object.entries(existantes).map(([k, v]) => [v, k]));
   const cleDe = (texte) => {
     if (parTexte.has(texte)) return parTexte.get(texte);
+    if (parTexteExistant.has(texte)) { const k = parTexteExistant.get(texte); cles.set(k, texte); parTexte.set(texte, k); return k; }
     let s = slugTexte(texte); let k = s; let i = 2;
-    while (cles.has(k) && cles.get(k) !== texte) { k = `${s}_${i}`; i += 1; }
+    while ((cles.has(k) && cles.get(k) !== texte) || (k in existantes && existantes[k] !== texte)) { k = `${s}_${i}`; i += 1; }
     cles.set(k, texte); parTexte.set(texte, k); return k;
   };
   const ignore = (raison, texte) => res.ignores.push({ raison, texte: texte ? norm(texte).slice(0, 70) : undefined });
@@ -261,7 +276,7 @@ function traiter(fichier) {
           convertir(n, dec, dec + coeur.length, coeur, norm(coeur), (k) => `{${HOOK}('${k}')}`);
         }
       }
-    } else if (ts.isJsxAttribute(n) && n.initializer && ts.isStringLiteral(n.initializer) && ATTRS.has(n.name.getText())) {
+    } else if (ts.isJsxAttribute(n) && n.initializer && ts.isStringLiteral(n.initializer) && (ATTRS.has(n.name.getText()) || attributDeTexte(n.name.getText(), n.initializer.text))) {
       const v = n.initializer.text;
       if (francais(v)) convertir(n, n.initializer.getStart(), n.initializer.end, v, norm(v), (k) => `{${HOOK}('${k}')}`);
     } else if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) {
@@ -273,8 +288,10 @@ function traiter(fichier) {
           convertir(n, n.getStart(), n.end, v, norm(v), (k) => `${HOOK}('${k}')`, true);
         } else if (positionAffichee(n)) {
           convertir(n, n.getStart(), n.end, v, norm(v), (k) => `${HOOK}('${k}')`, true);
-        } else if (ts.isPropertyAssignment(p) && p.initializer === n && /^(label|title|description|placeholder|hint|name|text|subtitle|message|error|cta)$/i.test(p.name.getText().replace(/['"]/g, ''))) {
-          ignore('libellé dans un objet/tableau (à traiter à la main : clé + rendu)', v);
+        } else if (ts.isPropertyAssignment(p) && p.initializer === n && /^(label|title|titre|sous|description|placeholder|hint|name|nom|text|texte|subtitle|sousTitre|message|error|erreur|cta|aide|resume|legende|libelle)$/i.test(p.name.getText().replace(/['"]/g, ''))) {
+          // Objet de libellés : converti s'il vit DANS un composant (le hook est alors dans la
+          // portée) ; hors composant (constante de module) `convertir` l'ignore et le liste.
+          convertir(n, n.getStart(), n.end, v, norm(v), (k) => `${HOOK}('${k}')`, true);
         } else if (ts.isArrayLiteralExpression(p) && v.split(' ').length >= 2) {
           ignore('libellé dans un tableau (à traiter à la main)', v);
         }
@@ -324,7 +341,6 @@ function insererCle(catalogue, ns, cles) {
 
 const sauf = (args.find((a) => a.startsWith('--sauf=')) || '').slice(7).split(',').filter(Boolean);
 const fichiers = entrees.flatMap((e) => lister(e)).filter((f) => /\.(tsx|ts)$/.test(f) && !/\.test\./.test(f) && !/\.d\.ts$/.test(f) && !sauf.some((x) => f.includes(`/${x}/`)));
-const catalogue = JSON.parse(fs.readFileSync(CATALOGUE, 'utf8'));
 const rapport = [];
 let total = 0; const raisons = {};
 for (const f of fichiers) {

@@ -746,8 +746,8 @@ export default function CinemaPage() {
    * COMPOSE le scenario : c'est un acte explicite, jamais un effet de bord de la navigation.
    */
   const actionEtape = etape === 4 ? null : etape === 1 && !film
-    ? { libelle: enCours === 'scenario' ? 'Composition…' : 'Composer le scenario', onClick: () => { void composer().then(() => setEtape(2)); }, desactive: enCours !== null, titre: 'Decouper votre histoire en scenes et en plans' }
-    : { libelle: 'Continuer', onClick: () => allerAEtape(etape + 1), desactive: !etapesWizard[Math.min(etape + 1, 4)].accessible };
+    ? { libelle: enCours === 'scenario' ? 'Composition…' : 'Composer le scenario', onClick: () => { void composer().then(() => setEtape(2)); }, desactive: enCours !== null, titre: tUi('decouper_votre_histoire_en_scenes_et_e') }
+    : { libelle: tUi('continuer'), onClick: () => allerAEtape(etape + 1), desactive: !etapesWizard[Math.min(etape + 1, 4)].accessible };
 
   const enteteWizard = (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -755,7 +755,7 @@ export default function CinemaPage() {
         <Clapperboard className="h-5 w-5 shrink-0 text-violet-400" aria-hidden="true" />
         <h1 className="truncate text-base font-bold text-slate-50">Cinema IA</h1>
         <span className="rounded-full border border-violet-500/30 bg-violet-500/15 px-2 py-0.5 text-[10px] text-violet-300">prototype</span>
-        <Detail texte="Le decoupage est local et deterministe : une phrase de votre histoire = un plan. Aucune IA generative n'est appelee pour composer le scenario, et votre texte d'origine est conserve tel quel." />
+        <Detail texte={tUi('le_decoupage_est_local_et_deterministe_2')} />
       </div>
       <div className="ml-auto flex flex-wrap items-center gap-3">
         {mesFilms.length > 0 && (
@@ -801,20 +801,20 @@ export default function CinemaPage() {
     const fermerEtAller = (etapeCible: number) => () => { setConfirmation(null); setEtape(etapeCible); };
     const v: Verification[] = [];
     // Le moteur
-    if (!generationIa) v.push({ etat: 'bloque', texte: 'La génération IA est indisponible pour le moment. Tu peux ajouter ton propre média à la place.' });
-    else if (reelle) v.push({ etat: 'ok', texte: 'Le moteur de génération est disponible.' });
-    else v.push({ etat: 'info', texte: 'Mode démonstration : ce visuel de test est gratuit (un aplat de couleur), ce n’est pas une vraie image.' });
+    if (!generationIa) v.push({ etat: 'bloque', texte: tUi('la_generation_ia_est_indisponible_pour') });
+    else if (reelle) v.push({ etat: 'ok', texte: tUi('le_moteur_de_generation_est_disponible') });
+    else v.push({ etat: 'info', texte: tUi('mode_demonstration_ce_visuel_de_test_e') });
     // Une seule creation a la fois par film
-    if (generationActiveDe(film)) v.push({ etat: 'bloque', texte: 'Une création est déjà en cours pour ce film. Attends qu’elle se termine, puis recommence.' });
-    if (video && plan.media?.genre !== 'image') v.push({ etat: 'bloque', texte: 'Pour animer ce visuel, il faut d’abord une image.' });
+    if (generationActiveDe(film)) v.push({ etat: 'bloque', texte: tUi('une_creation_est_deja_en_cours_pour_ce') });
+    if (video && plan.media?.genre !== 'image') v.push({ etat: 'bloque', texte: tUi('pour_animer_ce_visuel_il_faut_d_abord') });
     // Le style
     const style = film.styleCinema ? styleDe(film.styleCinema)?.libelle : null;
     v.push(style
       ? { etat: 'ok', texte: `Style du film : ${style}.` }
-      : { etat: 'info', texte: 'Aucun style imposé : l’image suivra ta description.', action: { libelle: 'Choisir un style', surClic: fermerEtAller(0) } });
+      : { etat: 'info', texte: tUi('aucun_style_impose_l_image_suivra_ta_d'), action: { libelle: tUi('choisir_un_style'), surClic: fermerEtAller(0) } });
     // Les personnages et leurs photos de reference
     const presents = film.personnages.filter((pp) => plan.personnages.includes(pp.id));
-    if (presents.length === 0) v.push({ etat: 'info', texte: 'Aucun personnage dans ce visuel.' });
+    if (presents.length === 0) v.push({ etat: 'info', texte: tUi('aucun_personnage_dans_ce_visuel') });
     else {
       const sansPhoto = presents.filter((pp) => !aUnePhoto(pp));
       v.push(sansPhoto.length === 0
@@ -823,11 +823,11 @@ export default function CinemaPage() {
     }
     // Les points a verifier dans l'histoire
     const nb = bloquants.length;
-    if (nb === 0) v.push({ etat: 'ok', texte: 'Aucun point critique à vérifier dans ton histoire.' });
+    if (nb === 0) v.push({ etat: 'ok', texte: tUi('aucun_point_critique_a_verifier_dans_t') });
     else if (reelle) {
-      v.push({ etat: 'bloque', texte: `${nb === 1 ? 'Un point' : `${nb} points`} de ton histoire ${nb === 1 ? 'doit' : 'doivent'} être vérifié${nb > 1 ? 's' : ''} avant la génération.`, action: { libelle: 'Voir les points', surClic: fermerEtAller(3) } });
+      v.push({ etat: 'bloque', texte: `${nb === 1 ? 'Un point' : `${nb} points`} de ton histoire ${nb === 1 ? 'doit' : 'doivent'} être vérifié${nb > 1 ? 's' : ''} avant la génération.`, action: { libelle: tUi('voir_les_points'), surClic: fermerEtAller(3) } });
     } else {
-      v.push({ etat: 'info', texte: `${nb === 1 ? 'Un point' : `${nb} points`} à vérifier dans ton histoire : ${nb === 1 ? 'il bloquerait' : 'ils bloqueraient'} une création payante, pas cette démonstration.`, action: { libelle: 'Voir les points', surClic: fermerEtAller(3) } });
+      v.push({ etat: 'info', texte: `${nb === 1 ? 'Un point' : `${nb} points`} à vérifier dans ton histoire : ${nb === 1 ? 'il bloquerait' : 'ils bloqueraient'} une création payante, pas cette démonstration.`, action: { libelle: tUi('voir_les_points'), surClic: fermerEtAller(3) } });
     }
     const prix = tarifs.prix[cle];
     return {
@@ -927,8 +927,8 @@ export default function CinemaPage() {
       >
         {etape === 0 && (
           <div>
-            <TitreEtape numero={1} total={5} icone={Clapperboard} titre="Racontez votre idee."
-              phrase="Un court resume suffit. Studiio vous guidera ensuite pour les personnages et les scenes, sans changer votre histoire." />
+            <TitreEtape numero={1} total={5} icone={Clapperboard} titre={tUi('racontez_votre_idee')}
+              phrase={tUi('un_court_resume_suffit_studiio_vous_gu')} />
             <ModelesFilm
               aDesSaisies={aDesSaisies}
               surAppliquer={appliquerModele}
@@ -974,7 +974,7 @@ export default function CinemaPage() {
                   <option value="standard">standard</option>
                   <option value="cinema">cinema</option>
                 </select>
-                <Detail texte="La qualite choisit la resolution et le fournisseur visuel. Seul le fournisseur local (gratuit) est actif aujourd'hui : les trois qualites rendent donc le meme type d'image." />
+                <Detail texte={tUi('la_qualite_choisit_la_resolution_et_le')} />
               </label>
               <label className="flex items-center gap-2">Scenes
                 <input type="number" min={3} max={5} value={nbScenes} onChange={(e) => setNbScenes(Number(e.target.value))} className="w-16 rounded bg-slate-950 border border-slate-700 px-2 py-1" />
@@ -997,8 +997,8 @@ export default function CinemaPage() {
 
         {etape === 1 && (
           <div>
-            <TitreEtape numero={2} total={5} icone={Users} titre="Qui joue dans votre film ?"
-              phrase="Gardez les memes personnages d’une scene a l’autre. Un personnage absent de cette liste n’apparaitra dans aucun plan." />
+            <TitreEtape numero={2} total={5} icone={Users} titre={tUi('qui_joue_dans_votre_film')}
+              phrase={tUi('gardez_les_memes_personnages_d_une_sce')} />
             <div className="space-y-3">
               {casting.map((p, i) => (
                 <div key={i} className="grid grid-cols-2 gap-2">
@@ -1062,8 +1062,8 @@ export default function CinemaPage() {
 
         {etape === 2 && (
           <div>
-            <TitreEtape numero={3} total={5} icone={Link2} titre="Donnons vie à ton histoire"
-              phrase="Tes scènes sont préparées. Choisis comment créer les images de ton film." />
+            <TitreEtape numero={3} total={5} icone={Link2} titre={tUi('donnons_vie_a_ton_histoire')}
+              phrase={tUi('tes_scenes_sont_preparees_choisis_comm')} />
             {film ? (
               <>
                 {!methode ? (
@@ -1471,7 +1471,7 @@ export default function CinemaPage() {
         {etape === 3 && (
           <div>
             <TitreEtape numero={4} total={5} icone={Eye} titre="Verifiez avant de generer."
-              phrase="Un seul apercu, et ce qu’il contient vraiment. Rien n’est facture tant que vous n’avez pas lance une generation." />
+              phrase={tUi('un_seul_apercu_et_ce_qu_il_contient_vr')} />
             {film && fidelite ? (
               <>
                 <div className="space-y-1.5">
@@ -1633,15 +1633,15 @@ export default function CinemaPage() {
 
         {etape === 4 && (
           <div>
-            <TitreEtape numero={5} total={5} icone={Download} titre="Votre film, pret a partager."
-              phrase="Le MP4 se telecharge ici, et nulle part ailleurs : les extraits d’exemple ne sont jamais exportes comme votre film." />
+            <TitreEtape numero={5} total={5} icone={Download} titre={tUi('votre_film_pret_a_partager')}
+              phrase={tUi('le_mp4_se_telecharge_ici_et_nulle_part')} />
             {film ? (
               <section id="cinema-export" className="rounded-xl border border-slate-800 bg-slate-900/40 p-5 scroll-mt-4">
                 <h2 className="font-semibold mb-4 flex items-center gap-2"><Download className="w-4 h-4 text-violet-400" /> Export MP4</h2>
                 {devis && (
                   <p className="text-sm text-slate-300 mb-3">
                     Devis : {devis.totalUsd === null ? 'cout inconnu (tarif non declare)' : devis.totalUsd === 0 ? 'gratuit (rendu local)' : `${devis.totalUsd.toFixed(4)} USD`} pour {devis.secondesAProduire.toFixed(1)} s a produire.
-                    <Detail texte="Le devis est etabli AVANT le rendu. Une scene inchangee n'est pas refaite : son MP4 est repris tel quel et recolle. Le plafond de depense est fixe par le serveur." />
+                    <Detail texte={tUi('le_devis_est_etabli_avant_le_rendu_une')} />
                   </p>
                 )}
                 <button onClick={() => produire()} disabled={enCours !== null || ACTIF(travail)} className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium hover:bg-violet-500 disabled:opacity-50">
@@ -1732,7 +1732,7 @@ function Production({ film, travail, surArreter }: { film: FilmApi; travail: Tra
           </ul>
           <p className="mt-3 text-xs text-slate-500">
             {tUi('la_production_continue_sur_le_serveur')}
-            <Detail texte="Les scenes terminees sont conservees. Si le serveur redemarre, la production reprend la ou elle s'est arretee, sans refaire les scenes deja rendues." />
+            <Detail texte={tUi('les_scenes_terminees_sont_conservees_s')} />
           </p>
         </div>
       )}
@@ -1742,7 +1742,7 @@ function Production({ film, travail, surArreter }: { film: FilmApi; travail: Tra
           <AlertTriangle className="w-5 h-5 shrink-0" />
           <span>
             {travail.erreur ?? tUi('la_production_a_echoue')}
-            <Detail texte="Les scenes deja rendues sont conservees : relancer l'export ne refait que ce qui manque." />
+            <Detail texte={tUi('les_scenes_deja_rendues_sont_conservee')} />
           </span>
         </div>
       )}
@@ -2098,7 +2098,7 @@ function Apercu({ montage, surPreparerVoix, voixEnCours }: { montage: MontageApi
     <section className="mb-8 rounded-xl border border-slate-800 bg-slate-900/40 p-5">
       <h2 className="font-semibold mb-1 flex items-center gap-2">
         <Play className="w-4 h-4 text-violet-400" /> {bilan.aucun && !demo ? tUi('previsualisation_du_scenario') : 'Apercu permanent'}
-        <Detail texte="Meme chronologie que le MP4 : les debuts et durees viennent du montage renvoye par l'API. Un plan sans media est un emplacement de storyboard, pas une video." />
+        <Detail texte={tUi('meme_chronologie_que_le_mp4_les_debuts')} />
       </h2>
       <p className="mb-3 text-xs text-slate-400" data-apercu="bilan">
         {bilan.aucun
@@ -2144,7 +2144,7 @@ function Apercu({ montage, surPreparerVoix, voixEnCours }: { montage: MontageApi
             <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
             {demo ? tUi('quitter_la_demonstration') : tUi('mode_demonstration_gratuit')}
           </button>
-          <Detail texte="Remplace, a l'ecran seulement, les medias manquants par des clips d'exemple locaux pour montrer le rendu d'un vrai montage. Rien n'est enregistre, rien n'est genere, aucun cout : ce ne sont pas des videos de votre film." />
+          <Detail texte={tUi('remplace_a_l_ecran_seulement_les_media')} />
         </div>
       )}
 

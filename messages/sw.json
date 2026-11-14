@@ -1731,7 +1731,6 @@
       "voix_indisponibles": "Sauti hazipatikani",
       "ma_voix": "Sauti yangu",
       "voix_disponibles": "Sauti zinazopatikana",
-      "voix_clonee": "— Sauti iliyonakiliwa",
       "qualite_de_generation": "Ubora wa uundaji",
       "cout_fournisseur_estime_admin": "Gharama ya mtoa huduma inayokadiriwa (msimamizi)",
       "cout_fournisseur_exact_non_disponible": "Gharama kamili ya mtoa huduma haipatikani",
@@ -2151,7 +2150,6 @@
       "selectionnez_au_moins_deux_cartes": "Chagua angalau kadi mbili",
       "les_deplacer_ensemble": "Zisogeze pamoja",
       "disposition_des_cartes_reinitialisee_l": "Mpangilio wa kadi umewekwa upya: maudhui au muundo umebadilika.",
-      "element": "kipengele",
       "retrecir": "Punguza",
       "retrecir_l_element": "Punguza kipengele",
       "taille_de_l_element": "Ukubwa wa kipengele",
@@ -2522,7 +2520,6 @@
       "creation_en_cours": "Inaundwa…"
     },
     "componentsCinemaDirectionCinema": {
-      "style_du_film": "Mtindo wa filamu:",
       "style_cinematique_du_film": "Mtindo wa sinema wa filamu",
       "aucun_style_impose_le_plan_est_genere": "Hakuna mtindo uliowekwa: picha inazalishwa kulingana na maelezo yake pekee.",
       "style_de_cette_scene": "Mtindo wa onyesho hili",

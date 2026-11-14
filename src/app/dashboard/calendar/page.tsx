@@ -1970,7 +1970,7 @@ export default function CalendarPage() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ filename: file.name, contentType: file.type, purpose: isVideo ? 'rush' : 'thumbnail' }),
           });
-          const signData = await signRes.json().catch(() => ({ success: false, error: 'Réponse invalide' }));
+          const signData = await signRes.json().catch(() => ({ success: false, error: tUi('reponse_invalide') }));
           console.log('[Import] sign response:', { httpStatus: signRes.status, success: signData?.success, error: signData?.error });
           if (!signRes.ok || !signData?.success) {
             const detail = signData?.error || `HTTP ${signRes.status}`;
@@ -2001,7 +2001,7 @@ export default function CalendarPage() {
           formData.append('file', file);
           formData.append('purpose', isVideo ? 'rush' : 'thumbnail');
           const uploadRes = await fetch('/api/upload/media', { method: 'POST', body: formData });
-          const uploadData = await uploadRes.json().catch(() => ({ success: false, error: 'Réponse invalide' }));
+          const uploadData = await uploadRes.json().catch(() => ({ success: false, error: tUi('reponse_invalide') }));
           console.log('[Import] /api/upload/media response:', { httpStatus: uploadRes.status, success: uploadData?.success, error: uploadData?.error });
           if (!uploadRes.ok || !uploadData?.success) {
             const detail = uploadData?.error || `HTTP ${uploadRes.status}`;

@@ -263,7 +263,7 @@ export default function BriefVideo({
                     data-brief-adapter={cle}
                     className="rounded-md border border-amber-500/40 px-2 py-0.5 text-[11px] text-amber-200 hover:text-white disabled:opacity-40"
                   >
-                    Adapter {CHAMP_ARTICLE[cle]} {tUi('au_theme')} {libelleTheme}
+                    Adapter {tUi.fr(CHAMP_ARTICLE[cle])} {tUi('au_theme')} {libelleTheme}
                   </button>
                   {onChangerTheme && (
                     <button
@@ -419,7 +419,7 @@ export function NarrationRecap({
         <ul className="space-y-1.5">
           {lignes.map(([k, t]) => (
             <li key={k} className="text-xs" data-brief-narration-sequence={k}>
-              <span className="text-[10px] uppercase tracking-wider text-gray-500 mr-1.5">{SEQUENCE_LABELS[k]}</span>
+              <span className="text-[10px] uppercase tracking-wider text-gray-500 mr-1.5">{tUi.fr(SEQUENCE_LABELS[k])}</span>
               <span className="text-gray-300">{t}</span>
             </li>
           ))}
@@ -481,7 +481,7 @@ export function BriefRecurrentRecap({ brief, sujets, admin = false }: {
     const v = (brief[k] ?? '').trim();
     if (v) lignes.push({ cle: k, libelle: LIBELLES_COURTS[k], valeur: brief[k] as string, attr: { 'data-autopilot-brief-recap-champ': k } });
   }
-  if (brief.duree) lignes.push({ cle: 'duree', libelle: 'Durée', valeur: `${brief.duree} s`, attr: { 'data-autopilot-brief-recap-duree': true } });
+  if (brief.duree) lignes.push({ cle: 'duree', libelle: tUi('duree'), valeur: `${brief.duree} s`, attr: { 'data-autopilot-brief-recap-duree': true } });
   if (brief.rythme) lignes.push({ cle: 'rythme', libelle: 'Rythme', valeur: RYTHME_LABELS[brief.rythme], attr: { 'data-autopilot-brief-recap-rythme': true } });
   return (
     <div
@@ -502,7 +502,7 @@ export function BriefRecurrentRecap({ brief, sujets, admin = false }: {
             {tUi('coherent')}
           </span>
         )}
-        <InfoBulle label={tUi('en_savoir_plus_sur_ce_que_dira_chaque')} titre="Ce que dira chaque vidéo" marqueur="brief-recap">
+        <InfoBulle label={tUi('en_savoir_plus_sur_ce_que_dira_chaque')} titre={tUi('ce_que_dira_chaque_video')} marqueur="brief-recap">
           <span className="block" data-autopilot-brief-recap-note>
             {tUi('la_narration_exacte_de_chaque_video_es')}
           </span>

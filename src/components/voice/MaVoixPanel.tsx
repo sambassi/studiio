@@ -258,7 +258,7 @@ export default function MaVoixPanel() {
       audio.onended = () => { if (lectureLigneRef.current?.url === url) arreterLectureLigne(); };
       await audio.play().catch(() => { /* lecture refusée par le navigateur : rien à jouer */ });
     } catch {
-      setErreurLigne({ affiche, message: 'L’écoute a échoué.' });
+      setErreurLigne({ affiche, message: tUi('l_ecoute_a_echoue') });
     } finally {
       setLigneEnCours(null);
     }

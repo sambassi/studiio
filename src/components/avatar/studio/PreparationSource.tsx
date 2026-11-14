@@ -327,7 +327,7 @@ export default function PreparationSource(props: {
         <div data-preparation-envoi role="status" aria-live="polite">
           {/* L'envoi de l'original : octets RÉELLEMENT transférés (XHR). */}
           <ProgressStatus
-            titre="Envoi de la vidéo d’origine"
+            titre={tUi('envoi_de_la_video_d_origine')}
             statut="en_cours"
             {...(progression ? { pourcentage: progression.pourcentage } : {})}
             detail={progression ? detailEnvoi(progression) : 'Démarrage…'}
@@ -426,7 +426,7 @@ export default function PreparationSource(props: {
                 boxShadow: '0 0 0 9999px rgba(0,0,0,0.5)', touchAction: 'none',
               }}
             >
-              {section === 'recadrer' && <OvaleVisage attribut="data-preparation-ovale" voile={false} legende="Visage dans l’ovale" />}
+              {section === 'recadrer' && <OvaleVisage attribut="data-preparation-ovale" voile={false} legende={tUi('visage_dans_l_ovale')} />}
             </div>
           </div>
 
@@ -577,11 +577,11 @@ export default function PreparationSource(props: {
             <div role="status" aria-live="polite">
               {/* Le serveur coupe, recadre, retouche et ré-encode : aucun pourcentage mesurable → barre indéterminée. */}
               <ProgressStatus
-                titre="Préparation de votre vidéo"
+                titre={tUi('preparation_de_votre_video')}
                 statut="en_cours"
                 description={tUi('coupe_recadrage_retouches_puis_encodag')}
                 detail="Traitement en cours — progression exacte indisponible."
-                note="Cela peut prendre une minute. Votre original reste intact."
+                note={tUi('cela_peut_prendre_une_minute_votre_ori')}
                 compact={false}
               />
             </div>

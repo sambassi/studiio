@@ -1731,7 +1731,6 @@
       "voix_indisponibles": "Vwa pa disponib",
       "ma_voix": "Vwa mwen",
       "voix_disponibles": "Vwa disponib",
-      "voix_clonee": "— Vwa klonaj",
       "qualite_de_generation": "Kalite jenerasyon",
       "cout_fournisseur_estime_admin": "Kou founisè estime (admin)",
       "cout_fournisseur_exact_non_disponible": "Kou egzak founisè a pa disponib",
@@ -2151,7 +2150,6 @@
       "selectionnez_au_moins_deux_cartes": "Chwazi omwen de kat",
       "les_deplacer_ensemble": "Deplase yo ansanm",
       "disposition_des_cartes_reinitialisee_l": "Aranjman kat yo reyinisyalize : kontni an oswa fòma a chanje.",
-      "element": "eleman",
       "retrecir": "Ratresi",
       "retrecir_l_element": "Redui eleman an",
       "taille_de_l_element": "Gwosè eleman an",
@@ -2522,7 +2520,6 @@
       "creation_en_cours": "Kreyasyon an kou…"
     },
     "componentsCinemaDirectionCinema": {
-      "style_du_film": "Style fim nan :",
       "style_cinematique_du_film": "Style sinematik fim nan",
       "aucun_style_impose_le_plan_est_genere": "Okenn style enpoze : plan an jenere selon deskripsyon li sèlman.",
       "style_de_cette_scene": "Style sèn sa a",

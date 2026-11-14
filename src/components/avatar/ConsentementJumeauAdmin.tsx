@@ -70,7 +70,7 @@ export default function ConsentementJumeauAdmin({ statutInitial, onAccepte }: { 
   }
   return (
     <div data-jumeau-consentement={statut ?? 'aucun'} className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 space-y-3 text-sm">
-      <p className="text-amber-200">{LIBELLES[statut ?? 'aucun']}</p>
+      <p className="text-amber-200">{tUi.fr(LIBELLES[statut ?? 'aucun'])}</p>
       <p className="text-xs text-gray-400">{tUi('acces_administrateur_test_interne_une')}</p>
       <div className="flex gap-3">
         <button onClick={enregistrer} disabled={envoi} className="rounded-lg bg-amber-500/20 px-3 py-2 text-xs text-amber-100 hover:bg-amber-500/30 disabled:opacity-50 flex items-center gap-2">

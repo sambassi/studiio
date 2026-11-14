@@ -167,7 +167,7 @@ export default function PassagesSuggeres({ analyseId, montage, onVideoLancee }: 
       if (r.sorte === 'lancee') {
         setChaine({
           sorte: 'dit',
-          texte: 'Ta vidéo est en cours de création, juste en dessous.',
+          texte: tUi('ta_video_est_en_cours_de_creation_just'),
           alerte: false,
         });
         onVideoLancee?.();
@@ -175,14 +175,14 @@ export default function PassagesSuggeres({ analyseId, montage, onVideoLancee }: 
       }
       if (r.sorte === 'deja_prete') {
         setChaine({
-          sorte: 'dit', texte: 'Ta vidéo est déjà prête, juste en dessous.', alerte: false,
+          sorte: 'dit', texte: tUi('ta_video_est_deja_prete_juste_en_desso'), alerte: false,
         });
         onVideoLancee?.();
         return;
       }
       if (r.sorte === 'deja_en_cours') {
         setChaine({
-          sorte: 'dit', texte: 'Une création est déjà en cours pour ce montage.', alerte: false,
+          sorte: 'dit', texte: tUi('une_creation_est_deja_en_cours_pour_ce'), alerte: false,
         });
         onVideoLancee?.();
         return;

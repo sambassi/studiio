@@ -124,7 +124,21 @@ function texteFr(cle: string, ns: string): string | null {
   return typeof cur === 'string' ? cur : null;
 }
 
+/** `tUi.fr(expr)` → `expr` (parenthèses équilibrées) : le code d'origine, sans l'enveloppe de traduction. */
+function retirerEnveloppesFr(source: string): string {
+  let out = source;
+  for (let garde = 0; garde < 500; garde += 1) {
+    const i = out.indexOf('tUi.fr(');
+    if (i < 0) break;
+    let prof = 1; let j = i + 'tUi.fr('.length;
+    for (; j < out.length && prof > 0; j += 1) { if (out[j] === '(') prof += 1; else if (out[j] === ')') prof -= 1; }
+    out = out.slice(0, i) + out.slice(i + 'tUi.fr('.length, j - 1) + out.slice(j);
+  }
+  return out;
+}
+
 export function restituerFrancais(source: string): string {  // eslint-disable-line
+  source = retirerEnveloppesFr(source);
   const m = source.match(/useTranslations\('(ui\.[A-Za-z0-9.]+)'\)/);
   if (!m) return source;
   const ns = m[1];

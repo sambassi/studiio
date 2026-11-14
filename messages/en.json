@@ -1731,7 +1731,6 @@
       "voix_indisponibles": "Voices unavailable",
       "ma_voix": "My voice",
       "voix_disponibles": "Available voices",
-      "voix_clonee": "— Cloned voice",
       "qualite_de_generation": "Generation quality",
       "cout_fournisseur_estime_admin": "Estimated provider cost (admin)",
       "cout_fournisseur_exact_non_disponible": "Exact provider cost not available",
@@ -2151,7 +2150,6 @@
       "selectionnez_au_moins_deux_cartes": "Select at least two cards",
       "les_deplacer_ensemble": "Move them together",
       "disposition_des_cartes_reinitialisee_l": "Card layout reset: the content or format has changed.",
-      "element": "element",
       "retrecir": "Shrink",
       "retrecir_l_element": "Shrink the element",
       "taille_de_l_element": "Element size",
@@ -2522,7 +2520,6 @@
       "creation_en_cours": "Creating…"
     },
     "componentsCinemaDirectionCinema": {
-      "style_du_film": "Film style:",
       "style_cinematique_du_film": "Cinematic style of the film",
       "aucun_style_impose_le_plan_est_genere": "No style imposed: the shot is generated from its description alone.",
       "style_de_cette_scene": "Style of this scene",

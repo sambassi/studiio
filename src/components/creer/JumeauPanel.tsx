@@ -106,8 +106,8 @@ export default function JumeauPanel(props: {
 
   const action = (motif: string | null): { libelle: string; href: string } => (
     motif === 'voix_absente' || motif === 'choix_voix_requis' || motif === 'voix_inutilisable'
-      ? { libelle: 'Configurer ma voix', href: '/dashboard/avatar' }
-      : { libelle: 'Gérer mon avatar', href: '/dashboard/avatar' }
+      ? { libelle: tUi('configurer_ma_voix'), href: '/dashboard/avatar' }
+      : { libelle: tUi('gerer_mon_avatar'), href: '/dashboard/avatar' }
   );
 
   const dira = ORDRE.map((k) => ({ key: k, libelle: LIBELLES[k], texte: (props.textes[k] ?? '').trim() })).filter((s) => s.key !== 'video' || s.texte.length > 0);

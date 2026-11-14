@@ -64,8 +64,8 @@ export function SelecteurStyleFilm({ valeur, surChoisir, surMontrerExemple, exem
         <Palette className="w-3.5 h-3.5 text-violet-400" />
         {tUi('style_du_film')}
         <Info2
-          libelle="Ce que change un style"
-          texte="Un style regle la lumiere, la palette, l’ambiance et la texture de l’image. Il ne change ni les personnages, ni les repliques, ni les lieux. Choisir un style ne lance aucune generation et ne coute rien : il s’applique a la prochaine image ou video generee."
+          libelle={tUi('ce_que_change_un_style')}
+          texte={tUi('un_style_regle_la_lumiere_la_palette_l')}
         />
       </div>
       <div role="radiogroup" aria-label={tUi('style_cinematique_du_film')} className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -196,7 +196,7 @@ export function SelecteurCamera({ valeur, automatique, ancien = false, surChoisi
         ))}
       </select>
       <Info2
-        libelle="A propos du mouvement de camera"
+        libelle={tUi('a_propos_du_mouvement_de_camera')}
         texte="Indication donnee au modele video : il l’interprete et peut s’en ecarter. Elle s’applique a la prochaine animation par IA de ce plan ; l’image du plan reste fixe."
       />
     </span>
@@ -210,7 +210,7 @@ export function ResumeStyle({ styleFilm, exceptions }: { styleFilm: IdStyleCinem
   return (
     <p className="flex flex-wrap items-center gap-x-2 text-xs text-slate-400" data-direction="resume">
       <Palette className="w-3.5 h-3.5 text-violet-400" aria-hidden="true" />
-      {tUi('style_du_film')} <span className="text-slate-200">{s ? s.libelle : tUi('aucun_impose')}</span>
+      {tUi('style_du_film_2')} <span className="text-slate-200">{s ? s.libelle : tUi('aucun_impose')}</span>
       {exceptions > 0 && <span>· {exceptions} scene{exceptions > 1 ? 's' : ''} {tUi('avec_un_style_different')}</span>}
       <span className="inline-flex items-center gap-1 text-slate-500">
         <AlertCircle className="w-3 h-3" aria-hidden="true" /> {tUi('s_applique_aux_prochaines_generations')}

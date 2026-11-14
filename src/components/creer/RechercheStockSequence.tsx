@@ -385,7 +385,7 @@ const RechercheStockSequence = forwardRef<PanneauStockHandle, RechercheStockSequ
                 }`}
               >
                 <Icone className="w-3.5 h-3.5" />
-                {LIBELLE_FILTRE[f]}
+                {tUi.fr(LIBELLE_FILTRE[f])}
               </button>
             );
           })}

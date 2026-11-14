@@ -40,3 +40,17 @@ export function couverture(base: Messages, surcouche: Messages | null | undefine
   for (const c of cles) if (s[c] && s[c].trim() !== '' && s[c] !== b[c]) n += 1;
   return n / cles.length;
 }
+
+/** Texte normalisé (NFC, espaces écrasés) — clé de recherche des libellés. */
+export function normaliserLibelle(t: string): string {
+  return String(t).normalize('NFC').replace(/\s+/g, ' ').trim();
+}
+
+/** Empreinte FNV-1a 32 bits (base 36) d'un libellé français : clé dans `ui.libelles`.
+ *  Identique à scripts/i18n/hash.cjs (test d'égalité). */
+export function empreinteLibelle(t: string): string {
+  const s = normaliserLibelle(t);
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i += 1) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+  return `h${h.toString(36)}${s.length.toString(36)}`;
+}

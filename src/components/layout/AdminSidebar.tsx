@@ -12,6 +12,7 @@ import { ETAT_INTERACTIF_SANS_FOND } from '@/lib/ui/etats';
  * est toujours visible, à l'identique d'avant.
  */
 export function AdminSidebar({ ouvert = false, onNaviguer }: { ouvert?: boolean; onNaviguer?: () => void } = {}) {
+  const tUi = useTranslations('ui.componentsLayoutAdminSidebar');
   const pathname = usePathname();
   const t = useTranslations('adminSidebar');
 
@@ -24,9 +25,9 @@ export function AdminSidebar({ ouvert = false, onNaviguer }: { ouvert?: boolean;
     { icon: Globe, label: t('landingPage'), href: '/admin/landing' },
     { icon: Settings, label: t('settings'), href: '/admin/settings' },
     { icon: CreditCard, label: 'Tarification', href: '/admin/pricing' },
-    { icon: Coins, label: 'Tarifs & crédits', href: '/admin/tarifs' },
+    { icon: Coins, label: tUi('tarifs_credits'), href: '/admin/tarifs' },
     { icon: Clapperboard, label: 'Cinema IA — formules', href: '/admin/cinema-formules' },
-    { icon: Film, label: 'Coûts avatar', href: '/admin/avatar-couts' },
+    { icon: Film, label: tUi('couts_avatar'), href: '/admin/avatar-couts' },
     { icon: Server, label: 'Fournisseurs', href: '/admin/fournisseurs' },
     { icon: FileText, label: t('terms'), href: '/admin/terms' },
     { icon: Mail, label: t('emails'), href: '/admin/emails' },

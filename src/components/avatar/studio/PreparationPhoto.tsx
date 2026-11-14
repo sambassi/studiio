@@ -135,7 +135,7 @@ export default function PreparationPhoto(props: {
       {etape === 'envoi' && (
         <div role="status" aria-live="polite" data-preparation-photo-envoi>
           <ProgressStatus
-            titre="Envoi de la photo d’origine"
+            titre={tUi('envoi_de_la_photo_d_origine')}
             statut="en_cours"
             {...(progression ? { pourcentage: progression.pourcentage } : {})}
             detail={progression ? detailEnvoi(progression) : 'Démarrage…'}
@@ -176,7 +176,7 @@ export default function PreparationPhoto(props: {
           </div>
           {erreur && <p data-preparation-photo-echec role="alert" className="rounded-xl bg-red-500/10 p-3 text-xs text-red-200">{erreur}</p>}
           {etape === 'traitement' ? (
-            <ProgressStatus titre="Embellissement de votre photo" statut="en_cours" detail="Traitement en cours — progression exacte indisponible." note="Votre original reste intact." />
+            <ProgressStatus titre={tUi('embellissement_de_votre_photo')} statut="en_cours" detail="Traitement en cours — progression exacte indisponible." note={tUi('votre_original_reste_intact')} />
           ) : (
             <div className="grid grid-cols-2 gap-3">
               <button type="button" onClick={props.onAnnuler} className="button-secondary py-2.5 text-sm">{tUi('annuler')}</button>

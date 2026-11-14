@@ -49,9 +49,9 @@ export default function ModeAudioCartes({ valeur, surChoisir, historique = false
               className={`rounded-lg border p-3 text-left transition-colors ${actif ? 'border-violet-500/80 bg-violet-500/10 ring-1 ring-violet-500/40' : 'border-slate-700 bg-slate-900/40 hover:border-violet-500/50'}`}
             >
               <span className="flex items-center gap-2 text-sm font-semibold text-slate-100">
-                <Icone className={`h-4 w-4 shrink-0 ${actif ? 'text-violet-300' : 'text-slate-400'}`} aria-hidden="true" /> {LIBELLES_MODE[m].titre}
+                <Icone className={`h-4 w-4 shrink-0 ${actif ? 'text-violet-300' : 'text-slate-400'}`} aria-hidden="true" /> {tUi.fr(LIBELLES_MODE[m].titre)}
               </span>
-              <span className="mt-1 block text-[11px] leading-snug text-slate-400">{LIBELLES_MODE[m].phrase}</span>
+              <span className="mt-1 block text-[11px] leading-snug text-slate-400">{tUi.fr(LIBELLES_MODE[m].phrase)}</span>
             </button>
           );
         })}

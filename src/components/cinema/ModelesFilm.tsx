@@ -240,8 +240,8 @@ export default function ModelesFilm({ aDesSaisies, surAppliquer, surPartirDeZero
         <Sparkles className="w-3.5 h-3.5 text-violet-400" />
         {tUi('partir_d_un_exemple')}
         <InfoCourte
-          libelle="Ce qu’un exemple remplit"
-          texte="Un exemple remplit le titre, l’histoire avec ses repliques, les personnages et leur apparence, le format et le nombre de scenes (et un style, pour l’exemple science-fiction). Tout reste modifiable, et rien n’est genere : aucun credit n’est utilise."
+          libelle={tUi('ce_qu_un_exemple_remplit')}
+          texte={tUi('un_exemple_remplit_le_titre_l_histoire')}
         />
       </div>
 
@@ -273,7 +273,7 @@ export default function ModelesFilm({ aDesSaisies, surAppliquer, surPartirDeZero
                   </span>
                 </span>
                 <span className="block px-3 py-2">
-                  <span className="block break-words text-[11px] leading-snug text-slate-400">{m.ambiance}</span>
+                  <span className="block break-words text-[11px] leading-snug text-slate-400">{tUi.fr(m.ambiance)}</span>
                   <span className="mt-1 block text-[11px] text-slate-500">
                     {m.valeurs.format} · {m.valeurs.nbScenes} scenes · {m.valeurs.casting.length} personnages
                   </span>

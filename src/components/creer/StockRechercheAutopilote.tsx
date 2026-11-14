@@ -194,7 +194,7 @@ export default function StockRechercheAutopilote({
             data-autopilot-stock-mode={t.v}
             className={`rounded px-2 py-0.5 text-[10px] border ${filtre === t.v ? 'border-purple-500 text-white bg-purple-500/10' : 'border-gray-800 text-gray-400 hover:text-white'}`}
           >
-            {t.label}
+            {tUi.fr(t.label)}
           </button>
         ))}
       </div>
@@ -250,11 +250,11 @@ export default function StockRechercheAutopilote({
                   accent={accent}
                   actions={[deja
                     ? {
-                      cle: 'ajoute', libelle: 'Ajouté', icone: Check, variante: 'fait', disabled: true, onClick: () => {},
+                      cle: 'ajoute', libelle: tUi('ajoute'), icone: Check, variante: 'fait', disabled: true, onClick: () => {},
                       attrs: { 'data-autopilot-stock-ajoute': cle },
                     }
                     : {
-                      cle: 'ajouter', libelle: 'Ajouter', icone: Plus, variante: 'principal',
+                      cle: 'ajouter', libelle: tUi('ajouter'), icone: Plus, variante: 'principal',
                       onClick: () => { void retenir(m); }, disabled: etat === 'import', enCours: etat === 'import',
                       ariaLabel: `Ajouter cette ${LIBELLES_ORIGINE[origine].toLowerCase()}`,
                       attrs: { 'data-autopilot-stock-retenir': cle },

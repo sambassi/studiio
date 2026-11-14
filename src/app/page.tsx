@@ -653,7 +653,7 @@ export default function LandingPage() {
                     {features.map((f: string, j: number) => (
                       <li key={j} className="flex items-start gap-3 text-sm text-gray-300">
                         <Check size={16} className="text-violet-400 shrink-0 mt-0.5" />
-                        {f}
+                        {tUi.fr(f)}
                       </li>
                     ))}
                   </ul>

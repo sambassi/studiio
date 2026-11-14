@@ -190,9 +190,9 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
   const etapesEntrainement: EtapeProgression[] = [
     { libelle: 'Source', etat: 'terminee' },
     { libelle: 'Consentement', etat: 'terminee' },
-    { libelle: 'Création', etat: 'terminee' },
-    { libelle: 'Entraînement', etat: 'courante' },
-    { libelle: 'Prêt', etat: 'a_venir' },
+    { libelle: tUi('creation'), etat: 'terminee' },
+    { libelle: tUi('entrainement'), etat: 'courante' },
+    { libelle: tUi('pret'), etat: 'a_venir' },
   ];
 
   return (
@@ -218,7 +218,7 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
             <div data-avatar-did-refus>
               <Notification
                 niveau="erreur"
-                titre="Votre vidéo de consentement n'a pas été acceptée."
+                titre={tUi('votre_video_de_consentement_n_a_pas_et')}
                 detail={[
                   'votre nom affiché est correct ;',
                   'vous lisez la phrase exactement, y compris votre nom ;',
@@ -228,8 +228,8 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
                 ]}
                 motif={erreurConsentement}
                 {...(!fichier && !expiree
-                  ? { actionPrincipale: { libelle: 'Réenregistrer', onClick: reenregistrer }, actionSecondaire: { libelle: 'Voir les consignes', onClick: ouvrirConsignes } }
-                  : { actionSecondaire: { libelle: 'Voir les consignes', onClick: ouvrirConsignes } })}
+                  ? { actionPrincipale: { libelle: tUi('reenregistrer'), onClick: reenregistrer }, actionSecondaire: { libelle: tUi('voir_les_consignes'), onClick: ouvrirConsignes } }
+                  : { actionSecondaire: { libelle: tUi('voir_les_consignes'), onClick: ouvrirConsignes } })}
               />
             </div>
           )}
@@ -237,24 +237,24 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
             <div data-avatar-did-expiree>
               <Notification
                 niveau="avertissement"
-                titre="Votre phrase de consentement a expiré."
-                detail="Une phrase est valable 30 minutes. Obtenez-en une nouvelle, puis enregistrez-la sans attendre."
-                actionPrincipale={{ libelle: 'Obtenir une nouvelle phrase', onClick: () => demanderPhrase(true) }}
+                titre={tUi('votre_phrase_de_consentement_a_expire')}
+                detail={tUi('une_phrase_est_valable_30_minutes_obte')}
+                actionPrincipale={{ libelle: tUi('obtenir_une_nouvelle_phrase'), onClick: () => demanderPhrase(true) }}
               />
             </div>
           )}
           <Consigne
             key={consignes.cle}
-            titre="Enregistrez-vous en lisant exactement cette phrase."
-            texte="Courte vidéo, face caméra, voix claire. Valable 30 minutes."
+            titre={tUi('enregistrez_vous_en_lisant_exactement')}
+            texte={tUi('courte_video_face_camera_voix_claire_v')}
             ouvertParDefaut={consignes.ouvert}
             checklist={[
               { libelle: 'visage bien visible' },
-              { libelle: 'face caméra' },
-              { libelle: 'bonne lumière' },
+              { libelle: tUi('face_camera') },
+              { libelle: tUi('bonne_lumiere') },
               { libelle: 'voix claire' },
-              { libelle: 'phrase lue exactement, votre nom compris' },
-              { libelle: 'vidéo courte' },
+              { libelle: tUi('phrase_lue_exactement_votre_nom_compri') },
+              { libelle: tUi('video_courte') },
               { libelle: 'fond calme' },
             ]}
           />
@@ -289,7 +289,7 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
           </div>
           {envoi && (
             <ProgressStatus
-              titre="Envoi de votre vidéo de consentement"
+              titre={tUi('envoi_de_votre_video_de_consentement')}
               statut="en_cours"
               pourcentage={envoi.pourcentage}
               detail={detailEnvoi(envoi)}
@@ -312,8 +312,8 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
           <div data-avatar-did-accepte>
             <Notification
               niveau="succes"
-              titre="Consentement accepté."
-              detail="Vous pouvez maintenant créer votre avatar."
+              titre={tUi('consentement_accepte')}
+              detail={tUi('vous_pouvez_maintenant_creer_votre_ava')}
               actionPrincipale={{ libelle: occupe === 'creer' ? 'Création en cours…' : 'Créer mon avatar', onClick: () => appeler('creer', '/api/avatar/did/creer'), disabled: !!occupe }}
             />
           </div>
@@ -324,17 +324,17 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
       {etape === 'creation_en_cours' && (
         <div data-avatar-did-entrainement className="space-y-3">
           {lancementNotifie && (
-            <Notification niveau="info" titre="Votre avatar est en préparation." detail="Cela prend généralement plusieurs minutes. Cette page se met à jour toute seule ; vous pouvez la laisser ouverte." onFermer={() => setLancementNotifie(false)} />
+            <Notification niveau="info" titre={tUi('votre_avatar_est_en_preparation')} detail="Cela prend généralement plusieurs minutes. Cette page se met à jour toute seule ; vous pouvez la laisser ouverte." onFermer={() => setLancementNotifie(false)} />
           )}
           {/* Le fournisseur ne rend qu'un statut : barre indéterminée, aucun pourcentage
               inventé. Le workflow, lui, compte les étapes réellement connues. Pas de
               durée écoulée : aucun horodatage serveur du passage en entraînement n'est
               rendu à l'écran — on n'en fabrique pas. */}
           <ProgressStatus
-            titre="Entraînement de votre avatar"
+            titre={tUi('entrainement_de_votre_avatar')}
             statut="en_cours"
             etapes={etapesEntrainement}
-            detail="Entraînement en cours — progression exacte indisponible."
+            detail={tUi('entrainement_en_cours_progression_exac')}
             description={tUi('cela_prend_generalement_plusieurs_minu')}
           />
         </div>
@@ -344,11 +344,11 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
         <div data-avatar-did-echec>
           <Notification
             niveau="erreur"
-            titre="L'entraînement de votre avatar n'a pas abouti."
-            detail="La vidéo source n'a pas permis de créer l'avatar. Réessayez avec une vidéo plus longue, mieux éclairée, visage face caméra."
+            titre={tUi('l_entrainement_de_votre_avatar_n_a_pas')}
+            detail={tUi('la_video_source_n_a_pas_permis_de_cree')}
             motif={erreurEntrainement ?? null}
             {...(onChangerSource ? { actionPrincipale: { libelle: 'Changer de source', onClick: onChangerSource } } : {})}
-            actionSecondaire={{ libelle: 'Voir les consignes', onClick: ouvrirConsignes }}
+            actionSecondaire={{ libelle: tUi('voir_les_consignes'), onClick: ouvrirConsignes }}
           />
         </div>
       )}

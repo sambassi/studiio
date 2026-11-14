@@ -115,9 +115,9 @@ export default function InfographiePage() {
   const [title, setTitle] = useState('ÉNERGIE & CARDIO');
   const [subtitle, setSubtitle] = useState('Pousse tes limites avec Afroboost');
   const [cards, setCards] = useState<InfoCard[]>([
-    { id: '1', emoji: 'Zap', label: 'Intensité', value: 'MAX', color: '#ec4899' },
-    { id: '2', emoji: 'Heart', label: 'Fréquence', value: '140+', color: '#ef4444' },
-    { id: '3', emoji: 'PersonStanding', label: 'Chorégraphie', value: '50+', color: '#a855f7' },
+    { id: '1', emoji: 'Zap', label: tUi('intensite'), value: 'MAX', color: '#ec4899' },
+    { id: '2', emoji: 'Heart', label: tUi('frequence'), value: '140+', color: '#ef4444' },
+    { id: '3', emoji: 'PersonStanding', label: tUi('choregraphie'), value: '50+', color: '#a855f7' },
   ]);
 
   // Format and batch state
@@ -282,10 +282,10 @@ export default function InfographiePage() {
 
   const handleGenerateTitleAndSubtitle = () => {
     const suggestions = [
-      { title: 'TRANSFORME TON CORPS', subtitle: 'La danse est ton arme secrète' },
-      { title: 'ÉNERGIE SANS LIMITE', subtitle: 'Repousse tes limites chaque jour' },
-      { title: 'DANSE & PERFORMANCE', subtitle: 'Atteins tes objectifs plus vite' },
-      { title: 'BIEN-ÊTRE TOTAL', subtitle: 'Corps et esprit en harmonie' },
+      { title: tUi('transforme_ton_corps'), subtitle: tUi('la_danse_est_ton_arme_secrete') },
+      { title: tUi('energie_sans_limite'), subtitle: tUi('repousse_tes_limites_chaque_jour') },
+      { title: 'DANSE & PERFORMANCE', subtitle: tUi('atteins_tes_objectifs_plus_vite') },
+      { title: tUi('bien_etre_total'), subtitle: tUi('corps_et_esprit_en_harmonie') },
     ];
     const pick = suggestions[Math.floor(Math.random() * suggestions.length)];
     setTitle(pick.title);
@@ -1035,7 +1035,7 @@ export default function InfographiePage() {
                 <input type="text" value={salesPhrase} onChange={(e) => setSalesPhrase(e.target.value)} className="w-full rounded-lg bg-gray-800 px-4 py-2 text-white placeholder-gray-500 border border-gray-700 focus:border-pink-500 focus:outline-none text-sm mb-2" placeholder={t('salesPhrase.placeholder')} />
                 <div className="flex flex-wrap gap-1.5">
                   {SALES_PHRASES.map((phrase) => (
-                    <button key={phrase} onClick={() => setSalesPhrase(phrase)} className={`text-xs border px-2 py-1 rounded transition ${salesPhrase === phrase ? 'bg-pink-600/20 border-pink-500 text-pink-300' : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'}`}>{phrase}</button>
+                    <button key={phrase} onClick={() => setSalesPhrase(phrase)} className={`text-xs border px-2 py-1 rounded transition ${salesPhrase === phrase ? 'bg-pink-600/20 border-pink-500 text-pink-300' : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'}`}>{tUi.fr(phrase)}</button>
                   ))}
                 </div>
               </div>

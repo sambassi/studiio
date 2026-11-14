@@ -283,7 +283,7 @@ export default function AideRedaction({ histoire, surChanger, personnages = [], 
               <Lightbulb className="w-3.5 h-3.5 text-amber-300" /> Conseils
             </div>
             <ul className="space-y-1 text-[11px] leading-snug text-slate-400">
-              {CONSEILS.map((c) => <li key={c}>{c}</li>)}
+              {CONSEILS.map((c) => <li key={c}>{tUi.fr(c)}</li>)}
             </ul>
           </div>
 

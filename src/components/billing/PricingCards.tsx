@@ -116,7 +116,7 @@ export function PricingCards({ onSelectPlan }: PricingCardsProps) {
                   {features.map((feature: string, idx: number) => (
                     <li key={idx} className="flex items-start gap-2 text-gray-300 text-sm">
                       <Check size={16} className="text-studiio-accent flex-shrink-0 mt-0.5" />
-                      <span>{feature}</span>
+                      <span>{tUi.fr(feature)}</span>
                     </li>
                   ))}
                 </ul>

@@ -300,10 +300,10 @@ export default function AvatarPage() {
   const signalerVoixManquante = () => setNotification({
     cle: 'voix_manquante',
     niveau: 'avertissement',
-    titre: "Votre voix personnelle est nécessaire pour l'aperçu.",
+    titre: tUi('votre_voix_personnelle_est_necessaire'),
     detail: "L'aperçu fait parler votre avatar avec votre voix. Ajoutez ou choisissez-la dans « Ma voix ».",
     // L'onglet « Voix & Prononciation » est d'abord AFFICHÉ (rendu synchrone), puis on y descend.
-    action: { libelle: 'Configurer ma voix', onClick: () => { flushSync(() => setOnglet('voix')); maVoixRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); maVoixRef.current?.focus(); } },
+    action: { libelle: tUi('configurer_ma_voix'), onClick: () => { flushSync(() => setOnglet('voix')); maVoixRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); maVoixRef.current?.focus(); } },
   });
 
   const pollRef = useRef<NodeJS.Timeout | null>(null);
@@ -346,7 +346,7 @@ export default function AvatarPage() {
       const source = json.data?.sourceRetiree === false
         ? " Votre fichier source n'a pas pu être retiré automatiquement du stockage ; il n'est plus accessible via l'avatar supprimé."
         : ' Votre fichier source a été retiré du stockage.';
-      setNotification({ niveau: 'succes', titre: 'Avatar supprimé.', detail: `Vos vidéos déjà générées sont conservées.${source}${fournisseur}`.trim() });
+      setNotification({ niveau: 'succes', titre: tUi('avatar_supprime'), detail: `Vos vidéos déjà générées sont conservées.${source}${fournisseur}`.trim() });
     } catch {
       setError(tUi('la_suppression_de_l_avatar_a_echoue'));
     } finally {
@@ -457,7 +457,7 @@ export default function AvatarPage() {
       });
       const json = await res.json();
       if (!json.success) { setError(json.error || 'La validation a échoué.'); await loadAvatar(false); return; }
-      setNotification({ niveau: 'succes', titre: 'Avatar validé.', detail: 'Il est prêt pour vos vidéos.', action: { libelle: 'Créer une vidéo', onClick: () => window.location.assign('/dashboard/creer') }, actionSecondaire: true });
+      setNotification({ niveau: 'succes', titre: tUi('avatar_valide'), detail: 'Il est prêt pour vos vidéos.', action: { libelle: tUi('creer_une_video'), onClick: () => window.location.assign('/dashboard/creer') }, actionSecondaire: true });
       setApercuOuvert(null);
       setApercuVisible(false);
       await loadAvatar(false);
@@ -760,7 +760,7 @@ export default function AvatarPage() {
             // Information seulement : le CTA « Voir mon aperçu » est dans la zone d'aperçu, à côté de la vidéo.
             setNotification({
               niveau: 'succes',
-              titre: 'Votre aperçu est prêt.',
+              titre: tUi('votre_apercu_est_pret'),
               detail: 'Regardez-le jusqu’au bout : le bouton « Valider mon avatar » apparaît dès que la lecture démarre.',
             });
           }
@@ -1022,9 +1022,9 @@ export default function AvatarPage() {
   const etapesEntrainementHeygen: EtapeProgression[] = [
     { libelle: 'Source', etat: 'terminee' },
     { libelle: 'Consentement', etat: 'terminee' },
-    { libelle: 'Création', etat: 'terminee' },
-    { libelle: 'Entraînement', etat: 'courante' },
-    { libelle: 'Prêt', etat: 'a_venir' },
+    { libelle: tUi('creation'), etat: 'terminee' },
+    { libelle: tUi('entrainement'), etat: 'courante' },
+    { libelle: tUi('pret_2'), etat: 'a_venir' },
   ];
 
   // ── Le fil d'étapes, dérivé de l'état SERVEUR (cahier UX §2.2) ─────────
@@ -1038,13 +1038,13 @@ export default function AvatarPage() {
   const etapeDid: EtapeDid | null = viaDid ? (avatar?.etape_did ?? null) : null;
   const apercuPret = apercu?.statut === 'pret';
   const filEtapes: Etape[] = (() => {
-    const E = (source: Etape['etat'], consentement: Etape['etat'], entrainement: Etape['etat'], apercuE: Etape['etat'], validation: Etape['etat']): Etape[] => [
+    const E = (source: Etape['etat'], consentement: Etape['etat'], entrainement: Etape['etat'], apercuE: Etape['etat'], validation: Etape['etat']): Etape[] => { const tUi = useTranslations('ui.appDashboardAvatar'); return [
       { cle: 'source', libelle: 'Source', etat: source },
       { cle: 'consentement', libelle: 'Consentement', etat: consentement },
-      { cle: 'entrainement', libelle: 'Entraînement', etat: entrainement },
-      { cle: 'apercu', libelle: 'Aperçu', etat: apercuE },
+      { cle: 'entrainement', libelle: tUi('entrainement'), etat: entrainement },
+      { cle: 'apercu', libelle: tUi('apercu'), etat: apercuE },
       { cle: 'validation', libelle: 'Validation', etat: validation },
-    ];
+    ]; };
     if (!avatar || !etatEffectif || etatEffectif === 'supprime') return E('active', 'a_venir', 'a_venir', 'a_venir', 'a_venir');
     if (etatEffectif === 'valide') return E('terminee', 'terminee', 'terminee', 'terminee', 'terminee');
     if (etatEffectif === 'entraine_non_valide') {
@@ -1061,10 +1061,10 @@ export default function AvatarPage() {
 
   /** Le badge de l'en-tête : où l'on en est, en un mot. */
   const statutEntete = !avatar ? undefined
-    : etatEffectif === 'valide' ? { libelle: 'Prêt', niveau: 'succes' as const }
-      : filEtapes.some((e) => e.etat === 'correction') ? { libelle: 'À corriger', niveau: 'erreur' as const }
-        : etapeCourante === 'apercu' || etapeCourante === 'validation' ? { libelle: 'À valider', niveau: 'info' as const }
-          : { libelle: 'En préparation', niveau: 'neutre' as const };
+    : etatEffectif === 'valide' ? { libelle: tUi('pret_2'), niveau: 'succes' as const }
+      : filEtapes.some((e) => e.etat === 'correction') ? { libelle: tUi('a_corriger'), niveau: 'erreur' as const }
+        : etapeCourante === 'apercu' || etapeCourante === 'validation' ? { libelle: tUi('a_valider'), niveau: 'info' as const }
+          : { libelle: tUi('en_preparation'), niveau: 'neutre' as const };
 
   /**
    * La consigne de la page — « quoi faire maintenant » (cahier §3.4). Pendant
@@ -1073,19 +1073,19 @@ export default function AvatarPage() {
    */
   const consignePage: { titre: string; texte: string } | null = (() => {
     if (!avatar) return kind === 'video'
-      ? { titre: 'À partir de quelle vidéo ?', texte: didVideoActif ? 'Au moins 1 minute, en parlant naturellement. MP4 ou MOV, 50 Mo max.' : `En train de parler, 1 à 2 minutes. MP4 ou WebM, ${MAX_VIDEO_MB} Mo max.` }
-      : { titre: 'À partir de quelle photo ?', texte: 'Un portrait net, de face, bien éclairé. JPG, PNG ou WebP, 10 Mo max.' };
-    if (etatEffectif === 'valide') return { titre: 'Votre avatar est prêt.', texte: viaDid ? 'Utilisez-le dans Créer.' : 'Utilisez-le dans Créer, ou faites-lui dire un texte ici.' };
+      ? { titre: tUi('a_partir_de_quelle_video'), texte: didVideoActif ? 'Au moins 1 minute, en parlant naturellement. MP4 ou MOV, 50 Mo max.' : `En train de parler, 1 à 2 minutes. MP4 ou WebM, ${MAX_VIDEO_MB} Mo max.` }
+      : { titre: tUi('a_partir_de_quelle_photo'), texte: tUi('un_portrait_net_de_face_bien_eclaire_j') };
+    if (etatEffectif === 'valide') return { titre: tUi('votre_avatar_est_pret'), texte: viaDid ? 'Utilisez-le dans Créer.' : 'Utilisez-le dans Créer, ou faites-lui dire un texte ici.' };
     if (etatEffectif === 'entraine_non_valide') return apercuPret
-      ? { titre: 'Ça vous ressemble ? Validez.', texte: 'Vous pourrez toujours changer de source plus tard.' }
-      : { titre: 'Regardez votre avatar avant de le valider.', texte: 'Une courte vidéo réelle, avec votre voix, offerte.' };
+      ? { titre: tUi('ca_vous_ressemble_validez'), texte: tUi('vous_pourrez_toujours_changer_de_sourc') }
+      : { titre: tUi('regardez_votre_avatar_avant_de_le_vali'), texte: tUi('une_courte_video_reelle_avec_votre_voi') };
     if (etapeDid === 'consentement_a_demander' || etapeDid === 'consentement_reutilisable') {
-      return { titre: 'Confirmez votre nom, puis obtenez votre phrase.', texte: "Vous la lirez face caméra : c'est ce qui prouve que l'avatar est le vôtre. Un consentement déjà validé est réutilisé." };
+      return { titre: tUi('confirmez_votre_nom_puis_obtenez_votre'), texte: tUi('vous_la_lirez_face_camera_c_est_ce_qui') };
     }
     if (etapeDid && etapeDid.startsWith('consentement_')) return null;
-    if (etatEffectif === 'entrainement') return { titre: "Plus rien à faire pour l'instant.", texte: 'Plusieurs minutes. Cette page se met à jour toute seule.' };
-    if (etatEffectif === 'source_prete') return { titre: 'Renvoyez votre source.', texte: "L'import n'a pas abouti : changez de source pour réessayer." };
-    return { titre: "L'entraînement n'a pas abouti.", texte: 'Changez de source et réessayez avec une autre photo ou vidéo.' };
+    if (etatEffectif === 'entrainement') return { titre: tUi('plus_rien_a_faire_pour_l_instant'), texte: tUi('plusieurs_minutes_cette_page_se_met_a') };
+    if (etatEffectif === 'source_prete') return { titre: tUi('renvoyez_votre_source'), texte: tUi('l_import_n_a_pas_abouti_changez_de_sou') };
+    return { titre: tUi('l_entrainement_n_a_pas_abouti'), texte: tUi('changez_de_source_et_reessayez_avec_un') };
   })();
   const conseilsSource: string[] = kind === 'photo'
     ? ['portrait net', 'visage de face', 'pas de masque ni lunettes de soleil', 'bonne lumière', 'visage entier, non coupé']
@@ -1093,7 +1093,7 @@ export default function AvatarPage() {
 
   /** La notification affichée : celle de la page, sinon l'échec d'entraînement HeyGen (qui a sa sortie). */
   const notificationAffichee: NotificationPage | null = notification ?? (!viaDid && trainingFailed
-    ? { niveau: 'erreur', titre: "L'entraînement de votre avatar n'a pas abouti.", detail: "La source n'a pas permis de créer l'avatar. Réessayez avec une autre photo : portrait net, de face, bien éclairé.", motif: avatar?.training_error && !trahitUnFournisseur(avatar.training_error) ? avatar.training_error : null, action: { libelle: 'Changer de source', onClick: changerDeSource } }
+    ? { niveau: 'erreur', titre: tUi('l_entrainement_de_votre_avatar_n_a_pas'), detail: "La source n'a pas permis de créer l'avatar. Réessayez avec une autre photo : portrait net, de face, bien éclairé.", motif: avatar?.training_error && !trahitUnFournisseur(avatar.training_error) ? avatar.training_error : null, action: { libelle: 'Changer de source', onClick: changerDeSource } }
     : null);
 
   /**
@@ -1140,9 +1140,9 @@ export default function AvatarPage() {
     // Avatar prêt : le lecteur prend le FORMAT CHOISI (9:16 / 16:9 / 1:1), aussitôt le bouton changé.
     const ratioFormat = ratioCadre(ratio);
     if (!avatar) {
-      if (!preview) return { titre: 'Aperçu', ratio: ratioSource, media: null, etat: { statut: 'vide', message: `Choisissez ${kind === 'video' ? 'une vidéo' : 'une photo'} : elle s'affichera ici.` } };
+      if (!preview) return { titre: tUi('apercu'), ratio: ratioSource, media: null, etat: { statut: 'vide', message: `Choisissez ${kind === 'video' ? 'une vidéo' : 'une photo'} : elle s'affichera ici.` } };
       return {
-        titre: 'Votre source', ratio: ratioSource,
+        titre: tUi('votre_source'), ratio: ratioSource,
         etat: { statut: 'pret', legende: file ? `${file.name} — ${Math.round(file.size / 1024 / 1024)} Mo` : undefined },
         media: kind === 'video'
           ? <video src={preview} className="w-full h-full object-contain bg-black" muted playsInline controls />
@@ -1153,7 +1153,7 @@ export default function AvatarPage() {
     if (etatEffectif === 'valide') {
       // Sous le formulaire de génération, pas de légende visible (la hauteur va au lecteur) :
       // le titre dit ce qu'on voit, la légende reste lue par les lecteurs d'écran.
-      if (videoUrl && vueApercu === 'video') return { vue: 'video', titre: 'Votre vidéo', ratio: ratiosMedias[videoUrl] ?? ratioFormat, etat: { statut: 'pret' }, media: <><video src={videoUrl} controls playsInline onLoadedMetadata={noterRatio(videoUrl)} className="w-full h-full object-contain bg-black" /><span className="sr-only">{tUi('video_prete')}</span></> };
+      if (videoUrl && vueApercu === 'video') return { vue: 'video', titre: tUi('votre_video'), ratio: ratiosMedias[videoUrl] ?? ratioFormat, etat: { statut: 'pret' }, media: <><video src={videoUrl} controls playsInline onLoadedMetadata={noterRatio(videoUrl)} className="w-full h-full object-contain bg-black" /><span className="sr-only">{tUi('video_prete')}</span></> };
       // ⚠️ Le RENDU RÉCENT garde son ratio réel : un ancien fichier n'est jamais transformé.
       if (renduRecent && (vueApercu === 'rendu' || !srcVersionActive)) return { vue: 'rendu', titre: `${TITRE_RENDU_RECENT} · v${renduRecent.version}`, ratio: ratiosMedias[renduRecent.url] ?? ratioFormat, etat: { statut: 'pret' }, media: <><video data-avatar-rendu-recent={renduRecent.generationId} src={renduRecent.url} controls playsInline onLoadedMetadata={noterRatio(renduRecent.url)} className="w-full h-full object-contain bg-black" /><span className="sr-only">{busy ? tUi('votre_video_est_en_cours_de_creation') : `Exemple de résultat — ${libelleAvatarActif(renduRecent.version)}.`}</span></> };
       // APERÇU DU FORMAT CHOISI : la source de l'avatar actif, REMPLISSANT le cadre du
@@ -1163,31 +1163,31 @@ export default function AvatarPage() {
         vue: 'format', titre: `Aperçu ${ratio}`, ratio: ratioFormat, etat: { statut: 'pret' },
         media: <><video data-avatar-apercu-format={ratio} src={`${srcVersionActive}#t=1`} muted playsInline preload="metadata" className="w-full h-full object-cover bg-black" /><span className="sr-only">{tUi('apercu_du_format_ratio_votre_avatar_re', { ratio })}</span></>,
       };
-      return { titre: TITRE_RENDU_RECENT, ratio: ratioFormat, media: null, etat: busy ? { statut: 'chargement', message: 'Votre vidéo est en cours de création.' } : { statut: 'vide', message: AUCUN_RENDU_RECENT } };
+      return { titre: TITRE_RENDU_RECENT, ratio: ratioFormat, media: null, etat: busy ? { statut: 'chargement', message: tUi('votre_video_est_en_cours_de_creation') } : { statut: 'vide', message: AUCUN_RENDU_RECENT } };
     }
     if (etatEffectif === 'entraine_non_valide') {
       const relance = { onClick: genererApercu, disabled: apercuEnCours || !apercu, principale: notification?.cle !== 'voix_manquante', attributs: { 'data-avatar-apercu': 'generer' } as const };
-      if (!apercu || apercu.statut === 'aucun') return { titre: 'Aperçu de validation', ratio: '9 / 16', media: null, etat: { statut: 'vide', message: 'Aperçu de validation offert — une courte vidéo réelle de votre avatar, avec votre voix.', action: { libelle: apercuEnCours ? 'Lancement de l’aperçu…' : 'Générer mon aperçu', ...relance } } };
-      if (apercu.statut === 'echec') return { titre: 'Aperçu de validation', ratio: '9 / 16', media: null, etat: { statut: 'erreur', message: "L'aperçu n'a pas pu être généré. Vous pouvez le relancer sans frais.", detail: apercu.erreur ?? undefined, action: { libelle: "Relancer l'aperçu", ...relance } } };
-      if (apercu.statut === 'en_cours') return { titre: 'Aperçu de validation', ratio: '9 / 16', media: null, etat: { statut: 'chargement', message: 'Votre aperçu est en cours de génération…', detail: 'Cela prend généralement 1 à 5 minutes. Cette page se met à jour toute seule.' } };
+      if (!apercu || apercu.statut === 'aucun') return { titre: tUi('apercu_de_validation'), ratio: '9 / 16', media: null, etat: { statut: 'vide', message: tUi('apercu_de_validation_offert_une_courte'), action: { libelle: apercuEnCours ? 'Lancement de l’aperçu…' : 'Générer mon aperçu', ...relance } } };
+      if (apercu.statut === 'echec') return { titre: tUi('apercu_de_validation'), ratio: '9 / 16', media: null, etat: { statut: 'erreur', message: tUi('l_apercu_n_a_pas_pu_etre_genere_vous_p'), detail: apercu.erreur ?? undefined, action: { libelle: tUi('relancer_l_apercu'), ...relance } } };
+      if (apercu.statut === 'en_cours') return { titre: tUi('apercu_de_validation'), ratio: '9 / 16', media: null, etat: { statut: 'chargement', message: tUi('votre_apercu_est_en_cours_de_generatio'), detail: 'Cela prend généralement 1 à 5 minutes. Cette page se met à jour toute seule.' } };
       // `indisponible` : la génération est terminée mais sa vidéo n'a pas pu être
       // conservée (ré-hébergement échoué). Côté serveur c'est définitif pour cette
       // version : relire ne répare rien, relancer est refusé. La seule sortie réelle
       // est une nouvelle source (nouvelle version → nouvel aperçu, offert).
-      if (apercu.statut === 'indisponible') return { titre: 'Aperçu de validation', ratio: '9 / 16', media: null, etat: { statut: 'erreur', message: "L'aperçu a été généré, mais sa vidéo n'a pas pu être conservée. Il ne peut pas être relancé pour cette version.", detail: 'Importez une nouvelle source : un nouvel aperçu vous sera offert.', action: { libelle: 'Changer de source', onClick: changerDeSource } } };
+      if (apercu.statut === 'indisponible') return { titre: tUi('apercu_de_validation'), ratio: '9 / 16', media: null, etat: { statut: 'erreur', message: tUi('l_apercu_a_ete_genere_mais_sa_video_n'), detail: 'Importez une nouvelle source : un nouvel aperçu vous sera offert.', action: { libelle: 'Changer de source', onClick: changerDeSource } } };
       // `pret` : d'abord la source et « Voir mon aperçu » ; puis la VRAIE vidéo, et « Valider » seulement après le démarrage réel de la lecture.
-      if (!apercuVisible) return { titre: 'Aperçu de validation', ratio: ratioSource, media: mediaSource, etat: { statut: 'pret', legende: 'Votre aperçu est prêt.', actionSuivante: { libelle: 'Voir mon aperçu', onClick: voirApercu, attributs: { 'data-avatar-apercu': 'voir' } } } };
+      if (!apercuVisible) return { titre: tUi('apercu_de_validation'), ratio: ratioSource, media: mediaSource, etat: { statut: 'pret', legende: tUi('votre_apercu_est_pret'), actionSuivante: { libelle: tUi('voir_mon_apercu'), onClick: voirApercu, attributs: { 'data-avatar-apercu': 'voir' } } } };
       const ouvert = !!apercuOuvert && apercuOuvert.generationId === apercu.generationId;
       return {
-        titre: 'Aperçu de validation', ratio: ratiosMedias[apercu.url] ?? '9 / 16',
+        titre: tUi('apercu_de_validation'), ratio: ratiosMedias[apercu.url] ?? '9 / 16',
         media: <video data-avatar-apercu="video" src={apercu.url} controls autoPlay playsInline onPlaying={apercuEnLecture} onLoadedMetadata={noterRatio(apercu.url)} className="w-full h-full object-contain bg-black" />,
         etat: ouvert
-          ? { statut: 'pret', legende: 'Ça vous ressemble ?', actionSuivante: { libelle: validationEnCours ? 'Validation en cours…' : 'Valider mon avatar', onClick: validerAvatar, disabled: validationEnCours, attributs: { 'data-avatar-apercu': 'valider' } } }
-          : { statut: 'pret', legende: 'Lancez la lecture : le bouton de validation apparaîtra ensuite.' },
+          ? { statut: 'pret', legende: tUi('ca_vous_ressemble'), actionSuivante: { libelle: validationEnCours ? 'Validation en cours…' : 'Valider mon avatar', onClick: validerAvatar, disabled: validationEnCours, attributs: { 'data-avatar-apercu': 'valider' } } }
+          : { statut: 'pret', legende: tUi('lancez_la_lecture_le_bouton_de_validat') },
       };
     }
     // Étapes 2–3 : la source, telle qu'importée.
-    return { titre: 'Votre source', ratio: ratioSource, media: mediaSource, etat: { statut: 'pret', legende: !viaDid && etatEffectif === 'entrainement' ? 'Votre avatar est en cours de préparation.' : 'Votre source.' } };
+    return { titre: tUi('votre_source'), ratio: ratioSource, media: mediaSource, etat: { statut: 'pret', legende: !viaDid && etatEffectif === 'entrainement' ? 'Votre avatar est en cours de préparation.' : 'Votre source.' } };
   })();
   /**
    * Les onglets de la colonne de droite (avatar prêt) — DANS l'en-tête de la carte
@@ -1346,8 +1346,8 @@ export default function AvatarPage() {
           d'aperçu collante gagne cette hauteur) ; mobile inchangé. */}
       {/* A. En-tête — pas de lien « Aide » : aucune page d'aide n'existe encore, on n'en promet pas. */}
       <EnteteSection
-        titre="Mon avatar"
-        sousTitre="Votre double vidéo, à partir d'une photo ou d'une vidéo."
+        titre={tUi('mon_avatar')}
+        sousTitre={tUi('votre_double_video_a_partir_d_une_phot')}
         icone={<UserSquare2 className="w-6 h-6 text-white" />}
         statut={statutEntete}
         data-entete="avatar"
@@ -1365,8 +1365,8 @@ export default function AvatarPage() {
               actif={onglet}
               onChange={(id) => setOnglet(id === 'voix' ? 'voix' : 'avatar')}
               onglets={[
-                { id: 'avatar', label: 'Avatar vidéo', icone: <Clapperboard className="w-4 h-4 mr-1.5" />, panneauId: 'panneau-avatar' },
-                { id: 'voix', label: 'Voix & Prononciation', icone: <Mic className="w-4 h-4 mr-1.5" />, panneauId: 'ma-voix' },
+                { id: 'avatar', label: tUi('avatar_video'), icone: <Clapperboard className="w-4 h-4 mr-1.5" />, panneauId: 'panneau-avatar' },
+                { id: 'voix', label: tUi('voix_prononciation'), icone: <Mic className="w-4 h-4 mr-1.5" />, panneauId: 'ma-voix' },
               ]}
             />
           </div>
@@ -1430,8 +1430,8 @@ export default function AvatarPage() {
             <div className="space-y-5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {([
-                  { id: 'photo' as const, Icon: ImageIcon, title: 'À partir d’une photo', sub: 'Prêt en quelques minutes', soon: false },
-                  { id: 'video' as const, Icon: Clapperboard, title: 'À partir d’une vidéo', sub: 'Plus réaliste, entraînement plus long', soon: !(didVideoActif || jumeauVideoActif) },
+                  { id: 'photo' as const, Icon: ImageIcon, title: tUi('a_partir_d_une_photo'), sub: 'Prêt en quelques minutes', soon: false },
+                  { id: 'video' as const, Icon: Clapperboard, title: tUi('a_partir_d_une_video'), sub: 'Plus réaliste, entraînement plus long', soon: !(didVideoActif || jumeauVideoActif) },
                 ]).map(({ id, Icon, title, sub, soon }) => (
                   <button
                     key={id}
@@ -1589,10 +1589,10 @@ export default function AvatarPage() {
                   que la sollicitation du fournisseur. */}
               {!viaDid && training && !trainingFailed && (
                 <ProgressStatus
-                  titre="Entraînement de votre avatar"
+                  titre={tUi('entrainement_de_votre_avatar')}
                   statut="en_cours"
                   etapes={etapesEntrainementHeygen}
-                  detail="Entraînement en cours — progression exacte indisponible."
+                  detail={tUi('entrainement_en_cours_progression_exac')}
                   debutLe={avatar.consent_at ?? undefined}
                   description={tUi('cela_prend_generalement_plusieurs_minu')}
                 />
@@ -1652,8 +1652,8 @@ export default function AvatarPage() {
               lien « Gérer / cloner ma voix » de Créer > Audio. */}
           <section id="ma-voix" ref={maVoixRef} tabIndex={-1} role="tabpanel" aria-labelledby="onglet-voix" data-avatar-ma-voix className={onglet === 'voix' ? 'outline-none space-y-6' : 'hidden'}>
             <EnteteSection
-              titre="Ma voix"
-              sousTitre="Votre voix clonée, ses prononciations et son écoute — pour tous vos montages."
+              titre={tUi('ma_voix')}
+              sousTitre={tUi('votre_voix_clonee_ses_prononciations_e')}
               icone={<Mic className="w-6 h-6 text-white" />}
               niveauTitre={2}
               data-entete="ma-voix"
@@ -1729,7 +1729,7 @@ export default function AvatarPage() {
                           const ok = voixSelectionnable(v);
                           return (
                             <option key={v.id} value={`${PREFIXE_VOIX_CLONEE}${v.id}`} disabled={!ok && voiceId !== `${PREFIXE_VOIX_CLONEE}${v.id}`} data-voix-clonee={v.id}>
-                              {v.nom} {tUi('voix_clonee')}{ok ? '' : v.utilisable ? ' (moteur indisponible)' : ' (pas prête)'}
+                              {v.nom} {tUi('voix_clonee_2')}{ok ? '' : v.utilisable ? ' (moteur indisponible)' : ' (pas prête)'}
                             </option>
                           );
                         })}

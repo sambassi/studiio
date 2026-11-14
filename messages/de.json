@@ -1731,7 +1731,6 @@
       "voix_indisponibles": "Stimmen nicht verfügbar",
       "ma_voix": "Meine Stimme",
       "voix_disponibles": "Verfügbare Stimmen",
-      "voix_clonee": "— Geklonte Stimme",
       "qualite_de_generation": "Generierungsqualität",
       "cout_fournisseur_estime_admin": "Geschätzte Anbieterkosten (Admin)",
       "cout_fournisseur_exact_non_disponible": "Genaue Anbieterkosten nicht verfügbar",
@@ -2151,7 +2150,6 @@
       "selectionnez_au_moins_deux_cartes": "Wählen Sie mindestens zwei Karten aus",
       "les_deplacer_ensemble": "Gemeinsam verschieben",
       "disposition_des_cartes_reinitialisee_l": "Kartenanordnung zurückgesetzt: Inhalt oder Format hat sich geändert.",
-      "element": "Element",
       "retrecir": "Verkleinern",
       "retrecir_l_element": "Element verkleinern",
       "taille_de_l_element": "Größe des Elements",
@@ -2522,7 +2520,6 @@
       "creation_en_cours": "Erstellung läuft …"
     },
     "componentsCinemaDirectionCinema": {
-      "style_du_film": "Stil des Films:",
       "style_cinematique_du_film": "Kinostil des Films",
       "aucun_style_impose_le_plan_est_genere": "Kein Stil vorgegeben: Die Einstellung wird allein anhand ihrer Beschreibung generiert.",
       "style_de_cette_scene": "Stil dieser Szene",

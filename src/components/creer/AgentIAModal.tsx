@@ -785,7 +785,7 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
                       }`}
                     >
                       <CardIcon name={theme.icon} size={16} color="currentColor" className="" />
-                      <span className="truncate">{theme.label}</span>
+                      <span className="truncate">{tUi.fr(theme.label)}</span>
                     </button>
                   ))}
                 </div>

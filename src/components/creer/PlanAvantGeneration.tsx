@@ -199,7 +199,7 @@ export default function PlanAvantGeneration({
         <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-gray-500">
           {tUi('plan_avant_generation')}
           {/* Le fonctionnement du plan et du minutage : à la demande (docs/UX-PREMIUM.md). */}
-          <InfoBulle label={tUi('en_savoir_plus_sur_le_plan_avant_gener')} titre="Plan avant génération" marqueur="plan">
+          <InfoBulle label={tUi('en_savoir_plus_sur_le_plan_avant_gener')} titre={tUi('plan_avant_generation')} marqueur="plan">
             <span className="block" data-plan-cta-annonce={ctaEnSurimpression ? 'surimpression' : 'sequence'}>
               {ctaEnSurimpression
                 ? 'Chaque montage remplit ce plan avec ses médias réels. Avec votre avatar, le CTA s’affiche en surimpression sur la fin de la vidéo ; si la parole est plus courte que la durée cible, une clôture (plans de coupe, musique) la complète et porte le CTA jusqu’à la dernière image.'
@@ -297,7 +297,7 @@ export default function PlanAvantGeneration({
                   data-plan-forcer={i}
                   className="rounded border border-gray-800 bg-gray-950 px-1 py-0.5 text-[10px] text-gray-200"
                 >
-                  {TYPES.map((t) => <option key={t.v} value={t.v}>{t.label}</option>)}
+                  {TYPES.map((t) => <option key={t.v} value={t.v}>{tUi.fr(t.label)}</option>)}
                 </select>
                 {options.length > 0 && (
                   <select

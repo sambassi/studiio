@@ -1073,9 +1073,9 @@ function CreerEntete({
 }) {
   const tUi = useTranslations('ui.appDashboardCreerAssistantWizard');
   const texte = {
-    choix: { titre: 'Créer du contenu', sous: 'Choisissez comment vous voulez créer.' },
-    assistant: { titre: 'Créer une vidéo', sous: 'Une vidéo, étape par étape.' },
-    autopilote: { titre: 'Autopilote', sous: 'Configurez une fois, Studiio crée ensuite vos contenus.' },
+    choix: { titre: tUi('creer_du_contenu'), sous: tUi('choisissez_comment_vous_voulez_creer') },
+    assistant: { titre: tUi('creer_une_video'), sous: tUi('une_video_etape_par_etape') },
+    autopilote: { titre: 'Autopilote', sous: tUi('configurez_une_fois_studiio_cree_ensui') },
   }[mode];
   return (
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4" data-creer-entete={mode}>
@@ -2729,7 +2729,7 @@ export function Preview({
               }
               className={`flex-1 min-w-0 justify-center whitespace-nowrap text-[11px] disabled:opacity-30 ${classesOnglet(focus === t.id)} !px-1.5`}
             >
-              {t.label}
+              {tUi.fr(t.label)}
               {/* Marqueur de forme, pas seulement la couleur : barre sous l'onglet actif. */}
               {focus === t.id && <span aria-hidden="true" data-barre className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-purple-400" />}
             </button>
@@ -3521,7 +3521,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
     () => (mediaVideo.type === 'avatar'
       ? (mediaVideo.chargement
         ? { etat: 'chargement' }
-        : { etat: 'pret', nom: 'Mon avatar', version: null, type: mediaVideo.media, url: mediaVideo.url })
+        : { etat: 'pret', nom: tUi('mon_avatar'), version: null, type: mediaVideo.media, url: mediaVideo.url })
       : null),
     [mediaVideo],
   );
@@ -3743,7 +3743,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
     // centre, sinon on centrerait le bord gauche du titre sur l'axe.
     const autres: ElementPos[] = geste.el === 'title'
       ? [{ key: 'cta', x: ctaPosRef.current.x, y: ctaPosRef.current.y, label: 'CTA' }]
-      : [{ key: 'title', x: titlePosRef.current.x, y: titlePosRef.current.y, label: 'Titre' }];
+      : [{ key: 'title', x: titlePosRef.current.x, y: titlePosRef.current.y, label: tUi('titre') }];
     const centre = anchorToCenter(brut, ancre, geste.box);
     // Memes regles que le Mode simple et que l'editeur avance : centre, tiers,
     // centres des autres blocs et milieux des espaces libres.
@@ -3909,7 +3909,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
             (exemple ≠ prochaine vidéo, vue de composition, double-clic pour
             régler) vit derrière UNE icône — deux icônes Info côte à côte
             se confondraient. */}
-        <InfoBulle label={tUi('en_savoir_plus_sur_l_apercu_du_style')} titre="Aperçu du style" marqueur="apercu-style">
+        <InfoBulle label={tUi('en_savoir_plus_sur_l_apercu_du_style')} titre={tUi('apercu_du_style')} marqueur="apercu-style">
           <span className="block" data-autopilot-apercu-mention>
             <span className="text-gray-200" data-autopilot-apercu-badge="style">{tUi('apercu_du_style')}</span>
             {' '}{tUi('textes_et_affiche_d')}<span className="text-gray-400">exemple</span> {tUi('sur_le_theme')}
@@ -4076,7 +4076,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
             <span className="text-gray-200" data-autopilot-apercu-badge="duree-estimee">{tUi('duree_estimee')}</span>
             {' '}— avatar ≈&nbsp;{secondesLisibles(sequenceJumeau)}, vidéo ≈&nbsp;{secondesLisibles(dureeVideoApercu)}
           </span>
-          <InfoBulle label={tUi('en_savoir_plus_sur_la_duree_estimee')} titre="Durée estimée" marqueur="apercu-duree">
+          <InfoBulle label={tUi('en_savoir_plus_sur_la_duree_estimee')} titre={tUi('duree_estimee')} marqueur="apercu-duree">
             <span className="block">
               Séquence avatar ≈&nbsp;{secondesLisibles(sequenceJumeau)}, vidéo ≈&nbsp;{secondesLisibles(dureeVideoApercu)}.
               {' '}La vidéo finale prend la durée réelle de la parole de l’avatar (jamais accélérée) ; si elle est plus courte que la durée cible, une clôture avec le CTA complète la vidéo.
@@ -4126,7 +4126,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
             vignetteAvatar={medias?.avatar.vignette ?? null}
             vignettes={vignettesMontage}
             onRemplacer={allerAuxMedias}
-            titre="Aperçu de mon montage"
+            titre={tUi('apercu_de_mon_montage')}
             // Le mode d'emploi est à la demande ; lecture, durée et chronologie restent visibles.
             sousTitreEnInfo
             sousTitre={montagePrevu.ctaEnSurimpression
@@ -6512,7 +6512,7 @@ export default function AssistantWizard() {
   const alignmentTargets = useCallback((exclure: string): ElementPos[] => {
     const out: ElementPos[] = [];
     if (exclure !== 'title') {
-      out.push({ key: 'title', x: titlePosRef.current.x, y: titlePosRef.current.y, label: 'Titre' });
+      out.push({ key: 'title', x: titlePosRef.current.x, y: titlePosRef.current.y, label: tUi('titre') });
     }
     if (exclure !== 'cta') {
       out.push({ key: 'cta', x: ctaPosRef.current.x, y: ctaPosRef.current.y, label: 'CTA' });
@@ -6523,7 +6523,7 @@ export default function AssistantWizard() {
     }
     for (const el of freeElementsRef.current) {
       if (el.id === exclure) continue;
-      out.push({ key: 'element', x: el.x, y: el.y, label: 'Élément' });
+      out.push({ key: 'element', x: el.x, y: el.y, label: tUi('element') });
     }
     return out;
   }, []);
@@ -7916,7 +7916,7 @@ export default function AssistantWizard() {
      pourcentage, parce que celui-là est mesuré frame par frame. */
   const suiviJumeau = (compact: boolean) => jumeauPhase ? (
     <ProgressStatus
-      titre="Génération de votre jumeau"
+      titre={tUi('generation_de_votre_jumeau')}
       statut="en_cours"
       etapes={etapesJumeau(jumeauPhase.phase)}
       {...(jumeauPhase.phase === 'rendu' ? { pourcentage: renderProgress } : {})}
@@ -9073,7 +9073,7 @@ export default function AssistantWizard() {
         // Coût fournisseur refusé : rien n'a été lancé, l'écran revient à l'échec d'avant.
         if (e instanceof LancementAnnule) {
           setJumeauPhase(null);
-          setJumeauRepriseErreur({ titre: 'Relance annulée.', message: e.message, reprendreId: null });
+          setJumeauRepriseErreur({ titre: tUi('relance_annulee'), message: e.message, reprendreId: null });
           setJumeauReprise('echec');
           return;
         }
@@ -11799,7 +11799,7 @@ export default function AssistantWizard() {
                     <span
                       className={`text-[11px] truncate ${i === step ? 'text-white font-medium' : 'text-gray-500'}`}
                     >
-                      {label}
+                      {tUi.fr(label)}
                     </span>
                   </div>
                   {i < STEPS.length - 1 && (
@@ -11853,7 +11853,7 @@ export default function AssistantWizard() {
                       }`}
                     >
                       <CardIcon name={t.icon} size={13} color="currentColor" className="inline-block mr-1.5 align-[-2px]" />
-                      {t.label}
+                      {tUi.fr(t.label)}
                     </button>
                   ))}
                 </div>
@@ -11936,9 +11936,9 @@ export default function AssistantWizard() {
                           <div
                             className={`text-sm font-medium ${toneId === t.id ? 'text-white' : 'text-gray-300'}`}
                           >
-                            {t.label}
+                            {tUi.fr(t.label)}
                           </div>
-                          <div className="text-[11px] text-gray-500 mt-0.5">{t.hint}</div>
+                          <div className="text-[11px] text-gray-500 mt-0.5">{tUi.fr(t.hint)}</div>
                         </button>
                       ))}
                     </div>
@@ -11958,7 +11958,7 @@ export default function AssistantWizard() {
                           >
                             {f}
                             <span className="block text-[10px] text-gray-500">
-                              {FORMAT_HINT[f]}
+                              {tUi.fr(FORMAT_HINT[f])}
                             </span>
                           </button>
                         ))}
@@ -11990,8 +11990,8 @@ export default function AssistantWizard() {
                       <div className="flex gap-2">
                         {([
                           { key: 'accent' as const, label: 'Accent', value: accent },
-                          { key: 'gradStart' as const, label: 'Dégradé — début', value: gradStart },
-                          { key: 'gradEnd' as const, label: 'Dégradé — fin', value: gradEnd },
+                          { key: 'gradStart' as const, label: tUi('degrade_debut'), value: gradStart },
+                          { key: 'gradEnd' as const, label: tUi('degrade_fin'), value: gradEnd },
                         ]).map((c) => (
                           <button
                             key={c.key}
@@ -12523,9 +12523,9 @@ export default function AssistantWizard() {
                         {tUi('fond_par_sequence')}
                       </p>
                       {([
-                        { cle: 'titre', label: 'Titre', focus: 'intro' },
+                        { cle: 'titre', label: tUi('titre'), focus: 'intro' },
                         { cle: 'cartes', label: 'Cartes', focus: 'cards' },
-                        { cle: 'video', label: 'Vidéo', focus: 'video' },
+                        { cle: 'video', label: tUi('video'), focus: 'video' },
                         { cle: 'cta', label: 'CTA', focus: 'cta' },
                       ] as const).map((seq) => {
                         const propre = seqBackgrounds[seq.cle];
@@ -12874,9 +12874,9 @@ export default function AssistantWizard() {
 
                       <div className="flex gap-2 mb-2">
                         {([
-                          { key: 'title' as const, label: 'Titre', hint: 'le grand texte' },
-                          { key: 'subtitle' as const, label: 'Sous-titre', hint: 'sous le titre' },
-                          { key: 'cta' as const, label: 'CTA', hint: 'et sous-texte' },
+                          { key: 'title' as const, label: tUi('titre'), hint: tUi('le_grand_texte') },
+                          { key: 'subtitle' as const, label: 'Sous-titre', hint: tUi('sous_le_titre') },
+                          { key: 'cta' as const, label: 'CTA', hint: tUi('et_sous_texte') },
                         ]).map((z) => (
                           <button
                             key={z.key}
@@ -13556,7 +13556,7 @@ export default function AssistantWizard() {
                         })}
                       </div>
                       <p className="text-xs text-gray-500 mt-2">
-                        {TRANSITION_HINTS[transition]}
+                        {tUi.fr(TRANSITION_HINTS[transition])}
                       </p>
                     </div>
                 </StyleSection>
@@ -14844,7 +14844,7 @@ export default function AssistantWizard() {
                           : 'Séparer les cartes de leur groupe',
                       },
                       {
-                        id: 'supprimer', libelle: 'Supprimer', Icone: Trash2, danger: true,
+                        id: 'supprimer', libelle: tUi('supprimer'), Icone: Trash2, danger: true,
                         onClick: () => { for (const id of Array.from(selectedCards)) supprimerCarte(id); },
                         disabled: nbSel === 0 || nbSel >= nbCartes,
                         aide: nbSel === 0 ? 'Sélectionnez une carte dans l’aperçu'
@@ -14868,9 +14868,9 @@ export default function AssistantWizard() {
                     },
                     // L'original ne se supprime pas d'ici : seule une copie.
                     ...(copieCtaCible ? [{
-                      id: 'supprimer', libelle: 'Supprimer', Icone: Trash2, danger: true,
+                      id: 'supprimer', libelle: tUi('supprimer'), Icone: Trash2, danger: true,
                       onClick: () => supprimerCtaCopie(copieCtaCible.id),
-                      aide: 'Supprimer cette copie du CTA',
+                      aide: tUi('supprimer_cette_copie_du_cta'),
                     }] : []),
                   ]}
                 />
@@ -14892,16 +14892,16 @@ export default function AssistantWizard() {
         {generated && !editPostId && (() => {
           const recomposer = () => { setPreviewRender(null, null); runRender('apercu'); };
           const etat = !previewUrl
-            ? { onClick: () => runRender('apercu'), icone: <Play className="w-3.5 h-3.5" />, label: 'Voir le rendu',
-                titre: 'Composer la vidéo et la regarder — animations et transitions comprises' }
+            ? { onClick: () => runRender('apercu'), icone: <Play className="w-3.5 h-3.5" />, label: tUi('voir_le_rendu'),
+                titre: tUi('composer_la_video_et_la_regarder_anima') }
             : !renduAJour
-              ? { onClick: recomposer, icone: <RefreshCw className="w-3.5 h-3.5" />, label: 'Recomposer le rendu',
-                  titre: 'Les réglages ont changé depuis le dernier rendu — un nouveau rendu est débité' }
+              ? { onClick: recomposer, icone: <RefreshCw className="w-3.5 h-3.5" />, label: tUi('recomposer_le_rendu'),
+                  titre: tUi('les_reglages_ont_change_depuis_le_dern') }
             : renduJoue
-              ? { onClick: recomposer, icone: <RefreshCw className="w-3.5 h-3.5" />, label: 'Recomposer le rendu',
-                  titre: 'Refaire le montage avec les réglages actuels — un nouveau rendu est débité' }
-              : { onClick: () => setPreviewFocus('all'), icone: <Play className="w-3.5 h-3.5" />, label: 'Revoir le rendu',
-                  titre: 'Rejouer le montage déjà composé — aucun nouveau débit' };
+              ? { onClick: recomposer, icone: <RefreshCw className="w-3.5 h-3.5" />, label: tUi('recomposer_le_rendu'),
+                  titre: tUi('refaire_le_montage_avec_les_reglages_a') }
+              : { onClick: () => setPreviewFocus('all'), icone: <Play className="w-3.5 h-3.5" />, label: tUi('revoir_le_rendu'),
+                  titre: tUi('rejouer_le_montage_deja_compose_aucun') };
           return (
             <button
               type="button"
@@ -15060,7 +15060,7 @@ export default function AssistantWizard() {
             )}
             {freeElements.length > 0 && (
               <p className="mt-2 text-center text-xs text-gray-400">
-                {freeElements.length} {tUi('element')}{freeElements.length > 1 ? 's' : ''} {tUi('pose')}
+                {freeElements.length} {tUi('element_2')}{freeElements.length > 1 ? 's' : ''} {tUi('pose')}
                 {freeElements.length > 1 ? 's' : ''}
                 <span className="text-gray-600"> {tUi('cliquer_pour_selectionner_glisser_pour')}</span>
               </p>
@@ -15233,8 +15233,8 @@ export default function AssistantWizard() {
                 <ActionsEdition
                   nom="Élément"
                   actions={[
-                    { id: 'dupliquer', libelle: 'Dupliquer', Icone: Copy, onClick: () => dupliquerElement(selectedElement.id), aide: 'Dupliquer cet élément' },
-                    { id: 'supprimer', libelle: 'Supprimer', Icone: Trash2, danger: true, onClick: () => deleteElement(selectedElement.id), aide: 'Retirer cet élément de la vidéo' },
+                    { id: 'dupliquer', libelle: 'Dupliquer', Icone: Copy, onClick: () => dupliquerElement(selectedElement.id), aide: tUi('dupliquer_cet_element') },
+                    { id: 'supprimer', libelle: tUi('supprimer'), Icone: Trash2, danger: true, onClick: () => deleteElement(selectedElement.id), aide: tUi('retirer_cet_element_de_la_video') },
                   ]}
                 />
           </div>

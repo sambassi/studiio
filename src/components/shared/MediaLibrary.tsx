@@ -413,7 +413,7 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
               {/* Filtre = option persistante : coche + aria-pressed + violet. */}
               {TYPE_FILTERS.map((t) => (
                 <OptionBouton key={t.key} selected={filter === t.key} onSelect={() => setFilter(t.key)}>
-                  {t.label}
+                  {tUi.fr(t.label)}
                 </OptionBouton>
               ))}
             </div>

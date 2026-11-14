@@ -307,7 +307,7 @@ export default function SessionsTournagePanel({
                 >
                   {FORMATS.map((f) => (
                     <option key={f.valeur} value={f.valeur}>
-                      {f.libelle} ({f.valeur})
+                      {tUi.fr(f.libelle)} ({f.valeur})
                     </option>
                   ))}
                 </select>

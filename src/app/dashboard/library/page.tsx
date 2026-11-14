@@ -216,10 +216,10 @@ export default function LibraryPage() {
         window.location.assign(editPostHref(body.postId));
         return;
       }
-      setToast({ message: 'Impossible de créer le post modifiable. Réessayez.', type: 'error' });
+      setToast({ message: tUi('impossible_de_creer_le_post_modifiable'), type: 'error' });
     } catch (error) {
       console.error('Error creating editable post:', error);
-      setToast({ message: 'Impossible de créer le post modifiable. Réessayez.', type: 'error' });
+      setToast({ message: tUi('impossible_de_creer_le_post_modifiable'), type: 'error' });
     }
     creationEnCoursRef.current = false;
     setActionInProgress(null);

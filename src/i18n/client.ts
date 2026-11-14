@@ -2,6 +2,7 @@
 
 import { createContext, useContext } from 'react';
 import { intlLocales, type Locale } from './config';
+import { empreinteLibelle } from './messages';
 
 type Messages = Record<string, unknown>;
 
@@ -80,6 +81,19 @@ export function useTranslations(namespace?: string) {
 
     return value;
   }
+
+  /**
+   * `t.fr('Texte français')` : traduit un LIBELLÉ qui vit dans une constante (liste d'offres,
+   * étapes, thèmes…) en le cherchant par son texte exact dans `ui.libelles`. Sans entrée, il
+   * RENVOIE LE TEXTE TEL QUEL : un contenu de l'utilisateur ne peut donc pas être altéré.
+   */
+  t.fr = (texte: unknown): string => {
+    if (typeof texte !== 'string') return texte as unknown as string;
+    const cle = `ui.libelles.${empreinteLibelle(texte)}`;
+    let v = getNestedValue(messages, cle);
+    if (v === cle) v = getNestedValue(messagesDeRepli, cle);
+    return v === cle || !v ? texte : v;
+  };
 
   return t;
 }

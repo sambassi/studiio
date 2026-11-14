@@ -257,7 +257,7 @@ export default function VideosPretes({
         // la date et l'heure — mais seulement quand la personne le décide.
         setPlanif({
           sorte: 'dit',
-          texte: 'Brouillon ajouté au Calendrier. Rien n’est publié : choisis-y la date et les réseaux.',
+          texte: tUi('brouillon_ajoute_au_calendrier_rien_n'),
           alerte: false,
           calendrier: true,
         });
@@ -273,7 +273,7 @@ export default function VideosPretes({
   if (aucunRush) {
     return (
       <section className="space-y-1.5" data-videos-pretes data-videos-etat="aucun_rush">
-        <Titre texte="Votre vidéo" />
+        <Titre texte={tUi('votre_video')} />
         <p className="text-[11px] text-gray-500 leading-relaxed">
           {tUi('ajoute_des_rushes_studiio_en_fera_une')}
         </p>
@@ -288,7 +288,7 @@ export default function VideosPretes({
   if (etat.sorte === 'erreur') {
     return (
       <section className="space-y-1.5" data-videos-pretes data-videos-etat="erreur">
-        <Titre texte="Votre vidéo" />
+        <Titre texte={tUi('votre_video')} />
         <p
           className="flex items-start gap-1.5 text-[11px] text-amber-300 leading-relaxed"
           data-videos-message
@@ -303,7 +303,7 @@ export default function VideosPretes({
   if (etat.sorte === 'aucun') {
     return (
       <section className="space-y-1.5" data-videos-pretes data-videos-etat="aucune_video">
-        <Titre texte="Votre vidéo" />
+        <Titre texte={tUi('votre_video')} />
         <p className="text-[11px] text-gray-500 leading-relaxed" data-videos-message>
           {tUi('aucune_video_pour_l_instant')}
         </p>
@@ -321,7 +321,7 @@ export default function VideosPretes({
   if (rendu.etat === 'en_attente' || rendu.etat === 'en_cours') {
     return (
       <section className="space-y-1.5" data-videos-pretes data-videos-etat="en_cours">
-        <Titre texte="Création en cours" fort />
+        <Titre texte={tUi('creation_en_cours')} fort />
         <p
           className="flex items-center gap-1.5 text-[11px] text-gray-300"
           data-videos-etape={rendu.etape ?? ''}
@@ -346,7 +346,7 @@ export default function VideosPretes({
   if (!rendu.video) {
     return (
       <section className="space-y-1.5" data-videos-pretes data-videos-etat="echec">
-        <Titre texte="La création n’a pas abouti" fort />
+        <Titre texte={tUi('la_creation_n_a_pas_abouti')} fort />
         <p
           className="flex items-start gap-1.5 text-[11px] text-amber-300 leading-relaxed"
           data-videos-motif={rendu.motif ?? ''}
@@ -372,7 +372,7 @@ export default function VideosPretes({
           on le dit. */}
       {/* ⚠️ PAS « Dernière vidéo générée ». Ce titre faisait passer une vidéo
           ancienne, issue d'un rush, pour le résultat de l'Autopilote. */}
-      <Titre texte="Vidéo ponctuelle de ce tournage" fort />
+      <Titre texte={tUi('video_ponctuelle_de_ce_tournage')} fort />
       <p className="text-[10px] text-gray-500 -mt-0.5" data-videos-provenance>
         {tUi('creee_a_partir_d_un_rush_independante')}
       </p>

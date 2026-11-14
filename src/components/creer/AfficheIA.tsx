@@ -106,7 +106,7 @@ export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16'
     try {
       const consigne = (prompt.trim() || suggestion).trim();
       if (!consigne) {
-        setEtat({ statut: 'erreur', message: 'Décrivez l’image souhaitée.' });
+        setEtat({ statut: 'erreur', message: tUi('decrivez_l_image_souhaitee') });
         return;
       }
       setEtat({ statut: 'generation' });

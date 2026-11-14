@@ -179,8 +179,8 @@ export default function FluxSourceAvatar(props: {
             {!remplacer && (
               <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="Type d’avatar">
                 {([
-                  { id: 'photo' as const, Icon: ImageIcon, titre: 'À partir d’une photo', bloque: false },
-                  { id: 'video' as const, Icon: Clapperboard, titre: 'À partir d’une vidéo', bloque: videoBloquee },
+                  { id: 'photo' as const, Icon: ImageIcon, titre: tUi('a_partir_d_une_photo'), bloque: false },
+                  { id: 'video' as const, Icon: Clapperboard, titre: tUi('a_partir_d_une_video'), bloque: videoBloquee },
                 ]).map(({ id, Icon, titre, bloque }) => (
                   <button key={id} type="button" role="radio" aria-checked={type === id} disabled={bloque} data-flux-type={id}
                     onClick={() => setType(id)}
@@ -293,7 +293,7 @@ export default function FluxSourceAvatar(props: {
             {etape === 'envoi' ? (
               type === 'photo' && envoi ? (
                 <ProgressStatus
-                  titre="Envoi de votre photo"
+                  titre={tUi('envoi_de_votre_photo')}
                   statut="en_cours"
                   pourcentage={envoi.pourcentage}
                   detail={detailEnvoi(envoi)}
@@ -305,7 +305,7 @@ export default function FluxSourceAvatar(props: {
                   statut="en_cours"
                   description={tUi('enregistrement_de_la_source_et_envoi_a')}
                   detail="Progression exacte indisponible."
-                  note="L’entraînement se suivra ensuite dans « Mes avatars »."
+                  note={tUi('l_entrainement_se_suivra_ensuite_dans')}
                 />
               )
             ) : (

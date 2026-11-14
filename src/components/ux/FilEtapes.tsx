@@ -72,7 +72,7 @@ export default function FilEtapes({ etapes, atteignables = [], onAller, accent =
                     {e.libelle}
                   </span>
                 )}
-                <span className="sr-only">{e.libelle}, {LIBELLE_ETAT[e.etat]}</span>
+                <span className="sr-only">{e.libelle}, {tUi.fr(LIBELLE_ETAT[e.etat])}</span>
               </div>
               {i < etapes.length - 1 && (
                 <div className="h-px flex-1 min-w-2" style={{ backgroundColor: e.etat === 'terminee' ? accent : '#1F2937' }} aria-hidden />

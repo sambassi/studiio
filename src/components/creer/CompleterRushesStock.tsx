@@ -395,7 +395,7 @@ export default function CompleterRushesStock({
     }
     const r = await importerStockClient({ provider: 'pexels', type: 'video', providerAssetId: m.providerAssetId });
     if ('erreur' in r || !r.url) {
-      majSlot(slot.manque.sequence, (s) => ({ ...s, etat: 'propose', erreur: 'Import impossible pour le moment — réessayez ou gardez vos rushes.' }));
+      majSlot(slot.manque.sequence, (s) => ({ ...s, etat: 'propose', erreur: tUi('import_impossible_pour_le_moment_reess') }));
       return;
     }
     setAcceptes((a) => [...a, m.providerAssetId]);
@@ -503,7 +503,7 @@ export default function CompleterRushesStock({
                         attrs: { 'data-autopilot-stock-remplacer': cle },
                       },
                       {
-                        cle: 'supprimer', libelle: 'Supprimer', icone: Trash2, variante: 'danger',
+                        cle: 'supprimer', libelle: tUi('supprimer'), icone: Trash2, variante: 'danger',
                         onClick: () => majSlot(cle, (x) => ({ ...x, etat: 'supprime' })), disabled: s.etat === 'import',
                         ariaLabel: `Retirer cette proposition du ${libellePlan(s.manque.role).toLowerCase()}`,
                         attrs: { 'data-autopilot-stock-supprimer': cle },

@@ -1150,7 +1150,7 @@ export default function AutopilotPanel({
     // post dans le Calendrier de ce compte (`postVisibleDansCalendrier`).
     if (typeof data.postId !== 'string' || !data.postId) {
       if (data.jumeau === 'en_preparation') { setProduire({ etat: 'jumeau' }); return; }
-      setProduire({ etat: 'erreur', message: 'La production s’est terminée sans brouillon enregistré dans le Calendrier.' });
+      setProduire({ etat: 'erreur', message: tUi('la_production_s_est_terminee_sans_brou') });
       return;
     }
     setProduire({
@@ -1501,7 +1501,7 @@ export default function AutopilotPanel({
           return (
             <div className="space-y-1.5" data-autopilot-produire-en-cours data-autopilot-produire-etape={progressionProduction?.etape ?? ''}>
               <ProgressStatus
-                titre="Production de la vidéo"
+                titre={tUi('production_de_la_video')}
                 statut="en_cours"
                 etapes={aff.etapes}
                 {...(aff.pourcentage !== undefined ? { pourcentage: aff.pourcentage } : {})}
@@ -1526,14 +1526,14 @@ export default function AutopilotPanel({
           return (
             <div className="space-y-1" data-autopilot-produire-jumeau data-autopilot-jumeau-statut={suiviJumeauFile?.statut ?? ''}>
               <ProgressStatus
-                titre="Votre avatar se prépare"
+                titre={tUi('votre_avatar_se_prepare')}
                 statut="en_cours"
                 etapes={prog.etapes}
                 {...(prog.pourcentage !== undefined ? { pourcentage: prog.pourcentage } : {})}
                 description={prog.message}
                 detail={prog.detail ?? undefined}
                 {...(suiviJumeauFile?.depuis ? { debutLe: suiviJumeauFile.depuis } : {})}
-                note="Le brouillon n’est pas encore dans le Calendrier : il y sera déposé dès que la vidéo sera montée. Gardez cette page ouverte pour suivre l’avancement, ou revenez plus tard."
+                note={tUi('le_brouillon_n_est_pas_encore_dans_le')}
               />
             </div>
           );
@@ -1612,7 +1612,7 @@ export default function AutopilotPanel({
                 disabled={!ready}
                 aria-current={courante ? 'step' : undefined}
                 data-autopilot-etape={i}
-                title={e.titre}
+                title={tUi.fr(e.titre)}
                 className={`w-full rounded-full transition disabled:opacity-40 ${
                   courante ? 'h-1.5' : 'h-1'
                 }`}
@@ -1635,21 +1635,21 @@ export default function AutopilotPanel({
             className={`flex-1 truncate ${i === etape ? 'text-white font-medium' : i < etape ? 'text-gray-400' : 'text-gray-600'}`}
             aria-current={i === etape ? 'step' : undefined}
           >
-            {i < etape ? '✓ ' : `${i + 1}. `}{e.titre}
+            {i < etape ? '✓ ' : `${i + 1}. `}{tUi.fr(e.titre)}
           </li>
         ))}
       </ol>
       <p className="sm:hidden text-[11px] text-gray-400" data-autopilot-etapes-compact>
-        {tUi('etape')} {etape + 1} sur {ETAPES.length} · <span className="text-white">{ETAPES[etape].titre}</span>
-        {etape < ETAPES.length - 1 && <> — Prochaine : {ETAPES[etape + 1].titre}</>}
+        {tUi('etape')} {etape + 1} sur {ETAPES.length} · <span className="text-white">{tUi.fr(ETAPES[etape].titre)}</span>
+        {etape < ETAPES.length - 1 && <> — Prochaine : {tUi.fr(ETAPES[etape + 1].titre)}</>}
       </p>
 
       {/* UX : CHAQUE ecran = un objectif (la question), une explication tres
           courte, puis une action principale. Meme place, meme forme. */}
       <div data-autopilot-a-faire>
-        <p className="text-sm font-medium text-white">{ETAPES[etape].question}</p>
+        <p className="text-sm font-medium text-white">{tUi.fr(ETAPES[etape].question)}</p>
         <p className="text-[11px] text-gray-500 mt-0.5">
-          {ETAPES[etape].aide}
+          {tUi.fr(ETAPES[etape].aide)}
         </p>
       </div>
 
@@ -1749,9 +1749,9 @@ export default function AutopilotPanel({
             onChange={poserBrief}
             onCommit={enregistrerBrief}
             disabled={!ready || saving}
-            titre="Brief récurrent"
-            aide="Commun à toutes les vidéos produites."
-            aideDetail="Le script de chaque vidéo est généré à sa production, à partir de ce brief et du sujet du jour."
+            titre={tUi('brief_recurrent')}
+            aide={tUi('commun_a_toutes_les_videos_produites')}
+            aideDetail={tUi('le_script_de_chaque_video_est_genere_a')}
             idPrefix="autopilot-brief"
             sujets={config.topics}
             avecDureeRythme
@@ -1946,13 +1946,13 @@ export default function AutopilotPanel({
                         }
                         actions={[{
                           cle: 'supprimer',
-                          libelle: 'Supprimer',
+                          libelle: tUi('supprimer'),
                           icone: Trash2,
                           variante: 'danger',
                           onClick: () => enregistrer({ rushUrls: config.rushUrls.filter((u) => u !== url) }),
                           disabled: saving,
                           ariaLabel: 'Supprimer ce rush',
-                          titre: 'Retirer ce média de la banque',
+                          titre: tUi('retirer_ce_media_de_la_banque'),
                         }]}
                       />
                     </li>
@@ -2036,7 +2036,7 @@ export default function AutopilotPanel({
                             credit={{ texte: creditMedia(m), lien: m.sourceUrl || null }}
                             actions={[{
                               cle: 'supprimer',
-                              libelle: 'Supprimer',
+                              libelle: tUi('supprimer'),
                               icone: Trash2,
                               variante: 'danger',
                               onClick: () => retirerStock(m.url),
@@ -2057,7 +2057,7 @@ export default function AutopilotPanel({
                 accent={accent}
                 dejaRetenus={sources.stock.map(cleMediaStock)}
                 onRetenir={(m) => retenirStock(m)}
-                titre="Rechercher des médias"
+                titre={tUi('rechercher_des_medias')}
               />
             </div>
           )}
@@ -2526,12 +2526,12 @@ export default function AutopilotPanel({
                   Le garde a raison de ne pas savoir — c'est à ce code de
                   rester lisible pour lui. */}
               {([
-                { cle: 'musicVolume', label: 'Musique', actif: true },
-                { cle: 'voiceVolume', label: 'Voix off', actif: true },
+                { cle: 'musicVolume', label: tUi('musique'), actif: true },
+                { cle: 'voiceVolume', label: tUi('voix_off_2'), actif: true },
                 // ⚠️ GRISE, PAS CACHE. Le niveau du rush reste visible quand
                 // le son est coupé : le masquer ferait croire qu'il n'existe
                 // pas, et le réglage serait perdu de vue en le rallumant.
-                { cle: 'rushVolume', label: 'Son du rush', actif: config.keepRushAudio },
+                { cle: 'rushVolume', label: tUi('son_du_rush'), actif: config.keepRushAudio },
               ] as const).map(({ cle, label, actif }) => (
                 <div key={cle}>
                   <div className="flex items-center justify-between gap-2 mb-1">
