@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Users, CreditCard, Zap, Film, Settings, FileText, Mail, Shield, ArrowLeft, Globe, Coins, Server, Clapperboard } from 'lucide-react';
+import { Languages, LayoutDashboard, Users, CreditCard, Zap, Film, Settings, FileText, Mail, Shield, ArrowLeft, Globe, Coins, Server, Clapperboard } from 'lucide-react';
 import { useTranslations } from '@/i18n/client';
 import { ETAT_INTERACTIF_SANS_FOND } from '@/lib/ui/etats';
 
@@ -29,6 +29,7 @@ export function AdminSidebar({ ouvert = false, onNaviguer }: { ouvert?: boolean;
     { icon: Clapperboard, label: 'Cinema IA — formules', href: '/admin/cinema-formules' },
     { icon: Film, label: tUi('couts_avatar'), href: '/admin/avatar-couts' },
     { icon: Server, label: 'Fournisseurs', href: '/admin/fournisseurs' },
+    { icon: Languages, label: 'Traductions', href: '/admin/traductions' },
     { icon: FileText, label: t('terms'), href: '/admin/terms' },
     { icon: Mail, label: t('emails'), href: '/admin/emails' },
     { icon: Shield, label: t('auditLog'), href: '/admin/logs' },

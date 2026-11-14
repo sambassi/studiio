@@ -1,0 +1,22 @@
+{
+ "languageSelector.label": {
+  "c": "h",
+  "s": "corpus:corpus-bas.json"
+ },
+ "common.yes": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "common.no": {
+  "c": "h",
+  "s": "lexique"
+ },
+ "common.more": {
+  "c": "m",
+  "s": "corpus:corpus-bas.json (More, menu wiki)"
+ },
+ "dashboardHome.welcome": {
+  "c": "m",
+  "s": "lexique (bienvenue) + variable"
+ }
+}

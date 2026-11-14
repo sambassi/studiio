@@ -1,0 +1,322 @@
+{
+ "common.create": {
+  "c": "h",
+  "s": "corpus:corpus-bm.json + web:dictionary.ankataa.com (da4 create)"
+ },
+ "sidebar.create": {
+  "c": "h",
+  "s": "corpus:corpus-bm.json + web:dictionary.ankataa.com (da4 create)"
+ },
+ "dashboardHome.directAccess.create": {
+  "c": "h",
+  "s": "corpus:corpus-bm.json + web:dictionary.ankataa.com (da4 create)"
+ },
+ "common.edit": {
+  "c": "h",
+  "s": "corpus:corpus-bm.json + web:dictionary.ankataa.com (yɛlɛma change)"
+ },
+ "library.actions.edit": {
+  "c": "h",
+  "s": "corpus:corpus-bm.json + web:dictionary.ankataa.com (yɛlɛma change)"
+ },
+ "common.search": {
+  "c": "h",
+  "s": "corpus:corpus-bm.json + web:dictionary.ankataa.com (ɲini look for)"
+ },
+ "common.cancel": {
+  "c": "h",
+  "s": "corpus:corpus-bm.json + web:dictionary.ankataa.com (bali prevent)"
+ },
+ "common.delete": {
+  "c": "m",
+  "s": "web:dictionary.ankataa.com (bɔ remove, take out)"
+ },
+ "common.remove": {
+  "c": "m",
+  "s": "web:dictionary.ankataa.com (bɔ remove, take out)"
+ },
+ "library.actions.delete": {
+  "c": "m",
+  "s": "web:dictionary.ankataa.com (bɔ remove, take out)"
+ },
+ "common.save": {
+  "c": "m",
+  "s": "web:dictionary.ankataa.com (màra keep, conserve)"
+ },
+ "common.close": {
+  "c": "h",
+  "s": "web:dictionary.ankataa.com (datugu close)"
+ },
+ "common.open": {
+  "c": "h",
+  "s": "web:dictionary.ankataa.com (dayɛlɛ open)"
+ },
+ "common.hide": {
+  "c": "h",
+  "s": "corpus:corpus-bm.json + web:dictionary.ankataa.com (dògo hide)"
+ },
+ "common.show": {
+  "c": "h",
+  "s": "web:dictionary.ankataa.com (jìra show)"
+ },
+ "common.view": {
+  "c": "m",
+  "s": "web:dictionary.ankataa.com (filɛ look, watch)"
+ },
+ "common.add": {
+  "c": "m",
+  "s": "corpus:corpus-bm.json (fara a kan = add)"
+ },
+ "common.back": {
+  "c": "m",
+  "s": "web:dictionary.ankataa.com (sègin return, go back)"
+ },
+ "common.more": {
+  "c": "m",
+  "s": "corpus:corpus-bm.json (More => Wɛrɛ) ; web:dictionary.ankataa.com"
+ },
+ "common.all": {
+  "c": "h",
+  "s": "web:dictionary.ankataa.com (bɛɛ all)"
+ },
+ "common.yes": {
+  "c": "h",
+  "s": "web:dictionary.ankataa.com (àwɔ yes)"
+ },
+ "common.no": {
+  "c": "h",
+  "s": "web:dictionary.ankataa.com (àyi no)"
+ },
+ "common.and": {
+  "c": "h",
+  "s": "corpus:corpus-bm.json (ani) ; web:dictionary.ankataa.com"
+ },
+ "common.or": {
+  "c": "h",
+  "s": "web:dictionary.ankataa.com (walima or, in statements)"
+ },
+ "auth.login.or": {
+  "c": "h",
+  "s": "web:dictionary.ankataa.com (walima or, in statements)"
+ },
+ "common.page": {
+  "c": "h",
+  "s": "corpus:corpus-bm.json ; web:dictionary.ankataa.com (ɲɛ page)"
+ },
+ "common.error": {
+  "c": "h",
+  "s": "corpus:corpus-bm.json ; web:dictionary.ankataa.com (fìli error)"
+ },
+ "common.errorOccurred": {
+  "c": "m",
+  "s": "web:dictionary.ankataa.com (fili error ; kɛ happen)"
+ },
+ "common.submit": {
+  "c": "m",
+  "s": "web:dictionary.ankataa.com (ci3 send)"
+ },
+ "sidebar.buy": {
+  "c": "h",
+  "s": "web:dictionary.ankataa.com (sǎn buy)"
+ },
+ "languageSelector.label": {
+  "c": "h",
+  "s": "corpus:corpus-bm.json (Languages => Kan) ; web:dictionary.ankataa.com (kan language)"
+ },
+ "auth.login.password": {
+  "c": "m",
+  "s": "web:dictionary.ankataa.com (gundo secret ; daɲɛ word)"
+ },
+ "auth.login.submit": {
+  "c": "m",
+  "s": "web:dictionary.ankataa.com (dǒn enter)"
+ },
+ "auth.signup.login": {
+  "c": "m",
+  "s": "web:dictionary.ankataa.com (dǒn enter)"
+ },
+ "navbar.logout": {
+  "c": "m",
+  "s": "web:dictionary.ankataa.com (bɔ exit, go out)"
+ },
+ "common.status.completed": {
+  "c": "m",
+  "s": "web:dictionary.ankataa.com (ban finish, cf. kàban)"
+ },
+ "library.status.completed": {
+  "c": "m",
+  "s": "web:dictionary.ankataa.com (ban finish, cf. kàban)"
+ },
+ "common.video": {
+  "c": "m",
+  "s": "emprunt d'usage"
+ },
+ "library.typeLabels.video": {
+  "c": "m",
+  "s": "emprunt d'usage"
+ },
+ "common.videos": {
+  "c": "m",
+  "s": "emprunt + pluriel -w (corpus-bm: Nyɛw, Kèw)"
+ },
+ "dashboardHome.createVideo": {
+  "c": "m",
+  "s": "web:dictionary.ankataa.com (da create ; ordre objet-verbe)"
+ },
+ "library.createVideo": {
+  "c": "m",
+  "s": "web:dictionary.ankataa.com (da create ; ordre objet-verbe)"
+ },
+ "library.searchPlaceholder": {
+  "c": "m",
+  "s": "web:dictionary.ankataa.com (ɲini look for)"
+ },
+ "assistant.close": {
+  "c": "h",
+  "s": "lexique core bm-core ; web:dictionary.ankataa.com (datugu close)"
+ },
+ "calendar.fullPreview.close": {
+  "c": "h",
+  "s": "lexique core bm-core ; web:dictionary.ankataa.com (datugu close)"
+ },
+ "calendar.actions.edit": {
+  "c": "h",
+  "s": "corpus:corpus-bm.json ; bm-core"
+ },
+ "calendar.fullPreview.edit": {
+  "c": "h",
+  "s": "corpus:corpus-bm.json ; bm-core"
+ },
+ "calendar.actions.delete": {
+  "c": "m",
+  "s": "bm-core ; web:dictionary.ankataa.com (bɔ remove)"
+ },
+ "calendar.editModal.save": {
+  "c": "m",
+  "s": "bm-core ; web:dictionary.ankataa.com (mara keep)"
+ },
+ "social.confirmDisconnect.cancel": {
+  "c": "h",
+  "s": "corpus:corpus-bm.json (Cancel)"
+ },
+ "creator.preview.seqVideo": {
+  "c": "m",
+  "s": "emprunt d'usage ; bm-core"
+ },
+ "creator.preview.audio": {
+  "c": "m",
+  "s": "emprunt d'usage"
+ },
+ "creator.logo.title": {
+  "c": "m",
+  "s": "emprunt d'usage"
+ },
+ "social.platforms.facebook.name": {
+  "c": "h",
+  "s": "nom de marque"
+ },
+ "social.platforms.instagram.name": {
+  "c": "h",
+  "s": "nom de marque"
+ },
+ "social.platforms.tiktok.name": {
+  "c": "h",
+  "s": "nom de marque"
+ },
+ "social.platforms.youtube.name": {
+  "c": "h",
+  "s": "nom de marque"
+ },
+ "creator.render.done": {
+  "c": "m",
+  "s": "bm-core (Banna) ; web:dictionary.ankataa.com (ban finish)"
+ },
+ "calendar.aiAgent.stages.done": {
+  "c": "m",
+  "s": "bm-core (Banna) ; web:dictionary.ankataa.com (ban finish)"
+ },
+ "creator.rushVideos.add": {
+  "c": "m",
+  "s": "corpus:corpus-bm.json (fara a kan = add) ; bm-core"
+ },
+ "creator.change": {
+  "c": "m",
+  "s": "web:dictionary.ankataa.com (yɛlɛma change) ; bm-core"
+ },
+ "assistant.send": {
+  "c": "m",
+  "s": "web:dictionary.ankataa.com (ci send) ; bm-core"
+ },
+ "objectives.form.name": {
+  "c": "m",
+  "s": "savoir (tɔgɔ = nom, usage standard)"
+ },
+ "audioStudio.timeline.video": {
+  "c": "m",
+  "s": "emprunt d'usage; bm-core common.video"
+ },
+ "infographic.preview.seqVideo": {
+  "c": "m",
+  "s": "emprunt d'usage; bm-core common.video"
+ },
+ "infographic.sequences.video": {
+  "c": "m",
+  "s": "emprunt d'usage; bm-core common.video"
+ },
+ "infographic.videoRush.title": {
+  "c": "m",
+  "s": "emprunt d'usage; bm-core common.video"
+ },
+ "audioStudio.export.error": {
+  "c": "h",
+  "s": "corpus:corpus-bm.json (Error => Fili); bm-core common.error"
+ },
+ "infographic.backButton": {
+  "c": "m",
+  "s": "bm-core common.back; web:dictionary.ankataa.com (sègin)"
+ },
+ "infographic.infoCards.add": {
+  "c": "m",
+  "s": "bm-core common.add; corpus:corpus-bm.json (fara a kan)"
+ },
+ "infographic.posterPhoto.remove": {
+  "c": "m",
+  "s": "bm-core common.remove; web:dictionary.ankataa.com (bɔ)"
+ },
+ "landing.nav.login": {
+  "c": "m",
+  "s": "bm-core auth.login.submit; web:dictionary.ankataa.com (dǒn)"
+ },
+ "ui.appDashboardAvatar.creer_une_video": {
+  "c": "m",
+  "s": "out/bm-core.json (dashboardHome.createVideo)"
+ },
+ "ui.appDashboardAvatar.modifier": {
+  "c": "h",
+  "s": "corpus:corpus-bm.json (Edit => yɛlɛma) ; out/bm-core.json"
+ },
+ "ui.appDashboardAvatar.video": {
+  "c": "m",
+  "s": "emprunt d'usage ; out/bm-core.json"
+ },
+ "ui.appDashboardCalendar.annuler": {
+  "c": "h",
+  "s": "corpus:corpus-bm.json (Cancel => A bali) ; out/bm-core.json"
+ },
+ "ui.appDashboardCalendar.fermer": {
+  "c": "h",
+  "s": "web:dictionary.ankataa.com (datugu close) ; out/bm-core.json"
+ },
+ "ui.appDashboardCalendar.retour": {
+  "c": "m",
+  "s": "web:dictionary.ankataa.com (sègin return) ; out/bm-core.json"
+ },
+ "ui.appDashboardCinema.annuler": {
+  "c": "h",
+  "s": "corpus:corpus-bm.json (Cancel => A bali) ; out/bm-core.json"
+ },
+ "ui.appDashboardCreerAssistantWizard.annuler": {
+  "c": "h",
+  "s": "corpus:corpus-bm.json (Cancel => A bali) ; out/bm-core.json"
+ }
+}

@@ -17,6 +17,11 @@ const SURCOUCHES: Record<Locale, Messages> = {
   fr: {}, en, de, ln, wo, sw, bm, bas, ht,
 } as Record<Locale, Messages>;
 
+/** Surcouche statique d'une langue (catalogue livré avec le code, sans les corrections de l'administration). */
+export function surcoucheStatique(locale: unknown): Messages {
+  return SURCOUCHES[normalizeLocale(locale)] || {};
+}
+
 const cache = new Map<Locale, Messages>();
 export function messagesServeur(locale: unknown): Messages {
   const loc = normalizeLocale(locale);

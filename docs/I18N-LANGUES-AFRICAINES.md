@@ -44,8 +44,9 @@ La liste **complète** (clé, français, traduction, confiance, source) est dans
 
 ## Comment les compléter
 
-1. Faire relire/corriger `docs/langues-africaines/<langue>-a-valider.csv` par un locuteur natif (colonne `traduction`) ; il peut aussi remplir les clés omises : `node scripts/i18n/exporter-relecture.cjs <langue> > complet.csv` donne toutes les clés, y compris les non traduites.
-2. `node scripts/i18n/importer-validation.cjs <langue> corrige.csv` réimporte (variables `{x}` contrôlées ; une cellule vide retire l'entrée).
-3. Quand une langue atteint une couverture suffisante et validée, passer son statut de `partial` à `draft` (ou `complete`) dans `src/i18n/config.ts`.
+1. **Administration → Traductions** (`/admin/traductions`) : choisir la langue, filtrer « Non validées » ou « À vérifier en priorité », corriger puis valider entrée par entrée.
+2. Ou **exporter** le CSV de la langue depuis cette page, le faire relire/compléter par un locuteur natif (colonne `traduction`, y compris les clés manquantes), puis le **réimporter** (case « relecteur natif » = entrées validées). Une cellule vide est ignorée.
+3. Les corrections vivent dans `app_settings` (`i18n_overrides_<langue>`) : aucun redéploiement, aucune migration.
+4. Quand une langue atteint une couverture suffisante **et validée**, passer son statut de `partial` à `draft` (ou `complete`) dans `src/i18n/config.ts` ; tant que ce n'est pas fait, le menu affiche « Partiel ».
 
 Sans locuteur natif ni lexique d'interface validé, **la couverture ne peut pas progresser honnêtement** : ce n'est pas une limite du code.

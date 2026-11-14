@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, ReactNode } from 'react';
 import { I18nContext } from './client';
 import { defaultLocale, normalizeLocale, type Locale } from './config';
 import { fusionner, type Messages } from './messages';
+import { appliquerCorrections } from '@/lib/i18n/traductions';
 
 // Chargement paresseux : le français (base) puis, seulement si besoin, la surcouche de la langue.
 const chargeurs: Record<Locale, () => Promise<Messages>> = {
@@ -48,12 +49,35 @@ function enregistrerPreference(locale: Locale) {
   } catch { /* ignoré */ }
 }
 
-/** Français + surcouche. Si la surcouche échoue à charger : français seul (jamais une page cassée). */
+/**
+ * Corrections de l'administration (`/api/i18n/<langue>`) : elles PRIMENT sur le catalogue livré
+ * avec le code. Silencieux et borné à 3 s : sur toute panne, le catalogue seul s'applique.
+ */
+async function lireCorrectionsServeur(loc: Locale): Promise<Record<string, string>> {
+  try {
+    if (typeof fetch !== 'function') return {};
+    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const minuteur = ctrl ? setTimeout(() => ctrl.abort(), 3000) : null;
+    try {
+      const r = await fetch(`/api/i18n/${loc}`, { signal: ctrl?.signal });
+      if (!r.ok) return {};
+      const j = await r.json();
+      return j && typeof j.corrections === 'object' && j.corrections ? (j.corrections as Record<string, string>) : {};
+    } finally {
+      if (minuteur) clearTimeout(minuteur);
+    }
+  } catch {
+    return {};
+  }
+}
+
+/** Français + surcouche (+ corrections de l'administration). Si la surcouche échoue : français seul. */
 export async function chargerMessages(loc: Locale): Promise<Messages> {
   const base = await chargeurs.fr();
   if (loc === 'fr') return base;
   try {
-    return fusionner(base, await chargeurs[loc]());
+    const [surcouche, corrections] = await Promise.all([chargeurs[loc](), lireCorrectionsServeur(loc)]);
+    return fusionner(base, appliquerCorrections(surcouche, corrections));
   } catch {
     return base;
   }
