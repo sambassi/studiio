@@ -19,7 +19,9 @@ vi.mock('@/lib/db/supabase', () => ({
       return {
         select: () => ({
           eq: (_c: string, cle: string) => ({
-            maybeSingle: async () => (base.echecLecture ? { data: null, error: { message: 'panne' } } : { data: base.store.has(cle) ? { value: base.store.get(cle) } : null, error: null }),
+            // Comme PostgREST : un TABLEAU (vide si aucune ligne) ; `maybeSingle` renverrait une erreur 406 à vide.
+            limit: async () => (base.echecLecture ? { data: null, error: { message: 'panne' } } : { data: base.store.has(cle) ? [{ value: base.store.get(cle) }] : [], error: null }),
+            maybeSingle: async () => ({ data: null, error: { code: 'PGRST116', message: 'Cannot coerce the result to a single JSON object' } }),
           }),
         }),
         upsert: async (ligne: { key: string; value: string }) => {

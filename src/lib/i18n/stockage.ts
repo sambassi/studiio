@@ -26,9 +26,13 @@ export function langueEditable(v: unknown): v is Locale {
 
 export async function lireCorrections(locale: Locale): Promise<{ ok: boolean; corrections: Corrections }> {
   try {
-    const { data, error } = await supabaseAdmin.from('app_settings').select('value').eq('key', cleStockage(locale)).maybeSingle();
+    // ⚠️ PAS de `.maybeSingle()` : PostgREST répond 406 (PGRST116) quand il n'y a AUCUNE ligne, ce que
+    // ce code prendrait pour une panne — la page admin aurait affiché « base indisponible » tant
+    // qu'aucune correction n'existait. Un tableau + `limit(1)` distingue « aucune ligne » (ok) d'une
+    // vraie panne (erreur). Constaté sur une vraie base PostgreSQL + PostgREST, pas dans un mock.
+    const { data, error } = await supabaseAdmin.from('app_settings').select('value').eq('key', cleStockage(locale)).limit(1);
     if (error) return { ok: false, corrections: {} };
-    const brut = (data as { value?: unknown } | null)?.value;
+    const brut = (data as Array<{ value?: unknown }> | null)?.[0]?.value;
     if (!brut) return { ok: true, corrections: {} };
     const obj = typeof brut === 'string' ? JSON.parse(brut) : brut;
     const entrees = obj && typeof obj === 'object' && obj.entrees && typeof obj.entrees === 'object' ? obj.entrees : {};
