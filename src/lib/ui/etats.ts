@@ -147,3 +147,32 @@ export function classesAction(etat: EtatAction): string {
       return '';
   }
 }
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────
+ * SÉLECTEUR À DEUX SEGMENTS (Mensuel / Annuel, et tout contrôle du même type)
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * ⚠️ LE SEGMENT ACTIF ÉTAIT ROSE. Il utilisait `bg-studiio-accent` (#EC4899),
+ * la couleur d'ACCENT de Studiio — celle des pastilles « populaire » et des
+ * icônes de crédits. Employée comme fond de sélection, elle sortait de la
+ * dominante violette de l'application et attirait l'œil plus que le prix
+ * qu'elle était censée commander.
+ *
+ * La règle vit ici, et non dans l'écran, pour deux raisons : les deux
+ * segments la partagent (elle était recopiée mot pour mot, donc divergeable),
+ * et le prochain sélecteur du même genre la reprendra au lieu de réinventer
+ * sa couleur.
+ *
+ * Aucune couleur nouvelle : `studiio-primary` est le violet déjà défini dans
+ * la configuration Tailwind, celui des boutons principaux.
+ */
+export const SEGMENT_ACTIF = 'bg-studiio-primary text-white';
+
+/** Segment au repos : neutre sombre, lisible, sans concurrencer l'actif. */
+export const SEGMENT_INACTIF = 'text-gray-400 hover:text-white hover:bg-white/5';
+
+/** Le segment d'un sélecteur, selon qu'il est choisi ou non. */
+export function classesSegment(actif: boolean): string {
+  return actif ? SEGMENT_ACTIF : SEGMENT_INACTIF;
+}

@@ -143,7 +143,7 @@ describe('POST /api/avatar/generate — qualité de rendu (voix HeyGen de Mon av
     expect(res.status).toBe(400);
     const j = await res.json() as { code: string; error: string };
     expect(j.code).toBe('qualite_indisponible');
-    expect(j.error).toBe('HeyGen n’a pas pu confirmer la compatibilité Avatar V de cet avatar.');
+    expect(j.error).toBe('La compatibilité Premium de cet avatar n’a pas pu être confirmée.');
     expect(heygen.appels).toEqual(['moteurs:hg-1']);
     expect(credits.journal).toEqual([]);
     expect(base.generations).toEqual([]);
@@ -154,7 +154,7 @@ describe('POST /api/avatar/generate — qualité de rendu (voix HeyGen de Mon av
     heygen.moteursLook = ['avatar_iii', 'avatar_iv'];
     const res = await requete({ qualite: 'premium' });
     expect(res.status).toBe(400);
-    expect((await res.json() as { error: string }).error).toBe('Avatar V n’est pas disponible pour cet avatar (réponse HeyGen).');
+    expect((await res.json() as { error: string }).error).toBe('La qualité Premium n’est pas disponible pour cet avatar.');
     expect(heygen.appels).toEqual(['moteurs:hg-1']);
     expect(credits.journal).toEqual([]);
   });
@@ -172,7 +172,7 @@ describe('POST /api/avatar/generate — qualité de rendu (voix HeyGen de Mon av
     heygen.moteursLook = ['avatar_v'];
     const res = await requete({ qualite: 'premium' });
     expect(res.status).toBe(400);
-    expect((await res.json() as { error: string }).error).toBe('Avatar V ne fonctionne qu’avec un avatar vidéo (jumeau numérique).');
+    expect((await res.json() as { error: string }).error).toBe('La qualité Premium demande un avatar vidéo (jumeau numérique).');
     expect(heygen.appels).toEqual([]);
   });
 

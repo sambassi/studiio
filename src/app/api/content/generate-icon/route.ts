@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
+import { MESSAGE_IA_NON_CONFIGUREE, MESSAGE_IA_INDISPONIBLE } from '@/lib/fournisseurs/messages-neutres';
 
 // POST /api/content/generate-icon
 // Body: { prompt: string }
@@ -21,7 +22,8 @@ export async function POST(req: NextRequest) {
     }
     const key = process.env.ANTHROPIC_API_KEY;
     if (!key) {
-      return NextResponse.json({ error: 'ANTHROPIC_API_KEY missing' }, { status: 500 });
+      console.error('[generate-icon] ANTHROPIC_API_KEY absente');
+      return NextResponse.json({ error: MESSAGE_IA_NON_CONFIGUREE }, { status: 500 });
     }
 
     // Liste blanche : sous-ensemble de CARD_ICON_MAP (src/components/ui/CardIcon.tsx).
@@ -65,7 +67,7 @@ export async function POST(req: NextRequest) {
     if (!res.ok) {
       const errTxt = await res.text().catch(() => '');
       return NextResponse.json(
-        { error: `Anthropic API error: ${res.status} ${errTxt.slice(0, 200)}` },
+        { error: MESSAGE_IA_INDISPONIBLE },
         { status: 500 },
       );
     }

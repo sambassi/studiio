@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Loader2, Save, Download, RefreshCw } from 'lucide-react';
+import { Loader2, Save, Download, RefreshCw, ChevronDown, Target } from 'lucide-react';
+import type { AnalyseFormule, MargeAbonnement } from '@/lib/stripe/formules-proposees';
+import { BandeauDemo } from '@/components/ui/BandeauDemo';
 
 interface Plan {
   key: string; name: string; price_cents: number; yearly_price_cents: number;
@@ -21,6 +23,11 @@ export default function PricingAdminPage() {
   const [toast, setToast] = useState('');
   const [synchro, setSynchro] = useState<null | { lignes: any[]; erreurs: string[]; aEcrire: number }>(null);
   const [synchronising, setSynchronising] = useState(false);
+  const [formules, setFormules] = useState<AnalyseFormule[] | null>(null);
+  const [marges, setMarges] = useState<MargeAbonnement[]>([]);
+  // Déplié par défaut : une proposition qu'il faut penser à ouvrir n'est pas
+  // consultable. Le panneau reste repliable pour ne pas allonger la page.
+  const [formulesOuvert, setFormulesOuvert] = useState(true);
 
   // 1er clic : diff proposé (rien n'est écrit). 2e clic : confirmation.
   const previsualiserSynchro = async () => {
@@ -67,8 +74,22 @@ export default function PricingAdminPage() {
     setLoading(false);
   };
 
+  /**
+   * Les formules VISÉES, confrontées à la valeur du crédit. Lecture seule :
+   * rien n'est mis en vente depuis ce panneau, et il reste replié par défaut.
+   */
+  const chargerFormules = async () => {
+    try {
+      const res = await fetch('/api/admin/pricing/formules', { cache: 'no-store' });
+      const data = await res.json();
+      if (res.ok && Array.isArray(data.formules)) setFormules(data.formules as AnalyseFormule[]);
+      if (res.ok && Array.isArray(data.marges)) setMarges(data.marges as MargeAbonnement[]);
+    } catch { /* panneau simplement vide */ }
+  };
+
   useEffect(() => {
     loadPricing();
+    chargerFormules();
   }, []);
 
   const runSeed = async () => {
@@ -113,7 +134,8 @@ export default function PricingAdminPage() {
   if (loading) return <div className="flex items-center justify-center h-[50vh]"><Loader2 className="animate-spin text-purple-400" size={32} /></div>;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-5">
+      <BandeauDemo />
       {toast && (
         <div className="fixed top-6 right-6 z-50 rounded-lg bg-green-600 px-4 py-3 text-sm font-medium text-white shadow-lg">
           {toast}
@@ -133,6 +155,104 @@ export default function PricingAdminPage() {
         <h1 className="text-3xl font-bold text-white mb-1">Tarification</h1>
         <p className="text-gray-400 text-sm">Gérez les plans et packs de crédits.</p>
       </div>
+
+      {/* ── Formules visées (proposition, rien n'est en vente) ────────── */}
+      {formules && formules.length > 0 && (
+        <section className="rounded-xl border border-gray-800 bg-gray-900/40" data-testid="formules-proposees">
+          <button
+            type="button"
+            aria-expanded={formulesOuvert}
+            onClick={() => setFormulesOuvert((v) => !v)}
+            className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-white/[0.02]"
+          >
+            <span className="flex items-center gap-2 text-sm font-semibold text-white">
+              <Target size={16} className="text-gray-400" /> Formules visées — proposition, non activée
+            </span>
+            <span className="flex items-center gap-2">
+              {formules.some((f) => f.verdict === 'dilue') && (
+                <span className="rounded-full border border-red-500/40 bg-red-500/10 px-2 py-0.5 text-[11px] text-red-300">
+                  {formules.filter((f) => f.verdict === 'dilue').length} diluent le crédit
+                </span>
+              )}
+              <ChevronDown size={16} className="text-gray-400 transition-transform" style={{ transform: formulesOuvert ? 'rotate(180deg)' : 'none' }} />
+            </span>
+          </button>
+          {formulesOuvert && (
+            <div className="space-y-2 border-t border-gray-800 px-4 py-3">
+              <p className="text-xs text-gray-500">
+                Aucune de ces formules n’est en vente. Les abonnements facturés sont ceux du tableau ci-dessous.
+                Un abonnement vend des crédits : si une formule les cède bien sous leur valeur de référence, elle
+                rend faux le prix unitaire de chaque opération.
+              </p>
+              {formules.map((f) => {
+                const marge = marges.find((m) => m.cle === f.cle);
+                const style = f.verdict === 'dilue'
+                  ? 'border-red-500/40 bg-red-500/10 text-red-300'
+                  : f.verdict === 'inconnu'
+                    ? 'border-amber-500/40 bg-amber-500/10 text-amber-300'
+                    : 'border-green-500/40 bg-green-500/10 text-green-300';
+                return (
+                  <div key={f.cle} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 border-b border-gray-800/60 pb-2 text-xs last:border-b-0 last:pb-0" data-testid={`formule-${f.cle}`}>
+                    <span className="font-medium text-gray-200">{f.nom}</span>
+                    <span className="text-gray-400">
+                      {(f.prixCentimes / 100).toLocaleString('fr-CH', { style: 'currency', currency: 'CHF' })} / mois · {f.credits.toLocaleString('fr-CH')} crédits
+                    </span>
+                    <span className={`rounded-full border px-2 py-0.5 ${style}`}>
+                      {f.verdict === 'dilue' ? 'Dilue le crédit' : f.verdict === 'inconnu' ? 'À vérifier' : 'Tenable'}
+                    </span>
+                    <span className="min-w-0 flex-1 text-gray-500">{f.motif}</span>
+                    {marge && (
+                      <span className="w-full text-gray-500" data-testid={`marge-${f.cle}`}>
+                        Prix de vente {marge.prixVenteChf.toFixed(2)} CHF · {marge.creditsOfferts} crédits offerts ·
+                        {' '}coût d’usage au pire {marge.coutUsageMaxChf === null ? 'inconnu' : `${marge.coutUsageMaxChf.toFixed(2)} CHF`} ·
+                        {' '}marge réelle{' '}
+                        <b className={typeof marge.margeReelleChf === 'number' && marge.margeReelleChf < 0 ? 'text-red-400' : 'text-green-400'}>
+                          {marge.margeReelleChf === null ? 'inconnue' : `${marge.margeReelleChf.toFixed(2)} CHF`}
+                        </b>
+                        <br />
+                        <span className="text-gray-600">{marge.motif}</span>
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* ── Aperçu du rendu client ───────────────────────────────
+                  Montre à quoi ressemblerait la grille VUE PAR UN CLIENT.
+                  Aucun bouton d'achat : ces formules ne sont ni activées ni
+                  achetables, et la facturation réelle n'est pas touchée. */}
+              <div className="mt-3 space-y-2 border-t border-gray-800 pt-3">
+                <p className="text-xs font-semibold text-gray-300">Aperçu du rendu client</p>
+                <p className="text-[11px] text-gray-500">
+                  Simple rendu visuel. Aucune de ces formules n’est en vente : il n’y a pas de bouton
+                  d’achat, et les abonnements facturés restent ceux du tableau plus bas.
+                </p>
+                <div className="grid gap-2 sm:grid-cols-3" data-testid="apercu-client-formules">
+                  {formules.filter((f) => f.prixCentimes > 0).map((f) => (
+                    <div key={f.cle} className="relative rounded-xl border border-studiio-primary/30 bg-studiio-primary/5 p-3">
+                      <span className="absolute right-2 top-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] text-amber-300">
+                        non activée
+                      </span>
+                      <p className="text-sm font-semibold text-white">{f.nom}</p>
+                      <p className="mt-1 text-xl font-bold text-white">
+                        {(f.prixCentimes / 100).toLocaleString('fr-CH', { minimumFractionDigits: 2 })}
+                        <span className="text-xs font-normal text-gray-400"> CHF / mois</span>
+                      </p>
+                      <p className="mt-0.5 text-xs text-gray-300">{f.credits.toLocaleString('fr-CH')} crédits inclus</p>
+                      <p className="mt-2 text-[11px] text-gray-500">
+                        soit {((f.prixCentimes / 100) / f.credits).toFixed(4)} CHF le crédit
+                      </p>
+                      <div className="mt-2 cursor-not-allowed rounded-lg border border-gray-700 px-2 py-1.5 text-center text-[11px] text-gray-500">
+                        Achat indisponible
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
       <div className="rounded-xl border border-purple-500/30 bg-purple-500/5 p-4 space-y-3">
         <div className="flex items-center justify-between gap-4">
@@ -205,7 +325,13 @@ export default function PricingAdminPage() {
 
       {/* Plans */}
       <div>
-        <h2 className="text-xl font-bold text-white mb-4">Plans</h2>
+        {/* Distinguer sans ambiguïté ce qui est VENDU de ce qui est PROPOSÉ :
+            le panneau du dessus porte des formules non activées. */}
+        <h2 className="text-xl font-bold text-white mb-1">Abonnements en vente</h2>
+        <p className="mb-4 text-xs text-gray-500">
+          Ce sont les formules réellement facturées aujourd’hui. Les propositions Créateur / Pro /
+          Studio du panneau ci-dessus ne sont pas activées et ne peuvent pas être achetées.
+        </p>
         <div className="grid gap-4">
           {plans.map((plan) => (
             <div key={plan.key} className="rounded-xl border border-gray-700 bg-gray-800 p-5 space-y-3">
@@ -259,9 +385,31 @@ export default function PricingAdminPage() {
                 </div>
               </div>
               <div>
-                <label className="text-[10px] text-gray-500 uppercase">Features (JSON)</label>
-                <textarea value={JSON.stringify(plan.features)} onChange={(e) => { try { setPlans(plans.map(p => p.key === plan.key ? { ...p, features: JSON.parse(e.target.value) } : p)); } catch {} }}
-                  className="w-full rounded bg-gray-700 border border-gray-600 px-2 py-1.5 text-xs text-white font-mono h-16 resize-none" />
+                {/*
+                  ⚠️ C'ÉTAIT UN CHAMP JSON BRUT. Il affichait
+                  `["150 credits/mois","Pas de watermark"]` et exigeait des
+                  crochets et des guillemets corrects ; une virgule oubliée
+                  faisait échouer `JSON.parse` EN SILENCE (le `catch {}`
+                  avalait la frappe) et le champ semblait ne plus répondre.
+                  Désormais : une fonctionnalité par ligne, rien à échapper.
+                */}
+                <label className="text-[10px] text-gray-500 uppercase" htmlFor={`fonctions-${plan.key}`}>
+                  Fonctionnalités affichées — une par ligne
+                </label>
+                <textarea
+                  id={`fonctions-${plan.key}`}
+                  value={(plan.features ?? []).join('\n')}
+                  onChange={(e) => setPlans(plans.map((p) => (p.key === plan.key
+                    ? { ...p, features: e.target.value.split('\n') }
+                    : p)))}
+                  onBlur={() => setPlans(plans.map((p) => (p.key === plan.key
+                    ? { ...p, features: (p.features ?? []).map((l) => l.trim()).filter(Boolean) }
+                    : p)))}
+                  placeholder={'150 crédits/mois\nPas de filigrane\n3 réseaux sociaux'}
+                  className="w-full rounded bg-gray-700 border border-gray-600 px-2 py-1.5 text-xs text-white h-20 resize-none" />
+                <p className="text-[9px] text-gray-500 mt-0.5">
+                  {(plan.features ?? []).filter((l) => l.trim()).length} fonctionnalité(s) · les lignes vides sont ignorées
+                </p>
               </div>
               <button onClick={() => savePlan(plan)} disabled={saving === plan.key}
                 className="flex items-center gap-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
@@ -274,7 +422,7 @@ export default function PricingAdminPage() {
 
       {/* Packs */}
       <div>
-        <h2 className="text-xl font-bold text-white mb-4">Packs de crédits</h2>
+        <h2 className="text-xl font-bold text-white mb-4">Packs de crédits en vente</h2>
         <div className="grid md:grid-cols-2 gap-4">
           {packs.map((pack) => (
             <div key={pack.key} className="rounded-xl border border-gray-700 bg-gray-800 p-4 space-y-3">

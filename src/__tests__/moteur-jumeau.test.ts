@@ -506,7 +506,7 @@ describe('Mon avatar — cadrage rempli et qualité Premium (moteur du jumeau)',
 
   it('⚠️ Premium sur un avatar PHOTO : refusé avec la vraie raison, AUCUN fournisseur, AUCUN débit', async () => {
     const r = await genererVideoJumeau({ userId: U, textes: [TEXTE], aspectRatio: '9:16', qualite: 'premium' });
-    expect(r).toMatchObject({ ok: false, motif: 'moteur_indisponible', message: 'Avatar V ne fonctionne qu’avec un avatar vidéo (jumeau numérique).' });
+    expect(r).toMatchObject({ ok: false, motif: 'moteur_indisponible', message: 'La qualité Premium demande un avatar vidéo (jumeau numérique).' });
     expect(reseau.appels).toEqual([]);
     expect(credits.journal).toEqual([]);
   });

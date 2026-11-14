@@ -395,7 +395,12 @@ export async function GET() {
     // `didVideoActif` : l'ecran ouvre « A partir d'une video » seulement si le
     // serveur le dit — drapeau ET cle presents. Jamais la cle elle-meme.
     // `nomProfil` : le nom du compte, pour PRÉ-REMPLIR le nom de consentement D-ID à l'écran. Rien d'autre du profil.
-    return NextResponse.json({ success: true, data: { avatar, voices, defaultVoiceId, didVideoActif: didVideoAvatarDisponible(), jumeauVideoActif: jumeauVideoAutorise(isAdmin(session.user.email)), nomProfil: session.user.name ?? null, qualites: qualitesMonAvatar(moteursLook, avatar?.avatar_type),
+    // Les identifiants INTERNES du fournisseur ne partent jamais au navigateur :
+    // aucun écran ne les lit, et ils désignent nos ressources chez lui.
+    const avatarPublic = avatar
+      ? (({ provider_avatar_id: _a, provider_group_id: _g, ...reste }) => reste)(avatar as Record<string, unknown>)
+      : avatar;
+    return NextResponse.json({ success: true, data: { avatar: avatarPublic, voices, defaultVoiceId, didVideoActif: didVideoAvatarDisponible(), jumeauVideoActif: jumeauVideoAutorise(isAdmin(session.user.email)), nomProfil: session.user.name ?? null, qualites: qualitesMonAvatar(moteursLook, avatar?.avatar_type),
       // UNE qualité par défaut pour TOUS les parcours (Mon avatar, aperçu, Créer, Autopilote) : celle du moteur serveur.
       qualiteParDefaut: qualiteParDefaut(),
       // Voix clonée (moteur du jumeau) : mêmes choix — et SON défaut, celui de Créer, inchangé.

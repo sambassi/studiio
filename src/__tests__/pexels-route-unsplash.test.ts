@@ -1,5 +1,8 @@
+// ⚠️ Le navigateur appelle `/api/photos`, alias neutre de la route
+// historique : le nom de la banque ne doit pas figurer dans l'URL. Son
+// ATTRIBUTION, elle, reste affichée avec chaque photo.
 /**
- * `GET /api/pexels?source=unsplash` — le fournisseur, doublé.
+ * `GET /api/photos?source=unsplash` — le fournisseur, doublé.
  *
  * ─────────────────────────────────────────────────────────────────────────
  * AUCUN APPEL RÉEL, AUCUNE VRAIE CLÉ
@@ -66,7 +69,7 @@ const PHOTO_UNSPLASH = {
 };
 
 const lire = async (params = 'query=danse&source=unsplash&count=5') => {
-  const res = await GET({ url: `https://studiio.pro/api/pexels?${params}` } as never);
+  const res = await GET({ url: `https://studiio.pro/api/photos?${params}` } as never);
   return { status: res.status, body: await res.json() };
 };
 

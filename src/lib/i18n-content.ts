@@ -170,7 +170,14 @@ const DE: ContentPools = {
   },
 };
 
-const CONTENT_POOLS: Record<Locale, ContentPools> = { fr: FR, en: EN, de: DE };
+/**
+ * Réserves de contenu éditorial, par langue. PARTIEL par construction : une
+ * langue sans réserve retombe sur le français dans `getContentPools`. Ce
+ * contenu est rédactionnel (accroches marketing) — il demande un locuteur
+ * natif, pas une traduction automatique, donc une langue absente ici est un
+ * état légitime, pas un oubli.
+ */
+const CONTENT_POOLS: Partial<Record<Locale, ContentPools>> = { fr: FR, en: EN, de: DE };
 
 export function getContentPools(locale: Locale): ContentPools {
   return CONTENT_POOLS[locale] || FR;

@@ -1,3 +1,6 @@
+// ⚠️ Le navigateur appelle `/api/photos`, alias neutre de la route
+// historique : le nom de la banque ne doit pas figurer dans l'URL. Son
+// ATTRIBUTION, elle, reste affichée avec chaque photo.
 /**
  * Le sélecteur de photos — Unsplash comprise.
  *
@@ -5,7 +8,7 @@
  * CE QUI ÉTAIT FAUX
  * ─────────────────────────────────────────────────────────────────────────
  *
- * `/api/pexels` attrapait TOUTE erreur du fournisseur, la journalisait, et
+ * `/api/photos` attrapait TOUTE erreur du fournisseur, la journalisait, et
  * répondait `{ success: true, photos: [] }`. L'écran en concluait « Aucune
  * photo pour cette recherche ».
  *
@@ -97,7 +100,7 @@ function installerFetch(sc: Scenario = {}) {
       ok: status >= 200 && status < 300, status, json: async () => corps,
     } as Response);
 
-    if (u.startsWith('/api/pexels')) {
+    if (u.startsWith('/api/photos')) {
       requetesPhotos.push(u);
       if (sc.reseauKO) throw new Error('offline');
       return rep(sc.reponsePhotos ?? { success: true, photos: PHOTOS_UNSPLASH, source: 'unsplash' });

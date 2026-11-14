@@ -228,6 +228,28 @@ describe('routes de checkout', () => {
     expect(res.status).toBe(410);
     expect(sessionsCreees).toHaveLength(0);
   });
+
+  /**
+   * ⚠️ MOYENS DE PAIEMENT DYNAMIQUES. Lister `payment_method_types: ['card']`
+   * figeait la carte dans le code : TWINT, PayPal ou Apple Pay n'auraient
+   * jamais pu apparaître, même activés sur le compte Stripe. Sans ce champ,
+   * Stripe applique ce qui est configuré dans le Dashboard et filtre selon la
+   * devise, le pays et le mode — c'est sa recommandation.
+   *
+   * Sûr ici parce qu'un moyen à notification différée (TWINT) termine la
+   * session avant la confirmation des fonds, et que le webhook ne crédite
+   * qu'à `payment_status === 'paid'` (cf. `stripe-webhook-lancement`).
+   */
+  it('aucun moyen de paiement figé dans le code — ni pour un pack, ni pour un abonnement', async () => {
+    const rPack = await packRoute.POST(post({ pack: 'medium' }));
+    expect(rPack.status).toBe(200);
+    const rAbo = await checkoutRoute.POST(post({ plan: 'pro', billingCycle: 'monthly' }));
+    expect(rAbo.status).toBe(200);
+
+    expect(sessionsCreees).toHaveLength(2);
+    for (const s of sessionsCreees) expect(s).not.toHaveProperty('payment_method_types');
+    expect(sessionsCreees.map((s) => s.mode)).toEqual(['payment', 'subscription']);
+  });
 });
 
 describe('libellés CHF (constantes de repli)', () => {

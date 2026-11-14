@@ -1,3 +1,6 @@
+// ⚠️ Le navigateur appelle `/api/photos`, alias neutre de la route
+// historique : le nom de la banque ne doit pas figurer dans l'URL. Son
+// ATTRIBUTION, elle, reste affichée avec chaque photo.
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'fs';
@@ -24,7 +27,7 @@ const DEBIT = /deductCredits|debiterOperationAtomique|debiterRenduAtomique|getUs
 
 describe('Stock Pexels / Unsplash : 0 crédit', () => {
   it('ni le moteur stock ni ses routes ne touchent aux crédits', () => {
-    for (const f of [...fichiers('src/lib/stock'), ...fichiers('src/app/api/stock'), 'src/app/api/pexels/route.ts']) {
+    for (const f of [...fichiers('src/lib/stock'), ...fichiers('src/app/api/stock'), 'src/app/api/photos/route.ts']) {
       expect(DEBIT.test(lire(f)), f).toBe(false);
     }
   });

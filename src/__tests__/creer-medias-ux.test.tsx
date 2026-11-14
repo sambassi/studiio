@@ -1,3 +1,6 @@
+// ⚠️ Le navigateur appelle `/api/photos`, alias neutre de la route
+// historique : le nom de la banque ne doit pas figurer dans l'URL. Son
+// ATTRIBUTION, elle, reste affichée avec chaque photo.
 /**
  * MÉDIAS DANS CRÉER — l'utilisateur cherche, regarde, puis ajoute.
  *
@@ -6,7 +9,7 @@
  * leurs conditions (ligne discrète sous les résultats, « Informations du
  * média » dans l'aperçu).
  *
- * - Photo d'affiche : une seule recherche (`/api/pexels?source=both`).
+ * - Photo d'affiche : une seule recherche (`/api/photos?source=both`).
  * - Médias suggérés : filtres par TYPE, puces françaises / requêtes anglaises,
  *   cartes « Aperçu » / « Ajouter » ; un clic sur une vignette sélectionne et
  *   prévisualise, sans ajouter ni ouvrir d'onglet.
@@ -85,7 +88,7 @@ function installerFetch(opts: { videos?: MediaStock[]; photos?: MediaStock[]; po
       const trouve = tous.find((x) => x.providerAssetId === b?.providerAssetId);
       return rep({ success: true, url: `https://studiio.test/media/${b?.providerAssetId}.${b?.type === 'video' ? 'mp4' : 'jpg'}`, media: trouve, importe: true });
     }
-    if (u.startsWith('/api/pexels')) return rep({ success: true, photos: opts.posters ?? [] });
+    if (u.startsWith('/api/photos')) return rep({ success: true, photos: opts.posters ?? [] });
     if (u.includes('/api/credits/balance')) return rep({ ok: true, politique: 'credits', balance: 5000 });
     if (u.includes('/api/render/tarifs')) return rep({ ok: true, politique: 'credits', tarifs: { reel: 10, tv: 15 } });
     return rep({ success: true, data: [], posts: [], content: {}, images: [], photos: [] });
@@ -420,7 +423,7 @@ describe('AssistantWizard — photo d’affiche', () => {
     await act(async () => { fireEvent.change(section.querySelector('[data-poster-query]')!, { target: { value: 'femme qui danse' } }); });
     await act(async () => { fireEvent.click(chercher); });
     await attendre();
-    const req = appels.filter((a) => a.url.startsWith('/api/pexels'));
+    const req = appels.filter((a) => a.url.startsWith('/api/photos'));
     expect(req.length).toBeGreaterThan(0);
     expect(req[req.length - 1].url).toContain('source=both');
     expect(section.querySelectorAll('[data-poster-photo]').length).toBe(2);

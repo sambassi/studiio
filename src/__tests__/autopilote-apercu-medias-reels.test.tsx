@@ -140,7 +140,10 @@ beforeEach(() => {
   vignettesPourTests.definirExtracteur(async () => { throw new Error('jsdom'); });
   vi.stubGlobal('fetch', vi.fn(async (url: string) => {
     const u = String(url);
-    if (u.startsWith('/api/pexels')) {
+    // Chemin NEUTRE : le navigateur appelle `/api/photos`, alias de la
+    // route historique, pour que le nom de la banque ne soit pas dans l'URL.
+    // L'attribution, elle, reste affichée avec chaque photo.
+    if (u.startsWith('/api/photos')) {
       return { ok: true, json: async () => ({ success: true, photos: [{ id: 1, url: 'https://exemple.test/affiche.jpg', medium: 'https://exemple.test/affiche.jpg' }] }) };
     }
     if (u.startsWith('/api/autopilot/config')) {

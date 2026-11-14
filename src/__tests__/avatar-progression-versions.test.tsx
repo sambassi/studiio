@@ -165,20 +165,24 @@ describe('Version et qualité', () => {
     expect(MOTEUR_PAR_QUALITE).toEqual({ standard: 'avatar_iii', qualite: 'avatar_iv', premium: 'avatar_v' });
     expect(LIBELLE_QUALITE).toEqual({ standard: 'Standard', qualite: 'Qualité', premium: 'Premium' });
   });
-  it('⚠️ Mon avatar : Qualité/Avatar IV par défaut et recommandée, Standard ouvert, Premium = Avatar V « Meilleure qualité »', () => {
+  // ⚠️ Les noms de MODÈLES du fournisseur (« Avatar III/IV/V ») ne sortent plus
+  // vers l'utilisateur : seules les qualités Studiio (Standard / Qualité /
+  // Premium) sont affichées. La clé technique `moteur` reste côté serveur.
+  it('⚠️ Mon avatar : Qualité par défaut et recommandée, Standard ouvert, Premium « Meilleure qualité »', () => {
     expect(QUALITE_PAR_DEFAUT_MON_AVATAR).toBe('qualite');
     const q = qualitesMonAvatar(null, 'video');
-    expect(q.map((x) => `${x.qualite}:${x.moteurLibelle}:${x.description}:${x.ouverte}`)).toEqual([
-      'standard:Avatar III:Rapide, économique:true', 'qualite:Avatar IV:Recommandé:true', 'premium:Avatar V:Meilleure qualité:false',
+    // `moteur` est la clé serveur (jamais affichée) ; aucun libellé ne la nomme.
+    expect(q.map((x) => `${x.qualite}:${x.moteur}:${x.description}:${x.ouverte}`)).toEqual([
+      'standard:avatar_iii:Rapide, économique:true', 'qualite:avatar_iv:Recommandé:true', 'premium:avatar_v:Meilleure qualité:false',
     ]);
     expect(q.find((x) => x.recommandee)?.qualite).toBe('qualite');
     expect(q.find((x) => x.meilleure)?.qualite).toBe('premium');
   });
 
-  it('⚠️ Premium : la VRAIE raison — jamais « pas encore ouvert » quand HeyGen confirme', () => {
-    expect(qualitesMonAvatar(null, 'video')[2]).toMatchObject({ ouverte: false, motif: 'HeyGen n’a pas pu confirmer la compatibilité Avatar V de cet avatar.' });
-    expect(qualitesMonAvatar(['avatar_iii', 'avatar_iv'], 'video')[2]).toMatchObject({ ouverte: false, motif: 'Avatar V n’est pas disponible pour cet avatar (réponse HeyGen).' });
-    expect(qualitesMonAvatar(['avatar_iii', 'avatar_iv', 'avatar_v'], 'photo')[2]).toMatchObject({ ouverte: false, motif: 'Avatar V ne fonctionne qu’avec un avatar vidéo (jumeau numérique).' });
+  it('⚠️ Premium : la VRAIE raison, sans jamais nommer le fournisseur ni son modèle', () => {
+    expect(qualitesMonAvatar(null, 'video')[2]).toMatchObject({ ouverte: false, motif: 'La compatibilité Premium de cet avatar n’a pas pu être confirmée.' });
+    expect(qualitesMonAvatar(['avatar_iii', 'avatar_iv'], 'video')[2]).toMatchObject({ ouverte: false, motif: 'La qualité Premium n’est pas disponible pour cet avatar.' });
+    expect(qualitesMonAvatar(['avatar_iii', 'avatar_iv', 'avatar_v'], 'photo')[2]).toMatchObject({ ouverte: false, motif: 'La qualité Premium demande un avatar vidéo (jumeau numérique).' });
     // Confirmé par HeyGen : ouvert, SANS aucune variable de configuration Studiio.
     expect(qualitesMonAvatar(['avatar_iii', 'avatar_iv', 'avatar_v'], 'video')[2]).toMatchObject({ ouverte: true, motif: null });
     expect(lireMoteursSupportes(['avatar_v', 'inconnu', 3])).toEqual(['avatar_v']);
@@ -434,16 +438,16 @@ describe('Page Mon avatar', () => {
     expect(cadre()).toBe('9 / 16');
   });
 
-  it('⚠️ « Qualité de génération » : Qualité — Avatar IV présélectionnée ; Premium — Avatar V affiché avec « Meilleure qualité » et sa vraie raison', async () => {
+  it('⚠️ « Qualité de génération » : Qualité présélectionnée ; Premium affiché avec « Meilleure qualité » et sa vraie raison, sans nom de modèle', async () => {
     await monter();
     const choix = document.querySelector('[data-avatar-qualite-choix]') as HTMLSelectElement;
     const opt = (q: string) => document.querySelector(`[data-avatar-qualite-option="${q}"]`) as HTMLOptionElement;
     expect(document.querySelector('label[for="avatar-qualite"]')!.textContent).toBe('Qualité de génération');
     expect(choix.value).toBe('qualite');
-    expect(opt('standard').textContent).toBe('Standard — Avatar III · rapide, économique');
-    expect(opt('qualite').textContent).toBe('Qualité — Avatar IV · recommandé');
+    expect(opt('standard').textContent).toBe('Standard · rapide, économique');
+    expect(opt('qualite').textContent).toBe('Qualité · recommandé');
     expect(opt('premium').disabled).toBe(true);
-    expect(opt('premium').textContent).toBe('Premium — Avatar V · meilleure qualité (indisponible : HeyGen n’a pas pu confirmer la compatibilité Avatar V de cet avatar.)');
+    expect(opt('premium').textContent).toBe('Premium · meilleure qualité (indisponible : La compatibilité Premium de cet avatar n’a pas pu être confirmée.)');
     expect(document.querySelector('[data-avatar-premium]')!.getAttribute('data-avatar-premium')).toBe('indisponible');
     expect(document.querySelector('[data-avatar-premium-badge]')!.textContent).toBe('Meilleure qualité');
     fireEvent.change(document.querySelector('[data-avatar-generation] textarea')!, { target: { value: 'Bonjour.' } });

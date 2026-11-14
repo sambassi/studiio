@@ -26,6 +26,9 @@ type Ligne = Record<string, unknown>;
 const grille = vi.hoisted(() => ({ prix: {} as Record<string, number>, lectures: [] as string[] }));
 vi.mock('@/lib/tarifs/serveur', () => ({
   prixDe: vi.fn(async (cle: string) => { grille.lectures.push(cle); return grille.prix[cle]; }),
+  // La route lit aussi le drapeau « refuser une operation payante sans cout
+  // verifie » : actif, il ne concerne aucun tarif actuel.
+  lireTarifs: vi.fn(async () => ({ prix: grille.prix, bloquerSiCoutInconnu: true })),
 }));
 
 const base = vi.hoisted(() => ({
@@ -63,7 +66,15 @@ vi.mock('@/lib/db/supabase', () => {
     };
     return api;
   };
-  const storage = { from: (bucket: string) => ({ getPublicUrl: (p: string) => ({ data: { publicUrl: `https://studiio.pro/storage/v1/object/public/${bucket}/${p}` } }) }) };
+  // Le stockage doit accepter un `upload` : les sorties des outils IA y sont
+  // rapatriees pour que l'URL du fournisseur ne parte pas au navigateur.
+  const storage = {
+    from: (bucket: string) => ({
+      upload: async () => ({ error: null }),
+      remove: async () => ({ error: null }),
+      getPublicUrl: (p: string) => ({ data: { publicUrl: `https://studiio.pro/storage/v1/object/public/${bucket}/${p}` } }),
+    }),
+  };
   return { supabase: {}, supabaseAdmin: { from, storage } };
 });
 
@@ -101,7 +112,20 @@ vi.mock('@/lib/avatar/heygen', () => ({
 
 const replicate = vi.hoisted(() => ({ runs: 0 }));
 vi.mock('replicate', () => ({
-  default: class { run = async () => { replicate.runs += 1; return 'Texte lu sur l image'; }; },
+  default: class {
+    run = async (modele: string) => {
+      replicate.runs += 1;
+      if (/ocr|text-extract/i.test(modele)) return 'Texte lu sur l image';
+      // ⚠️ Les autres outils rapatrient les OCTETS dans le stockage Studiio
+      // (l'URL du fournisseur ne part plus au navigateur) : la sortie doit
+      // donc être lisible, pas une simple chaîne.
+      const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...Array(32).fill(0)]);
+      return {
+        url: () => new URL('https://replicate.delivery/sortie.png'),
+        blob: async () => ({ size: PNG.length, arrayBuffer: async () => PNG.buffer }),
+      };
+    };
+  },
 }));
 
 vi.mock('@/lib/storage/upload', () => ({

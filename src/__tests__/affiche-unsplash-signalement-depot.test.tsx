@@ -1,3 +1,6 @@
+// ⚠️ Le navigateur appelle `/api/photos`, alias neutre de la route
+// historique : le nom de la banque ne doit pas figurer dans l'URL. Son
+// ATTRIBUTION, elle, reste affichée avec chaque photo.
 /**
  * Affiche Unsplash : le téléchargement est signalé UNE fois par choix réel,
  * que la photo soit CLIQUÉE dans la grille ou GLISSÉE-DÉPOSÉE sur l'aperçu.
@@ -61,7 +64,7 @@ function installerFetch() {
       signalements.push(JSON.parse(String(init?.body ?? '{}')));
       return rep({ success: true, url: 'https://images.unsplash.com/x', importe: false, media: {} });
     }
-    if (u.startsWith('/api/pexels')) return rep({ success: true, photos: PHOTOS, source: 'unsplash' });
+    if (u.startsWith('/api/photos')) return rep({ success: true, photos: PHOTOS, source: 'unsplash' });
     if (u.includes('/api/credits/balance')) return rep({ ok: true, politique: 'credits', balance: 5000 });
     if (u.includes('/api/render/tarifs')) return rep({ ok: true, politique: 'credits', tarifs: { reel: 10, tv: 15 } });
     return rep({ success: true, data: [], posts: [], content: {} });

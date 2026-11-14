@@ -89,6 +89,9 @@ export function refusMoteurCompteExempte(
   moteur: MoteurAvatar, exempte: boolean, env: NodeJS.ProcessEnv = process.env,
 ): string | null {
   if (!exempte || moteursAutorises(env).includes(moteur)) return null;
+  // Chemin administrateur : nommer le moteur ET la variable est ici utile
+  // (c'est un diagnostic d'infrastructure), mais ce message ne doit jamais
+  // partir vers un compte non administrateur.
   return `${LIBELLE_MOTEUR[moteur]} n’est pas autorisé sur ce serveur pour un compte administrateur (AVATAR_MOTEURS_AUTORISES). Choisissez la qualité Standard.`;
 }
 
@@ -116,7 +119,12 @@ export function qualiteParDefaut(env: NodeJS.ProcessEnv = process.env): QualiteR
  */
 export const MOTEURS_DEJA_UTILISES_MON_AVATAR: readonly MoteurAvatar[] = ['avatar_iv'];
 export const QUALITE_PAR_DEFAUT_MON_AVATAR: QualiteRendu = 'qualite';
-/** Le nom du moteur HeyGen, affiché à côté de la qualité (jamais confondu avec la VERSION de l'avatar). */
+/**
+ * Le nom de modèle du fournisseur. RÉSERVÉ AUX ÉCRANS ADMIN (devis de coût) :
+ * il ne doit jamais partir dans une réponse lue par un utilisateur, ni être
+ * affiché hors `/admin/*` ou d'un bloc gardé côté serveur. Pour l'utilisateur,
+ * la qualité se nomme Standard / Qualité / Premium (`LIBELLE_QUALITE`).
+ */
 export const LIBELLE_MOTEUR: Record<MoteurAvatar, string> = { avatar_iii: 'Avatar III', avatar_iv: 'Avatar IV', avatar_v: 'Avatar V' };
 export const DESCRIPTION_QUALITE: Record<QualiteRendu, string> = {
   standard: 'Rapide, économique',
@@ -124,14 +132,19 @@ export const DESCRIPTION_QUALITE: Record<QualiteRendu, string> = {
   premium: 'Meilleure qualité',
 };
 
+/**
+ * Pourquoi la qualité Premium est fermée. Ces phrases sont LUES PAR
+ * L'UTILISATEUR : elles ne nomment ni le prestataire ni son modèle — c'était
+ * le cas avant (« HeyGen … Avatar V »), et c'était une fuite.
+ */
 export const MOTIF_PREMIUM = {
-  photo: 'Avatar V ne fonctionne qu’avec un avatar vidéo (jumeau numérique).',
-  nonConfirme: 'HeyGen n’a pas pu confirmer la compatibilité Avatar V de cet avatar.',
-  nonSupporte: 'Avatar V n’est pas disponible pour cet avatar (réponse HeyGen).',
+  photo: 'La qualité Premium demande un avatar vidéo (jumeau numérique).',
+  nonConfirme: 'La compatibilité Premium de cet avatar n’a pas pu être confirmée.',
+  nonSupporte: 'La qualité Premium n’est pas disponible pour cet avatar.',
 } as const;
 
 export interface QualiteOfferte {
-  qualite: QualiteRendu; libelle: string; moteur: MoteurAvatar; moteurLibelle: string; description: string;
+  qualite: QualiteRendu; libelle: string; moteur: MoteurAvatar; description: string;
   ouverte: boolean; recommandee: boolean; meilleure: boolean; motif: string | null;
 }
 
@@ -163,9 +176,9 @@ export function qualitesMonAvatar(
     const moteur = MOTEUR_PAR_QUALITE[q];
     const motif = q === 'premium'
       ? motifPremium(typeAvatar, moteursSupportes)
-      : moteursSupportes !== null && !moteursSupportes.includes(moteur) ? 'Non pris en charge par cet avatar (réponse HeyGen).' : null;
+      : moteursSupportes !== null && !moteursSupportes.includes(moteur) ? 'Non pris en charge par cet avatar.' : null;
     return {
-      qualite: q, libelle: LIBELLE_QUALITE[q], moteur, moteurLibelle: LIBELLE_MOTEUR[moteur], description: DESCRIPTION_QUALITE[q],
+      qualite: q, libelle: LIBELLE_QUALITE[q], moteur, description: DESCRIPTION_QUALITE[q],
       ouverte: motif === null, recommandee: q === QUALITE_PAR_DEFAUT_MON_AVATAR, meilleure: q === 'premium', motif,
     };
   });

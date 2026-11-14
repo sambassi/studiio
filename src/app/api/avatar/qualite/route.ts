@@ -24,5 +24,6 @@ export async function POST(req: NextRequest) {
   const r = await ecrireQualiteAvatar(session.user.id, avatarId, corps!.qualite as Parameters<typeof ecrireQualiteAvatar>[2]);
   if (!r.ok) return NextResponse.json({ success: false, error: 'La qualité n’a pas pu être enregistrée.' }, { status: 500 });
   const qualite = corps!.qualite as keyof typeof MOTEUR_PAR_QUALITE;
-  return NextResponse.json({ success: true, data: { avatarId, qualite, moteur: MOTEUR_PAR_QUALITE[qualite] } });
+  // Le moteur du fournisseur reste côté serveur : l'écran n'a besoin que de la qualité.
+  return NextResponse.json({ success: true, data: { avatarId, qualite } });
 }

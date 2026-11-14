@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
 import { detectAndReportServiceError } from '@/lib/service-alerts';
 import { motifLisibleDuFournisseur } from '@/lib/avatar/fournisseurs';
-import { ELEVENLABS_VOICE_PREFIX } from '@/lib/types/voice';
+import { ELEVENLABS_VOICE_PREFIX, idVoixInterne, idVoixPublic } from '@/lib/types/voice';
 import { voixUtilisable } from '@/lib/voice/profil';
 import {
   validateCloneRequest,
@@ -198,7 +198,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       voice: {
-        id: `${ELEVENLABS_VOICE_PREFIX}${voiceId}`,
+        id: idVoixPublic(`${ELEVENLABS_VOICE_PREFIX}${voiceId}`),
         name: saved.name,
         lang: saved.lang,
       },
@@ -232,7 +232,7 @@ export async function GET() {
       success: true,
       configured: !!apiKey(),
       voices: voices.map((v) => ({
-        id: `${ELEVENLABS_VOICE_PREFIX}${v.provider_voice_id}`,
+        id: idVoixPublic(`${ELEVENLABS_VOICE_PREFIX}${v.provider_voice_id}`),
         // L'identifiant DU COMPTE (`user_voices.id`) : il permet au navigateur
         // de retrouver la voix que le contrat Jumeau désigne (`voix.id`) sans
         // qu'aucun identifiant fournisseur nu ne circule.
@@ -258,7 +258,7 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
     const raw = req.nextUrl.searchParams.get('id') || '';
-    const voiceId = raw.replace(new RegExp(`^${ELEVENLABS_VOICE_PREFIX}`), '').trim();
+    const voiceId = idVoixInterne(raw).replace(new RegExp(`^${ELEVENLABS_VOICE_PREFIX}`), '').trim();
     if (!voiceId) {
       return NextResponse.json({ success: false, error: 'Identifiant manquant.' }, { status: 400 });
     }

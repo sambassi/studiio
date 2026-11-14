@@ -198,7 +198,19 @@ describe('La fonction est installée comme `debiter_credits_operation`', () => {
        where schemaname = 'public' and tablename = 'credit_transactions'
        order by indexname`);
     const noms = rows.map((r) => r.indexname);
-    expect(noms.filter((n: string) => n.includes('reference'))).toHaveLength(1);
+    // ⚠️ L'ASSERTION DIT « ELLE N'EN A PAS CRÉÉ », PAS « IL N'EN EXISTE QU'UN ».
+    // Écrite comme un simple compte à 1, elle tombait dès qu'un AUTRE rail de
+    // paiement ajoutait légitimement son propre index — le Mobile Money, dont
+    // l'index partiel ne couvre que `mm:%`. On nomme donc les index connus :
+    // le test échoue toujours si cette migration-ci en ajoute un, et il ne
+    // s'oppose plus à ce qui ne le concerne pas.
+    const CONNUS = [
+      'credit_transactions_reference_unique',      // 27 août, celui qu'on réutilise
+      'credit_transactions_mm_reference_unique',   // Mobile Money, partiel `mm:%`
+    ];
+    const inconnus = noms.filter((n: string) => n.includes('reference') && !CONNUS.includes(n));
+    expect(inconnus).toEqual([]);
+    expect(noms).toContain('credit_transactions_reference_unique');
   });
 
   it('elle refuse de s installer sans l index unique', async () => {

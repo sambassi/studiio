@@ -1,3 +1,9 @@
+// ⚠️ IDENTIFIANTS PUBLICS NEUTRES. Les listes de voix émettent `vp-` /
+// `va-` / `vn-` au lieu de `elevenlabs-` / `heygen-` / `openai-` : un
+// identifiant finit en `value=` d'une option, donc il ne doit pas nommer
+// le prestataire. Les chemins appelés par le navigateur sont neutres eux
+// aussi (`/api/voix/*`). `idVoixInterne` fait le pont avec l'ancienne
+// forme, qui reste valide pour toute sélection déjà enregistrée.
 /**
  * « Utiliser ma voix » dans Créer > Audio : UNE voix pour tout, qui survit
  * au changement d'étape ET au rechargement.
@@ -9,7 +15,7 @@
  * `localStorage['tts.voiceId'] = 'fr-FR-HenriNeural'` (un choix hors défaut,
  * donc la présélection de #418 ne s'applique pas), un brouillon SANS
  * `ttsVoiceId`, et une voix clonée « Bassi (ma voix) » servie par
- * `/api/tts/elevenlabs`. Créer affichait Henri ; les voix par séquence
+ * `/api/voix/premium`. Créer affichait Henri ; les voix par séquence
  * avaient été générées avec Henri.
  *
  * Ce fichier monte le VRAI wizard dans cet état, clique « Utiliser ma voix »
@@ -56,7 +62,7 @@ import AssistantWizard from '../app/dashboard/creer/AssistantWizard';
 import { draftKey, DRAFT_VERSION } from '../lib/creer/draft';
 
 const CLE = draftKey('a@b.c');
-const CLONEE = 'elevenlabs-ohwPBassi';
+const CLONEE = 'vp-ohwPBassi';
 const HENRI = 'fr-FR-HenriNeural';
 const STEP_AUDIO = 2;
 const STEP_CONTENU = 3;
@@ -83,13 +89,13 @@ function installerFetch() {
       text: async () => JSON.stringify(corps),
       blob: async () => new Blob(['x']),
     } as unknown as Response);
-    if (u.includes('/api/tts/elevenlabs')) {
+    if (u.includes('/api/voix/premium')) {
       return rep({
         voices: [{ id: CLONEE, name: 'Bassi (ma voix)', lang: 'FR', gender: 'Neutral', flag: '🎤', provider: 'elevenlabs', cloned: true }],
         configured: true,
       });
     }
-    if (u.includes('/api/tts/heygen')) return rep({ voices: [] });
+    if (u.includes('/api/voix/avatar')) return rep({ voices: [] });
     if (u.includes('/api/credits/balance')) return rep({ ok: true, politique: 'credits', balance: 5000 });
     if (u.includes('/api/render/tarifs')) return rep({ ok: true, politique: 'credits', tarifs: { reel: 10, tv: 15 } });
     return rep({ success: true, data: [], posts: [], content: {}, images: [], photos: [] });
@@ -169,7 +175,7 @@ describe('« Utiliser ma voix » — une voix pour tout, persistée', () => {
     // Les voix par séquence avaient été générées avec Henri : signalées, pas supprimées, pas régénérées.
     await waitFor(() => expect(document.querySelector('[data-voice-stale="titre"]')).not.toBeNull());
     expect(document.querySelector('[data-voice-stale="titre"]')!.getAttribute('data-voice-stale-motif')).toBe('voix');
-    expect(appels.filter((u) => u.includes('/api/tts/') && !u.includes('/api/tts/elevenlabs') && !u.includes('/api/tts/heygen'))).toHaveLength(0);
+    expect(appels.filter((u) => u.includes('/api/tts/') && !u.includes('/api/voix/premium') && !u.includes('/api/voix/avatar'))).toHaveLength(0);
   });
 
   it('rechargement : les DEUX sélecteurs montrent la voix clonée, localStorage aussi', async () => {

@@ -503,7 +503,11 @@ describe('6-7, 18. Plusieurs identités ; nouveau ≠ remplacer ; permissions', 
     const res = await createRoute.GET();
     expect(res.status).toBe(200);
     const { data } = await res.json();
-    expect(data.avatar).toMatchObject({ id: A3, version: 3, provider_avatar_id: 'a3b4look', status: 'completed', etat: 'valide' });
+    expect(data.avatar).toMatchObject({ id: A3, version: 3, status: 'completed', etat: 'valide' });
+    // ⚠️ Les identifiants INTERNES du fournisseur ne partent plus au navigateur :
+    // aucun écran ne les lit, et ils désignent nos ressources chez lui.
+    expect(data.avatar).not.toHaveProperty('provider_avatar_id');
+    expect(data.avatar).not.toHaveProperty('provider_group_id');
     // L'identité récente n'est ni rendue ni interrogée chez le fournisseur.
     expect(fournisseur.appels).toEqual([]);
   });

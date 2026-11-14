@@ -1,6 +1,9 @@
+// ⚠️ Le navigateur appelle `/api/photos`, alias neutre de la route
+// historique : le nom de la banque ne doit pas figurer dans l'URL. Son
+// ATTRIBUTION, elle, reste affichée avec chaque photo.
 /**
  * Deux petites dettes fermées :
- *  - (9) choisir une photo UNSPLASH comme affiche (recherche `/api/pexels`,
+ *  - (9) choisir une photo UNSPLASH comme affiche (recherche `/api/photos`,
  *    `source=both`) signale le téléchargement à Unsplash par le chemin
  *    existant `POST /api/stock/importer` — hotlink conservé ;
  *  - (16) la barre de formatage du texte ne déclenche plus l'avertissement

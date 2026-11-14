@@ -17,6 +17,24 @@ function reponseGet(extra: Record<string, unknown> = {}) {
     coutsFournisseur: { 'avatar.avatar_v': { chf: 1.5, unite: '/ génération' } },
     source: 'configuration',
     historique: [{ cle: 'render.reel', ancien: 10, nouveau: 12, admin: 'contact.artboost@gmail.com', le: '2026-10-09T08:30:00.000Z' }],
+    // Rentabilité calculée côté serveur : la page ne la devine pas, elle
+    // l'affiche. `grilleConseillee` ne porte QUE les tarifs sous leur prix
+    // conseillé — ici les trois avatars, vendus sous leur coût.
+    margeCible: 0.4,
+    change: { chfParUsd: 0.83, le: '2026-11-11', source: 'BCE' },
+    changeLibelle: '1 USD = 0.83 CHF — 2026-11-11 (il y a 1 jour)',
+    changePerime: false,
+    rentabilite: [
+      { cle: 'avatar.avatar_v', prixCredits: 40, revenuChf: 4, coutUsd: 10.32, uniteCout: '1 génération de 86 s (plafond de script)', sourceCout: 'Tarifs API HeyGen', coutAdminChf: 1.5, prixPlancherCredits: 15, prixConseilleCredits: 21, tauxEquilibreChfParUsd: 0.39, margeChf: 2.5, verdict: 'rentable', motif: 'Couvre le coût fournisseur saisi par l’administration.' },
+      { cle: 'avatar.avatar_iv', prixCredits: 40, revenuChf: 4, coutUsd: 6.92, uniteCout: '1 génération de 86 s (plafond de script)', sourceCout: 'Tarifs API HeyGen', coutAdminChf: null, prixPlancherCredits: 58, prixConseilleCredits: 81, tauxEquilibreChfParUsd: 0.58, margeChf: -1.74, verdict: 'perte', motif: 'Vendu à perte : 40 crédits = 4 CHF pour 6.92 USD de coût (1 génération de 86 s (plafond de script)).' },
+      { cle: 'avatar.avatar_iii', prixCredits: 40, revenuChf: 4, coutUsd: 1.42, uniteCout: '1 génération de 86 s (plafond de script)', sourceCout: 'Tarifs API HeyGen', coutAdminChf: null, prixPlancherCredits: 12, prixConseilleCredits: 17, tauxEquilibreChfParUsd: 2.82, margeChf: 2.82, verdict: 'rentable', motif: 'Couvre le coût fournisseur (1.42 USD).' },
+    ],
+    resumeRentabilite: {
+      pertes: 1, inconnus: 15, rentables: 2,
+      clesEnPerte: ['avatar.avatar_iv'],
+      clesSansCout: ['audio.full_1000_chars'],
+      grilleConseillee: { 'avatar.avatar_iv': 81 },
+    },
     ...extra,
   };
 }
@@ -53,10 +71,16 @@ describe('/admin/tarifs', () => {
       expect(screen.getByRole('heading', { name: titre })).toBeInTheDocument();
     }
     expect(champ(/^Reel \(9:16\)/).value).toBe('12');
-    expect(champ(/^Premium — Avatar V/).value).toBe('40');
+    expect(champ(/^Premium/).value).toBe('40');
     expect(champ(/^Valeur du crédit/).value).toBe('0.1');
     expect(screen.getByText('crédit(s) par 1000 caractères')).toBeInTheDocument();
-    expect(screen.getByText(/ne modifie pas les packs de paiement Stripe/)).toBeInTheDocument();
+    // ⚠️ La note « valeur indicative » est remplacée par trois lignes qui
+    // NOMMENT les trois notions qui se confondaient : ce que l'abonné paie
+    // réellement, la valeur enregistrée (la seule qui sert aux calculs), et
+    // les prix Stripe, que ce champ ne touche pas.
+    expect(screen.getByText(/Valeur du crédit retenue pour les calculs/)).toBeInTheDocument();
+    expect(screen.getByText(/la SEULE qui sert à calculer/)).toBeInTheDocument();
+    expect(screen.getByText(/Les prix de vente Stripe/)).toBeInTheDocument();
     expect(screen.getByText(/Pexels/)).toBeInTheDocument();
     expect(screen.getByText(/Pré-écoute voix/)).toBeInTheDocument();
     // 40 × 0,10 = 4 CHF client, coût 1,5 → marge 2,5
@@ -76,27 +100,27 @@ describe('/admin/tarifs', () => {
 
   it('modifier une valeur active Enregistrer ; la confirmation liste « de 40 à 60 »', async () => {
     await ouvrir();
-    fireEvent.change(champ(/^Premium — Avatar V/), { target: { value: '60' } });
+    fireEvent.change(champ(/^Premium/), { target: { value: '60' } });
     expect(boutonEnregistrer()).toBeEnabled();
     fireEvent.click(boutonEnregistrer());
     const dialogue = screen.getByRole('alertdialog');
-    expect(within(dialogue).getByText('Passer Premium — Avatar V de 40 à 60 crédits ?')).toBeInTheDocument();
+    expect(within(dialogue).getByText('Passer Premium de 40 à 60 crédits ?')).toBeInTheDocument();
     expect(puts()).toHaveLength(0);
   });
 
   it('Annuler n’envoie rien', async () => {
     await ouvrir();
-    fireEvent.change(champ(/^Premium — Avatar V/), { target: { value: '60' } });
+    fireEvent.change(champ(/^Premium/), { target: { value: '60' } });
     fireEvent.click(boutonEnregistrer());
     fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Annuler' }));
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
     expect(puts()).toHaveLength(0);
-    expect(champ(/^Premium — Avatar V/).value).toBe('60'); // la saisie reste
+    expect(champ(/^Premium/).value).toBe('60'); // la saisie reste
   });
 
   it('Confirmer envoie un PUT avec les seules clés modifiées', async () => {
     await ouvrir();
-    fireEvent.change(champ(/^Premium — Avatar V/), { target: { value: '60' } });
+    fireEvent.change(champ(/^Premium/), { target: { value: '60' } });
     fireEvent.change(champ(/^OCR/), { target: { value: '2' } });
     fireEvent.click(boutonEnregistrer());
     fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Confirmer' }));
@@ -107,42 +131,69 @@ describe('/admin/tarifs', () => {
 
   it('valeur négative → erreur affichée et enregistrement bloqué', async () => {
     await ouvrir();
-    fireEvent.change(champ(/^Premium — Avatar V/), { target: { value: '-3' } });
+    fireEvent.change(champ(/^Premium/), { target: { value: '-3' } });
     expect(screen.getByText('Le tarif ne peut pas être négatif.')).toBeInTheDocument();
     expect(boutonEnregistrer()).toBeDisabled();
     fireEvent.click(boutonEnregistrer());
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
-    fireEvent.change(champ(/^Premium — Avatar V/), { target: { value: '2.5' } });
+    fireEvent.change(champ(/^Premium/), { target: { value: '2.5' } });
     expect(screen.getByText('Nombre entier attendu.')).toBeInTheDocument();
-    fireEvent.change(champ(/^Premium — Avatar V/), { target: { value: '10001' } });
+    fireEvent.change(champ(/^Premium/), { target: { value: '10001' } });
     expect(screen.getByText(/Maximum/)).toBeInTheDocument();
     expect(boutonEnregistrer()).toBeDisabled();
     expect(puts()).toHaveLength(0);
   });
 
-  it('« Appliquer les tarifs proposés » remplit 10/25/40 sans enregistrer', async () => {
+  /**
+   * ⚠️ Remplace « Appliquer les tarifs proposés », qui remplissait 10/25/40 —
+   * trois montants FIGÉS dans le catalogue, tous SOUS le coût du fournisseur.
+   * Le prix proposé vient maintenant du plancher calculé (coût réel × taux
+   * daté + marge visée), et seuls les tarifs réellement sous ce plancher
+   * sont proposés à la hausse.
+   */
+  it('« Appliquer les prix conseillés » remplit les tarifs sous leur coût, sans enregistrer', async () => {
     await ouvrir();
-    fireEvent.click(screen.getByRole('button', { name: /Appliquer les tarifs proposés/ }));
-    expect(champ(/^Standard — Avatar III/).value).toBe('10');
-    expect(champ(/^Qualité — Avatar IV/).value).toBe('25');
-    expect(champ(/^Premium — Avatar V/).value).toBe('40');
+    // Seul Qualité est sous son prix conseillé : lui seul est proposé.
+    expect(screen.getByText(/Sous le prix conseillé : Qualité 40 → 81/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Appliquer les prix conseillés/ }));
+    expect(champ(/^Qualité/).value).toBe('81');
+    expect(champ(/^Standard/).value).toBe('40');
+    expect(champ(/^Premium/).value).toBe('40');
     expect(puts()).toHaveLength(0);
     expect(boutonEnregistrer()).toBeEnabled();
     fireEvent.click(boutonEnregistrer());
     const lignes = within(screen.getByRole('alertdialog')).getAllByRole('listitem').map((l) => l.textContent);
-    expect(lignes).toEqual([
-      'Passer Standard — Avatar III de 40 à 10 crédits ?',
-      'Passer Qualité — Avatar IV de 40 à 25 crédits ?',
-    ]);
+    expect(lignes).toEqual(['Passer Qualité de 40 à 81 crédits ?']);
+  });
+
+  it('affiche le verdict, le plancher et l’alerte de vente à perte', async () => {
+    await ouvrir();
+    expect(screen.getByTestId('alerte-vente-a-perte').textContent).toMatch(/Un tarif est vendu/);
+    const ligne = screen.getByTestId('verdict-avatar.avatar_iv').textContent ?? '';
+    expect(ligne).toContain('Vendu à perte');
+    expect(ligne).toContain('plancher 58 · conseillé 81');
+    expect(screen.getByTestId('etat-taux').textContent).toContain('1 USD = 0.83 CHF');
+  });
+
+  it('la marge visée est modifiable et part en pourcentage converti', async () => {
+    await ouvrir();
+    expect(champ(/^Marge visée/).value).toBe('40');
+    fireEvent.change(champ(/^Marge visée/), { target: { value: '60' } });
+    fireEvent.click(boutonEnregistrer());
+    const lignes = within(screen.getByRole('alertdialog')).getAllByRole('listitem').map((l) => l.textContent);
+    expect(lignes).toEqual(['Passer la marge visée de 40 % à 60 % ?']);
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: /Confirmer/ }));
+    await waitFor(() => expect(puts()).toHaveLength(1));
+    expect(JSON.parse(String(puts()[0].init?.body))).toEqual({ margeCible: 0.6 });
   });
 
   it('erreur de validation serveur → affichée sous le champ', async () => {
     reponsePut = { status: 400, corps: { success: false, error: 'Tarifs invalides', erreurs: [{ champ: 'avatar.avatar_v', message: 'Entier entre 0 et 10 000 attendu.' }] } };
     await ouvrir();
-    fireEvent.change(champ(/^Premium — Avatar V/), { target: { value: '60' } });
+    fireEvent.change(champ(/^Premium/), { target: { value: '60' } });
     fireEvent.click(boutonEnregistrer());
     fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Confirmer' }));
     expect(await screen.findByText('Entier entre 0 et 10 000 attendu.')).toBeInTheDocument();
-    expect(champ(/^Premium — Avatar V/)).toHaveAttribute('aria-invalid', 'true');
+    expect(champ(/^Premium/)).toHaveAttribute('aria-invalid', 'true');
   });
 });

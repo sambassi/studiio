@@ -5,6 +5,8 @@ import {
   type ModificationTarifs,
 } from '@/lib/tarifs/serveur';
 import { CATALOGUE_TARIFS, TARIFS_GRATUITS, TARIF_MAX } from '@/lib/tarifs/catalogue';
+import { analyserGrille, resumeRentabilite } from '@/lib/tarifs/rentabilite';
+import { libelleTaux, tauxPerime } from '@/lib/tarifs/change';
 
 /**
  * Tarifs & crédits — `GET / PUT /api/admin/tarifs`, ADMINISTRATEURS SEULEMENT.
@@ -28,6 +30,7 @@ export async function GET() {
     max: TARIF_MAX,
     ...config,
     historique,
+    ...rentabilite(config),
   }, { headers: { 'Cache-Control': 'private, no-store' } });
 }
 
@@ -38,14 +41,48 @@ export async function PUT(req: NextRequest) {
   if (!corps || typeof corps !== 'object' || Array.isArray(corps)) {
     return NextResponse.json({ success: false, error: 'Corps invalide' }, { status: 400 });
   }
-  const m: ModificationTarifs = { prix: corps.prix, valeurCreditChf: corps.valeurCreditChf, coutsFournisseur: corps.coutsFournisseur };
+  const m: ModificationTarifs = {
+    prix: corps.prix,
+    valeurCreditChf: corps.valeurCreditChf,
+    coutsFournisseur: corps.coutsFournisseur,
+    change: corps.change,
+    // ⚠️ OUBLIÉ À L'ORIGINE. L'écran envoyait bien `changeEur`, la validation
+    // et l'écriture savaient le traiter, mais cette liste ne le recopiait
+    // pas : le taux CHF → EUR était accepté SANS ÊTRE ENREGISTRÉ. Le défaut
+    // ne se voyait qu'en bout de chaîne — aucun prix en franc CFA affichable,
+    // et le paiement mobile indisponible sans que rien ne l'explique.
+    changeEur: corps.changeEur,
+    margeCible: corps.margeCible,
+  };
   const erreurs = validerModification(m);
   if (erreurs.length) return NextResponse.json({ success: false, error: 'Tarifs invalides', erreurs }, { status: 400 });
   try {
     const changements = await ecrireTarifs(m, session!.user!.email!);
-    return NextResponse.json({ success: true, changements, ...(await lireTarifs()) });
+    const config = await lireTarifs();
+    return NextResponse.json({ success: true, changements, ...config, ...rentabilite(config) });
   } catch (e) {
     console.error('[admin/tarifs] écriture :', e instanceof Error ? e.message : e);
     return NextResponse.json({ success: false, error: 'Les tarifs n’ont pas pu être enregistrés.' }, { status: 503 });
   }
+}
+
+/**
+ * La rentabilité de la grille, telle que l'administration la voit : une ligne
+ * par tarif, le résumé des pertes, et l'état du taux de change. Jamais
+ * exposée hors `/api/admin/*`.
+ */
+function rentabilite(config: Awaited<ReturnType<typeof lireTarifs>>) {
+  const lignes = analyserGrille({
+    prix: config.prix,
+    valeurCreditChf: config.valeurCreditChf,
+    coutsFournisseur: config.coutsFournisseur,
+    tauxChfParUsd: config.change?.chfParUsd ?? null,
+    margeCible: config.margeCible,
+  });
+  return {
+    rentabilite: lignes,
+    resumeRentabilite: resumeRentabilite(lignes),
+    changeLibelle: libelleTaux(config.change),
+    changePerime: tauxPerime(config.change),
+  };
 }

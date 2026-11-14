@@ -29,8 +29,69 @@ export type SequenceKey = 'titre' | 'cartes' | 'video' | 'cta';
 // Convention d'identifiant : `heygen-<voice_id>`. C'est ce prefixe — et lui
 // seul — qui route la synthese vers /api/tts/heygen dans edge-tts-client.
 
-/** Prefixe des identifiants de voix HeyGen cote Studiio. */
+/**
+ * Prefixe INTERNE des identifiants de voix de ce moteur.
+ *
+ * ⚠️ NE DOIT PLUS PARTIR AU NAVIGATEUR. Il finissait en `value=` des
+ * `<option>` du selecteur : le nom du prestataire etait lisible dans le DOM.
+ * Les routes qui LISTENT les voix emettent desormais le prefixe public
+ * (`PREFIXE_PUBLIC`), et celles qui en CONSOMMENT une repassent par
+ * `idVoixInterne`, qui accepte les DEUX formes — les selections deja
+ * enregistrees en base continuent donc de fonctionner telles quelles.
+ */
 export const HEYGEN_VOICE_PREFIX = 'heygen-';
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────
+ * IDENTIFIANTS PUBLICS NEUTRES
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Un identifiant de voix voyage jusqu'au navigateur (il est la valeur de
+ * l'option choisie) PUIS revient (il dit quel moteur synthetiser). Il ne peut
+ * donc pas etre supprime — seulement renomme.
+ *
+ * `idVoixPublic` traduit l'identifiant interne en identifiant neutre avant de
+ * l'emettre ; `idVoixInterne` fait l'inverse en entree, et laisse passer
+ * INCHANGEE une ancienne forme. C'est ce qui rend le changement invisible
+ * pour les voix deja choisies et enregistrees.
+ *
+ *   va- = voix avatar · vp- = voix premium · vn- = voix naturelle
+ */
+export const PREFIXE_PUBLIC = {
+  heygen: 'va-',
+  elevenlabs: 'vp-',
+  openai: 'vn-',
+} as const;
+
+const PREFIXE_INTERNE = {
+  heygen: 'heygen-',
+  elevenlabs: 'elevenlabs-',
+  openai: 'openai-',
+} as const;
+
+type MoteurVoix = keyof typeof PREFIXE_PUBLIC;
+const MOTEURS: readonly MoteurVoix[] = ['heygen', 'elevenlabs', 'openai'];
+
+/** Identifiant a emettre vers le navigateur. Deja neutre, il est rendu tel quel. */
+export function idVoixPublic(id: string | null | undefined): string {
+  if (typeof id !== 'string' || !id) return '';
+  for (const m of MOTEURS) {
+    if (id.startsWith(PREFIXE_INTERNE[m])) return PREFIXE_PUBLIC[m] + id.slice(PREFIXE_INTERNE[m].length);
+  }
+  return id;
+}
+
+/**
+ * Identifiant a utiliser cote serveur. Accepte la forme publique ET l'ancienne
+ * forme interne : une selection enregistree avant ce changement reste valide.
+ */
+export function idVoixInterne(id: string | null | undefined): string {
+  if (typeof id !== 'string' || !id) return '';
+  for (const m of MOTEURS) {
+    if (id.startsWith(PREFIXE_PUBLIC[m])) return PREFIXE_INTERNE[m] + id.slice(PREFIXE_PUBLIC[m].length);
+  }
+  return id;
+}
 
 /** Une voix HeyGen exploitable en TTS, au format attendu par le selecteur. */
 export interface HeyGenTtsVoice {
@@ -46,9 +107,10 @@ export interface HeyGenTtsVoice {
   cloned: boolean;
 }
 
-/** true si cet identifiant de voix doit passer par HeyGen. */
+/** true si cet identifiant de voix doit passer par HeyGen, sous l'une ou l'autre forme. */
 export function isHeyGenVoiceId(voiceId: string | undefined | null): boolean {
-  return typeof voiceId === 'string' && voiceId.startsWith(HEYGEN_VOICE_PREFIX);
+  if (typeof voiceId !== 'string') return false;
+  return voiceId.startsWith(HEYGEN_VOICE_PREFIX) || voiceId.startsWith(PREFIXE_PUBLIC.heygen);
 }
 
 /**
@@ -60,7 +122,7 @@ export function isHeyGenVoiceId(voiceId: string | undefined | null): boolean {
  */
 export async function fetchHeyGenVoices(): Promise<HeyGenTtsVoice[]> {
   try {
-    const res = await fetch('/api/tts/heygen', { method: 'GET' });
+    const res = await fetch('/api/voix/avatar', { method: 'GET' });
     if (!res.ok) return [];
     const data = (await res.json()) as { voices?: HeyGenTtsVoice[] };
     return Array.isArray(data?.voices) ? data.voices : [];
@@ -75,7 +137,7 @@ export async function fetchHeyGenVoices(): Promise<HeyGenTtsVoice[]> {
 // `GET /api/tts/elevenlabs` (la cle ne quitte jamais le serveur) et l'id porte
 // un prefixe qui, seul, route la synthese vers /api/tts/elevenlabs.
 
-/** Prefixe des identifiants de voix ElevenLabs cote Studiio. */
+/** Prefixe INTERNE. Meme regle que `HEYGEN_VOICE_PREFIX` : il ne sort pas. */
 export const ELEVENLABS_VOICE_PREFIX = 'elevenlabs-';
 
 /** Une voix ElevenLabs exploitable en TTS, au format attendu par le selecteur. */
@@ -95,9 +157,10 @@ export interface ElevenLabsTtsVoice {
   cloned: boolean;
 }
 
-/** true si cet identifiant de voix doit passer par ElevenLabs. */
+/** true si cet identifiant de voix doit passer par ElevenLabs, sous l'une ou l'autre forme. */
 export function isElevenLabsVoiceId(voiceId: string | undefined | null): boolean {
-  return typeof voiceId === 'string' && voiceId.startsWith(ELEVENLABS_VOICE_PREFIX);
+  if (typeof voiceId !== 'string') return false;
+  return voiceId.startsWith(ELEVENLABS_VOICE_PREFIX) || voiceId.startsWith(PREFIXE_PUBLIC.elevenlabs);
 }
 
 /** Drapeau du code langue court, ou un micro quand la langue est inconnue. */
@@ -148,7 +211,7 @@ export function mapElevenLabsVoice(
   const cloned = category === 'cloned' || category === 'professional';
   const baseName = String(raw.name ?? '').trim() || 'Voix';
   return {
-    id: `${ELEVENLABS_VOICE_PREFIX}${voiceId}`,
+    id: idVoixPublic(`${ELEVENLABS_VOICE_PREFIX}${voiceId}`),
     name: cloned ? `${baseName} (ma voix)` : `${baseName} (premium)`,
     lang,
     gender,
@@ -166,7 +229,7 @@ export function mapElevenLabsVoice(
  */
 export async function fetchElevenLabsVoices(): Promise<ElevenLabsTtsVoice[]> {
   try {
-    const res = await fetch('/api/tts/elevenlabs', { method: 'GET' });
+    const res = await fetch('/api/voix/premium', { method: 'GET' });
     if (!res.ok) return [];
     const data = (await res.json()) as { voices?: ElevenLabsTtsVoice[] };
     return Array.isArray(data?.voices) ? data.voices : [];
@@ -231,8 +294,8 @@ export const VOICE_GROUP_LABELS = {
   cloned: 'Ma voix clonée',
   elevenlabs: 'Voix premium',
   heygen: 'Voix avatar',
-  openai: 'Voix OpenAI',
-  edge: 'Voix standard (Edge)',
+  openai: 'Voix naturelles',
+  edge: 'Voix standard',
 } as const;
 
 export type VoiceGroupKey = keyof typeof VOICE_GROUP_LABELS;

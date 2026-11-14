@@ -1,3 +1,6 @@
+// ⚠️ Le navigateur appelle `/api/photos`, alias neutre de la route
+// historique : le nom de la banque ne doit pas figurer dans l'URL. Son
+// ATTRIBUTION, elle, reste affichée avec chaque photo.
 /**
  * « MACHINE À ÉCRIRE » SUR LE CTA — les trois moteurs.
  *
@@ -212,7 +215,7 @@ describe('Aperçu Créer — « Machine à écrire » joue le CTA lettre à lett
     clientWidthOriginal = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
     Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get() { return 400; } });
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-      if (String(url).startsWith('/api/pexels')) return { ok: true, json: async () => ({ success: true, photos: [] }) };
+      if (String(url).startsWith('/api/photos')) return { ok: true, json: async () => ({ success: true, photos: [] }) };
       if (String(url).startsWith('/api/autopilot/config')) {
         return { ok: true, json: async () => ({ success: true, ready: true, brandingReady: true, styleReady: true, config: {} }) };
       }

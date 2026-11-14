@@ -1,8 +1,11 @@
+// ⚠️ Le navigateur appelle `/api/photos`, alias neutre de la route
+// historique : le nom de la banque ne doit pas figurer dans l'URL. Son
+// ATTRIBUTION, elle, reste affichée avec chaque photo.
 /**
  * RECHERCHE STOCK INTELLIGENTE dans Créer — additive, jamais intrusive.
  *
  * - Suggestions déterministes (sujet + séquence), un clic relance la recherche
- *   MANUELLE existante (`/api/pexels`), inchangée.
+ *   MANUELLE existante (`/api/photos`), inchangée.
  * - Panneau `RechercheStockSequence` : `/api/stock/recherche` avec type +
  *   format, vertical d'abord en 9:16 ; vidéo Pexels → `/api/stock/importer`
  *   avec {provider,type,providerAssetId} SEULEMENT, puis AJOUT aux rushes ;
@@ -237,7 +240,7 @@ describe('AssistantWizard — intégration légère', () => {
     expect(document.querySelector('[data-recherche-stock]')).toBeNull();
   });
 
-  it('un clic sur une suggestion (libellé FR) lance la recherche MANUELLE existante (/api/pexels) avec la requête EN', async () => {
+  it('un clic sur une suggestion (libellé FR) lance la recherche MANUELLE existante (/api/photos) avec la requête EN', async () => {
     installerFetch();
     poser();
     render(<AssistantWizard />);
@@ -251,7 +254,7 @@ describe('AssistantWizard — intégration légère', () => {
     expect(puces.map((p) => p.textContent)).toEqual(sugg.map((x) => x.libelle));
     await act(async () => { fireEvent.click(puces[0]); });
     await attendre();
-    const pexels = appels.filter((a) => a.url.startsWith('/api/pexels'));
+    const pexels = appels.filter((a) => a.url.startsWith('/api/photos'));
     expect(pexels).toHaveLength(1);
     expect(pexels[0].url).toContain(`query=${encodeURIComponent(attendues[0])}`);
     // Plus de choix de banque : toutes les banques (`both`).

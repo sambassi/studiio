@@ -58,10 +58,16 @@ export const CATALOGUE_TARIFS: readonly EntreeCatalogue[] = [
   { cle: 'render.reel', categorie: 'video', libelle: 'Reel (9:16)', unite: 'crédits / rendu', defaut: 10 },
   { cle: 'render.tv', categorie: 'video', libelle: 'TV (16:9)', unite: 'crédits / rendu', defaut: 15 },
   { cle: 'render.infographic', categorie: 'video', libelle: 'Rendu infographique', unite: 'crédits / rendu', defaut: 25 },
-  { cle: 'avatar.avatar_iii', categorie: 'avatar', libelle: 'Standard — Avatar III', unite: 'crédits / génération', defaut: 40, propose: 10 },
-  { cle: 'avatar.avatar_iv', categorie: 'avatar', libelle: 'Qualité — Avatar IV', unite: 'crédits / génération', defaut: 40, propose: 25 },
-  { cle: 'avatar.avatar_v', categorie: 'avatar', libelle: 'Premium — Avatar V', unite: 'crédits / génération', defaut: 40, propose: 40 },
-  { cle: 'avatar.jumeau', categorie: 'avatar', libelle: 'Jumeau (Créer / Autopilote)', unite: 'crédits / génération', defaut: 40 },
+  // ⚠️ `propose` RETIRÉ sur les trois avatars (il valait 10 / 25 / 40). Ces
+  // montants vendaient SOUS le coût du fournisseur : au plafond de script
+  // (86 s), la génération coûte de 1,42 à 10,32 USD selon le moteur, quand
+  // 40 crédits n'encaissent que ~3,27 CHF au tarif Pro. Le prix proposé vient
+  // maintenant du PLANCHER CALCULÉ (`lib/tarifs/rentabilite`), qui part du
+  // coût réel et du taux de change daté, au lieu d'un chiffre figé ici.
+  { cle: 'avatar.avatar_iii', categorie: 'avatar', libelle: 'Standard', unite: 'crédits / génération', defaut: 40 },
+  { cle: 'avatar.avatar_iv', categorie: 'avatar', libelle: 'Qualité', unite: 'crédits / génération', defaut: 40 },
+  { cle: 'avatar.avatar_v', categorie: 'avatar', libelle: 'Premium', unite: 'crédits / génération', defaut: 40 },
+  { cle: 'avatar.jumeau', categorie: 'avatar', libelle: 'Jumeau numérique (Créer / Autopilote)', unite: 'crédits / génération', defaut: 40 },
   { cle: 'ai.remove_background', categorie: 'ia', libelle: 'Suppression arrière-plan', unite: 'crédits / image', defaut: 2 },
   { cle: 'ai.magic_eraser', categorie: 'ia', libelle: 'Gomme magique', unite: 'crédits / image', defaut: 3 },
   { cle: 'ai.magic_edit', categorie: 'ia', libelle: 'Édition magique', unite: 'crédits / image', defaut: 5 },

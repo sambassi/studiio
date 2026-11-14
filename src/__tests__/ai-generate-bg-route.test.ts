@@ -63,6 +63,7 @@ vi.mock('@/lib/db/supabase', () => ({
 const { POST } = await import('@/app/api/ai/image/route');
 const { detecterSignatureImage, MAX_AFFICHE_IA_BYTES } = await import('@/lib/storage/image-signature');
 const { erreurReplicateSanitisee } = await import('@/lib/ai/replicate-erreur');
+const { MESSAGE_IMAGE_IA_NON_CONFIGUREE } = await import('@/lib/fournisseurs/messages-neutres');
 
 /** Faux NextRequest : la route n'utilise que `.json()`. */
 const post = async (body: unknown) => {
@@ -203,7 +204,8 @@ describe('generate-bg — REPLICATE_API_TOKEN absent (vu en prod : « Service IA
     expect(status).toBe(503);
     expect(body.success).toBe(false);
     expect(body.code).toBe('ia_non_configuree');
-    expect(String(body.error)).toContain('Service IA non configuré');
+    // Le message est neutre : il ne nomme plus le fournisseur (c'etait une fuite).
+    expect(String(body.error)).toBe(MESSAGE_IMAGE_IA_NON_CONFIGUREE);
     expect(String(body.error)).toContain('Aucun crédit débité');
     // L'alerte nomme la VARIABLE — jamais une valeur (il n'y en a pas).
     expect(reportAlertMock).toHaveBeenCalledTimes(1);

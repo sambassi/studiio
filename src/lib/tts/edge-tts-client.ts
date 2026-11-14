@@ -3,6 +3,7 @@
  * Tries server-side Edge TTS first, falls back to browser voices if server fails.
  */
 
+import { idVoixInterne } from '@/lib/types/voice';
 import { isHeyGenVoiceId, isElevenLabsVoiceId, normaliserReglages, rateEdge, type ReglagesVoix } from '@/lib/types/voice';
 
 /**
@@ -65,13 +66,15 @@ export const TTS_VOICES: TtsVoice[] = [
   // Allemand
   { id: 'de-DE-KatjaNeural', name: 'Katja', lang: 'DE', gender: 'Female', flag: '\u{1F1E9}\u{1F1EA}' },
   { id: 'de-DE-ConradNeural', name: 'Conrad', lang: 'DE', gender: 'Male', flag: '\u{1F1E9}\u{1F1EA}' },
-  // OpenAI TTS — natural voices (English-only for now). Routed via /api/tts/openai.
-  { id: 'openai-alloy', name: 'Alloy (OpenAI)', lang: 'EN', gender: 'Female', flag: '\u{1F916}', provider: 'openai' },
-  { id: 'openai-echo', name: 'Echo (OpenAI)', lang: 'EN', gender: 'Male', flag: '\u{1F916}', provider: 'openai' },
-  { id: 'openai-fable', name: 'Fable (OpenAI)', lang: 'EN', gender: 'Male', flag: '\u{1F916}', provider: 'openai' },
-  { id: 'openai-onyx', name: 'Onyx (OpenAI)', lang: 'EN', gender: 'Male', flag: '\u{1F916}', provider: 'openai' },
-  { id: 'openai-nova', name: 'Nova (OpenAI)', lang: 'EN', gender: 'Female', flag: '\u{1F916}', provider: 'openai' },
-  { id: 'openai-shimmer', name: 'Shimmer (OpenAI)', lang: 'EN', gender: 'Female', flag: '\u{1F916}', provider: 'openai' },
+  // Voix naturelles (anglais pour l'instant). Ni le `name` NI l'`id` ne
+  // doivent nommer le prestataire : le premier s'affiche, le second finit en
+  // `value=` de l'option. `idVoixInterne` fait le pont avec l'ancienne forme.
+  { id: 'vn-alloy', name: 'Alloy', lang: 'EN', gender: 'Female', flag: '\u{1F916}', provider: 'openai' },
+  { id: 'vn-echo', name: 'Echo', lang: 'EN', gender: 'Male', flag: '\u{1F916}', provider: 'openai' },
+  { id: 'vn-fable', name: 'Fable', lang: 'EN', gender: 'Male', flag: '\u{1F916}', provider: 'openai' },
+  { id: 'vn-onyx', name: 'Onyx', lang: 'EN', gender: 'Male', flag: '\u{1F916}', provider: 'openai' },
+  { id: 'vn-nova', name: 'Nova', lang: 'EN', gender: 'Female', flag: '\u{1F916}', provider: 'openai' },
+  { id: 'vn-shimmer', name: 'Shimmer', lang: 'EN', gender: 'Female', flag: '\u{1F916}', provider: 'openai' },
 ];
 
 // Map voice IDs to BCP47 language codes for browser fallback
@@ -102,7 +105,7 @@ async function tryServerSynthesize(
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), 50_000);
     try {
-      const res = await fetch('/api/tts/heygen', {
+      const res = await fetch('/api/voix/avatar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, voice: voiceId, ...vitesseSpeed(options) }),
@@ -140,7 +143,7 @@ async function tryServerSynthesize(
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), 50_000);
     try {
-      const res = await fetch('/api/tts/elevenlabs', {
+      const res = await fetch('/api/voix/premium', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text, voice: voiceId, ...reglagesCorps(options) }),
@@ -171,14 +174,18 @@ async function tryServerSynthesize(
   // through to the existing Edge code below (Edge will return 4xx for an
   // openai-* ID, then synthesize() falls back to browser SpeechSynthesis).
   // This branch is purely additive — the Edge code path below is unchanged.
-  const voice = TTS_VOICES.find((v) => v.id === voiceId);
+  // Résolution TOLÉRANTE : l'identifiant public (`vn-…`) et l'ancienne forme
+  // (`openai-…`, encore présente dans les projets enregistrés) désignent la
+  // même voix. Sans cela, un projet sauvegardé avant le changement de
+  // préfixe serait retombé sur la voix du navigateur.
+  const voice = TTS_VOICES.find((v) => idVoixInterne(v.id) === idVoixInterne(voiceId));
   if (voice?.provider === 'openai') {
     try {
-      const openaiVoice = voiceId.replace(/^openai-/, '');
+      const openaiVoice = idVoixInterne(voiceId).replace(/^openai-/, '');
       const openaiCtl = new AbortController();
       const openaiTimer = setTimeout(() => openaiCtl.abort(), 30_000);
       try {
-        const res = await fetch('/api/tts/openai', {
+        const res = await fetch('/api/voix/naturelle', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text, voice: openaiVoice, ...vitesseSpeed(options) }),
@@ -208,7 +215,7 @@ async function tryServerSynthesize(
 
   try {
     console.log('[TTS] Trying server synthesis:', text.substring(0, 40), '...');
-    const res = await fetch('/api/tts/edge', {
+    const res = await fetch('/api/voix/standard', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -270,7 +277,7 @@ async function tryOpenAiFallback(text: string, edgeVoiceId: string, options?: Op
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 50_000);
   try {
-    const res = await fetch('/api/tts/openai', {
+    const res = await fetch('/api/voix/naturelle', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, voice: openaiVoice, ...vitesseSpeed(options) }),
@@ -385,7 +392,7 @@ export async function synthesizeAvecSegments(
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 50_000);
   try {
-    const res = await fetch('/api/tts/elevenlabs', {
+    const res = await fetch('/api/voix/premium', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, voice: voiceId, morceaux, ...reglagesCorps({ reglages }) }),

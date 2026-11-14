@@ -1,16 +1,22 @@
+// ⚠️ IDENTIFIANTS PUBLICS NEUTRES. Les listes de voix émettent `vp-` /
+// `va-` / `vn-` au lieu de `elevenlabs-` / `heygen-` / `openai-` : un
+// identifiant finit en `value=` d'une option, donc il ne doit pas nommer
+// le prestataire. Les chemins appelés par le navigateur sont neutres eux
+// aussi (`/api/voix/*`). `idVoixInterne` fait le pont avec l'ancienne
+// forme, qui reste valide pour toute sélection déjà enregistrée.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { synthesize } from '@/lib/tts/edge-tts-client';
 
 /**
  * `synthesize()` — une voix CLONÉE n'a pas de remplaçante.
  *
- * Observé : quand `/api/tts/elevenlabs` échouait (clé absente, voix non
+ * Observé : quand `/api/voix/premium` échouait (clé absente, voix non
  * autorisée, panne), le client retombait en silence sur OpenAI « nova », et
  * le fichier obtenu était étiqueté « TTS — Bassi (ma voix) ». L'utilisateur
  * entendait une inconnue sous son propre nom, sans aucun signal.
  *
- * Règle : pour un identifiant `elevenlabs-*` ou `heygen-*`, l'échec est une
- * ERREUR explicite ; aucun appel à `/api/tts/openai` ni `/api/tts/edge`.
+ * Règle : pour un identifiant `vp-*` ou `va-*`, l'échec est une
+ * ERREUR explicite ; aucun appel à `/api/voix/naturelle` ni `/api/voix/standard`.
  * Les voix standard (Edge) gardent leur repli OpenAI — c'est ce qui les rend
  * fiables hors Vercel, et rien ici ne doit le casser.
  */
@@ -47,25 +53,25 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('Voix clonée ElevenLabs — jamais de voix de remplacement', () => {
-  it('un 500 de /api/tts/elevenlabs rejette avec un message explicite', async () => {
-    installerFetch({ '/api/tts/elevenlabs': { status: 500 }, '/api/tts/openai': { status: 200, octets: 20_000 } });
-    await expect(synthesize('Bonjour à tous', 'elevenlabs-xyz')).rejects.toThrow(
+  it('un 500 de /api/voix/premium rejette avec un message explicite', async () => {
+    installerFetch({ '/api/voix/premium': { status: 500 }, '/api/voix/naturelle': { status: 200, octets: 20_000 } });
+    await expect(synthesize('Bonjour à tous', 'vp-xyz')).rejects.toThrow(
       /voix clonée n’a pas pu être synthétisée.*Aucune voix de remplacement/,
     );
   });
 
-  it('⚠️ ni /api/tts/openai ni /api/tts/edge ne sont appelés', async () => {
-    installerFetch({ '/api/tts/elevenlabs': { status: 500 }, '/api/tts/openai': { status: 200, octets: 20_000 } });
-    await synthesize('Bonjour à tous', 'elevenlabs-xyz').catch(() => {});
-    expect(routesAppelees()).toEqual(['/api/tts/elevenlabs']);
-    expect(routesAppelees().some((u) => u.includes('/api/tts/openai'))).toBe(false);
-    expect(routesAppelees().some((u) => u.includes('/api/tts/edge'))).toBe(false);
+  it('⚠️ ni /api/voix/naturelle ni /api/voix/standard ne sont appelés', async () => {
+    installerFetch({ '/api/voix/premium': { status: 500 }, '/api/voix/naturelle': { status: 200, octets: 20_000 } });
+    await synthesize('Bonjour à tous', 'vp-xyz').catch(() => {});
+    expect(routesAppelees()).toEqual(['/api/voix/premium']);
+    expect(routesAppelees().some((u) => u.includes('/api/voix/naturelle'))).toBe(false);
+    expect(routesAppelees().some((u) => u.includes('/api/voix/standard'))).toBe(false);
   });
 
   it('un 404 (voix non autorisée) est traité de la même façon', async () => {
-    installerFetch({ '/api/tts/elevenlabs': { status: 404 } });
-    await expect(synthesize('Bonjour', 'elevenlabs-autrui')).rejects.toThrow(/Aucune voix de remplacement/);
-    expect(routesAppelees()).toEqual(['/api/tts/elevenlabs']);
+    installerFetch({ '/api/voix/premium': { status: 404 } });
+    await expect(synthesize('Bonjour', 'vp-autrui')).rejects.toThrow(/Aucune voix de remplacement/);
+    expect(routesAppelees()).toEqual(['/api/voix/premium']);
   });
 
   it('un réseau coupé aussi — sans repli', async () => {
@@ -74,55 +80,55 @@ describe('Voix clonée ElevenLabs — jamais de voix de remplacement', () => {
       appels.push({ url: String(url), body: null });
       throw new Error('offline');
     }) as unknown as typeof fetch;
-    await expect(synthesize('Bonjour', 'elevenlabs-xyz')).rejects.toThrow(/Aucune voix de remplacement/);
-    expect(routesAppelees()).toEqual(['/api/tts/elevenlabs']);
+    await expect(synthesize('Bonjour', 'vp-xyz')).rejects.toThrow(/Aucune voix de remplacement/);
+    expect(routesAppelees()).toEqual(['/api/voix/premium']);
   });
 
   it('le succès rend l audio de la voix clonée, même court', async () => {
     // Un mot lu par ElevenLabs pèse moins que le seuil « fichier suspect »
     // des voix Edge (8 000 octets) : ce seuil ne s'applique pas ici, il n'y a
     // de toute façon rien pour le remplacer.
-    installerFetch({ '/api/tts/elevenlabs': { status: 200, octets: 3_000 } });
-    const blob = await synthesize('Oui', 'elevenlabs-xyz');
+    installerFetch({ '/api/voix/premium': { status: 200, octets: 3_000 } });
+    const blob = await synthesize('Oui', 'vp-xyz');
     expect(blob.size).toBe(3_000);
-    expect(routesAppelees()).toEqual(['/api/tts/elevenlabs']);
+    expect(routesAppelees()).toEqual(['/api/voix/premium']);
   });
 });
 
 describe('Voix clonée HeyGen — même règle', () => {
-  it('un échec de /api/tts/heygen rejette sans appeler OpenAI ni Edge', async () => {
-    installerFetch({ '/api/tts/heygen': { status: 500 }, '/api/tts/openai': { status: 200, octets: 20_000 } });
-    await expect(synthesize('Bonjour', 'heygen-abc')).rejects.toThrow(/Aucune voix de remplacement/);
-    expect(routesAppelees()).toEqual(['/api/tts/heygen']);
+  it('un échec de /api/voix/avatar rejette sans appeler OpenAI ni Edge', async () => {
+    installerFetch({ '/api/voix/avatar': { status: 500 }, '/api/voix/naturelle': { status: 200, octets: 20_000 } });
+    await expect(synthesize('Bonjour', 'va-abc')).rejects.toThrow(/Aucune voix de remplacement/);
+    expect(routesAppelees()).toEqual(['/api/voix/avatar']);
   });
 });
 
 describe('Voix standard — le repli OpenAI est conservé', () => {
   it('Edge en panne → OpenAI prend le relais et l audio est rendu', async () => {
-    installerFetch({ '/api/tts/edge': { status: 500 }, '/api/tts/openai': { status: 200, octets: 20_000 } });
+    installerFetch({ '/api/voix/standard': { status: 500 }, '/api/voix/naturelle': { status: 200, octets: 20_000 } });
     const blob = await synthesize('Bonjour', 'fr-FR-DeniseNeural');
     expect(blob.size).toBe(20_000);
-    expect(routesAppelees()).toEqual(['/api/tts/edge', '/api/tts/openai']);
+    expect(routesAppelees()).toEqual(['/api/voix/standard', '/api/voix/naturelle']);
     // La voix de repli suit le genre de la voix demandée.
     expect(appels[1].body).toMatchObject({ voice: 'nova' });
   });
 
   it('voix masculine → repli « echo »', async () => {
-    installerFetch({ '/api/tts/edge': { status: 500 }, '/api/tts/openai': { status: 200, octets: 20_000 } });
+    installerFetch({ '/api/voix/standard': { status: 500 }, '/api/voix/naturelle': { status: 200, octets: 20_000 } });
     await synthesize('Bonjour', 'fr-FR-HenriNeural');
     expect(appels[1].body).toMatchObject({ voice: 'echo' });
   });
 
   it('Edge ET OpenAI en panne → une erreur claire, sans fournisseur nommé', async () => {
-    installerFetch({ '/api/tts/edge': { status: 500 }, '/api/tts/openai': { status: 500 } });
+    installerFetch({ '/api/voix/standard': { status: 500 }, '/api/voix/naturelle': { status: 500 } });
     const erreur = await synthesize('Bonjour', 'fr-FR-DeniseNeural').catch((e: Error) => e);
     expect((erreur as Error).message).toMatch(/^Synthèse vocale indisponible/);
     expect((erreur as Error).message).not.toMatch(/Edge|OpenAI|_API_KEY/);
   });
 
   it('une voix openai-* en panne ne rejoue pas OpenAI en repli', async () => {
-    installerFetch({ '/api/tts/openai': { status: 500 }, '/api/tts/edge': { status: 500 } });
-    await expect(synthesize('Bonjour', 'openai-nova')).rejects.toThrow();
-    expect(routesAppelees().filter((u) => u.includes('/api/tts/openai'))).toHaveLength(1);
+    installerFetch({ '/api/voix/naturelle': { status: 500 }, '/api/voix/standard': { status: 500 } });
+    await expect(synthesize('Bonjour', 'vn-nova')).rejects.toThrow();
+    expect(routesAppelees().filter((u) => u.includes('/api/voix/naturelle'))).toHaveLength(1);
   });
 });

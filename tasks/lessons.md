@@ -1264,3 +1264,161 @@ Avec l'avatar, « Produire maintenant » répond 200 `{ jumeau: 'en_preparation'
 - [2026-11-02] | L'etape Scenes montrait des listes de scenes et du vocabulaire de moteur (« 0/3 media », « a reproduire », « Plan 2/3 », « ecarts ») sans dire quoi faire : un debutant ne savait pas par ou commencer | Une etape commence par UNE decision claire (deux cartes) et le moteur parle la langue de l'utilisateur : « N visuels a preparer », « cette scene doit etre mise a jour », « N points a verifier dans ton histoire ». Chaque alerte dit ce qui se passe, pourquoi, quoi faire, et l'acceptation annonce sa consequence. Choisir une methode est un simple affichage : jamais de generation ni de depense au clic.
 - [2026-11-02] | Le bouton « Preparer l'image avec l'IA » de l'apercu vide ne faisait que selectionner la scene (ouvrir un editeur hors de vue) : au 1er clic rien de visible, au 2e rien du tout. Les chemins « silencieux » de `genererMedia` (`return` si une generation est en cours) etaient du meme type | Un bouton d'action ouvre TOUJOURS quelque chose de visible (fenetre de preparation : ce qui est verifie, le cout, la confirmation, et si ca bloque : pourquoi et quoi faire). Aucun `return` silencieux sur un clic ; l'erreur du serveur s'affiche dans la fenetre, qui reste ouverte. Reproduire en navigateur reel AVANT de corriger : les erreurs 500 de la console (`/api/credits/balance`, base absente en local) n'avaient aucun rapport.
 - [2026-11-02] | Le reglage « Avec / Sans narration » ne disait pas COMMENT le film est raconte, et le decoupage attribuait « Karim répond : « Bonjour Maya » » a MAYA (le nom cite dans la citation gagnait par ordre du casting) | Le locuteur se lit HORS de la citation (`locuteurNomme`) ; un nom cite seulement dans la replique est celui a qui l'on parle. Sans nom hors citation, le locuteur est AMBIGU : jamais lu, l'utilisateur CHOISIT (`locuteurConfirme`). Une seule regle de voix (`audio.ts : voixAJouer`) decide de ce qui est lu, partout (synthese, montage). Un champ optionnel (`modeAudio`) separe les nouveaux films du systeme historique : absent = comportement d'avant, jamais transforme en silence.
+
+## 2026-11-12 | Chantier commercial (abonnements, crédits, paiements)
+
+**Un prix « proposé » figé dans le code peut vendre à perte sans que personne le voie.**
+Le catalogue portait `propose: 10 / 25 / 40` crédits pour les trois moteurs
+d'avatar. Au plafond de script, ces générations coûtent de 1,42 à 10,32 USD
+chez le fournisseur : les trois propositions vendaient sous le coût, et l'écran
+n'en disait rien. Règle : un prix proposé se CALCULE à partir du coût réel et
+d'un taux daté, il ne se code pas en dur. Et le verdict (rentable / à perte /
+inconnu) s'affiche à côté du prix, sinon il n'existe pas.
+
+**Un coût en USD et une recette en CHF ne se comparent pas sans taux — et un taux sans date n'est pas un taux.**
+Plutôt que d'inventer un taux de repli, le module rend le TAUX D'ÉQUILIBRE
+(« rentable seulement si 1 USD < X CHF ») et suspend son verdict. Le taux réel
+vient des taux de référence BCE, avec sa date, et il est signalé périmé après
+30 jours.
+
+**Relayer le message d'erreur d'un fournisseur est une fuite, même quand le code ne le nomme pas.**
+Six routes renvoyaient `${e.message}` au navigateur. Le texte vient du
+prestataire : il peut porter son nom, son domaine, un identifiant de modèle.
+Le détail va aux journaux, l'utilisateur reçoit une constante neutre
+(`lib/fournisseurs/messages-neutres.ts`). Et ce genre de fuite ne se prouve
+pas en greppant le source : le test APPELLE les routes sans clé et inspecte
+le corps rendu.
+
+**Une clé de traduction manquante affichait son chemin technique à l'écran.**
+`useTranslations` faisait `return path` : un catalogue incomplet montrait
+`billing.transactionHistory`. Le repli du provider ne jouait qu'à l'échec de
+chargement du FICHIER, jamais à la clé manquante. Sans socle français fusionné
+clé par clé, aucune langue ne peut être ajoutée progressivement.
+
+**Ne pas proposer une langue qu'on n'a pas traduite.**
+Les six langues africaines sont déclarées et chargeables, mais absentes du
+sélecteur sous 60 % de couverture : offrir « Wolof » pour afficher du français
+est une promesse non tenue. Un test tient la règle dans les deux sens.
+
+**Lister `payment_method_types` fige les moyens de paiement dans le code.**
+TWINT, PayPal ou Apple Pay ne pouvaient pas apparaître, même activés sur le
+compte. Sans ce champ, Stripe applique ce qui est configuré au Dashboard —
+sûr uniquement parce que le webhook ne crédite qu'à `payment_status === 'paid'`
+et traite `checkout.session.async_payment_succeeded`.
+
+**Un taux de change commercial n'est pas une conversion.**
+Les deux dépôts afroboost portaient 400 et 655 XOF par CHF, sans date et
+contradictoires ; le 400 était un prix d'accessibilité. Le franc CFA est
+arrimé à l'euro à parité FIXE (655,957) : seule la part CHF → EUR flotte, et
+elle se lit avec sa date. Sans taux daté, on refuse d'afficher un prix.
+
+## 2026-11-12 (suite) | Clôture du chantier commercial
+
+**Un « coût fournisseur inconnu » est presque toujours un coût qu'on n'a pas cherché.**
+Quatorze tarifs étaient marqués inconnus. Les quatorze avaient un prix public,
+lisible sans compte et sans appel payant, sur la page du modèle concerné. La
+correspondance action → modèle était déjà dans le code. Avant de déclarer un
+coût inconnu, ouvrir la grille publique du fournisseur.
+
+**Un identifiant qui fait l'aller-retour ne se supprime pas, il se renomme — avec un pont.**
+Un id de voix part au navigateur comme valeur d'option et revient dire quel
+moteur appeler. `idVoixPublic` / `idVoixInterne` traduisent dans les deux
+sens, et la forme interne reste acceptée en entrée : aucune migration de
+données, aucune sélection enregistrée cassée.
+
+**L'URL d'un résultat est une fuite au même titre qu'un libellé.**
+Sept outils renvoyaient l'adresse du fournisseur, qui devenait le `src` de
+l'image. Le rapatriement des octets existait déjà pour un seul outil : il
+fallait le généraliser, pas l'inventer. Et il doit survenir AVANT le débit,
+pour qu'un échec ne facture rien.
+
+**Lire un réglage dans une route crée une dépendance que les doubles de test ne connaissent pas.**
+Brancher la garde de coût a fait échouer un test qui ne simulait que `prixDe`.
+Un réglage non critique se lit donc défensivement : illisible, il retombe sur
+son défaut sûr au lieu de faire échouer une opération payante.
+
+**Une migration qui ne crée qu'une fonction n'a pas de données à sauvegarder.**
+Le risque d'une migration se juge à ce qu'elle TRANSFORME. Celle du
+remboursement ne crée qu'une fonction, son retour arrière la supprime, et
+aucune ligne n'est touchée — la sauvegarde quotidienne suffit. Le vrai piège
+est ailleurs : le rôle qui joue la migration décide des droits hérités.
+
+## 2026-11-13 | Un filet de sécurité peut s'annuler tout seul, en silence
+
+**Ce qui a mal tourné.** La réconciliation Mobile Money lisait les 50 dépôts
+en attente **les plus anciens**. Un dépôt jamais honoré reste « en attente »
+pour toujours : il suffisait donc d'en ouvrir cinquante et de ne jamais payer
+pour que la fenêtre soit occupée en permanence et que les paiements de tous
+les autres comptes ne soient **plus jamais relus**. Aucune erreur, aucun
+journal — seulement des crédits qui n'arrivent plus. Et c'est précisément ce
+filet qui servait d'argument pour dire que le crédit ne dépend pas de la
+notification : le neutraliser faisait tomber tout le raisonnement.
+
+**La règle.** Une file de rattrapage ne se trie jamais par date de création
+seule : il faut une marque de dernier passage (« qui n'a pas été relu depuis
+le plus longtemps »), une sortie de file pour ce qui est définitivement
+abandonné, et un plafond par compte sur ce qui alimente la file. Les trois,
+pas un seul — le tri fait tourner, l'expiration vide, le plafond borne
+l'entrée. Et chacun se prouve par un test qui échoue sans le correctif :
+celui du tri a bien échoué avant d'être corrigé, c'est ce qui le rend utile.
+
+**Suite, le lendemain même.** Le correctif a introduit son propre défaut :
+pour vider la file, j'expirais les dépôts de plus de 24 h **sans demander au
+prestataire**. Or le paiement a pu aboutir côté payeur ; et comme la
+notification peut ne jamais arriver — c'est le problème que ce lot traite —
+nous aurions encaissé sans créditer. L'âge décide **quand on cesse
+d'attendre**, jamais **si le paiement a eu lieu**. Désormais on ferme
+seulement après que le prestataire a répondu « toujours en attente », et une
+seconde passe rouvre régulièrement les dépôts fermés non crédités.
+
+**Et compter n'est pas réserver.** Le plafond par compte lisait puis
+insérait : dix requêtes simultanées passaient toutes le contrôle. Un plafond
+se tient là où l'écriture a lieu — déclencheur qui compte **sous verrou
+consultatif par utilisateur**, la vérification applicative n'étant qu'un
+raccourci pour le cas courant.
+
+**Et une troisième fois, dans le filet du filet.** La passe de seconde
+chance relisait tout dépôt `expire` non crédité — donc aussi ceux que le
+**prestataire** avait déclarés clos. Ceux-là ne basculent jamais : relus à
+chaque passage, leur statut réécrit à l'identique, ils ne quittaient jamais
+la réserve et occupaient la fenêtre de dix. La leçon : **ne jamais ranger
+sous le même statut « nous avons cessé d'attendre » et « le prestataire a
+prononcé la fin »** — le premier reste ouvert, le second est clos. Trois
+occurrences du même défaut en deux jours, à trois endroits différents : une
+file de rattrapage veut toujours un critère de sortie, une rotation, et une
+borne d'âge.
+
+**Corollaire sur les doubles de base.** Le plafond semblait inopérant en
+prévisualisation : le double de base n'appliquait pas le défaut de colonne
+`created_at`, donc les lignes naissaient sans date et tout filtre sur cette
+colonne les ignorait sans rien dire. Un double qui ignore une valeur par
+défaut ne teste pas le code, il le rassure.
+
+## 2026-11-14 | Page blanche sur la prévisualisation : réécrire les sources sous un `next dev` actif
+
+**Ce qui a mal tourné.** Après avoir livré la PR, j'ai enchaîné `git switch`,
+`git reset --hard` et `git cherry-pick` pendant que `next dev` tournait sur
+3112. Chaque commande réécrit des centaines de fichiers : le serveur lance
+une recompilation, et pendant ce temps la route d'authentification répond en
+erreur (`__webpack_modules__[moduleId] is not a function`). Le contenu de la
+page est rendu côté navigateur : un visiteur qui arrive à cet instant reçoit
+un 200 et une page BLANCHE.
+
+**Mesuré, pas supposé.** Page saine → on retouche les sources → un second
+visiteur voit 5 éléments / 31 caractères à +3 s, le rendu complet à +8 s.
+Machine saturée (swap 11,7 Go / 12 Go, charge 13,9 avec trois serveurs Next),
+la même fenêtre dure des minutes : c'est le « chargement interminable ».
+Le code applicatif était sain ; un navigateur vierge et le Chrome de
+l'utilisateur affichaient la page correctement une fois la compilation finie.
+
+**La règle.** Jamais de commande git qui réécrit des fichiers pendant qu'un
+serveur de développement tourne : ARRÊTER, changer de branche, RELANCER.
+`./scripts/apercu-commerce.sh stop|start|check` le fait proprement : il ne
+tue que le serveur de CE worktree, repart d'un `.next` neuf, réchauffe les
+routes dans l'ordre (la première visite n'a plus rien à compiler), puis
+vérifie DANS UN NAVIGATEUR que la page s'affiche et que « S'abonner » ouvre
+le choix du paiement.
+
+**Et la vérification.** Un code HTTP 200 ne prouve rien quand le contenu est
+rendu côté client : c'est exactement la panne qu'il laisse passer. Une
+prévisualisation n'est « prête » qu'après avoir été regardée s'afficher.

@@ -1,3 +1,9 @@
+// ⚠️ IDENTIFIANTS PUBLICS NEUTRES. Les listes de voix émettent `vp-` /
+// `va-` / `vn-` au lieu de `elevenlabs-` / `heygen-` / `openai-` : un
+// identifiant finit en `value=` d'une option, donc il ne doit pas nommer
+// le prestataire. Les chemins appelés par le navigateur sont neutres eux
+// aussi (`/api/voix/*`). `idVoixInterne` fait le pont avec l'ancienne
+// forme, qui reste valide pour toute sélection déjà enregistrée.
 /**
  * « Ma voix clonée » dans Créer > Audio — carte, groupes du sélecteur,
  * audio périmé.
@@ -6,7 +12,7 @@
  * REPRODUIT EN PRODUCTION (2026-09-21 14:57 UTC)
  * ─────────────────────────────────────────────────────────────────────────
  *
- * `GET /api/tts/elevenlabs` rendait 22 voix dont « Bassi (ma voix) »
+ * `GET /api/voix/premium` rendait 22 voix dont « Bassi (ma voix) »
  * (`cloned: true`) en tête ; l'étape Audio affichait pourtant « Henri » :
  * `localStorage['tts.voiceId'] = 'fr-FR-HenriNeural'` (choix hors défaut,
  * donc la présélection ne s'applique pas), et la voix clonée était noyée
@@ -47,7 +53,7 @@ vi.mock('@/lib/tts/edge-tts-client', async () => {
   return { ...actual, synthesize: vi.fn() };
 });
 
-const CLONEE = 'elevenlabs-ohwPBassi';
+const CLONEE = 'vp-ohwPBassi';
 const HENRI = 'fr-FR-HenriNeural';
 
 const voixBassi = (over: Partial<TtsVoice> = {}): TtsVoice => ({
@@ -72,8 +78,8 @@ function installerFetch() {
     const rep = (corps: unknown, status = 200) => ({
       ok: status < 400, status, json: async () => corps, headers: new Headers({ 'content-length': '20000' }),
     } as unknown as Response);
-    if (u.includes('/api/tts/elevenlabs')) return rep({ voices: voixElevenLabs, configured: true });
-    if (u.includes('/api/tts/heygen')) return rep({ voices: voixHeygen });
+    if (u.includes('/api/voix/premium')) return rep({ voices: voixElevenLabs, configured: true });
+    if (u.includes('/api/voix/avatar')) return rep({ voices: voixHeygen });
     if (u.includes('/api/upload/signed-url')) return rep({ success: true, signedUrl: 'https://cdn/put', publicUrl: `https://cdn/voix-${appels.length}.mp3` });
     return rep({ success: true });
   }) as unknown as typeof fetch;
@@ -91,8 +97,8 @@ const attendre = () => act(async () => { await new Promise((r) => setTimeout(r, 
 
 beforeEach(() => {
   window.localStorage.clear();
-  voixElevenLabs = [voixBassi(), voixCatalogue('elevenlabs-rachel', 'Rachel (ElevenLabs)')];
-  voixHeygen = [voixHeyGen('heygen-paul', 'Paul')];
+  voixElevenLabs = [voixBassi(), voixCatalogue('vp-rachel', 'Rachel (ElevenLabs)')];
+  voixHeygen = [voixHeyGen('va-paul', 'Paul')];
   installerFetch();
   (globalThis as unknown as { Audio: unknown }).Audio = FauxAudio;
   vi.mocked(synthesize).mockReset();
@@ -104,7 +110,7 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); });
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('1. La carte « Ma voix clonée »', () => {
-  const voices = [voixBassi(), voixCatalogue('elevenlabs-rachel', 'Rachel (ElevenLabs)')];
+  const voices = [voixBassi(), voixCatalogue('vp-rachel', 'Rachel (ElevenLabs)')];
 
   it('liste la voix clonée avec son badge, et seulement elle', () => {
     render(<MaVoixClonee voices={voices} loading={false} voiceId={HENRI} onVoiceIdChange={noop} />);
@@ -146,7 +152,7 @@ describe('1. La carte « Ma voix clonée »', () => {
   });
 
   it('sans voix clonée : « Aucune voix clonée sur ce compte » + le même lien', () => {
-    render(<MaVoixClonee voices={[voixCatalogue('elevenlabs-rachel', 'Rachel (ElevenLabs)')]} loading={false} voiceId={HENRI} onVoiceIdChange={noop} />);
+    render(<MaVoixClonee voices={[voixCatalogue('vp-rachel', 'Rachel (ElevenLabs)')]} loading={false} voiceId={HENRI} onVoiceIdChange={noop} />);
     expect(document.querySelector('[data-ma-voix-clonee-aucune]')!.textContent).toBe('Aucune voix clonée sur ce compte.');
     expect(document.querySelector('[data-ma-voix-clonee-gerer]')!.getAttribute('href')).toBe(LIEN_GERER_MA_VOIX);
     expect(screen.queryByRole('button', { name: 'Utiliser ma voix' })).toBeNull();
@@ -200,8 +206,8 @@ describe('La carte dans AudioStudioPanel', () => {
   it('un seul appel aux voix : la carte reçoit la liste du panneau, elle ne la redemande pas', async () => {
     monterAudio({ voiceId: HENRI, onVoiceIdChange: noop, clonedVoiceCard: true });
     await waitFor(() => expect(document.querySelector(`[data-ma-voix-clonee-voix="${CLONEE}"]`)).not.toBeNull());
-    expect(appels.filter((a) => a.url.includes('/api/tts/elevenlabs'))).toHaveLength(1);
-    expect(appels.filter((a) => a.url.includes('/api/tts/heygen'))).toHaveLength(1);
+    expect(appels.filter((a) => a.url.includes('/api/voix/premium'))).toHaveLength(1);
+    expect(appels.filter((a) => a.url.includes('/api/voix/avatar'))).toHaveLength(1);
     expect(appels.filter((a) => a.url.includes('/api/voice/clone'))).toHaveLength(0);
   });
 
@@ -219,9 +225,9 @@ describe('La carte dans AudioStudioPanel', () => {
 describe('2. <optgroup> : la voix clonée en tête, les ids inchangés', () => {
   it('grouperVoixPourSelecteur : clonée / ElevenLabs / HeyGen / OpenAI / Edge, groupes vides omis', () => {
     const groupes = grouperVoixPourSelecteur([
-      voixCatalogue('elevenlabs-rachel', 'Rachel'),
-      voixHeyGen('heygen-paul', 'Paul'),
-      voixHeyGen('heygen-moi', 'Moi', true),
+      voixCatalogue('vp-rachel', 'Rachel'),
+      voixHeyGen('va-paul', 'Paul'),
+      voixHeyGen('va-moi', 'Moi', true),
       voixBassi(),
       ...TTS_VOICES,
     ]);
@@ -230,10 +236,10 @@ describe('2. <optgroup> : la voix clonée en tête, les ids inchangés', () => {
       VOICE_GROUP_LABELS.openai, VOICE_GROUP_LABELS.edge,
     ]);
     // Les deux voix clonées, quel que soit le fournisseur, dans l'ordre reçu.
-    expect(groupes[0].voices.map((v) => v.id)).toEqual(['heygen-moi', CLONEE]);
-    expect(groupes[1].voices.map((v) => v.id)).toEqual(['elevenlabs-rachel']);
-    expect(groupes[2].voices.map((v) => v.id)).toEqual(['heygen-paul']);
-    expect(groupes[3].voices.every((v) => v.id.startsWith('openai-'))).toBe(true);
+    expect(groupes[0].voices.map((v) => v.id)).toEqual(['va-moi', CLONEE]);
+    expect(groupes[1].voices.map((v) => v.id)).toEqual(['vp-rachel']);
+    expect(groupes[2].voices.map((v) => v.id)).toEqual(['va-paul']);
+    expect(groupes[3].voices.every((v) => v.id.startsWith('vn-'))).toBe(true);
     expect(groupes[4].voices.every((v) => !v.provider || v.provider === 'edge')).toBe(true);
     // Rien de perdu, rien d'inventé.
     const tous = groupes.flatMap((g) => g.voices.map((v) => v.id));
@@ -266,7 +272,7 @@ describe('2. <optgroup> : la voix clonée en tête, les ids inchangés', () => {
       expect(groupes[0].querySelectorAll('option')).toHaveLength(1);
       // Les identifiants sont exactement ceux des voix : le regroupement n'en change aucun.
       const ids = Array.from(selecteur().options).map((o) => o.value);
-      expect(ids).toEqual([CLONEE, 'elevenlabs-rachel', 'heygen-paul', ...TTS_VOICES.filter((v) => v.provider === 'openai').map((v) => v.id), ...TTS_VOICES.filter((v) => !v.provider || v.provider === 'edge').map((v) => v.id)]);
+      expect(ids).toEqual([CLONEE, 'vp-rachel', 'va-paul', ...TTS_VOICES.filter((v) => v.provider === 'openai').map((v) => v.id), ...TTS_VOICES.filter((v) => !v.provider || v.provider === 'edge').map((v) => v.id)]);
       expect(new Set(ids).size).toBe(ids.length);
       // Henri reste sélectionnable et sélectionné : rien n'est perdu.
       expect(selecteur().value).toBe(HENRI);

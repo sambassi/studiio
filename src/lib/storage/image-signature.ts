@@ -49,3 +49,40 @@ export function detecterSignatureImage(bytes: Uint8Array): SignatureImage | null
   }
   return null;
 }
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────
+ * MÉDIAS : images ET vidéos courtes
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Même rôle que `detecterSignatureImage`, élargi aux vidéos, pour rapatrier
+ * dans le stockage Studiio les sorties de TOUS les outils IA — y compris
+ * « image vers vidéo ». Sans cela, l'URL du fournisseur devait être servie
+ * telle quelle au navigateur, ce qui révélait son domaine.
+ *
+ * `detecterSignatureImage` reste inchangée : les appelants qui n'acceptent
+ * qu'une image (l'affiche IA) ne doivent pas se mettre à accepter une vidéo.
+ */
+export type SignatureMedia =
+  | SignatureImage
+  | { mime: 'video/mp4'; ext: 'mp4' }
+  | { mime: 'video/webm'; ext: 'webm' };
+
+/** Plafond d'une sortie d'outil IA rapatriée (25 Mio) : une vidéo pèse plus qu'une image. */
+export const MAX_SORTIE_IA_BYTES = 25 * 1024 * 1024;
+
+const FTYP = [0x66, 0x74, 0x79, 0x70]; // "ftyp", à l'offset 4 d'un MP4
+const MATROSKA = [0x1a, 0x45, 0xdf, 0xa3]; // EBML : WebM et Matroska
+
+/**
+ * Mime et extension d'une image (PNG, JPEG, WEBP) ou d'une vidéo (MP4,
+ * WebM), ou `null` pour tout le reste — page HTML d'erreur, JSON, GIF, vide.
+ */
+export function detecterSignatureMedia(bytes: Uint8Array): SignatureMedia | null {
+  const image = detecterSignatureImage(bytes);
+  if (image) return image;
+  if (!(bytes instanceof Uint8Array) || bytes.length === 0) return null;
+  if (commencePar(bytes, FTYP, 4)) return { mime: 'video/mp4', ext: 'mp4' };
+  if (commencePar(bytes, MATROSKA)) return { mime: 'video/webm', ext: 'webm' };
+  return null;
+}

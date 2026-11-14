@@ -7,6 +7,8 @@ import {
   fetchElevenLabsVoices,
   fetchCustomVoices,
   ELEVENLABS_VOICE_PREFIX,
+  PREFIXE_PUBLIC,
+  idVoixInterne,
 } from '@/lib/types/voice';
 
 /**
@@ -32,9 +34,14 @@ const seqPanel = readFileSync(resolve(__dirname, '../components/creer/SequenceVo
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('mapElevenLabsVoice — la forme brute varie, la sortie non', () => {
-  it('préfixe l identifiant — c est lui qui route la synthèse', () => {
+  it('préfixe l identifiant — PUBLIC dehors, interne dedans', () => {
     const v = mapElevenLabsVoice({ voice_id: 'abc123XYZ', name: 'Rachel', category: 'premade' })!;
-    expect(v.id).toBe(`${ELEVENLABS_VOICE_PREFIX}abc123XYZ`);
+    // ⚠️ L'identifiant émis est neutre : il finit en `value=` d'une option,
+    // donc il ne doit pas nommer le prestataire. Il route quand même, et
+    // `idVoixInterne` le ramène à la forme interne côté serveur.
+    expect(v.id).toBe(`${PREFIXE_PUBLIC.elevenlabs}abc123XYZ`);
+    expect(v.id).not.toContain('elevenlabs');
+    expect(idVoixInterne(v.id)).toBe(`${ELEVENLABS_VOICE_PREFIX}abc123XYZ`);
     expect(isElevenLabsVoiceId(v.id)).toBe(true);
   });
 
@@ -96,7 +103,11 @@ describe('mapElevenLabsVoice — la forme brute varie, la sortie non', () => {
 
 describe('isElevenLabsVoiceId', () => {
   it('ne reconnaît que le préfixe attendu', () => {
+    // Les deux formes routent : la publique (`vp-`, celle qui part au
+    // navigateur) et l'ancienne (`elevenlabs-`, encore en base).
+    expect(isElevenLabsVoiceId('vp-abc')).toBe(true);
     expect(isElevenLabsVoiceId('elevenlabs-abc')).toBe(true);
+    expect(isElevenLabsVoiceId('va-abc')).toBe(false);
     expect(isElevenLabsVoiceId('heygen-abc')).toBe(false);
     expect(isElevenLabsVoiceId('openai-nova')).toBe(false);
     expect(isElevenLabsVoiceId('fr-FR-DeniseNeural')).toBe(false);
@@ -109,7 +120,7 @@ describe('fetchElevenLabsVoices — le sélecteur ne casse jamais', () => {
   const stub = (impl: () => Promise<unknown>) => vi.stubGlobal('fetch', impl);
 
   it('rend les voix reçues', async () => {
-    stub(async () => ({ ok: true, json: async () => ({ voices: [{ id: 'elevenlabs-a' }] }) }) as any);
+    stub(async () => ({ ok: true, json: async () => ({ voices: [{ id: 'vp-a' }] }) }) as any);
     expect(await fetchElevenLabsVoices()).toHaveLength(1);
   });
 
@@ -134,19 +145,19 @@ describe('fetchCustomVoices — un seul point d entrée pour les sélecteurs', (
     vi.stubGlobal('fetch', async (url: string) => ({
       ok: true,
       json: async () => ({
-        voices: url.includes('heygen') ? [{ id: 'heygen-1' }] : [{ id: 'elevenlabs-1' }],
+        voices: url.includes('/api/voix/avatar') ? [{ id: 'va-1' }] : [{ id: 'vp-1' }],
       }),
     }) as any);
     const voices = await fetchCustomVoices();
-    expect(voices.map((v) => v.id)).toEqual(['heygen-1', 'elevenlabs-1']);
+    expect(voices.map((v) => v.id)).toEqual(['va-1', 'vp-1']);
   });
 
   it('un fournisseur en panne ne prive pas du second', async () => {
     vi.stubGlobal('fetch', async (url: string) => {
-      if (url.includes('heygen')) throw new Error('heygen down');
-      return { ok: true, json: async () => ({ voices: [{ id: 'elevenlabs-1' }] }) } as any;
+      if (url.includes('/api/voix/avatar')) throw new Error('moteur avatar en panne');
+      return { ok: true, json: async () => ({ voices: [{ id: 'vp-1' }] }) } as any;
     });
-    expect((await fetchCustomVoices()).map((v) => v.id)).toEqual(['elevenlabs-1']);
+    expect((await fetchCustomVoices()).map((v) => v.id)).toEqual(['vp-1']);
   });
 
   it('les deux appels partent EN PARALLÈLE', async () => {
@@ -226,7 +237,9 @@ describe('Les gardes de la route', () => {
   });
 
   it('le préfixe est retiré avant l appel — ElevenLabs attend l id nu', () => {
-    expect(route).toContain('voice.replace(new RegExp(`^${ELEVENLABS_VOICE_PREFIX}`), \'\').trim()');
+    // `idVoixInterne` ramene l'identifiant public a la forme interne avant
+    // d'en retirer le prefixe : les deux formes aboutissent au meme id nu.
+    expect(route).toContain('idVoixInterne(voice).replace(new RegExp(`^${ELEVENLABS_VOICE_PREFIX}`), \'\').trim()');
   });
 
   it('un audio vide est une erreur, pas un fichier de zéro octet', () => {
@@ -262,8 +275,12 @@ describe('Default-safe : sans clé, rien ne se dégrade', () => {
     expect(get).toContain('configured: !!apiKey()');
   });
 
-  it('la synthèse, elle, le dit franchement', () => {
-    expect(route).toContain("{ error: 'ELEVENLABS_API_KEY not configured' }");
+  it('la synthèse, elle, le dit — sans nommer le prestataire', () => {
+    // Le nom du fournisseur ne part plus au navigateur (fuite fermée) : la
+    // route rend la constante neutre. Le contenu de la réponse est vérifié
+    // par APPEL dans `confidentialite-fournisseurs.test.ts`.
+    expect(route).toContain('{ error: MESSAGE_VOIX_NON_CONFIGUREE }');
+    expect(route).not.toContain("'ELEVENLABS_API_KEY not configured'");
   });
 
   it('une panne de liste ne vide pas le sélecteur pendant 5 minutes', () => {
@@ -282,7 +299,9 @@ describe('Le routage client', () => {
   });
 
   it('appelle la bonne route, avec l identifiant préfixé', () => {
-    expect(client).toContain("await fetch('/api/tts/elevenlabs'");
+    // Chemin NEUTRE : l'alias sert le meme gestionnaire, et le nom du
+    // prestataire ne figure plus dans l'onglet reseau.
+    expect(client).toContain("await fetch('/api/voix/premium'");
     // + les réglages de la séquence, seulement s'il y en a (`reglagesCorps`).
     expect(client).toContain("body: JSON.stringify({ text, voice: voiceId, ...reglagesCorps(options) }),");
   });
@@ -295,7 +314,7 @@ describe('Le routage client', () => {
     );
     expect(branche).toContain("console.warn('[TTS] ElevenLabs failed:'");
     expect(branche.match(/return null;/g)?.length).toBeGreaterThanOrEqual(3);
-    expect(branche).not.toContain('/api/tts/edge');
+    expect(branche).not.toContain('/api/voix/standard');
   });
 
   it('le fournisseur est déclaré dans le type de voix', () => {

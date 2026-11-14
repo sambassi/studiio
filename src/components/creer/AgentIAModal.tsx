@@ -175,7 +175,7 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
         const themeObj = AGENT_THEMES.find(t => t.id === theme);
         const query = themeObj?.label || theme || 'fitness';
         try {
-          const pxRes = await fetch(`/api/pexels?query=${encodeURIComponent(query)}&count=5`);
+          const pxRes = await fetch(`/api/photos?query=${encodeURIComponent(query)}&count=5`);
           const pxData = await pxRes.json();
           if (pxData.success && pxData.photos?.length > 0) posterUrl = pxData.photos[0]?.url || null;
         } catch {}
@@ -380,7 +380,7 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
         for (const obj of aiObjectives) {
           try {
             const q = objQueries[obj] || 'fitness dance workout';
-            const pxRes = await fetch(`/api/pexels?query=${encodeURIComponent(q)}&count=15`);
+            const pxRes = await fetch(`/api/photos?query=${encodeURIComponent(q)}&count=15`);
             const pxData = await pxRes.json();
             if (pxData.success && pxData.photos) {
               posterUrlsByObjective[obj] = pxData.photos.map((p: { url: string }) => p.url);

@@ -9,6 +9,7 @@ import {
   type CycleFacturation,
   type PlanPayant,
 } from '@/lib/billing/plan-choisi';
+import { classesSegment } from '@/lib/ui/etats';
 
 /**
  * Plan choisi sur la landing, présélectionné après l'inscription.
@@ -84,7 +85,7 @@ export function PlanPreselectionne({ plan, billing }: { plan: PlanPayant; billin
               type="button"
               aria-pressed={cycle === c}
               onClick={() => setCycle(c)}
-              className={`px-4 py-1.5 rounded-full text-sm font-semibold ${cycle === c ? 'bg-studiio-accent text-white' : 'text-gray-400 hover:text-white'}`}
+              className={`px-4 py-1.5 rounded-full text-sm font-semibold ${classesSegment(cycle === c)}`}
             >
               {c === 'monthly' ? 'Mensuel' : 'Annuel'}
             </button>

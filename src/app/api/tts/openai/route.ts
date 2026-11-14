@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { MESSAGE_VOIX_NON_CONFIGUREE, MESSAGE_VOIX_INDISPONIBLE } from '@/lib/fournisseurs/messages-neutres';
 import { auth } from '@/lib/auth/config';
 import { detectAndReportServiceError } from '@/lib/service-alerts';
 import { texteParleDuCompte } from '@/lib/voice/profil';
@@ -19,7 +20,8 @@ export async function POST(req: NextRequest) {
 
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      return NextResponse.json({ error: 'OPENAI_API_KEY not configured' }, { status: 500 });
+      console.error('[tts] cle de synthese vocale absente');
+      return NextResponse.json({ error: MESSAGE_VOIX_NON_CONFIGUREE }, { status: 500 });
     }
 
     const body = await req.json();
@@ -68,14 +70,14 @@ export async function POST(req: NextRequest) {
       // Report to admin alert system
       detectAndReportServiceError('openai', new Error(`OpenAI TTS ${openaiRes.status}: ${errText.substring(0, 200)}`));
       return NextResponse.json(
-        { error: `OpenAI TTS upstream error (${openaiRes.status})` },
+        { error: MESSAGE_VOIX_INDISPONIBLE },
         { status: 500 }
       );
     }
 
     const buf = Buffer.from(await openaiRes.arrayBuffer());
     if (buf.length === 0) {
-      return NextResponse.json({ error: 'OpenAI returned empty audio' }, { status: 500 });
+      return NextResponse.json({ error: MESSAGE_VOIX_INDISPONIBLE }, { status: 500 });
     }
 
     return new NextResponse(new Uint8Array(buf) as unknown as BodyInit, {
@@ -89,10 +91,11 @@ export async function POST(req: NextRequest) {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     if (msg.includes('aborted') || msg.includes('timeout')) {
-      return NextResponse.json({ error: 'OpenAI TTS timed out' }, { status: 504 });
+      return NextResponse.json({ error: MESSAGE_VOIX_INDISPONIBLE }, { status: 504 });
     }
     console.error('[TTS/OpenAI] error:', msg);
     detectAndReportServiceError('openai', err);
-    return NextResponse.json({ error: `OpenAI TTS failed: ${msg}` }, { status: 500 });
+    console.error('[tts] synthese en echec :', msg);
+    return NextResponse.json({ error: MESSAGE_VOIX_INDISPONIBLE }, { status: 500 });
   }
 }

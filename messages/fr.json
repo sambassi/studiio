@@ -754,10 +754,22 @@
       "upload": "Importer une image"
     },
     "suggestions": {
-      "0": { "title": "TRANSFORME TON CORPS", "subtitle": "La danse est ton arme secrète" },
-      "1": { "title": "ÉNERGIE SANS LIMITE", "subtitle": "Repousse tes limites chaque jour" },
-      "2": { "title": "DANSE & PERFORMANCE", "subtitle": "Atteins tes objectifs plus vite" },
-      "3": { "title": "BIEN-ÊTRE TOTAL", "subtitle": "Corps et esprit en harmonie" }
+      "0": {
+        "title": "TRANSFORME TON CORPS",
+        "subtitle": "La danse est ton arme secrète"
+      },
+      "1": {
+        "title": "ÉNERGIE SANS LIMITE",
+        "subtitle": "Repousse tes limites chaque jour"
+      },
+      "2": {
+        "title": "DANSE & PERFORMANCE",
+        "subtitle": "Atteins tes objectifs plus vite"
+      },
+      "3": {
+        "title": "BIEN-ÊTRE TOTAL",
+        "subtitle": "Corps et esprit en harmonie"
+      }
     },
     "nextStepMedia": "Étape suivante : Médias",
     "backButton": "Retour",
@@ -889,7 +901,15 @@
       "scheduled": "Planifiés",
       "published": "Publiés"
     },
-    "dayHeaders": ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"],
+    "dayHeaders": [
+      "Lun",
+      "Mar",
+      "Mer",
+      "Jeu",
+      "Ven",
+      "Sam",
+      "Dim"
+    ],
     "selectDate": "Sélectionnez une date",
     "clickDayToSee": "Cliquez sur un jour pour voir ses posts",
     "noPosts": "Aucun post ce jour",
@@ -1192,7 +1212,9 @@
       "disconnectError": "Erreur lors de la déconnexion"
     },
     "comingSoonHint": "{platform} sera bientôt disponible. La connexion rouvrira prochainement.",
-    "voie": { "zernio": "votre compte" },
+    "voie": {
+      "zernio": "votre compte"
+    },
     "zernio": {
       "coupeCircuit": "La publication sur vos propres comptes est momentanément désactivée.",
       "optionAbsente": "Activez l'option Publication pour connecter vos propres comptes."
@@ -1653,5 +1675,49 @@
     "rate_limit": "Limite atteinte (20 messages/heure). Réessaie plus tard.",
     "close": "Fermer",
     "unauthorized": "Connecte-toi pour utiliser l'assistant."
+  },
+  "paiement": {
+    "titre": "Paiements et crédits",
+    "prix": "Prix",
+    "credits": "Crédits",
+    "solde": "Solde",
+    "soldeAvant": "Solde avant",
+    "soldeApres": "Solde après",
+    "soldeInsuffisant": "Solde insuffisant",
+    "manque": "Il te manque {count} crédits",
+    "recharger": "Recharger",
+    "rechargeTitre": "Recharger des crédits",
+    "rechargeSousTitre": "Les crédits achetés n’expirent pas et s’ajoutent à ceux de ton abonnement.",
+    "montant": "Montant",
+    "devise": "Devise",
+    "frais": "Frais",
+    "aucunFrais": "Aucun frais ajouté",
+    "tauxDu": "Taux du {date}",
+    "creditsAchetes": "{count} crédits achetés",
+    "confirmerPaiement": "Confirmer le paiement",
+    "paiementConfirme": "Paiement confirmé",
+    "paiementEnAttente": "Paiement en attente de confirmation",
+    "paiementEchoue": "Le paiement n’a pas abouti. Aucun crédit n’a été débité.",
+    "abonnement": "Abonnement",
+    "formule": "Formule",
+    "formuleActuelle": "Formule actuelle",
+    "changerFormule": "Changer de formule",
+    "annulerAbonnement": "Annuler l’abonnement",
+    "renouvellement": "Renouvellement",
+    "creditsInclus": "{count} crédits inclus",
+    "parMois": "par mois",
+    "gratuit": "Gratuit",
+    "factures": "Factures",
+    "historique": "Historique des transactions",
+    "operationCout": "Cette opération coûte {count} crédits",
+    "operationGratuite": "Cette action est gratuite",
+    "confirmerOperation": "Confirmer et lancer",
+    "types": {
+      "achat": "Achat de crédits",
+      "abonnement": "Crédits de l’abonnement",
+      "rendu": "Génération",
+      "remboursement": "Remboursement",
+      "bonus": "Crédits offerts"
+    }
   }
 }

@@ -14,13 +14,17 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle, ChevronDown, Coins, Gift, History, Loader2, Save, Sparkles, X,
+  AlertTriangle, ChevronDown, Coins, Gift, History, Loader2, RefreshCw, Save, Sparkles,
+  ShieldAlert, TrendingUp, X,
 } from 'lucide-react';
 import {
   CATALOGUE_TARIFS, LIBELLE_CATEGORIE, TARIF_MAX, TARIFS_GRATUITS,
   type CategorieTarif, type CleTarif, type CoutFournisseur, type EntreeCatalogue,
 } from '@/lib/tarifs/catalogue';
 import { ETAT_INTERACTIF_SANS_FOND } from '@/lib/ui/etats';
+import { BandeauDemo } from '@/components/ui/BandeauDemo';
+import type { LigneRentabilite, ResumeRentabilite } from '@/lib/tarifs/rentabilite';
+import type { TauxChange, TauxEur } from '@/lib/tarifs/change';
 
 interface LigneHistorique { cle: string; ancien: unknown; nouveau: unknown; admin: string; le: string }
 
@@ -33,6 +37,17 @@ interface ReponseTarifs {
   coutsFournisseur: Partial<Record<string, CoutFournisseur>>;
   source: 'configuration' | 'defaut';
   historique?: LigneHistorique[];
+  /** Taux USD → CHF enregistré, daté. `null` = marges en USD non calculées. */
+  change?: TauxChange | null;
+  /** Taux CHF → EUR, daté : la part flottante d'un prix en franc CFA. */
+  changeEur?: TauxEur | null;
+  /** Rentabilité de la grille ENREGISTRÉE (pas de la saisie en cours). */
+  rentabilite?: LigneRentabilite[];
+  resumeRentabilite?: ResumeRentabilite;
+  /** Marge visée, en fraction (0,4 = 40 %). */
+  margeCible?: number;
+  changeLibelle?: string;
+  changePerime?: boolean;
 }
 
 interface CoutSaisi { chf: string; unite: string }
@@ -41,6 +56,37 @@ const ORDRE_CATEGORIES: CategorieTarif[] = ['audio', 'video', 'avatar', 'ia', 'a
 const VALEUR_CREDIT_MAX_CHF = 100;
 const COUT_MAX_CHF = 10_000;
 const CHAMP_VALEUR_CREDIT = 'valeurCreditChf';
+const CHAMP_CHANGE = 'change';
+const TAUX_MIN = 0.1;
+const TAUX_MAX = 10;
+
+/** Miroir de `normaliserTaux` côté serveur : un taux sans date n'est pas un taux. */
+function erreurTaux(chfParUsd: string, le: string): string | null {
+  const brut = chfParUsd.trim();
+  if (brut === '' && le.trim() === '') return null;
+  if (brut === '') return 'Taux requis (ou efface la date).';
+  const n = Number(brut.replace(',', '.'));
+  if (!Number.isFinite(n) || n < TAUX_MIN || n > TAUX_MAX) return `Taux entre ${TAUX_MIN} et ${TAUX_MAX} attendu.`;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(le.trim())) return 'Date du taux requise (AAAA-MM-JJ).';
+  return null;
+}
+
+const CHAMP_MARGE = 'margeCible';
+
+/** Marge saisie en POURCENTAGE à l'écran, stockée en fraction côté serveur. */
+function erreurMarge(saisie: string): string | null {
+  const t = saisie.trim();
+  if (t === '') return null;
+  const n = Number(t.replace(',', '.'));
+  if (!Number.isFinite(n) || n < 0 || n > 1000) return 'Pourcentage entre 0 et 1000 attendu.';
+  return null;
+}
+
+const STYLE_VERDICT: Record<LigneRentabilite['verdict'], { classe: string; texte: string }> = {
+  perte: { classe: 'border-red-500/40 bg-red-500/10 text-red-300', texte: 'Vendu à perte' },
+  inconnu: { classe: 'border-amber-500/40 bg-amber-500/10 text-amber-300', texte: 'Rentabilité inconnue' },
+  rentable: { classe: 'border-green-500/40 bg-green-500/10 text-green-300', texte: 'Rentable' },
+};
 
 const champCout = (cle: string) => `cout:${cle}`;
 
@@ -197,6 +243,11 @@ export default function TarifsAdminPage() {
   const [prix, setPrix] = useState<Record<string, string>>({});
   const [valeurCredit, setValeurCredit] = useState('');
   const [couts, setCouts] = useState<Record<string, CoutSaisi>>({});
+  const [taux, setTaux] = useState({ chfParUsd: '', le: '' });
+  const [sourceTaux, setSourceTaux] = useState<string>('');
+  const [margeCible, setMargeCible] = useState('');
+  const [tauxEur, setTauxEur] = useState<TauxEur | null>(null);
+  const [lectureTaux, setLectureTaux] = useState(false);
 
   const [fermees, setFermees] = useState<Partial<Record<CategorieTarif, boolean>>>({});
   const [confirmation, setConfirmation] = useState(false);
@@ -215,6 +266,10 @@ export default function TarifsAdminPage() {
       const c = d.coutsFournisseur?.[e.cle];
       return [e.cle, { chf: c ? String(c.chf) : '', unite: c?.unite ?? '' }];
     })));
+    setTaux({ chfParUsd: d.change ? String(d.change.chfParUsd) : '', le: d.change?.le ?? '' });
+    setMargeCible(d.margeCible === undefined || d.margeCible === null ? '' : String(Math.round(d.margeCible * 100)));
+    setSourceTaux(d.change?.source ?? '');
+    setTauxEur(d.changeEur ?? null);
     setErreursServeur({});
   }, []);
 
@@ -232,6 +287,40 @@ export default function TarifsAdminPage() {
 
   useEffect(() => { charger(); }, [charger]);
 
+  /**
+   * Lit le taux de référence et REMPLIT le champ, sans rien enregistrer :
+   * l'admin voit la valeur et sa date, puis confirme comme n'importe quel
+   * autre changement.
+   */
+  const lireTauxReference = useCallback(async () => {
+    setLectureTaux(true);
+    setMessage(null);
+    try {
+      const r = await fetch('/api/admin/tarifs/taux', { cache: 'no-store' });
+      const j = await r.json().catch(() => null);
+      if (!r.ok || !j?.change) {
+        setMessage({ texte: j?.error || 'Taux de référence indisponible.', type: 'erreur' });
+        return;
+      }
+      const c = j.change as TauxChange;
+      setTaux({ chfParUsd: String(c.chfParUsd), le: c.le });
+      setSourceTaux(c.source);
+      // Le même relevé porte CHF → EUR, qui sert aux prix en franc CFA.
+      setTauxEur((j.changeEur as TauxEur | null) ?? null);
+      setErreursServeur((e) => { const { [CHAMP_CHANGE]: _, ...r2 } = e; return r2; });
+    } catch {
+      setMessage({ texte: 'Taux de référence indisponible.', type: 'erreur' });
+    } finally {
+      setLectureTaux(false);
+    }
+  }, []);
+
+  /** Rentabilité enregistrée, indexée par clé de tarif. */
+  const rentabiliteParCle = useMemo(
+    () => new Map((donnees?.rentabilite ?? []).map((l) => [l.cle as string, l])),
+    [donnees],
+  );
+
   // ── Validation (miroir serveur) ────────────────────────────────────────
   const erreursClient = useMemo(() => {
     const out: Record<string, string> = {};
@@ -243,12 +332,23 @@ export default function TarifsAdminPage() {
     }
     const mv = erreurValeurCredit(valeurCredit);
     if (mv) out[CHAMP_VALEUR_CREDIT] = mv;
+    const mt = erreurTaux(taux.chfParUsd, taux.le);
+    if (mt) out[CHAMP_CHANGE] = mt;
+    const mm = erreurMarge(margeCible);
+    if (mm) out[CHAMP_MARGE] = mm;
     return out;
-  }, [catalogue, prix, couts, valeurCredit, max]);
+  }, [catalogue, prix, couts, valeurCredit, taux, margeCible, max]);
 
   // ── Ce qui a changé ────────────────────────────────────────────────────
   const diff = useMemo(() => {
-    const corps: { prix?: Record<string, number>; valeurCreditChf?: number | null; coutsFournisseur?: Record<string, CoutFournisseur | null> } = {};
+    const corps: {
+      prix?: Record<string, number>;
+      valeurCreditChf?: number | null;
+      coutsFournisseur?: Record<string, CoutFournisseur | null>;
+      change?: TauxChange | null;
+      changeEur?: TauxEur | null;
+      margeCible?: number;
+    } = {};
     const lignes: Changement[] = [];
     if (!donnees) return { corps, lignes };
     for (const e of catalogue) {
@@ -286,8 +386,44 @@ export default function TarifsAdminPage() {
           : `Passer la valeur du crédit de ${avantV === null ? 'non renseignée' : chf(avantV)} à ${chf(v)} ?`,
       });
     }
+    const nTaux = lireDecimal(taux.chfParUsd);
+    const avantTaux = donnees.change ?? null;
+    const apresTaux: TauxChange | null = nTaux === null || Number.isNaN(nTaux) || !/^\d{4}-\d{2}-\d{2}$/.test(taux.le.trim())
+      ? null
+      : { chfParUsd: nTaux, le: taux.le.trim(), source: sourceTaux || 'Saisie administrateur' };
+    const tauxEgal = (avantTaux === null && apresTaux === null)
+      || (avantTaux !== null && apresTaux !== null && avantTaux.chfParUsd === apresTaux.chfParUsd && avantTaux.le === apresTaux.le);
+    if (!tauxEgal && !erreurTaux(taux.chfParUsd, taux.le)) {
+      corps.change = apresTaux;
+      lignes.push({
+        champ: CHAMP_CHANGE,
+        phrase: apresTaux === null
+          ? 'Effacer le taux de change ? Les marges en USD ne seront plus calculées.'
+          : `Enregistrer le taux 1 USD = ${apresTaux.chfParUsd} CHF (${apresTaux.le}) ?`,
+      });
+    }
+    const avantEur = donnees.changeEur ?? null;
+    if (JSON.stringify(tauxEur) !== JSON.stringify(avantEur)) {
+      corps.changeEur = tauxEur;
+      lignes.push({
+        champ: 'changeEur',
+        phrase: tauxEur === null
+          ? 'Effacer le taux CHF → EUR ? Les prix en franc CFA ne seront plus affichables.'
+          : `Enregistrer le taux 1 CHF = ${tauxEur.eurParChf} EUR (${tauxEur.le}) ?`,
+      });
+    }
+    const nMarge = lireDecimal(margeCible);
+    const apresMarge = nMarge === null || Number.isNaN(nMarge) ? null : Math.round(nMarge) / 100;
+    const avantMarge = donnees.margeCible ?? null;
+    if (apresMarge !== null && apresMarge !== avantMarge && !erreurMarge(margeCible)) {
+      corps.margeCible = apresMarge;
+      lignes.push({
+        champ: CHAMP_MARGE,
+        phrase: `Passer la marge visée de ${avantMarge === null ? 'non définie' : `${Math.round(avantMarge * 100)} %`} à ${Math.round(apresMarge * 100)} % ?`,
+      });
+    }
     return { corps, lignes };
-  }, [donnees, catalogue, prix, couts, valeurCredit]);
+  }, [donnees, catalogue, prix, couts, valeurCredit, taux, sourceTaux, margeCible, tauxEur]);
 
   const modifie = diff.lignes.length > 0;
   const bloque = Object.keys(erreursClient).length > 0;
@@ -329,10 +465,21 @@ export default function TarifsAdminPage() {
 
   const annulerConfirmation = useCallback(() => setConfirmation(false), []);
 
-  const appliquerProposes = () => {
+  /**
+   * Remplit les champs avec les prix CONSEILLÉS calculés (plancher + marge),
+   * sans rien enregistrer : la confirmation habituelle liste ensuite chaque
+   * changement. Ces montants viennent du coût fournisseur réel et du taux
+   * daté — plus d'un chiffre figé dans le catalogue, qui pouvait vendre à
+   * perte sans que personne le voie.
+   */
+  const appliquerConseilles = (cles: readonly string[]) => {
+    const conseils = donnees?.resumeRentabilite?.grilleConseillee ?? {};
     setPrix((p) => {
       const suite = { ...p };
-      for (const e of catalogue) if (e.propose !== undefined) suite[e.cle] = String(e.propose);
+      for (const cle of cles) {
+        const v = (conseils as Record<string, number | undefined>)[cle];
+        if (typeof v === 'number') suite[cle] = String(v);
+      }
       return suite;
     });
   };
@@ -358,15 +505,15 @@ export default function TarifsAdminPage() {
   }
 
   const valeurCreditNum = (() => { const n = lireDecimal(valeurCredit); return n !== null && !Number.isNaN(n) && n > 0 ? n : null; })();
-  const avatarsActuels = catalogue.filter((e) => e.categorie === 'avatar' && e.propose !== undefined).map((e) => donnees.prix?.[e.cle] ?? e.defaut);
-  const avatarUniforme = avatarsActuels.length > 0 && avatarsActuels.every((v) => v === avatarsActuels[0]) ? avatarsActuels[0] : null;
+  const grilleConseillee = (donnees.resumeRentabilite?.grilleConseillee ?? {}) as Record<string, number | undefined>;
   const erreurDe = (champ: string) => erreursClient[champ] ?? erreursServeur[champ];
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6 pb-4">
+    <div className="mx-auto w-full max-w-3xl space-y-4 pb-4">
+      <BandeauDemo />
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-bold text-white md:text-3xl">
-          <Coins className="text-orange-400" size={28} /> Tarifs &amp; crédits
+          <Coins className="text-studiio-primary" size={28} /> Tarifs &amp; crédits
         </h1>
         <p className="mt-1 text-sm text-gray-400">
           Combien de crédits coûte chaque opération. Les écrans et le débit lisent cette même grille.
@@ -391,7 +538,29 @@ export default function TarifsAdminPage() {
 
       {/* ── Valeur du crédit ─────────────────────────────────────────── */}
       <section className="card-base space-y-2" style={{ padding: 16 }}>
-        <label htmlFor="valeur-credit" className="block text-base font-semibold text-white">Valeur du crédit</label>
+        <label htmlFor="valeur-credit" className="block text-base font-semibold text-white">
+          Valeur du crédit retenue pour les calculs
+        </label>
+        {/*
+          ⚠️ TROIS NOTIONS SE CONFONDAIENT derrière un seul libellé
+          « Valeur du crédit » et une note « valeur indicative ». Elles sont
+          maintenant nommées, parce que la deuxième et la troisième sont la
+          même et que la première ne l'est pas.
+        */}
+        <ul className="space-y-0.5 text-xs text-gray-400">
+          <li>
+            <span className="text-gray-300">Ce que l’abonné paie réellement</span> : le prix de sa formule
+            divisé par ses crédits inclus. Il varie d’une formule à l’autre, et ce champ ne le change pas.
+          </li>
+          <li>
+            <span className="text-gray-300">La valeur enregistrée ici</span> : celle que tu décides, et
+            la SEULE qui sert à calculer recette, marge, plancher et prix conseillé ci-dessous.
+          </li>
+          <li>
+            <span className="text-gray-300">Les prix de vente Stripe</span> : inchangés. Ce champ ne touche
+            ni les abonnements, ni les packs de crédits.
+          </li>
+        </ul>
         <div className="flex flex-wrap items-center gap-2">
           <input
             id="valeur-credit"
@@ -409,7 +578,163 @@ export default function TarifsAdminPage() {
           <span className="text-sm text-gray-400">CHF par crédit</span>
         </div>
         {erreurDe(CHAMP_VALEUR_CREDIT) && <p className="text-xs text-red-400">{erreurDe(CHAMP_VALEUR_CREDIT)}</p>}
-        <p className="text-xs text-gray-500">Valeur indicative — ne modifie pas les packs de paiement Stripe.</p>
+        {donnees.valeurCreditChf === null && (
+          <p role="alert" className="text-xs text-amber-400" data-testid="manque-valeur-credit">
+            Donnée manquante : la valeur du crédit. Sans elle, aucune recette, aucune marge et aucun prix
+            conseillé ne peuvent être calculés — les verdicts restent « rentabilité inconnue ».
+          </p>
+        )}
+      </section>
+
+      {/* ── Rentabilité & taux de change ──────────────────────────────── */}
+      <section className="card-base space-y-3" style={{ padding: 16 }}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="flex items-center gap-2 text-base font-semibold text-white">
+            <TrendingUp size={16} className="text-gray-400" /> Rentabilité
+          </h2>
+          {donnees?.resumeRentabilite && (
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              {donnees.resumeRentabilite.pertes > 0 && (
+                <span className={`rounded-full border px-2 py-0.5 ${STYLE_VERDICT.perte.classe}`}>
+                  {donnees.resumeRentabilite.pertes} à perte
+                </span>
+              )}
+              {donnees.resumeRentabilite.inconnus > 0 && (
+                <span className={`rounded-full border px-2 py-0.5 ${STYLE_VERDICT.inconnu.classe}`}>
+                  {donnees.resumeRentabilite.inconnus} inconnues
+                </span>
+              )}
+              <span className={`rounded-full border px-2 py-0.5 ${STYLE_VERDICT.rentable.classe}`}>
+                {donnees.resumeRentabilite.rentables} rentables
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/*
+          ⚠️ « 18 opérations à la rentabilité inconnue » se lisait comme dix-huit
+          problèmes. C'en est généralement UN SEUL, partagé : une donnée
+          d'entrée manquante. On nomme donc les CAUSES, séparément, et on
+          distingue ce qui n'est pas une donnée manquante — un rendu local
+          n'a pas de coût fournisseur, ce n'est pas un coût inconnu.
+        */}
+        {donnees?.resumeRentabilite && donnees.resumeRentabilite.inconnus > 0 && (() => {
+          const lignes = donnees.rentabilite ?? [];
+          const sansCout = lignes.filter((l) => l.coutUsd === null && l.coutAdminChf === null).length;
+          const locales = lignes.filter((l) => l.coutUsd === 0).length;
+          const causes: string[] = [];
+          if (donnees.valeurCreditChf === null) {
+            causes.push('la valeur du crédit n’est pas enregistrée — sans elle, aucune recette ni marge n’est calculable, pour aucune opération');
+          }
+          if (!donnees.change) {
+            causes.push('le taux USD → CHF n’est pas enregistré — les coûts fournisseurs sont en dollars et ne peuvent pas être comparés à une recette en francs');
+          }
+          if (sansCout > 0) {
+            causes.push(`${sansCout} tarif(s) n’ont aucun coût fournisseur vérifié — un coût absent n’est pas un coût nul, leur verdict reste suspendu`);
+          }
+          return (
+            <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-3 text-xs" data-testid="causes-inconnues">
+              <p className="font-medium text-gray-200">
+                Pourquoi {donnees.resumeRentabilite!.inconnus} verdict(s) restent inconnus
+              </p>
+              <ul className="mt-1 list-disc space-y-0.5 pl-4 text-gray-400">
+                {causes.map((c) => <li key={c}>{c}</li>)}
+              </ul>
+              {locales > 0 && (
+                <p className="mt-1.5 text-gray-500">
+                  À part : {locales} rendu(s) local/locaux n’appellent aucun fournisseur. Leur coût
+                  fournisseur est réellement nul — ce n’est pas une donnée manquante. L’infrastructure
+                  qui les exécute n’est pas imputée ici.
+                </p>
+              )}
+            </div>
+          );
+        })()}
+
+        {donnees?.resumeRentabilite && donnees.resumeRentabilite.pertes > 0 && (
+          <p
+            role="alert"
+            data-testid="alerte-vente-a-perte"
+            className="flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-300"
+          >
+            <ShieldAlert size={16} className="mt-0.5 shrink-0" />
+            <span>
+              {donnees.resumeRentabilite.pertes === 1 ? 'Un tarif est vendu' : `${donnees.resumeRentabilite.pertes} tarifs sont vendus`}
+              {' '}sous leur coût fournisseur. Chaque génération creuse la marge.
+            </span>
+          </p>
+        )}
+
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="space-y-1">
+            <label htmlFor="taux-chf-usd" className="block text-xs font-medium text-gray-300">1 USD en CHF</label>
+            <input
+              id="taux-chf-usd"
+              type="number"
+              inputMode="decimal"
+              min={TAUX_MIN}
+              max={TAUX_MAX}
+              step="0.00001"
+              value={taux.chfParUsd}
+              onChange={(e) => { setTaux((t) => ({ ...t, chfParUsd: e.target.value })); setErreursServeur((s2) => { const { [CHAMP_CHANGE]: _, ...r } = s2; return r; }); }}
+              placeholder="0.83"
+              aria-invalid={!!erreurDe(CHAMP_CHANGE)}
+              className="w-28 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-white focus:border-orange-500 focus:outline-none"
+            />
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="taux-date" className="block text-xs font-medium text-gray-300">Daté du</label>
+            <input
+              id="taux-date"
+              type="date"
+              value={taux.le}
+              onChange={(e) => { setTaux((t) => ({ ...t, le: e.target.value })); setErreursServeur((s2) => { const { [CHAMP_CHANGE]: _, ...r } = s2; return r; }); }}
+              className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-white focus:border-orange-500 focus:outline-none"
+            />
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="marge-cible" className="block text-xs font-medium text-gray-300">Marge visée</label>
+            <div className="flex items-center gap-1">
+              <input
+                id="marge-cible"
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={1000}
+                step={5}
+                value={margeCible}
+                onChange={(e) => { setMargeCible(e.target.value); setErreursServeur((s2) => { const { [CHAMP_MARGE]: _, ...r } = s2; return r; }); }}
+                placeholder="40"
+                aria-invalid={!!erreurDe(CHAMP_MARGE)}
+                className="w-20 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-white focus:border-orange-500 focus:outline-none"
+              />
+              <span className="text-sm text-gray-400">%</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={lireTauxReference}
+            disabled={lectureTaux}
+            className={`inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-200 disabled:opacity-50 ${ETAT_INTERACTIF_SANS_FOND}`}
+          >
+            {lectureTaux ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            Lire le taux de référence
+          </button>
+        </div>
+        {erreurDe(CHAMP_CHANGE) && <p className="text-xs text-red-400">{erreurDe(CHAMP_CHANGE)}</p>}
+        {erreurDe(CHAMP_MARGE) && <p className="text-xs text-red-400">{erreurDe(CHAMP_MARGE)}</p>}
+        <p className={`text-xs ${donnees?.changePerime ? 'text-amber-400' : 'text-gray-500'}`} data-testid="etat-taux">
+          {donnees?.changeLibelle ?? 'Taux non chargé.'}
+          {sourceTaux && <span className="text-gray-600"> · {sourceTaux}</span>}
+        </p>
+        <p className="text-xs text-gray-500">
+          Sans taux enregistré, aucune marge en USD n’est calculée : la rentabilité reste affichée comme inconnue plutôt que supposée bonne.
+        </p>
+        <p className="text-xs text-gray-500" data-testid="etat-taux-eur">
+          {donnees.changeEur
+            ? `Franc CFA : 1 CHF = ${donnees.changeEur.eurParChf} EUR (${donnees.changeEur.le}), × 655,957 pour le XOF / XAF.`
+            : 'Franc CFA : aucun taux CHF → EUR enregistré, aucun prix en franc CFA n’est affichable.'}
+        </p>
       </section>
 
       {/* ── Catégories ───────────────────────────────────────────────── */}
@@ -432,25 +757,24 @@ export default function TarifsAdminPage() {
             </button>
             {ouverte && (
               <div id={idCorps} className="space-y-3 border-t border-gray-800 px-4 py-3">
-                {cat === 'avatar' && (
-                  <div className="space-y-2 rounded-lg border border-orange-500/20 bg-orange-500/5 p-3">
-                    <p className="text-xs text-orange-200/90">
-                      Tarifs proposés : {entrees.filter((e) => e.propose !== undefined).map((e) => `${e.libelle.split(' — ').pop()} ${e.propose}`).join(' · ')} crédits.
-                    </p>
-                    {avatarUniforme !== null && (
-                      <p className="text-xs text-gray-400">
-                        Actuellement {credits(avatarUniforme)} pour chaque moteur, tant que de nouveaux tarifs ne sont pas enregistrés.
+                {(() => {
+                  const aRelever = entrees.filter((e) => typeof grilleConseillee[e.cle] === 'number');
+                  if (aRelever.length === 0) return null;
+                  return (
+                    <div className="space-y-2 rounded-lg border border-orange-500/20 bg-orange-500/5 p-3" data-testid={`conseil-${cat}`}>
+                      <p className="text-xs text-orange-200/90">
+                        Sous le prix conseillé : {aRelever.map((e) => `${e.libelle} ${donnees.prix?.[e.cle] ?? e.defaut} → ${grilleConseillee[e.cle]}`).join(' · ')} crédits.
                       </p>
-                    )}
-                    <button
-                      type="button"
-                      onClick={appliquerProposes}
-                      className="flex items-center gap-1.5 rounded-lg border border-orange-500/40 px-3 py-1.5 text-xs font-semibold text-orange-300 hover:bg-orange-500/10"
-                    >
-                      <Sparkles size={14} /> Appliquer les tarifs proposés
-                    </button>
-                  </div>
-                )}
+                      <button
+                        type="button"
+                        onClick={() => appliquerConseilles(aRelever.map((e) => e.cle))}
+                        className="flex items-center gap-1.5 rounded-lg border border-orange-500/40 px-3 py-1.5 text-xs font-semibold text-orange-300 hover:bg-orange-500/10"
+                      >
+                        <Sparkles size={14} /> Appliquer les prix conseillés
+                      </button>
+                    </div>
+                  );
+                })()}
                 {entrees.map((e) => {
                   const erreur = erreurDe(e.cle);
                   const erreurC = erreurDe(champCout(e.cle));
@@ -518,6 +842,59 @@ export default function TarifsAdminPage() {
                           ≈ {chf(estimation.client)} client · marge ≈ <span className={estimation.marge < 0 ? 'text-red-400' : ''}>{chf(estimation.marge)}</span>
                         </p>
                       )}
+                      {(() => {
+                        const r = rentabiliteParCle.get(e.cle);
+                        if (!r) return null;
+                        const st = STYLE_VERDICT[r.verdict];
+                        /*
+                          Le verdict seul ne se vérifie pas : on affiche les
+                          QUATRE nombres qui le produisent. Chacun peut
+                          manquer, et dans ce cas on dit lequel — « inconnu »
+                          sans raison ne permet pas de corriger.
+                        */
+                        const manquantes = [
+                          donnees.valeurCreditChf === null ? 'valeur du crédit' : null,
+                          r.coutUsd === null && r.coutAdminChf === null ? 'coût fournisseur' : null,
+                          r.coutUsd !== null && r.coutUsd > 0 && r.coutAdminChf === null && !donnees.change ? 'taux USD → CHF' : null,
+                        ].filter(Boolean) as string[];
+                        return (
+                          <div className="space-y-1 text-xs" data-testid={`verdict-${e.cle}`}>
+                            <p className="flex flex-wrap items-center gap-2">
+                              <span className={`rounded-full border px-2 py-0.5 ${st.classe}`}>{st.texte}</span>
+                              {r.prixPlancherCredits !== null && (
+                                <span className="text-gray-400">plancher {r.prixPlancherCredits}{r.prixConseilleCredits !== null ? ` · conseillé ${r.prixConseilleCredits}` : ''}</span>
+                              )}
+                            </p>
+                            <dl className="flex flex-wrap gap-x-4 gap-y-0.5 text-gray-400">
+                              <span><dt className="inline text-gray-500">Crédits facturés :</dt>{' '}<dd className="inline">{r.prixCredits}</dd></span>
+                              <span>
+                                <dt className="inline text-gray-500">Coût fournisseur :</dt>{' '}
+                                <dd className="inline">{r.coutAdminChf !== null ? `${r.coutAdminChf} CHF (saisi)` : r.coutUsd === null ? 'non vérifié' : r.coutUsd === 0 ? 'aucun (rendu local)' : `${r.coutUsd} USD`}</dd>
+                              </span>
+                              <span>
+                                <dt className="inline text-gray-500">Prix de revient :</dt>{' '}
+                                <dd className="inline">{r.coutAdminChf !== null ? chf(r.coutAdminChf) : r.coutUsd !== null && donnees.change ? chf(Math.round(r.coutUsd * donnees.change.chfParUsd * 10000) / 10000) : 'incalculable'}</dd>
+                              </span>
+                              <span>
+                                <dt className="inline text-gray-500">Recette :</dt>{' '}
+                                <dd className="inline">{r.revenuChf === null ? 'incalculable' : chf(r.revenuChf)}</dd>
+                              </span>
+                              <span>
+                                <dt className="inline text-gray-500">Marge :</dt>{' '}
+                                <dd className={`inline ${typeof r.margeChf === 'number' && r.margeChf < 0 ? 'text-red-400' : ''}`}>
+                                  {r.margeChf === null ? 'inconnue' : chf(r.margeChf)}
+                                </dd>
+                              </span>
+                            </dl>
+                            {manquantes.length > 0 && (
+                              <p className="text-amber-400" data-testid={`manque-${e.cle}`}>
+                                Donnée{manquantes.length > 1 ? 's' : ''} manquante{manquantes.length > 1 ? 's' : ''} : {manquantes.join(', ')}.
+                              </p>
+                            )}
+                            <p className="text-gray-500">{r.motif}</p>
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })}

@@ -1212,7 +1212,9 @@
       "disconnectError": "Fehler beim Trennen"
     },
     "comingSoonHint": "{platform} ist demnächst verfügbar. Die Verbindung wird bald wieder möglich sein.",
-    "voie": { "zernio": "Ihr Konto" },
+    "voie": {
+      "zernio": "Ihr Konto"
+    },
     "zernio": {
       "coupeCircuit": "Das Veröffentlichen auf eigenen Konten ist vorübergehend deaktiviert.",
       "optionAbsente": "Aktivieren Sie die Option Veröffentlichung, um eigene Konten zu verbinden."
@@ -1673,5 +1675,49 @@
     "rate_limit": "Limit erreicht (20 Nachrichten/Stunde). Versuche es später erneut.",
     "close": "Schließen",
     "unauthorized": "Melde dich an, um den Assistenten zu nutzen."
+  },
+  "paiement": {
+    "titre": "Zahlungen und Guthaben",
+    "prix": "Preis",
+    "credits": "Guthaben",
+    "solde": "Kontostand",
+    "soldeAvant": "Stand davor",
+    "soldeApres": "Stand danach",
+    "soldeInsuffisant": "Nicht genügend Guthaben",
+    "manque": "Dir fehlen {count} Guthabenpunkte",
+    "recharger": "Aufladen",
+    "rechargeTitre": "Guthaben aufladen",
+    "rechargeSousTitre": "Gekauftes Guthaben verfällt nicht und kommt zum Guthaben deines Abos hinzu.",
+    "montant": "Betrag",
+    "devise": "Währung",
+    "frais": "Gebühren",
+    "aucunFrais": "Keine zusätzlichen Gebühren",
+    "tauxDu": "Kurs vom {date}",
+    "creditsAchetes": "{count} Guthabenpunkte gekauft",
+    "confirmerPaiement": "Zahlung bestätigen",
+    "paiementConfirme": "Zahlung bestätigt",
+    "paiementEnAttente": "Zahlung wartet auf Bestätigung",
+    "paiementEchoue": "Die Zahlung ist fehlgeschlagen. Es wurde kein Guthaben abgebucht.",
+    "abonnement": "Abonnement",
+    "formule": "Tarif",
+    "formuleActuelle": "Aktueller Tarif",
+    "changerFormule": "Tarif wechseln",
+    "annulerAbonnement": "Abonnement kündigen",
+    "renouvellement": "Verlängerung",
+    "creditsInclus": "{count} Guthabenpunkte inklusive",
+    "parMois": "pro Monat",
+    "gratuit": "Kostenlos",
+    "factures": "Rechnungen",
+    "historique": "Transaktionsverlauf",
+    "operationCout": "Dieser Vorgang kostet {count} Guthabenpunkte",
+    "operationGratuite": "Diese Aktion ist kostenlos",
+    "confirmerOperation": "Bestätigen und starten",
+    "types": {
+      "achat": "Guthabenkauf",
+      "abonnement": "Abo-Guthaben",
+      "rendu": "Generierung",
+      "remboursement": "Rückerstattung",
+      "bonus": "Bonus-Guthaben"
+    }
   }
 }

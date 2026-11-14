@@ -1,3 +1,9 @@
+// ⚠️ IDENTIFIANTS PUBLICS NEUTRES. Les listes de voix émettent `vp-` /
+// `va-` / `vn-` au lieu de `elevenlabs-` / `heygen-` / `openai-` : un
+// identifiant finit en `value=` d'une option, donc il ne doit pas nommer
+// le prestataire. Les chemins appelés par le navigateur sont neutres eux
+// aussi (`/api/voix/*`). `idVoixInterne` fait le pont avec l'ancienne
+// forme, qui reste valide pour toute sélection déjà enregistrée.
 /**
  * Voix-off — vitesse et dynamisme PAR SÉQUENCE.
  *
@@ -46,10 +52,10 @@ describe('14. réglage changé → audio signalé périmé, jamais remplacé', (
     expect(audioSequencePerime(sv({ reglages: { vitesse: 1.2, dynamisme: 0 }, reglagesAtGeneration: { vitesse: 1.1, dynamisme: 0 } }), 'v'))
       .toEqual({ perime: true, motif: 'reglages' });
     // Le dynamisme ne compte que pour une voix qui le prend en charge (ElevenLabs).
-    expect(audioSequencePerime(sv({ ttsVoice: 'elevenlabs-x', reglages: { vitesse: 1, dynamisme: 0.5 } }), 'elevenlabs-x').motif).toBe('reglages');
+    expect(audioSequencePerime(sv({ ttsVoice: 'vp-x', reglages: { vitesse: 1, dynamisme: 0.5 } }), 'vp-x').motif).toBe('reglages');
   });
   it('dynamisme changé sur une voix Edge / HeyGen / OpenAI : PAS périmé (faux positif corrigé)', () => {
-    for (const voix of ['v', 'fr-FR-DeniseNeural', 'heygen-abc', 'openai-nova']) {
+    for (const voix of ['v', 'fr-FR-DeniseNeural', 'va-abc', 'vn-nova']) {
       expect(audioSequencePerime(sv({ ttsVoice: voix, reglages: { vitesse: 1, dynamisme: 0.5 } }), voix)).toEqual({ perime: false, motif: null });
       // La vitesse, elle, compte pour toutes les voix.
       expect(audioSequencePerime(sv({ ttsVoice: voix, reglages: { vitesse: 1.1, dynamisme: 0.5 }, reglagesAtGeneration: { vitesse: 1, dynamisme: 0.5 } }), voix).motif).toBe('reglages');
@@ -78,7 +84,7 @@ describe('11-13. panneau : stocké PAR séquence, « appliquer à toutes »', ()
         onChange={onChange} onUserEditedChange={noop} onResetText={noop}
         introDuration={4} cardsDuration={6} videoDuration={4} ctaDuration={4}
         hasCardsContent hasVideoOverlay batchCount={1}
-        voiceId="elevenlabs-voixclonee01" onVoiceIdChange={noop}
+        voiceId="vp-voixclonee01" onVoiceIdChange={noop}
       />,
     );
     return onChange;
@@ -130,7 +136,7 @@ describe('11-13. panneau : stocké PAR séquence, « appliquer à toutes »', ()
 
   it('audio existant + vitesse changée : bandeau « Audio périmé » non tronqué, motif lisible, bouton Régénérer', async () => {
     const voices = emptySequenceVoices();
-    voices.titre = { ...voices.titre, text: 'Bonjour', textAtGeneration: 'Bonjour', audioUrl: 'https://x/a.mp3', source: 'tts', ttsVoice: 'elevenlabs-voixclonee01', reglages: { vitesse: 1.1, dynamisme: 0 } };
+    voices.titre = { ...voices.titre, text: 'Bonjour', textAtGeneration: 'Bonjour', audioUrl: 'https://x/a.mp3', source: 'tts', ttsVoice: 'vp-voixclonee01', reglages: { vitesse: 1.1, dynamisme: 0 } };
     await monter(voices);
     const bandeau = document.querySelector('[data-voice-stale="titre"]')!;
     expect(bandeau.getAttribute('data-voice-stale-motif')).toBe('reglages');
@@ -166,13 +172,13 @@ describe('15. client : chaque moteur reçoit le bon paramètre (fetch doublé, a
   it('Edge : rate « +10% »', async () => {
     const { synthesize } = await import('@/lib/tts/edge-tts-client');
     await synthesize('Bonjour', 'fr-FR-DeniseNeural', { reglages: R }).catch(() => { /* seule la requête envoyée compte ici */ });
-    expect(appels[0].url).toBe('/api/tts/edge');
+    expect(appels[0].url).toBe('/api/voix/standard');
     expect(appels[0].corps.rate).toBe('+10%');
   });
   it('ElevenLabs : les réglages partent au serveur', async () => {
     const { synthesize } = await import('@/lib/tts/edge-tts-client');
-    await synthesize('Bonjour', 'elevenlabs-voixclonee01', { reglages: R }).catch(() => { /* seule la requête envoyée compte ici */ });
-    expect(appels[0].url).toBe('/api/tts/elevenlabs');
+    await synthesize('Bonjour', 'vp-voixclonee01', { reglages: R }).catch(() => { /* seule la requête envoyée compte ici */ });
+    expect(appels[0].url).toBe('/api/voix/premium');
     expect(appels[0].corps.reglages).toEqual(R);
   });
   it('OpenAI : speed', async () => {
@@ -183,7 +189,7 @@ describe('15. client : chaque moteur reçoit le bon paramètre (fetch doublé, a
   });
   it('sans réglage : requêtes d’avant (aucun champ ajouté)', async () => {
     const { synthesize } = await import('@/lib/tts/edge-tts-client');
-    await synthesize('Bonjour', 'elevenlabs-voixclonee01').catch(() => { /* seule la requête envoyée compte ici */ });
-    expect(appels[0].corps).toEqual({ text: 'Bonjour', voice: 'elevenlabs-voixclonee01' });
+    await synthesize('Bonjour', 'vp-voixclonee01').catch(() => { /* seule la requête envoyée compte ici */ });
+    expect(appels[0].corps).toEqual({ text: 'Bonjour', voice: 'vp-voixclonee01' });
   });
 });

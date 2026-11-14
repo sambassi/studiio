@@ -66,6 +66,23 @@ const ROUTES = [
   { nom: '/api/cron/publish', charger: () => import('@/app/api/cron/publish/route') },
   { nom: '/api/cron/cleanup-media', charger: () => import('@/app/api/cron/cleanup-media/route') },
   { nom: '/api/cron/cleanup-db', charger: () => import('@/app/api/cron/cleanup-db/route') },
+  // Celui-ci déclenche des relectures de paiement et, le cas échéant, des
+  // crédits : il n'a rien à faire hors de cette liste.
+  //
+  // `env` : une fois authentifié, ce cron ne touche la base que si le paiement
+  // mobile est OUVERT — service fermé, il s'arrête avant, et c'est voulu. Sans
+  // ces variables, le cas « authentifié, donc il travaille » ne serait pas
+  // éprouvé du tout.
+  {
+    nom: '/api/cron/paiements-mobile-money',
+    charger: () => import('@/app/api/cron/paiements-mobile-money/route'),
+    env: {
+      MOBILE_MONEY_ACTIF: '1',
+      MOBILE_MONEY_SIMULE: '1',
+      MOBILE_MONEY_API_TOKEN: 'jeton-de-test',
+      MOBILE_MONEY_CALLBACK_URL: 'https://exemple.test/rappel',
+    },
+  },
 ] as const;
 
 function requete(nom: string, authorization?: string, query = ''): NextRequest {
@@ -109,10 +126,11 @@ describe.each(ROUTES)('$nom — secret absent : tout est refusé', ({ nom, charg
   }
 });
 
-describe.each(ROUTES)('$nom — secret configuré', ({ nom, charger }) => {
+describe.each(ROUTES)('$nom — secret configuré', ({ nom, charger, env }) => {
   const SECRET = 'secret-de-test-123';
   beforeEach(() => {
     vi.stubEnv('CRON_SECRET', SECRET);
+    for (const [k, v] of Object.entries(env ?? {})) vi.stubEnv(k, v);
   });
 
   // NB : un espace final serait retiré par `Headers` (normalisation HTTP),

@@ -12,7 +12,8 @@
     "test:contracts": "vitest run --config vitest.contracts.config.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:cinema": "vitest run --config vitest.cinema.config.ts"
+    "test:cinema": "vitest run --config vitest.cinema.config.ts",
+    "test:e2e:commerce": "playwright test --config playwright.commerce.config.ts"
   },
   "dependencies": {
     "@auth/supabase-adapter": "^1.0.0",

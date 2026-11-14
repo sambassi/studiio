@@ -31,6 +31,27 @@ vi.mock('@/lib/credits/system', () => ({
   deductCredits: (...a: unknown[]) => deductCreditsMock(...a),
 }));
 
+/**
+ * Stockage Studiio : les sorties des outils IA y sont rapatriées. Sans ce
+ * double, la route refuserait (502) au lieu de publier une URL Studiio — et
+ * c'est bien le comportement attendu, puisque l'URL du fournisseur ne doit
+ * plus sortir.
+ */
+const uploadMock = vi.fn(async () => ({ error: null }));
+const getPublicUrlMock = vi.fn((cle: string) => ({ data: { publicUrl: `https://studiio.test/storage/v1/object/public/media/${cle}` } }));
+vi.mock('@/lib/db/supabase', () => ({
+  supabaseAdmin: {
+    storage: {
+      from: () => ({
+        upload: (...a: unknown[]) => uploadMock(...(a as [])),
+        remove: async () => ({ error: null }),
+        getPublicUrl: (cle: string) => getPublicUrlMock(cle),
+      }),
+    },
+  },
+  supabase: {},
+}));
+
 vi.mock('@/lib/service-alerts', () => ({
   detectAndReportServiceError: (...a: unknown[]) => alertMock(...a),
   // Le 503 « non configuré » alerte l'administrateur (nom de la variable).
@@ -166,7 +187,8 @@ describe('Garde-fous de la route (partages par tous les outils)', () => {
     const { status, body } = await post({ action: 'ocr', imageUrl: 'https://cdn.test/a.png' });
 
     expect(status).toBe(503);
-    expect(body.error).toContain('non configuré');
+    // Neutre : « images IA », pas le nom du prestataire.
+    expect(body.error).toContain('n’est pas configuré');
     expect(runMock).not.toHaveBeenCalled();
   });
 
@@ -201,19 +223,52 @@ describe('Garde-fous de la route (partages par tous les outils)', () => {
 });
 
 describe('Non-regression — le chemin image des autres outils est inchange', () => {
-  /** FileOutput du SDK Replicate 1.x : `url` est une METHODE. */
-  const fileOutput = (u: string) => ({ url: () => new URL(u) });
+  /** PNG minimal : les octets de tête suffisent à la détection de signature. */
+  const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, ...Array(32).fill(0)]);
 
-  it('remove-bg renvoie toujours une URL d\'image, jamais du texte', async () => {
+  /**
+   * FileOutput du SDK Replicate 1.x : `url` est une MÉTHODE, et le flux est
+   * lisible. La route lit les OCTETS et ne sert plus jamais l'URL amont.
+   */
+  const fileOutput = (u: string, octets: Uint8Array = PNG) => ({
+    url: () => new URL(u),
+    blob: async () => ({ size: octets.length, arrayBuffer: async () => octets.buffer }),
+  });
+
+  it('⚠️ remove-bg renvoie une URL STUDIIO, jamais celle du fournisseur', async () => {
     runMock.mockResolvedValue(fileOutput('https://replicate.delivery/out.png'));
 
     const { status, body } = await post({ action: 'remove-bg', imageUrl: 'https://cdn.test/a.png' });
 
     expect(status).toBe(200);
-    expect(body.resultUrl).toBe('https://replicate.delivery/out.png');
+    expect(String(body.resultUrl)).toContain('studiio.test');
+    expect(String(body.resultUrl)).not.toContain('replicate');
     expect(body.text).toBeUndefined();
     expect(body.empty).toBeUndefined();
     expect(deductCreditsMock).toHaveBeenCalledWith('user-1', 2, 'ai-remove-bg');
+    // Les octets sont bien passés par NOTRE stockage.
+    expect(uploadMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('un résultat qui n’est pas un média valide est refusé, et rien n’est débité', async () => {
+    const html = new Uint8Array([...'<!DOCTYPE html>'].map((c) => c.charCodeAt(0)));
+    runMock.mockResolvedValue(fileOutput('https://replicate.delivery/err.html', html));
+
+    const { status, body } = await post({ action: 'remove-bg', imageUrl: 'https://cdn.test/a.png' });
+
+    expect(status).toBe(502);
+    expect(String(body.error)).not.toContain('replicate');
+    expect(deductCreditsMock).not.toHaveBeenCalled();
+  });
+
+  it('un stockage en panne refuse l’opération AVANT le débit', async () => {
+    uploadMock.mockResolvedValueOnce({ error: { message: 'disque plein' } } as never);
+    runMock.mockResolvedValue(fileOutput('https://replicate.delivery/out.png'));
+
+    const { status } = await post({ action: 'remove-bg', imageUrl: 'https://cdn.test/a.png' });
+
+    expect(status).toBe(502);
+    expect(deductCreditsMock).not.toHaveBeenCalled();
   });
 
   it('remove-bg garde son modele (avec hash) et son champ d\'entree', async () => {
@@ -248,12 +303,13 @@ describe('Non-regression — le chemin image des autres outils est inchange', ()
     expect(deductCreditsMock).not.toHaveBeenCalled();
   });
 
-  it('upscale garde son cout et son chemin image', async () => {
+  it('upscale garde son cout, et publie aussi une URL Studiio', async () => {
     runMock.mockResolvedValue(fileOutput('https://replicate.delivery/big.png'));
 
     const { body } = await post({ action: 'upscale', imageUrl: 'https://cdn.test/a.png' });
 
-    expect(body.resultUrl).toBe('https://replicate.delivery/big.png');
+    expect(String(body.resultUrl)).toContain('studiio.test');
+    expect(String(body.resultUrl)).not.toContain('replicate');
     expect(deductCreditsMock).toHaveBeenCalledWith('user-1', 3, 'ai-upscale');
   });
 

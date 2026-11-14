@@ -1,3 +1,6 @@
+// ⚠️ Le navigateur appelle `/api/photos`, alias neutre de la route
+// historique : le nom de la banque ne doit pas figurer dans l'URL. Son
+// ATTRIBUTION, elle, reste affichée avec chaque photo.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, cleanup, fireEvent, waitFor, act } from '@testing-library/react';
 
@@ -79,7 +82,7 @@ function stubApi() {
   vi.stubGlobal('fetch', vi.fn(async (url: unknown, init?: RequestInit) => {
     const u = String(url);
     const json = (body: unknown) => ({ ok: true, status: 200, json: async () => body } as unknown as Response);
-    if (u.startsWith('/api/pexels')) return json({ success: true, photos: [] });
+    if (u.startsWith('/api/photos')) return json({ success: true, photos: [] });
     if (u.startsWith('/api/autopilot/config')) {
       return json({ success: true, ready: true, brandingReady: true, styleReady: true, config: DEFAULT_CONFIG });
     }

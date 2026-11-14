@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth/config';
+import { MESSAGE_IA_NON_CONFIGUREE, MESSAGE_IA_INDISPONIBLE } from '@/lib/fournisseurs/messages-neutres';
 import { shortenForCard } from '@/lib/smart-content';
 import { briefPourPrompt } from '@/lib/creer/brief';
 import { detectAndReportServiceError } from '@/lib/service-alerts';
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       console.error('[AI-Generate] ANTHROPIC_API_KEY not set');
-      return NextResponse.json({ success: false, error: 'Anthropic API not configured' }, { status: 500 });
+      return NextResponse.json({ success: false, error: MESSAGE_IA_NON_CONFIGUREE }, { status: 500 });
     }
 
     const body = await req.json().catch(() => ({}));
@@ -96,7 +97,7 @@ export async function POST(req: NextRequest) {
         }, { status: 502 });
       }
       console.error('[AI-Generate] field call threw:', fieldType, issue.detail);
-      return NextResponse.json({ success: false, error: issue.detail }, { status: 500 });
+      return NextResponse.json({ success: false, error: MESSAGE_IA_INDISPONIBLE }, { status: 500 });
     }
 
     // Mode "video overlay only" — generate just a short overlay text for the video

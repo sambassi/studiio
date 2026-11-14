@@ -8,6 +8,9 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Loader2, Zap } from 'lucide-react';
 import { useTranslations } from '@/i18n/client';
+import { BandeauDemo } from '@/components/ui/BandeauDemo';
+import { libelleTransaction, montantAffiche, sensTransaction } from '@/lib/credits/libelles-transaction';
+import { MobileMoneyRecharge } from '@/components/billing/MobileMoneyRecharge';
 
 interface SubscriptionInfo {
   plan: string;
@@ -26,11 +29,20 @@ export function BillingContent() {
   const t = useTranslations('billing');
   const tc = useTranslations('common');
   const [loadingPortal, setLoadingPortal] = useState(false);
+  const [erreurPortail, setErreurPortail] = useState<string | null>(null);
   const [credits, setCredits] = useState<number | null>(null);
   const [libelleFacturation, setLibelleFacturation] = useState<string | null>(null);
   const [sub, setSub] = useState<SubscriptionInfo | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [showBuy, setShowBuy] = useState(false);
+  // Les packs servent AUSSI au paiement mobile : même source, mêmes prix.
+  const [packs, setPacks] = useState<Array<{ key: string; name: string; amount: number; price_cents: number; active?: boolean }>>([]);
+  useEffect(() => {
+    fetch('/api/pricing', { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (Array.isArray(j?.packs)) setPacks(j.packs); })
+      .catch(() => { /* le bloc Mobile Money reste simplement absent */ });
+  }, []);
 
   useEffect(() => {
     fetch('/api/credits/balance').then(r => r.json()).then(d => {
@@ -48,10 +60,11 @@ export function BillingContent() {
     try {
       const res = await fetch('/api/stripe/create-portal', { method: 'POST' });
       const data = await res.json();
-      if (data.url) window.location.href = data.url;
-      else alert(data.error || 'Erreur');
+      if (data.url) { window.location.href = data.url; return; }
+      // Le message s'affiche DANS Studiio, pas dans une fenêtre du navigateur.
+      setErreurPortail(data.error || 'La gestion de l’abonnement est momentanément indisponible.');
     } catch {
-      alert('Erreur de connexion');
+      setErreurPortail('La gestion de l’abonnement est momentanément indisponible.');
     } finally {
       setLoadingPortal(false);
     }
@@ -63,8 +76,12 @@ export function BillingContent() {
     : '—';
 
   return (
-    <div className="space-y-6">
-      <div className="grid md:grid-cols-3 gap-6">
+    <div className="space-y-5">
+      {/* Solde, abonnement et transactions viennent VRAIMENT de la base : le
+          bandeau n'apparaît que si cette base est un double de
+          prévisualisation. Absent en production. */}
+      <BandeauDemo />
+      <div className="grid md:grid-cols-3 gap-5">
         <Card className="md:col-span-1">
           <CardHeader className="border-b border-gray-800">
             <CardTitle>Crédits</CardTitle>
@@ -115,9 +132,19 @@ export function BillingContent() {
             >
               {loadingPortal ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />{tc('loading')}</> : 'Gérer l\'abonnement'}
             </Button>
+            {erreurPortail && (
+              <p role="alert" data-testid="erreur-portail"
+                className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                {erreurPortail}
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
+
+      {/* Moyen de paiement COMPLÉMENTAIRE : il ne remplace pas la carte, et
+          il n'apparaît que si le serveur le déclare ouvert. */}
+      <MobileMoneyRecharge packs={packs} />
 
       <Card>
         <CardHeader className="border-b border-gray-800">
@@ -137,15 +164,26 @@ export function BillingContent() {
                 {transactions.length === 0 && (
                   <tr><td colSpan={3} className="py-6 text-center text-gray-500">Aucune transaction</td></tr>
                 )}
-                {transactions.map((tx) => (
-                  <tr key={tx.id} className="border-b border-gray-800 last:border-0">
-                    <td className="py-3 text-gray-300">{new Date(tx.created_at).toLocaleDateString('fr-FR')}</td>
-                    <td className="py-3 text-gray-300">{tx.type}</td>
-                    <td className={`text-right py-3 font-semibold ${tx.amount > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                      {tx.amount > 0 ? '+' : ''}{tx.amount}
-                    </td>
-                  </tr>
-                ))}
+                {/*
+                  ⚠️ LE SIGNE NE VIENT PLUS DE LA COLONNE. `amount` porte deux
+                  conventions selon l'appelant : une génération de 40 crédits
+                  pouvait y être stockée en positif et s'affichait donc
+                  « +40 » en vert, comme un achat. Le sens est porté par le
+                  TYPE (`lib/credits/libelles-transaction`), et c'est la même
+                  lecture que le bilan administrateur.
+                */}
+                {transactions.map((tx) => {
+                  const debit = sensTransaction(tx.type) === 'debit';
+                  return (
+                    <tr key={tx.id} className="border-b border-gray-800 last:border-0" data-testid={`transaction-${tx.id}`}>
+                      <td className="py-3 text-gray-300">{new Date(tx.created_at).toLocaleDateString('fr-FR')}</td>
+                      <td className="py-3 text-gray-300">{libelleTransaction(tx.type)}</td>
+                      <td className={`text-right py-3 font-semibold ${debit ? 'text-red-400' : 'text-green-400'}`}>
+                        {montantAffiche(tx.type, tx.amount)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -154,7 +192,12 @@ export function BillingContent() {
 
       <div>
         <h2 className="text-2xl font-bold text-white mb-6">{t('changePlan')}</h2>
-        <PricingCards />
+        {/* ⚠️ UNE SEULE SOURCE pour « Plan actuel ». La carte lisait le plan
+            de la SESSION pendant que l'encadré ci-dessus lisait l'abonnement
+            en base : le compte s'affichait « Free » tout en voyant « Plan
+            actuel » sur Pro. L'abonnement en base fait foi — un jeton de
+            session peut être périmé, pas la table de facturation. */}
+        <PricingCards planActuel={planName} />
       </div>
 
       <BuyCreditsModal isOpen={showBuy} onClose={() => setShowBuy(false)} />
