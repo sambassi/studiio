@@ -1311,7 +1311,7 @@ export default function AvatarPage() {
       <div className="space-y-3">
         <div className="text-xs text-gray-300" data-avatar-actif-meta>
           {/* VERSION ≠ QUALITÉ : « v3 » numérote l'avatar ; la qualité se choisit à la génération. */}
-          {avatar.version ? `Version v${avatar.version}` : ''} · Prêt · {avatar.avatar_type === 'video' ? tUi('avatar_video') : 'Avatar photo'}
+          {avatar.version ? `Version v${avatar.version}` : ''} {tUi('pret')} {avatar.avatar_type === 'video' ? tUi('avatar_video') : 'Avatar photo'}
         </div>
         <p className="text-sm text-gray-300">{tUi('cet_avatar_est_celui_utilise_dans_cree')}</p>
       </div>
@@ -1333,7 +1333,7 @@ export default function AvatarPage() {
         <details data-avatar-source-section className="rounded-lg border border-gray-800 bg-gray-950/50">
           <summary className="cursor-pointer px-3 py-2 text-xs text-gray-300 hover:text-white">{TITRE_SOURCE_AVATAR}</summary>
           <div className="p-3 space-y-2">
-            <p className="text-xs text-gray-300">Cette {avatar.avatar_type === 'video' ? tUi('video') : 'photo'} a servi à créer votre avatar.</p>
+            <p className="text-xs text-gray-300">Cette {avatar.avatar_type === 'video' ? tUi('video') : 'photo'} {tUi('a_servi_a_creer_votre_avatar')}</p>
             <div className="w-28 rounded-lg overflow-hidden bg-black" style={{ aspectRatio: avatar.avatar_type === 'video' ? '9 / 16' : '1 / 1' }}>{mediaSource}</div>
           </div>
         </details>
@@ -1419,7 +1419,7 @@ export default function AvatarPage() {
                   <li>{tUi('parlez_naturellement_regardez_regulier')}</li>
                   <li>{tUi('lumiere_stable_visage_bien_visible')}</li>
                   <li>{tUi('evitez_le_montage_et_les_coupures_rapi')}</li>
-                  <li>MP4 ou MOV, <span className="text-gray-100">{MAX_VIDEO_DID_MB} Mo maximum</span>.</li>
+                  <li>{tUi('mp4_ou_mov')} <span className="text-gray-100">{MAX_VIDEO_DID_MB} Mo maximum</span>.</li>
                 </ul>
               )}
             </Consigne>
@@ -1628,7 +1628,7 @@ export default function AvatarPage() {
                     className="text-xs text-red-300 hover:text-red-200 flex items-center gap-1.5 disabled:opacity-40"
                   >
                     {suppressionEnCours ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                    Confirmer la suppression
+                    {tUi('confirmer_la_suppression')}
                   </button>
                 ) : (
                   <button
@@ -1729,7 +1729,7 @@ export default function AvatarPage() {
                           const ok = voixSelectionnable(v);
                           return (
                             <option key={v.id} value={`${PREFIXE_VOIX_CLONEE}${v.id}`} disabled={!ok && voiceId !== `${PREFIXE_VOIX_CLONEE}${v.id}`} data-voix-clonee={v.id}>
-                              {v.nom} — Voix clonée{ok ? '' : v.utilisable ? ' (moteur indisponible)' : ' (pas prête)'}
+                              {v.nom} {tUi('voix_clonee')}{ok ? '' : v.utilisable ? ' (moteur indisponible)' : ' (pas prête)'}
                             </option>
                           );
                         })}
@@ -1813,10 +1813,10 @@ export default function AvatarPage() {
               {devisAdmin && (
                 <div data-avatar-cout-fournisseur={devisAdmin.moteur ?? ''} className="rounded-lg border border-gray-800 bg-gray-900/60 px-3 py-2 text-[11px] text-gray-300 space-y-0.5">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{tUi('cout_fournisseur_estime_admin')}</p>
-                  <p data-avatar-cout-ligne="moteur">HeyGen — {LIBELLE_MOTEUR_DEVIS[devisAdmin.moteur ?? ''] ?? devisAdmin.moteur} · durée estimée {libelleDuree(devisAdmin.dureeSecondes)}</p>
+                  <p data-avatar-cout-ligne="moteur">HeyGen — {LIBELLE_MOTEUR_DEVIS[devisAdmin.moteur ?? ''] ?? devisAdmin.moteur} {tUi('duree_estimee')} {libelleDuree(devisAdmin.dureeSecondes)}</p>
                   <p data-avatar-cout-ligne="cout">
                     {devisAdmin.tarifUsdParSeconde !== null ? `${devisAdmin.tarifUsdParSeconde.toLocaleString('fr-FR', { maximumFractionDigits: 4 })} $ / s · ` : ''}
-                    {devisAdmin.coutUsd ? `coût ${libelleCoutUsd(devisAdmin.coutUsd)}` : tUi('cout_fournisseur_exact_non_disponible')} · crédits Studiio : 0
+                    {devisAdmin.coutUsd ? `coût ${libelleCoutUsd(devisAdmin.coutUsd)}` : tUi('cout_fournisseur_exact_non_disponible')} {tUi('credits_studiio_0')}
                   </p>
                 </div>
               )}
@@ -1894,7 +1894,7 @@ export default function AvatarPage() {
               {/* Format ≠ orientation de l'avatar : dit, sous le bouton (le bouton reste à l'écran). */}
               {orientationAvatar && orientationAvatar !== (ratio === '9:16' ? 'portrait' : ratio === '16:9' ? 'landscape' : 'square') && (
                 <p data-avatar-recadrage className="text-[11px] text-gray-400">
-                  Avatar créé en {orientationAvatar === 'landscape' ? 'paysage' : orientationAvatar === 'portrait' ? 'portrait' : tUi('carre')} : en {ratio}, l’image est recadrée pour remplir tout le cadre — sans bandes ni déformation. Pour un {ratio} au cadrage de votre choix, remplacez l’avatar par une vidéo cadrée en {ratio}.
+                  {tUi('avatar_cree_en')} {orientationAvatar === 'landscape' ? 'paysage' : orientationAvatar === 'portrait' ? 'portrait' : tUi('carre')} : en {ratio}{tUi('l_image_est_recadree_pour_remplir_tout')} {ratio} {tUi('au_cadrage_de_votre_choix_remplacez_l')} {ratio}.
                 </p>
               )}
               {videoUrl && (

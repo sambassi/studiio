@@ -217,7 +217,7 @@ export default function StockRechercheAutopilote({
           data-autopilot-stock-lancer={ident}
           className="shrink-0 flex items-center gap-1 rounded border border-gray-800 px-2 py-1 text-[10px] text-gray-300 hover:text-white disabled:opacity-40"
         >
-          {enCours ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />} Rechercher
+          {enCours ? <Loader2 className="w-3 h-3 animate-spin" /> : <Search className="w-3 h-3" />} {tUi('rechercher')}
         </button>
       </form>
       {message && (

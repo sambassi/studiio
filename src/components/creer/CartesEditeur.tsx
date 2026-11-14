@@ -201,7 +201,7 @@ export default function CartesEditeur({
           )}
           <div className="grid grid-cols-[1fr_auto] gap-2">
             <label className="block min-w-0">
-              <span className="sr-only">Titre de la carte {i + 1}</span>
+              <span className="sr-only">{tUi('titre_de_la_carte')} {i + 1}</span>
               <input
                 type="text"
                 data-carte-champ="title"
@@ -213,7 +213,7 @@ export default function CartesEditeur({
               />
             </label>
             <label className="block w-24">
-              <span className="sr-only">Valeur de la carte {i + 1}</span>
+              <span className="sr-only">{tUi('valeur_de_la_carte')} {i + 1}</span>
               <input
                 type="text"
                 data-carte-champ="value"
@@ -227,7 +227,7 @@ export default function CartesEditeur({
             </label>
           </div>
           <label className="block">
-            <span className="sr-only">Description de la carte {i + 1}</span>
+            <span className="sr-only">{tUi('description_de_la_carte')} {i + 1}</span>
             <textarea
               data-carte-champ="description"
               value={c.description}
@@ -327,7 +327,7 @@ export default function CartesEditeur({
       )}
       {onAdd && !canAdd && (
         <p className="text-center text-[11px] text-gray-500" data-carte-maximum>
-          Maximum de {max ?? cards.length} cartes atteint dans ce format.
+          Maximum de {max ?? cards.length} {tUi('cartes_atteint_dans_ce_format')}
         </p>
       )}
     </div>

@@ -204,10 +204,10 @@ export default function PassagesSuggeres({ analyseId, montage, onVideoLancee }: 
         <h4 className="text-[10px] uppercase tracking-wide text-gray-500">
           {/* Le compte est l'information utile : « analyse terminée » ne dit
               pas s'il y a de quoi monter une vidéo. */}
-          Passages suggérés
+          {tUi('passages_suggeres')}
           {candidats.length > 0 && (
             <span className="ml-1 text-gray-400" data-passages-compte>
-              · {candidats.length} trouvé{candidats.length > 1 ? 's' : ''}
+              · {candidats.length} {tUi('trouve')}{candidats.length > 1 ? 's' : ''}
             </span>
           )}
         </h4>

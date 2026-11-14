@@ -31,7 +31,7 @@ export function ConfirmationCoutFournisseur({ devis, contexte, onChoix }: {
       <div data-confirmation-cout={devis.operation} className="space-y-4 text-sm">
         {existant && (
           <p data-avatar-existant className="rounded-md border border-gray-700 px-3 py-2 text-gray-200">
-            Un avatar existant est déjà disponible{existant.nom ? ` : ${existant.nom}` : ''} (version {existant.version}).
+            {tUi('un_avatar_existant_est_deja_disponible')}{existant.nom ? ` : ${existant.nom}` : ''} (version {existant.version}).
           </p>
         )}
         <dl className="grid gap-x-4 gap-y-1.5" style={{ gridTemplateColumns: 'auto 1fr' }}>

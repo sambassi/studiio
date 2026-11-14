@@ -163,6 +163,7 @@ export default function ApercuExemple({ exemple, format, surRevenir, surAgrandir
  * (mesure le 2026-10-28). Sortir du contexte est la seule correction qui tienne.
  */
 export function FenetreExemple({ exemple, surFermer }: { exemple: Exemple; surFermer: () => void }) {
+  const tUi = useTranslations('ui.componentsCinemaApercuExemple');
   const v = vueExemple(exemple);
 
   useEffect(() => {
@@ -190,7 +191,7 @@ export function FenetreExemple({ exemple, surFermer }: { exemple: Exemple; surFe
         />
       </div>
       <p className="max-w-3xl text-center text-[11px] text-slate-400">
-        {v.titre} — {v.sousTitre} {v.mention} Image : {v.credit.auteur} ({v.credit.source}). Echap pour revenir.
+        {v.titre} — {v.sousTitre} {v.mention} {tUi('image')} {v.credit.auteur} ({v.credit.source}{tUi('echap_pour_revenir')}
       </p>
     </div>,
     document.body,

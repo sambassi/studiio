@@ -65,7 +65,7 @@ export function ExportBar({
             ) : (
               <Download size={16} />
             )}
-            Télécharger
+            {tUi('telecharger')}
           </button>
         </div>
       </div>

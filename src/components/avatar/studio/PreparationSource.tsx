@@ -511,7 +511,7 @@ export default function PreparationSource(props: {
                 })}
               </div>
               <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-300">
-                <span data-preparation-coupe>Début {formaterDuree(debutS)} · Fin {formaterDuree(finS)} · <strong className="text-white">{formaterDuree(dureeRetenue)}</strong> retenues</span>
+                <span data-preparation-coupe>{tUi('debut')} {formaterDuree(debutS)} · Fin {formaterDuree(finS)} · <strong className="text-white">{formaterDuree(dureeRetenue)}</strong> retenues</span>
                 <span className="text-gray-500">Position {formaterDuree(temps)}</span>
               </div>
               {coupeInvalide && (
@@ -539,7 +539,7 @@ export default function PreparationSource(props: {
               </label>
               {amelioration.active && (
                 <p data-preparation-reglages-auto className="text-xs text-gray-400">
-                  Lumière {amelioration.luminosite >= 0 ? '+' : ''}{Math.round(amelioration.luminosite * 100)} · Contraste {Math.round((amelioration.contraste - 1) * 100)} % · Netteté {amelioration.nettete > 0 ? tUi('legere') : tUi('inchangee')}{amelioration.debruitage ? ' · Grain réduit' : ''}
+                  {tUi('lumiere')} {amelioration.luminosite >= 0 ? '+' : ''}{Math.round(amelioration.luminosite * 100)} · Contraste {Math.round((amelioration.contraste - 1) * 100)} {tUi('nettete')} {amelioration.nettete > 0 ? tUi('legere') : tUi('inchangee')}{amelioration.debruitage ? ' · Grain réduit' : ''}
                 </p>
               )}
               <p className="text-xs text-gray-500">{tUi('corrections_naturelles_lumiere_contras')}</p>
@@ -621,7 +621,7 @@ export default function PreparationSource(props: {
               <button type="button" role="radio" aria-checked={voirOriginal} data-preparation-voir="original" onClick={() => setVoirOriginal(true)} className={`rounded-lg py-1.5 text-xs ${voirOriginal ? 'bg-studiio-primary text-white' : 'text-gray-300'}`}>Avant — voir l’original</button>
               <button type="button" role="radio" aria-checked={!voirOriginal} data-preparation-voir="preparee" onClick={() => setVoirOriginal(false)} className={`rounded-lg py-1.5 text-xs ${!voirOriginal ? 'bg-studiio-primary text-white' : 'text-gray-300'}`}>{tUi('apres_version_preparee')}</button>
             </div>
-            <p className="text-xs text-gray-500" data-preparation-embellissement-applique>Lissage : {libelleLissage(resultat.parametres?.amelioration?.lissage ?? amelioration.lissage ?? 0)}. Votre vidéo d’origine est conservée telle quelle.</p>
+            <p className="text-xs text-gray-500" data-preparation-embellissement-applique>Lissage : {libelleLissage(resultat.parametres?.amelioration?.lissage ?? amelioration.lissage ?? 0)}{tUi('votre_video_d_origine_est_conservee_te')}</p>
             <div className="grid grid-cols-2 gap-3">
               <button type="button" data-preparation-modifier onClick={() => setEtape('edition')} className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gray-800 py-3 text-sm"><ArrowLeft className="w-4 h-4" /> {tUi('modifier')}</button>
               <button type="button" data-preparation-utiliser onClick={utiliser} disabled={!resultat.preflight.ok} className="button-primary inline-flex items-center justify-center gap-1.5 py-3 text-sm disabled:opacity-40"><Check className="w-4 h-4" /> {tUi('utiliser_cette_video')}</button>

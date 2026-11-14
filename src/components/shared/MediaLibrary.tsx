@@ -392,7 +392,7 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
         <div className="mx-5 mt-3 flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2">
           <Clock size={14} className="text-amber-400 mt-0.5 flex-shrink-0" />
           <p className="text-[11px] text-amber-300/90 leading-relaxed">
-            Vidéos conservées <strong>24h</strong> · Audio et images conservés <strong>7 jours</strong> · Fichiers liés à un post programmé : conservés jusqu'à publication
+            {tUi('videos_conservees')} <strong>24h</strong> {tUi('audio_et_images_conserves')} <strong>7 jours</strong> {tUi('fichiers_lies_a_un_post_programme_cons')}
           </p>
         </div>
 
@@ -500,7 +500,7 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
             {echecs > 0 && !uploading && (
               <div className="mt-2 flex items-center justify-between gap-2">
                 <span className="text-[11px] text-amber-400">
-                  {echecs} fichier{echecs > 1 ? 's' : ''} non envoyé{echecs > 1 ? 's' : ''} — les autres sont bien ajoutés.
+                  {echecs} fichier{echecs > 1 ? 's' : ''} {tUi('non_envoye')}{echecs > 1 ? 's' : ''} {tUi('les_autres_sont_bien_ajoutes')}
                 </span>
                 {envoi.progression.echecs > 0 && (
                   <button
@@ -636,7 +636,7 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
               className={`flex items-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-700 px-3 py-2 text-xs font-semibold text-white ${ETAT_INTERACTIF_SANS_FOND}`}
             >
               {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-              Supprimer
+              {tUi('supprimer')}
             </button>
           </div>
         )}

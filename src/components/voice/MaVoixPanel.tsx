@@ -321,7 +321,7 @@ export default function MaVoixPanel() {
               <option value="">{tUi('choisir')}</option>
               {profil.voix.map((v) => (
                 <option key={v.id} value={v.id} disabled={!v.utilisable}>
-                  Ma voix — {v.nom}{v.utilisable ? '' : ' (inutilisable)'}
+                  {tUi('ma_voix')} {v.nom}{v.utilisable ? '' : ' (inutilisable)'}
                 </option>
               ))}
             </select>
@@ -389,11 +389,11 @@ export default function MaVoixPanel() {
             )}
             <span className="flex flex-wrap gap-2">
               <button type="button" data-prononciation-suggerer onClick={() => void suggerer()} disabled={suggestionEnCours || !brouillon.affiche.trim()} className="text-gray-300 hover:text-white flex items-center gap-1 text-sm disabled:opacity-40">
-                {suggestionEnCours ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />} Suggérer
+                {suggestionEnCours ? <Loader2 className="w-4 h-4 animate-spin" /> : <Wand2 className="w-4 h-4" />} {tUi('suggerer')}
               </button>
               {profil.ecouteDisponible && (
                 <button type="button" data-prononciation-brouillon-ecouter onClick={() => void ecouterBrouillon()} disabled={ecouteBrouillonEnCours || ligneEnCours !== null || !brouillon.affiche.trim() || !brouillon.prononce.trim()} className="text-gray-300 hover:text-white flex items-center gap-1 text-sm disabled:opacity-40">
-                  {ecouteBrouillonEnCours ? <Loader2 className="w-4 h-4 animate-spin" /> : <Volume2 className="w-4 h-4" />} Écouter
+                  {ecouteBrouillonEnCours ? <Loader2 className="w-4 h-4 animate-spin" /> : <Volume2 className="w-4 h-4" />} {tUi('ecouter')}
                 </button>
               )}
               <button data-prononciation-valider onClick={() => void validerBrouillon()} disabled={prononciationIdentique(brouillon.affiche, brouillon.prononce)} className="button-primary flex items-center gap-1 text-sm disabled:opacity-40"><Check className="w-4 h-4" /> {tUi('enregistrer')}</button>
@@ -438,7 +438,7 @@ export default function MaVoixPanel() {
               <div data-preecoute-trop-long className="text-xs text-amber-200">{tUi('le_texte_prononce_depasse_la_pre_ecout')}</div>
             )}
             <button data-ecouter onClick={() => void ecouter()} disabled={ecouteEnCours || !texte.trim() || spokenTropLong} className="button-primary flex items-center gap-2 disabled:opacity-40">
-              {ecouteEnCours ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />} Écouter ma voix
+              {ecouteEnCours ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />} {tUi('ecouter_ma_voix')}
             </button>
             {audioUrl && (
               <div className="space-y-1">

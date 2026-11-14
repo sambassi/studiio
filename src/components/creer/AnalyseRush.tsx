@@ -316,7 +316,7 @@ export default function AnalyseRush({ rushId, montage, onVideoLancee }: Props) {
           </p>
           {refus.retryApresSecondes !== null && (
             <p className="text-[10px] text-gray-500" data-analyse-retry={refus.retryApresSecondes}>
-              Le serveur suggère de revenir dans {Math.max(1, Math.round(refus.retryApresSecondes / 60))} min.
+              {tUi('le_serveur_suggere_de_revenir_dans')} {Math.max(1, Math.round(refus.retryApresSecondes / 60))} min.
             </p>
           )}
           {refus.relancable && boutonAnalyse('Réessayer', true)}

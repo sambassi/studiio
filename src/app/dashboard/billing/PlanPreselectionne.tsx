@@ -71,7 +71,7 @@ export function PlanPreselectionne({ plan, billing }: { plan: PlanPayant; billin
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-white">{resume.nom}</h1>
-            <p className="text-xs text-gray-400">{credits.toLocaleString()} crédits / mois</p>
+            <p className="text-xs text-gray-400">{credits.toLocaleString()} {tUi('credits_mois')}</p>
           </div>
           <div className="text-right">
             <span className="text-3xl font-black text-white">{centimesEnFrancs(prix)} CHF</span>
@@ -113,7 +113,7 @@ export function PlanPreselectionne({ plan, billing }: { plan: PlanPayant; billin
           className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-violet-600 to-pink-600 hover:from-violet-500 hover:to-pink-500 text-white font-bold py-3 rounded-xl transition disabled:opacity-50"
         >
           {loading && <Loader2 size={18} className="animate-spin" />}
-          Continuer vers le paiement
+          {tUi('continuer_vers_le_paiement')}
         </button>
       </div>
 

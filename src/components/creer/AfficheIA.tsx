@@ -197,7 +197,7 @@ export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16'
           faire en silence. */}
       {!prompt.trim() && suggestion.trim() && (
         <p className="text-[11px] text-gray-500" data-affiche-ia-theme-utilise>
-          Champ vide : le thème « {suggestion.trim()} » sera utilisé comme description.
+          {tUi('champ_vide_le_theme')} {suggestion.trim()} {tUi('sera_utilise_comme_description')}
         </p>
       )}
 
@@ -222,7 +222,7 @@ export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16'
         <div className="flex items-center gap-2 text-[11px] text-gray-400" data-affiche-ia-reference-ok>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={referenceUrl ?? ''} alt={tUi('reference')} className="h-8 w-8 rounded object-cover border border-gray-700" />
-          Référence : votre photo actuelle.
+          {tUi('reference_votre_photo_actuelle')}
         </div>
       )}
 
@@ -240,7 +240,7 @@ export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16'
           {etat.statut === 'generation' ? tUi('generation') : url ? tUi('regenerer') : tUi('generer')}
         </button>
         <span className="text-[11px] text-gray-500">
-          {libelleCredits(prix['ai.generate_background'])} par image
+          {libelleCredits(prix['ai.generate_background'])} {tUi('par_image')}
           {creditsRemaining !== undefined && (
             <span data-affiche-ia-credits-restants> · {creditsRemaining} restants</span>
           )}

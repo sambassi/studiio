@@ -71,7 +71,7 @@ export default function AudioCompletSection({ disponible }: { disponible: boolea
           <section data-audio-complet className="space-y-3 border-t border-white/10 pt-6">
       <h3 className="font-semibold flex items-center gap-2"><AudioLines className="w-4 h-4" /> Audio complet</h3>
       <p className="text-xs text-gray-400">
-        Génère tout votre texte avec votre voix, à écouter et télécharger. {explicationTarifAudioComplet(creditsParTranche)}
+        {tUi('genere_tout_votre_texte_avec_votre_voi')} {explicationTarifAudioComplet(creditsParTranche)}
       </p>
       <textarea
         data-audio-complet-texte
@@ -82,7 +82,7 @@ export default function AudioCompletSection({ disponible }: { disponible: boolea
         placeholder={tUi('collez_ici_le_texte_complet_a_faire_di')}
         className="w-full rounded-lg bg-black/40 border border-white/10 p-2 text-sm text-white"
       />
-      <div data-audio-complet-compteur className="text-xs text-gray-400">{texteComplet.trim().length}/{MAX_CARACTERES_AUDIO_COMPLET} caractères</div>
+      <div data-audio-complet-compteur className="text-xs text-gray-400">{texteComplet.trim().length}/{MAX_CARACTERES_AUDIO_COMPLET} {tUi('caracteres')}</div>
       {disponible ? (
         <div className="space-y-2">
         {/* Le prix au-dessus du bouton (même présentation que « Générer la vidéo »). */}

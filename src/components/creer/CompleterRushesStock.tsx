@@ -468,7 +468,7 @@ export default function CompleterRushesStock({
           if (s.etat === 'supprime') {
             return (
               <li key={cle} className="text-[11px] text-gray-500" data-autopilot-stock-slot={cle} data-etat="supprime">
-                {libellePlan(s.manque.role)} : proposition retirée — ce plan reprendra vos rushes.
+                {libellePlan(s.manque.role)} {tUi('proposition_retiree_ce_plan_reprendra')}
               </li>
             );
           }

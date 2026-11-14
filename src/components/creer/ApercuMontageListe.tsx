@@ -290,7 +290,7 @@ export default function ApercuMontageListe(p: ApercuMontageListeProps) {
           className={`text-[10px] ${p.depassement && p.depassement > 0 ? 'text-amber-300' : 'text-gray-500'}`}
         >
           {p.depassement && p.depassement > 0 ? <AlertTriangle className="inline w-3 h-3 mr-1 -mt-0.5" /> : null}
-          Narration {p.narration.source === 'reelle' ? tUi('reelle') : tUi('estimee')} de votre avatar : {formatSecondes(p.narration.duree)} s
+          Narration {p.narration.source === 'reelle' ? tUi('reelle') : tUi('estimee')} {tUi('de_votre_avatar')} {formatSecondes(p.narration.duree)} s
           {p.depassement && p.depassement > 0
             ? ` — vos médias la dépassent de ${formatSecondes(Math.ceil(p.depassement * 10 - 1e-6) / 10)} s : raccourcissez-les avant d’envoyer.`
             : '. Vos médias gardent leur durée ; votre avatar occupe le reste.'}

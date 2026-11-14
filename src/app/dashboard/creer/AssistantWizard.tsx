@@ -2838,7 +2838,7 @@ export function Preview({
                 textShadow: '0 1px 4px rgba(0,0,0,0.6)',
               }}
             >
-              Déposez la photo ici
+              {tUi('deposez_la_photo_ici')}
               <br />
               {focus === 'all' ? tUi('pour_l_affiche_globale') : tUi('pour_la_sequence_affichee')}
             </span>
@@ -2967,7 +2967,7 @@ export function Preview({
             <p className="text-gray-400" style={{ fontSize: uiPx(15), lineHeight: 1.5 }}>
               L&apos;aperçu apparaîtra à l&apos;étape Style,
               <br />
-              une fois votre sujet choisi.
+              {tUi('une_fois_votre_sujet_choisi')}
             </p>
           </div>
         ) : (
@@ -3098,7 +3098,7 @@ export function Preview({
 
       {generated && !hideFootnote && (
         <p className="mt-3 text-[10px] text-gray-600 leading-relaxed">
-          Les cartes de la vidéo seront exactement celles-ci. Le titre et le CTA, eux, apparaissent en séquences successives dans le montage.
+          {tUi('les_cartes_de_la_video_seront_exacteme')}
           {showRush && !avatarApercu && ' Le rush occupe seul sa séquence, cadré comme ici.'}
           {showAvatar && ' Votre avatar occupe la séquence Vidéo : sa vidéo parlante est produite à l’envoi.'}
         </p>
@@ -3141,7 +3141,7 @@ const TextZonePanel: React.FC<{
   return (
     <div className="space-y-3" data-autopilot-texte-panneau={zone}>
       <p className="text-[11px] text-gray-500">
-        {libelle} — ces réglages valent pour
+        {libelle} {tUi('ces_reglages_valent_pour')}
         {' '}<span className="text-gray-300">{tUi('toutes_les_videos')}</span>.
       </p>
       {/* ⚠️ LE CONTENU N'EST PAS EDITABLE ICI, ET C'EST VOULU. L'Autopilote
@@ -3912,14 +3912,13 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
         <InfoBulle label={tUi('en_savoir_plus_sur_l_apercu_du_style')} titre="Aperçu du style" marqueur="apercu-style">
           <span className="block" data-autopilot-apercu-mention>
             <span className="text-gray-200" data-autopilot-apercu-badge="style">{tUi('apercu_du_style')}</span>
-            {' '}— textes et affiche d’<span className="text-gray-400">exemple</span> sur le thème
+            {' '}{tUi('textes_et_affiche_d')}<span className="text-gray-400">exemple</span> {tUi('sur_le_theme')}
             {' '}«&nbsp;{themeLabel(sample.topic)}&nbsp;». Le sujet, l’affiche et les textes
             changent à chaque vidéo ; le style, non.
             {/* Une DÉMONSTRATION, pas le script des futures vidéos : celui-ci
                 est généré à chaque production, à partir du brief récurrent. */}
             <span data-autopilot-script-exemple>
-              {' '}Exemple de démonstration — le script de chaque vidéo est généré à sa
-              production à partir de votre brief.
+              {' '}{tUi('exemple_de_demonstration_le_script_de')}
             </span>
             {/* Ce que l'onglet « Tout » montre : une composition ou le montage. */}
             {focus === 'all' && (
@@ -3934,8 +3933,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
               wizard reste à six étapes). Ancien grand encadré violet. */}
           <span className="block" data-autopilot-apercu-aide>
             <span className="font-medium text-white">{tUi('double_cliquez_un_element')}</span>
-            {' '}— titre, CTA ou carte — pour régler sa police, sa taille et son icône.
-            Glissez pour le déplacer, tirez les coins pour l’agrandir.
+            {' '}{tUi('titre_cta_ou_carte_pour_regler_sa_poli')}
           </span>
         </InfoBulle>
       </h3>
@@ -4102,8 +4100,8 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
           <InfoBulle label={tUi('en_savoir_plus_sur_les_medias_du_plan')} marqueur="apercu-medias">
             <span className="block">
               <span className="text-gray-200" data-autopilot-apercu-badge="medias">{tUi('medias_reels_du_plan')}</span>
-              {' '}— la séquence Vidéo de l’aperçu n’est pas un exemple : elle montre le premier média réel de votre plan,
-              {' '}contrairement à l’affiche et aux textes d’exemple. Vous le remplacez à l’étape Rushes.
+              {' '}{tUi('la_sequence_video_de_l_apercu_n_est_pa')}
+              {' '}{tUi('contrairement_a_l_affiche_et_aux_texte')}
             </span>
           </InfoBulle>
         </p>
@@ -4258,7 +4256,7 @@ function AutopilotPreview({ config, accent, onPatch, medias = null }: {
             </div>
 
             <p className="text-[11px] text-gray-500">
-              L’icône choisie vaut pour cette carte sur <span className="text-gray-300">{tUi('toutes_les_videos')}</span>. Le texte de la carte, lui, change à chaque fois.
+              {tUi('l_icone_choisie_vaut_pour_cette_carte')} <span className="text-gray-300">{tUi('toutes_les_videos')}</span>{tUi('le_texte_de_la_carte_lui_change_a_chaq')}
             </p>
             {/* La MEME grille que « Ajouter un element » de l'assistant. */}
             <IconPicker
@@ -11310,7 +11308,7 @@ export default function AssistantWizard() {
           </p>
           <div className="flex flex-col sm:flex-row gap-2">
             <button type="button" data-raccourci-continuer onClick={() => demandeRaccourci.resoudre(true)} className="flex-1 rounded-lg bg-purple-600 hover:bg-purple-500 px-3 py-2 text-sm font-medium text-white">
-              Continuer avec {Math.round(demandeRaccourci.possible)} s
+              {tUi('continuer_avec')} {Math.round(demandeRaccourci.possible)} s
             </button>
             <button type="button" data-raccourci-ajouter onClick={() => demandeRaccourci.resoudre(false)} className="flex-1 rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-200 hover:text-white">
               {tUi('ajouter_des_rushs')}
@@ -11452,7 +11450,7 @@ export default function AssistantWizard() {
                 {rechargement.etat === 'encours'
                   ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   : <RotateCcw className="w-3.5 h-3.5" />}
-                Recharger la version récente
+                {tUi('recharger_la_version_recente')}
               </button>
             )}
 
@@ -11560,7 +11558,7 @@ export default function AssistantWizard() {
             <span className="flex-1">
               {AVERTISSEMENT_ANCIENNE_VERSION}
               <span className="block text-[12px] text-amber-100/90 mt-0.5">
-                {libelleCreeAvecVersion(jumeauAncienneVersion.versionRush)} — {libelleAvatarActif(jumeauAncienneVersion.versionActive)}. Régénérer produit une nouvelle vidéo ({coutJumeau} crédits).
+                {libelleCreeAvecVersion(jumeauAncienneVersion.versionRush)} — {libelleAvatarActif(jumeauAncienneVersion.versionActive)}{tUi('regenerer_produit_une_nouvelle_video')}{coutJumeau} {tUi('credits')}
               </span>
             </span>
             <div className="flex flex-col items-end gap-1.5">
@@ -11676,8 +11674,7 @@ export default function AssistantWizard() {
                 <div className="min-w-0 flex-1">
                   <CardTitle className="text-lg">{tUi('creer_une_video')}</CardTitle>
                   <CardContent className="mt-1 text-sm text-gray-400">
-                    Je veux créer <strong className="text-gray-200">{tUi('une_video_maintenant')}</strong>,
-                    étape par étape. Le texte et les cartes sont générés pour vous.
+                    {tUi('je_veux_creer')} <strong className="text-gray-200">{tUi('une_video_maintenant')}</strong>{tUi('etape_par_etape_le_texte_et_les_cartes')}
                   </CardContent>
                   <p className="mt-2 text-[11px] text-gray-500">
                     Sujet → Style → Audio → Contenu → Envoi
@@ -11714,8 +11711,7 @@ export default function AssistantWizard() {
                     </span>
                   </div>
                   <CardContent className="mt-1 text-sm text-gray-400">
-                    Je donne mes rushes et mes réglages, Studiio prépare
-                    automatiquement <strong className="text-gray-200">plusieurs contenus</strong>.
+                    {tUi('je_donne_mes_rushes_et_mes_reglages_st')} <strong className="text-gray-200">plusieurs contenus</strong>.
                   </CardContent>
                   <p className="mt-2 text-[11px] text-gray-500">
                     {tUi('pour_produire_plusieurs_videos_sans_re')}
@@ -12133,7 +12129,7 @@ export default function AssistantWizard() {
                         className="flex grow sm:grow-0 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-purple-600 px-3 py-2 text-xs font-medium text-white hover:bg-purple-500 disabled:opacity-40 transition-colors"
                       >
                         {photosLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
-                        Rechercher
+                        {tUi('rechercher')}
                       </button>
                     </div>
 
@@ -12624,7 +12620,7 @@ export default function AssistantWizard() {
                     )}
                     {cropping && (
                       <p className="text-xs text-gray-500">
-                        Glissez la photo pour la repositionner, tirez un coin pour zoomer.
+                        {tUi('glissez_la_photo_pour_la_repositionner')}
                         {fondAffiche.transform.scale > 1 && ` Zoom ${fondAffiche.transform.scale.toFixed(1)}×.`}
                         {' '}
                         <button
@@ -12657,9 +12653,9 @@ export default function AssistantWizard() {
                     <div className="pt-1 border-t border-gray-800/60 space-y-2">
                       <p className="text-xs font-medium text-gray-300">Retouche IA</p>
                       <p className="text-xs text-gray-500">
-                        Le résultat remplace {seqBgKeyForFocus(previewFocus)
+                        {tUi('le_resultat_remplace')} {seqBgKeyForFocus(previewFocus)
                           ? tUi('le_fond_de_la_sequence_affichee')
-                          : 'l’affiche globale'} et reste recadrable.
+                          : 'l’affiche globale'} {tUi('et_reste_recadrable')}
                       </p>
                       <AiImageTools
                         imageUrl={fondAffiche.url}
@@ -13158,7 +13154,7 @@ export default function AssistantWizard() {
                         className="w-full rounded-xl bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2.5 text-sm disabled:opacity-40"
                       />
                       <p className="mt-1 text-[11px] text-gray-500">
-                        Affiché en bas de chaque séquence du montage.
+                        {tUi('affiche_en_bas_de_chaque_sequence_du_m')}
                         {watermarkEnabled && !watermarkVisible && ' Champ vide : rien ne sera affiché.'}
                       </p>
                     </div>
@@ -14055,8 +14051,7 @@ export default function AssistantWizard() {
                         ))}
                       </div>
                       <p className="mt-2 text-xs text-gray-500">
-                        Chaque vidéo reçoit un angle différent et sa propre date, un jour après
-                        l’autre. La première garde le contenu affiché ci-contre.
+                        {tUi('chaque_video_recoit_un_angle_different')}
                         {/* Les attributs disent l'etat que la garde d'envoi
                             lira : combien d'affiches sont posees, et si le
                             lot peut partir. */}
@@ -14113,7 +14108,7 @@ export default function AssistantWizard() {
                         Absent en modification : l'envoi n'y existe pas. */}
                     {!editPostId && (
                     <div data-envoi-intentions>
-                      <label className="block text-sm font-medium mb-2">Que faire de {batchCount > 1 ? tUi('ces_videos') : tUi('cette_video')} ?</label>
+                      <label className="block text-sm font-medium mb-2">{tUi('que_faire_de')} {batchCount > 1 ? tUi('ces_videos') : tUi('cette_video')} ?</label>
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
@@ -14150,7 +14145,7 @@ export default function AssistantWizard() {
                           cron marquerait « failed » a l'heure dite. */}
                       {!etatReseaux.chargement && reseauxConnectes.length === 0 && (
                         <p className="mt-2 text-xs text-gray-500" data-envoi-aucun-reseau>
-                          Aucun réseau connecté : la vidéo restera en brouillon.{' '}
+                          {tUi('aucun_reseau_connecte_la_video_restera')}{' '}
                           <Link href="/dashboard/social" className="text-purple-300 hover:text-white underline">
                             {tUi('connecter_un_reseau')}
                           </Link>
@@ -14241,14 +14236,12 @@ export default function AssistantWizard() {
                           va VRAIMENT se passer. */}
                       {envoiIntention === 'programmer' && reseauxProgrammes.length > 0 ? (
                         <span className="block mt-1 text-gray-500" data-envoi-recap="programmer">
-                          Programmé{batchCount > 1 ? 's' : ''}{scheduledDate ? ` le ${scheduledDate}` : ''} à {scheduledTime}
-                          {' '}sur {reseauxProgrammes.map((r) => LIBELLE_RESEAU[r]).join(', ')} — publication
-                          automatique par le cron, à l’heure dite ({fuseauNavigateur()}).
+                          {tUi('programme')}{batchCount > 1 ? 's' : ''}{scheduledDate ? ` le ${scheduledDate}` : ''} à {scheduledTime}
+                          {' '}sur {reseauxProgrammes.map((r) => LIBELLE_RESEAU[r]).join(', ')} {tUi('publication_automatique_par_le_cron_a')}{fuseauNavigateur()}).
                         </span>
                       ) : (
                         <span className="block mt-1 text-gray-500" data-envoi-recap="brouillon">
-                          Enregistré{batchCount > 1 ? 's' : ''} en brouillon. Aucune publication
-                          automatique : la diffusion reste déclenchée depuis le calendrier.
+                          {tUi('enregistre')}{batchCount > 1 ? 's' : ''} {tUi('en_brouillon_aucune_publication_automa')}
                         </span>
                       )}
                     </div>
@@ -14370,7 +14363,7 @@ export default function AssistantWizard() {
                         {suiviJumeau(false)}
                         {batchProgress && batchProgress.total > 1 && (
                           <p className="text-center text-xs text-gray-400">
-                            Vidéo {batchProgress.done + 1} / {batchProgress.total}
+                            {tUi('video')} {batchProgress.done + 1} / {batchProgress.total}
                           </p>
                         )}
                       </div>
@@ -14407,7 +14400,7 @@ export default function AssistantWizard() {
                         </div>
                         {batchProgress && batchProgress.total > 1 && (
                           <p className="text-center text-xs text-gray-400">
-                            Vidéo {batchProgress.done + 1} / {batchProgress.total}
+                            {tUi('video')} {batchProgress.done + 1} / {batchProgress.total}
                           </p>
                         )}
                         {renderStage && (
@@ -14461,7 +14454,7 @@ export default function AssistantWizard() {
                                         : it.etat === 'rendu' ? '#93C5FD' : '#4B5563',
                                 }}
                               />
-                              <span className="text-gray-400">Vidéo {it.index + 1}</span>
+                              <span className="text-gray-400">{tUi('video')} {it.index + 1}</span>
                               <span className="text-gray-500">
                                 {it.etat === 'pret' ? tUi('prete')
                                   : it.etat === 'echoue' ? `échec — ${it.erreur || 'raison inconnue'}`
@@ -14628,14 +14621,14 @@ export default function AssistantWizard() {
               <p>{tUi('plan_du_montage_en_preparation_l_aperc')}</p>
             ) : (
               <p data-apercu-simplifie>
-                Aperçu simplifié : {problemeApercuCourant === 'positionnement'
+                {tUi('apercu_simplifie')} {problemeApercuCourant === 'positionnement'
                   ? tUi('un_rush_ne_permet_pas_de_se_positionne')
-                  : tUi('un_rush_n_a_pas_pu_etre_analyse_ou_lu')} — le montage complet n’est visible qu’à l’export.
+                  : tUi('un_rush_n_a_pas_pu_etre_analyse_ou_lu')} {tUi('le_montage_complet_n_est_visible_qu_a')}
               </p>
             )}
             {prepApercu?.raccourci && (
               <p data-apercu-raccourci className="mt-1 text-amber-300">
-                {prepApercu.raccourci.message} À l’export, vous choisirez de continuer avec {Math.round(prepApercu.raccourci.possible)} s ou d’ajouter des rushs.
+                {prepApercu.raccourci.message} {tUi('a_l_export_vous_choisirez_de_continuer')} {Math.round(prepApercu.raccourci.possible)} {tUi('s_ou_d_ajouter_des_rushs')}
               </p>
             )}
             {alerteApercu && <p data-apercu-alerte className="mt-1 text-red-300">{alerteApercu}</p>}
@@ -14776,9 +14769,8 @@ export default function AssistantWizard() {
               )}
               {zoneOuverte === 'cards' && (
                 <p className="text-[11px] text-gray-500">
-                  Le texte des cartes se règle à l’étape
-                  {' '}<span className="text-gray-300">Contenu</span>, carte par carte.
-                  Ici, leur mise en forme.
+                  {tUi('le_texte_des_cartes_se_regle_a_l_etape')}
+                  {' '}<span className="text-gray-300">Contenu</span>{tUi('carte_par_carte_ici_leur_mise_en_forme')}
                 </p>
               )}
 
@@ -15068,7 +15060,7 @@ export default function AssistantWizard() {
             )}
             {freeElements.length > 0 && (
               <p className="mt-2 text-center text-xs text-gray-400">
-                {freeElements.length} élément{freeElements.length > 1 ? 's' : ''} posé
+                {freeElements.length} {tUi('element')}{freeElements.length > 1 ? 's' : ''} {tUi('pose')}
                 {freeElements.length > 1 ? 's' : ''}
                 <span className="text-gray-600"> {tUi('cliquer_pour_selectionner_glisser_pour')}</span>
               </p>
@@ -15078,7 +15070,7 @@ export default function AssistantWizard() {
         {selectedCards.size > 0 && cardsVisible && (
           <div className="mt-2 flex flex-col items-center gap-1.5">
             <p className="text-center text-xs text-gray-400">
-              {selectedCards.size} carte{selectedCards.size > 1 ? 's' : ''} sélectionnée
+              {selectedCards.size} carte{selectedCards.size > 1 ? 's' : ''} {tUi('selectionnee')}
               {selectedCards.size > 1 ? 's' : ''}
               <span className="text-gray-600"> {tUi('maj_clic_pour_en_ajouter_echap_pour_de')}</span>
             </p>

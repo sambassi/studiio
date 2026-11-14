@@ -338,7 +338,7 @@ export default function MesAvatars(props: {
                   )}
                   <div className="flex flex-wrap gap-2">
                     <button type="button" data-action="apercu" disabled={occupe !== null} onClick={() => void voirApercu(a, c)} className={TERTIAIRE}>
-                      {occupe === `apercu-${c.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Eye className="w-3 h-3" />} Aperçu
+                      {occupe === `apercu-${c.id}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Eye className="w-3 h-3" />} {tUi('apercu')}
                     </button>
                     <button
                       type="button"

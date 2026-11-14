@@ -140,7 +140,7 @@ export default function ProgressStatus({
           <p className="text-sm font-medium text-white truncate" data-progress-titre>{statut === 'succes' && valeur === 100 ? `✓ ${titre}` : titre}</p>
           {(courante !== undefined && total !== undefined) && (
             <p className="text-[11px] text-gray-400" data-progress-etape>
-              Étape {courante} sur {total}{etapes && courante ? ` — ${etapes[courante - 1]?.libelle ?? ''}` : ''}
+              {tUi('etape')} {courante} sur {total}{etapes && courante ? ` — ${etapes[courante - 1]?.libelle ?? ''}` : ''}
             </p>
           )}
         </div>
@@ -184,7 +184,7 @@ export default function ProgressStatus({
           </ol>
           {workflow !== null && (
             <p className="text-[11px] text-gray-400" data-progress-workflow={workflow}>
-              Progression du workflow : <span className="text-gray-200 tabular-nums">{workflow} %</span>
+              {tUi('progression_du_workflow')} <span className="text-gray-200 tabular-nums">{workflow} %</span>
               {valeur === null && enCours && <span> {tUi('operation_en_cours_progression_inconnu')}</span>}
             </p>
           )}
@@ -203,8 +203,8 @@ export default function ProgressStatus({
       {/* Échec : où, pourquoi, quoi faire — la barre reste où elle était */}
       {statut === 'erreur' && echec && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-[13px] text-red-100 space-y-2" role="alert" data-progress-echec>
-          <p className="font-medium">Échec{echec.etape ? ` à l’étape « ${echec.etape} »` : ''}</p>
-          {etapes && <p className="text-[11px] opacity-90">Progression avant interruption : {etapes.filter((e) => e.etat === 'terminee').length}/{etapes.length} étapes</p>}
+          <p className="font-medium">{tUi('echec')}{echec.etape ? ` à l’étape « ${echec.etape} »` : ''}</p>
+          {etapes && <p className="text-[11px] opacity-90">Progression avant interruption : {etapes.filter((e) => e.etat === 'terminee').length}/{etapes.length} {tUi('etapes')}</p>}
           <p className="text-[12px] opacity-90">Motif : {echec.motif}</p>
           {echec.actions && echec.actions.length > 0 && (
             <div className="flex flex-wrap gap-2 pt-1">

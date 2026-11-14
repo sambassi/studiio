@@ -250,7 +250,7 @@ export default function FluxSourceAvatar(props: {
           <div className="space-y-3">
             <label className="flex items-start gap-2 text-sm">
               <input type="checkbox" data-flux-consentement checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-1 accent-purple-500" />
-              <span>Je certifie être la personne qui apparaît dans cette {type === 'video' ? tUi('video') : 'photo'} et j’accepte qu’elle serve à créer mon avatar.</span>
+              <span>{tUi('je_certifie_etre_la_personne_qui_appar')} {type === 'video' ? tUi('video') : 'photo'} {tUi('et_j_accepte_qu_elle_serve_a_creer_mon')}</span>
             </label>
             <div className="flex gap-2">
               <button type="button" onClick={() => { setEtape(fichier ? 'preparation' : 'choix'); }} className="button-secondary !min-h-[36px] text-sm">{tUi('modifier')}</button>
@@ -288,7 +288,7 @@ export default function FluxSourceAvatar(props: {
                 <dt className="text-gray-500">{tUi('qualite')}</dt><dd data-flux-recap="qualite" className="text-gray-400">{tUi('choisie_a_chaque_generation_de_video')}</dd>
               </dl>
             </div>
-            {(type === 'video' ? preparee : photoPreparee) && <p className="text-xs text-gray-500">Votre {type === 'video' ? tUi('video') : 'photo'} d’origine est conservée telle quelle, à côté de la version envoyée.</p>}
+            {(type === 'video' ? preparee : photoPreparee) && <p className="text-xs text-gray-500">Votre {type === 'video' ? tUi('video') : 'photo'} {tUi('d_origine_est_conservee_telle_quelle_a')}</p>}
 
             {etape === 'envoi' ? (
               type === 'photo' && envoi ? (

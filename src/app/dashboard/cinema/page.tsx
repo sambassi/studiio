@@ -709,7 +709,7 @@ export default function CinemaPage() {
       )}
       {e.critique && e.genre !== 'locuteur_devine' && (acceptes.has(e.cle) ? (
         <p className="flex flex-wrap items-center gap-2 pl-[18px] text-emerald-300">
-          <Check className="h-3 w-3" aria-hidden="true" /> Accepté tel quel : {e.consequence}
+          <Check className="h-3 w-3" aria-hidden="true" /> {tUi('accepte_tel_quel')} {e.consequence}
           <button type="button" onClick={() => retirerAcceptation(e.cle)} aria-label="Retirer l’acceptation" className="underline">{tUi('annuler')}</button>
         </p>
       ) : (
@@ -760,7 +760,7 @@ export default function CinemaPage() {
       <div className="ml-auto flex flex-wrap items-center gap-3">
         {mesFilms.length > 0 && (
           <label className="mt-4 inline-flex items-center gap-2 text-xs text-slate-400">
-            Reprendre un film
+            {tUi('reprendre_un_film')}
             <select
               value={film?.id ?? ''}
               onChange={(e) => ouvrirFilm(e.target.value)}
@@ -890,7 +890,7 @@ export default function CinemaPage() {
                   return (
                     <label className="mt-1 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-violet-500/60 px-3 py-1.5 text-xs text-violet-100 hover:bg-violet-500/10" data-action-vide="import">
                       {enCours === `media:${pl.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <ImagePlus className="h-3.5 w-3.5" aria-hidden="true" />}
-                      Ajouter une image ou une vidéo
+                      {tUi('ajouter_une_image_ou_une_video')}
                       <input type="file" accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.webm,.m4v" className="sr-only"
                         aria-label={tUi('ajouter_une_image_ou_une_video_a_cette')}
                         onChange={(e) => { const f = e.target.files?.[0]; if (f) importerMedia(pl.id, f); e.target.value = ''; }} />
@@ -1008,7 +1008,7 @@ export default function CinemaPage() {
                   {modeAudioAffiche === 'personnages' && (
                     <label className="col-span-2 flex flex-wrap items-center gap-2 text-xs text-slate-400" data-voix-personnage>
                       <Mic className="h-3.5 w-3.5 shrink-0 text-violet-300" aria-hidden="true" />
-                      <span>Voix de {p.nom || tUi('ce_personnage')}</span>
+                      <span>{tUi('voix_de')} {p.nom || tUi('ce_personnage')}</span>
                       <select
                         value={p.voix ?? voixDistincte(i)}
                         aria-label={`Voix de ${p.nom || `personnage ${i + 1}`}`}
@@ -1043,7 +1043,7 @@ export default function CinemaPage() {
             </div>
             <div className="mt-5 rounded-lg border border-slate-800 bg-slate-900/40 p-4">
               <p className="text-xs text-slate-400">
-                Le decoupage est local et deterministe : une phrase = un plan, et votre texte reste la source de verite.
+                {tUi('le_decoupage_est_local_et_deterministe')}
                 {film && montage && ` Scenario actuel : ${film.scenes.length} scenes, ${montage.segments.length} plans, ${montage.dureeS.toFixed(1)} s.`}
               </p>
               {film && (
@@ -1053,7 +1053,7 @@ export default function CinemaPage() {
                   className="mt-3 inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-200 hover:border-violet-500/50 disabled:opacity-50"
                 >
                   {enCours === 'scenario' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" />}
-                  Recomposer le scenario depuis mon texte
+                  {tUi('recomposer_le_scenario_depuis_mon_text')}
                 </button>
               )}
             </div>
@@ -1132,7 +1132,7 @@ export default function CinemaPage() {
                     {bloquants.length > 0 && (
                       <p className="flex flex-wrap items-center gap-2 text-xs text-amber-200" data-points-a-verifier>
                         <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                        {bloquants.length} point{bloquants.length > 1 ? 's' : ''} à vérifier dans ton histoire
+                        {bloquants.length} point{bloquants.length > 1 ? 's' : ''} {tUi('a_verifier_dans_ton_histoire')}
                         {methode === 'ia' && generationMode === 'reelle' ? ' avant de créer des images payantes' : ''}.
                         <button type="button" onClick={() => allerAEtape(3)} className="underline">{tUi('voir_les_points')}</button>
                       </p>
@@ -1140,7 +1140,7 @@ export default function CinemaPage() {
                     {aProduire.length > 0 && (
                       <p className="flex items-start gap-2 text-xs text-slate-300" data-a-mettre-a-jour>
                         <RefreshCw className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-300" aria-hidden="true" />
-                        <span>{aProduire.length === 1 ? tUi('une_scene_doit_etre_mise_a_jour') : tUi('length_scenes_doivent_etre_mises_a_jou', { length: aProduire.length })} : son contenu a changé depuis la dernière version de la vidéo. Elle sera refaite à l’export.</span>
+                        <span>{aProduire.length === 1 ? tUi('une_scene_doit_etre_mise_a_jour') : tUi('length_scenes_doivent_etre_mises_a_jou', { length: aProduire.length })} {tUi('son_contenu_a_change_depuis_la_dernier')}</span>
                       </p>
                     )}
                     {visuelsAPreparer > 0 && (
@@ -1207,7 +1207,7 @@ export default function CinemaPage() {
                             )}
                             {pointsCritiques > 0 && (
                               <span className="inline-flex items-center gap-0.5 text-amber-300" title={tUi('points_a_verifier_dans_ton_histoire_po')}>
-                                <AlertTriangle className="h-3 w-3" aria-hidden="true" />{pointsCritiques} point{pointsCritiques > 1 ? 's' : ''} à vérifier
+                                <AlertTriangle className="h-3 w-3" aria-hidden="true" />{pointsCritiques} point{pointsCritiques > 1 ? 's' : ''} {tUi('a_verifier')}
                               </span>
                             )}
                           </span>
@@ -1399,7 +1399,7 @@ export default function CinemaPage() {
                         </summary>
                         <div className="mt-3 space-y-3 text-xs text-slate-400">
                           <p data-info-technique>
-                            Image {indexPlan + 1} sur {scene.plans.length} · cadre {plan.cadre} · durée {plan.dureeS.toFixed(1)} s
+                            {tUi('image')} {indexPlan + 1} sur {scene.plans.length} · cadre {plan.cadre} {tUi('duree')} {plan.dureeS.toFixed(1)} s
                             {plan.media && ` · ${plan.media.largeur}x${plan.media.hauteur}`}
                             {plan.media?.dureeS != null && ` · ${plan.media.dureeS.toFixed(1)} s`}
                             {plan.media && ` · ${(plan.media.octets / 1_000_000).toFixed(1)} Mo`}
@@ -1511,7 +1511,7 @@ export default function CinemaPage() {
                     {fidelite.ecarts.some((e) => !e.critique) && (
                       <details className="mt-2 text-[11px] text-slate-400" data-fidelite="remarques">
                         <summary className="flex cursor-pointer list-none items-center gap-1.5 hover:text-slate-200">
-                          <Info className="h-3 w-3" aria-hidden="true" /> {fidelite.ecarts.filter((e) => !e.critique).length} remarque(s) qui ne bloquent rien (plan d’ensemble ajoute, narration)
+                          <Info className="h-3 w-3" aria-hidden="true" /> {fidelite.ecarts.filter((e) => !e.critique).length} {tUi('remarque_s_qui_ne_bloquent_rien_plan_d')}
                         </summary>
                         <ul className="mt-1.5 space-y-1">
                           {fidelite.ecarts.filter((e) => !e.critique).map((e) => (
@@ -2004,7 +2004,7 @@ function CommandesMontage({ montage, joue, tempsS, surBasculerLecture, surDeplac
       {surPreparerVoix && !montage.segments.some((s) => s.voixUrl) && (
         <button onClick={surPreparerVoix} disabled={voixEnCours} className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm hover:border-violet-500/50 disabled:opacity-50">
           {voixEnCours ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-          Preparer les voix
+          {tUi('preparer_les_voix')}
         </button>
       )}
     </div>

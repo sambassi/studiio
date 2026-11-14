@@ -167,7 +167,7 @@ export default function BrandingPanel({ branding, onChange, compact = false }: B
 
         <div className="mt-3">
           <label className="block text-[10px] text-gray-400 font-medium uppercase tracking-wider mb-1">
-            Intensité — {Math.round(branding.gradientOpacity * 100)}%
+            {tUi('intensite')} {Math.round(branding.gradientOpacity * 100)}%
           </label>
           <input
             type="range"

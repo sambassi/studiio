@@ -263,7 +263,7 @@ export default function BriefVideo({
                     data-brief-adapter={cle}
                     className="rounded-md border border-amber-500/40 px-2 py-0.5 text-[11px] text-amber-200 hover:text-white disabled:opacity-40"
                   >
-                    Adapter {CHAMP_ARTICLE[cle]} au thème {libelleTheme}
+                    Adapter {CHAMP_ARTICLE[cle]} {tUi('au_theme')} {libelleTheme}
                   </button>
                   {onChangerTheme && (
                     <button
@@ -428,8 +428,8 @@ export function NarrationRecap({
         <p className="flex items-start gap-1.5 text-[11px] text-gray-500" data-brief-narration-vide>
           <Info className="w-3 h-3 mt-0.5 shrink-0" />
           <span>
-            La narration est pré-remplie à partir du contenu généré à l’étape Contenu
-            {briefRempli(brief) ? ', en tenant compte de ce brief' : ''}. Rien n’est généré ni facturé ici.
+            {tUi('la_narration_est_pre_remplie_a_partir')}
+            {briefRempli(brief) ? ', en tenant compte de ce brief' : ''}{tUi('rien_n_est_genere_ni_facture_ici')}
           </span>
         </p>
       )}
@@ -508,7 +508,7 @@ export function BriefRecurrentRecap({ brief, sujets, admin = false }: {
           </span>
           {coherence.niveau === 'bonne' && (
             <span className="block text-emerald-400">
-              Brief cohérent avec {liste.length > 1 ? tUi('les_themes_choisis') : tUi('le_theme_sujet', { sujet: coherence.sujet })}.
+              {tUi('brief_coherent_avec')} {liste.length > 1 ? tUi('les_themes_choisis') : tUi('le_theme_sujet', { sujet: coherence.sujet })}.
             </span>
           )}
           {admin && coherence.score !== null && (

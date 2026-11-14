@@ -543,8 +543,8 @@ export default function ClipDetectorModal({
                 <Check size={24} />
               </div>
               <p className="text-sm font-semibold text-white">
-                {extracted.length} séquence{extracted.length > 1 ? 's' : ''} ajoutée
-                {extracted.length > 1 ? 's' : ''} à la médiathèque
+                {extracted.length} {tUi('sequence')}{extracted.length > 1 ? 's' : ''} {tUi('ajoutee')}
+                {extracted.length > 1 ? 's' : ''} {tUi('a_la_mediatheque')}
               </p>
               <p className="mt-1 text-xs text-gray-500">
                 {tUi('retrouvez_les_dans_la_grille_pretes_a')}
@@ -655,8 +655,8 @@ export default function ClipDetectorModal({
 
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-xs text-gray-400">
-                  {clips.length} séquence{clips.length > 1 ? 's' : ''} détectée
-                  {clips.length > 1 ? 's' : ''} — {selectedCount} sélectionnée
+                  {clips.length} {tUi('sequence')}{clips.length > 1 ? 's' : ''} {tUi('detectee')}
+                  {clips.length > 1 ? 's' : ''} — {selectedCount} {tUi('selectionnee')}
                   {selectedCount > 1 ? 's' : ''}
                 </p>
                 <button
@@ -773,7 +773,7 @@ export default function ClipDetectorModal({
                 style={{ backgroundColor: ACCENT }}
               >
                 <Sparkles size={13} />
-                Extraire {selectedCount > 0 ? selectedCount : ''} séquence
+                Extraire {selectedCount > 0 ? selectedCount : ''} {tUi('sequence')}
                 {selectedCount > 1 ? 's' : ''}
               </button>
             )}

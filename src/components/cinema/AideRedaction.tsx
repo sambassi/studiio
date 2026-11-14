@@ -221,13 +221,13 @@ export default function AideRedaction({ histoire, surChanger, personnages = [], 
                   {proposition.diagnostic.inconnus.length > 0 && (
                     <p className="mt-1 flex items-start gap-1 text-[11px] text-amber-300">
                       <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
-                      Noms hors casting : {proposition.diagnostic.inconnus.join(', ')} — ils n’apparaitront dans aucun plan.
+                      Noms hors casting : {proposition.diagnostic.inconnus.join(', ')} {tUi('ils_n_apparaitront_dans_aucun_plan')}
                     </p>
                   )}
                   {proposition.diagnostic.repliquesCassees > 0 && (
                     <p className="mt-1 flex items-start gap-1 text-[11px] text-amber-300">
                       <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
-                      {proposition.diagnostic.repliquesCassees} replique(s) avec un point dans les guillemets : elles seraient lues comme de la narration.
+                      {proposition.diagnostic.repliquesCassees} {tUi('replique_s_avec_un_point_dans_les_guil')}
                     </p>
                   )}
                   <div className="mt-2 flex flex-wrap gap-2">

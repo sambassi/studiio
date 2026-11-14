@@ -710,7 +710,7 @@ export function AudioStudioPanel({
               >
                 {ttsVoiceOffStale && <AlertTriangle size={10} className="flex-shrink-0 text-amber-400" />}
                 <span className="truncate">
-                  Généré avec {ttsVoiceOffLabel}
+                  {tUi('genere_avec')} {ttsVoiceOffLabel}
                   {ttsVoiceOffStale && ' — Audio périmé, régénérer'}
                 </span>
               </div>
@@ -886,7 +886,7 @@ export function AudioStudioPanel({
           </select>
           <button onClick={generateTTS} disabled={ttsLoading || !ttsText.trim()}
             className="flex-shrink-0 flex items-center gap-1.5 rounded-lg bg-purple-600 hover:bg-purple-500 px-4 py-1.5 text-xs font-semibold text-white disabled:opacity-50 transition">
-            {ttsLoading ? <Loader2 size={12} className="animate-spin" /> : <Mic size={12} />} Générer
+            {ttsLoading ? <Loader2 size={12} className="animate-spin" /> : <Mic size={12} />} {tUi('generer')}
           </button>
         </div>
 

@@ -64,6 +64,7 @@ export function libelleCreneau(c: CreneauGabarit, stock: MediaStockRetenu[], rus
  * MÊME extraction que la miniature (cache partagé) : aucun second chargement.
  */
 function InfosRush({ url }: { url: string }) {
+  const tUi = useTranslations('ui.componentsCreerPlanAvantGeneration');
   const e = useVignetteVideo(url);
   const nom = nomTechnique(url);
   const duree = e.etat === 'pret' ? dureeLisible(e.vignette.duree) : null;
@@ -71,8 +72,8 @@ function InfosRush({ url }: { url: string }) {
     <p className="min-w-0 truncate text-[10px] text-gray-500" data-plan-infos-rush>
       {nom ? <span className="text-gray-400">{nom}</span> : null}
       {duree ? <span data-plan-duree>{nom ? ' · ' : ''}{duree}</span> : null}
-      {e.etat === 'echec' ? <span data-plan-statut="indisponible">{nom || duree ? ' · ' : ''}Aperçu indisponible</span> : null}
-      {e.etat === 'chargement' ? <span data-plan-statut="chargement">{nom || duree ? ' · ' : ''}Lecture de l’aperçu…</span> : null}
+      {e.etat === 'echec' ? <span data-plan-statut="indisponible">{nom || duree ? ' · ' : ''}{tUi('apercu_indisponible')}</span> : null}
+      {e.etat === 'chargement' ? <span data-plan-statut="chargement">{nom || duree ? ' · ' : ''}{tUi('lecture_de_l_apercu')}</span> : null}
     </p>
   );
 }
@@ -196,7 +197,7 @@ export default function PlanAvantGeneration({
       {videos.map((u) => <SondeDuree key={u} url={u} onDuree={noterDuree} />)}
       <div className="flex items-center justify-between gap-2">
         <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-gray-500">
-          Plan avant génération
+          {tUi('plan_avant_generation')}
           {/* Le fonctionnement du plan et du minutage : à la demande (docs/UX-PREMIUM.md). */}
           <InfoBulle label={tUi('en_savoir_plus_sur_le_plan_avant_gener')} titre="Plan avant génération" marqueur="plan">
             <span className="block" data-plan-cta-annonce={ctaEnSurimpression ? 'surimpression' : 'sequence'}>
@@ -280,7 +281,7 @@ export default function PlanAvantGeneration({
               </div>
               {minutage[i] && (
                 <p className="text-[10px] text-gray-400" data-plan-minutage={i}>
-                  {horodatage(minutage[i].debut)} → {horodatage(minutage[i].fin)} · Durée : {secondesLisibles(minutage[i].duree)}
+                  {horodatage(minutage[i].debut)} → {horodatage(minutage[i].fin)} {tUi('duree')} {secondesLisibles(minutage[i].duree)}
                 </p>
               )}
               {rushChoisi && <InfosRush url={rushChoisi} />}

@@ -201,7 +201,7 @@ export default function PreparationPhoto(props: {
             <button type="button" role="radio" aria-checked={voirOriginal} data-preparation-photo-voir="original" onClick={() => setVoirOriginal(true)} className={`rounded-lg py-1.5 text-xs ${voirOriginal ? 'bg-studiio-primary text-white' : 'text-gray-300'}`}>Avant — voir l’original</button>
             <button type="button" role="radio" aria-checked={!voirOriginal} data-preparation-photo-voir="apres" onClick={() => setVoirOriginal(false)} className={`rounded-lg py-1.5 text-xs ${!voirOriginal ? 'bg-studiio-primary text-white' : 'text-gray-300'}`}>{tUi('apres_lissage_lissage', { lissage: resultat.lissage })}</button>
           </div>
-          <p className="text-xs text-gray-500" data-preparation-photo-lissage>Lissage : {libelleLissage(resultat.lissage)}. Votre photo d’origine est conservée telle quelle.</p>
+          <p className="text-xs text-gray-500" data-preparation-photo-lissage>Lissage : {libelleLissage(resultat.lissage)}{tUi('votre_photo_d_origine_est_conservee_te')}</p>
           <div className="grid grid-cols-3 gap-2">
             <button type="button" data-preparation-photo-modifier onClick={() => setEtape('edition')} className="button-secondary inline-flex items-center justify-center gap-1 py-2.5 text-xs"><ArrowLeft className="w-3.5 h-3.5" /> {tUi('modifier')}</button>
             <button type="button" data-preparation-photo-reinitialiser onClick={reinitialiser} className="button-secondary inline-flex items-center justify-center gap-1 py-2.5 text-xs"><RotateCcw className="w-3.5 h-3.5" /> {tUi('reinitialiser')}</button>

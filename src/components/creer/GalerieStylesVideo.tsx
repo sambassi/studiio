@@ -90,7 +90,7 @@ function CarteStyle({ style, choisi, retouches, onChoisir, joue, onSurvol }: {
         <span className="mt-0.5 text-[10px] leading-snug text-gray-400 line-clamp-2">{style.description}</span>
         {choisi && retouches.length > 0 && (
           <span className="mt-0.5 block text-[10px] leading-snug text-amber-300" data-style-retouche>
-            Retouché : {retouches.join(', ')}
+            {tUi('retouche')} {retouches.join(', ')}
           </span>
         )}
       </button>

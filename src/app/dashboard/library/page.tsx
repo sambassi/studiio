@@ -635,7 +635,7 @@ export default function LibraryPage() {
                 {actionInProgress === `editable-${editableConfirm.videoId}` && (
                   <Loader2 size={16} className="mr-2 animate-spin" />
                 )}
-                Créer un post modifiable depuis cette vidéo
+                {tUi('creer_un_post_modifiable_depuis_cette')}
               </Button>
             </div>
           </div>

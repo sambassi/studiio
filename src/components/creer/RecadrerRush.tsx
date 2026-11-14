@@ -66,7 +66,7 @@ export default function RecadrerRush(props: {
           <h3 className="font-semibold">{photo ? tUi('recadrer_la_photo') : tUi('recadrer_la_video')} — format {props.format}</h3>
           <button type="button" aria-label={tUi('fermer')} onClick={props.onFermer} className="p-1 text-gray-400 hover:text-white"><X className="w-4 h-4" /></button>
         </header>
-        <p className="text-xs text-gray-400">{photo ? tUi('la_photo') : tUi('la_video')} remplit tout le cadre {props.format}. Faites-la glisser pour choisir ce qui reste visible, zoomez pour resserrer. L’export utilise exactement ce cadrage.</p>
+        <p className="text-xs text-gray-400">{photo ? tUi('la_photo') : tUi('la_video')} {tUi('remplit_tout_le_cadre')} {props.format}{tUi('faites_la_glisser_pour_choisir_ce_qui')}</p>
         <div
           ref={cadre}
           data-recadrer-rush-cadre={props.format}

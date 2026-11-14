@@ -334,7 +334,7 @@ function LigneQualite({ q, position, onEcarter, onAccepter }: LigneProps) {
     >
       <div className="flex items-center gap-2">
         <Icone className={`h-3.5 w-3.5 flex-shrink-0 ${grave ? 'text-red-400' : 'text-amber-400'}`} />
-        <span className="text-[11px] text-gray-400">Média {position > 0 ? position : ''}</span>
+        <span className="text-[11px] text-gray-400">{tUi('media')} {position > 0 ? position : ''}</span>
         <span
           className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${grave ? 'bg-red-500/15 text-red-300' : 'bg-amber-500/15 text-amber-300'}`}
           data-qualite-badge

@@ -84,7 +84,7 @@ export default function FilEtapes({ etapes, atteignables = [], onAller, accent =
       {/* Mobile (ou `sansNoms`) : la même information sur une ligne. */}
       {active && (
         <p className={`${sansNoms ? '' : 'sm:hidden'} mt-2 text-[11px] text-gray-400`} data-fil-etapes-compact>
-          Étape {indexActive + 1} sur {etapes.length} · <span className={active.etat === 'correction' ? 'text-amber-300' : 'text-white'}>{active.libelle}</span>
+          {tUi('etape')} {indexActive + 1} sur {etapes.length} · <span className={active.etat === 'correction' ? 'text-amber-300' : 'text-white'}>{active.libelle}</span>
           {active.etat === 'correction' && <span> {tUi('a_corriger')}</span>}
           {prochaine && <span> — Prochaine : {prochaine.libelle}</span>}
         </p>

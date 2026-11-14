@@ -326,8 +326,7 @@ export default function VoiceCloneRecorder({
             <span>
               {/* Même texte que le consentement ENREGISTRÉ (`VOICE_CONSENT_TEXT`, lib/voice/store.ts) :
                   l'écran ne nomme pas le fournisseur, la preuve en base non plus. */}
-              Je certifie que la voix enregistrée est la mienne et j’autorise Studiio et ses prestataires
-              techniques à en créer un clone.
+              {tUi('je_certifie_que_la_voix_enregistree_es')}
             </span>
           </label>
 

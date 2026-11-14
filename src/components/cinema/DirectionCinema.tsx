@@ -153,7 +153,7 @@ export function ExceptionStyleScene({ valeur, styleFilm, surValider }: {
   return (
     <div className="space-y-1.5" data-direction="exception-style">
       <p className="text-[11px] text-slate-400">
-        Cette scene suit le style du film{hereditaire ? ` (${hereditaire.libelle})` : ''}. Une exception reste un choix artistique : elle n’est appliquee qu’apres validation.
+        {tUi('cette_scene_suit_le_style_du_film')}{hereditaire ? ` (${hereditaire.libelle})` : ''}{tUi('une_exception_reste_un_choix_artistiqu')}
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <SelecteurStyleScene valeur={choix} styleFilm={styleFilm} surChoisir={setChoix} />
@@ -210,8 +210,8 @@ export function ResumeStyle({ styleFilm, exceptions }: { styleFilm: IdStyleCinem
   return (
     <p className="flex flex-wrap items-center gap-x-2 text-xs text-slate-400" data-direction="resume">
       <Palette className="w-3.5 h-3.5 text-violet-400" aria-hidden="true" />
-      Style du film : <span className="text-slate-200">{s ? s.libelle : tUi('aucun_impose')}</span>
-      {exceptions > 0 && <span>· {exceptions} scene{exceptions > 1 ? 's' : ''} avec un style different</span>}
+      {tUi('style_du_film')} <span className="text-slate-200">{s ? s.libelle : tUi('aucun_impose')}</span>
+      {exceptions > 0 && <span>· {exceptions} scene{exceptions > 1 ? 's' : ''} {tUi('avec_un_style_different')}</span>}
       <span className="inline-flex items-center gap-1 text-slate-500">
         <AlertCircle className="w-3 h-3" aria-hidden="true" /> {tUi('s_applique_aux_prochaines_generations')}
       </span>

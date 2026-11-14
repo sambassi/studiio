@@ -151,7 +151,7 @@ export default function JumeauPanel(props: {
             </div>
             <div className="text-gray-300" data-jumeau-voix>{tUi('voix_ma_voix_nom', { nom: jumeau.voix.nom })}</div>
             {jumeau.prononciations > 0 && (
-              <div className="text-gray-500">{jumeau.prononciations} prononciation{jumeau.prononciations > 1 ? 's' : ''} personnalisée{jumeau.prononciations > 1 ? 's' : ''} seront appliquées au texte prononcé.</div>
+              <div className="text-gray-500">{jumeau.prononciations} prononciation{jumeau.prononciations > 1 ? 's' : ''} {tUi('personnalisee')}{jumeau.prononciations > 1 ? 's' : ''} {tUi('seront_appliquees_au_texte_prononce')}</div>
             )}
           </div>
 

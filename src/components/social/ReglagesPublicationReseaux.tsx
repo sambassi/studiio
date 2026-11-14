@@ -365,7 +365,7 @@ export default function ReglagesPublicationReseaux({
             ) : (
               <p className="flex items-start gap-2 rounded-xl bg-white/[0.03] px-3 py-2.5 text-[11px] leading-relaxed text-gray-400" data-couverture-frame-indisponible>
                 <Info size={13} className="mt-px shrink-0 text-gray-500" />
-                <span>Disponible une fois le montage prêt : choisissez le moment depuis le Calendrier. En attendant, le moment par défaut ({formatMs(cover?.frameMs ?? 1000)}) sera utilisé.</span>
+                <span>{tUi('disponible_une_fois_le_montage_pret_ch')}{formatMs(cover?.frameMs ?? 1000)}{tUi('sera_utilise')}</span>
               </p>
             )}
           </div>

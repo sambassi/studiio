@@ -130,7 +130,7 @@ export function CreditBanques({ attribut, className = '' }: { attribut?: string;
         {tUi('credits_medias')}
       </summary>
       <p className="mt-1 pl-4">
-        Photos et vidéos fournies par{' '}
+        {tUi('photos_et_videos_fournies_par')}{' '}
         <a href={BANQUES.pexels.url} target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-300">Pexels</a>
         {' '}et{' '}
         <a href={BANQUES.unsplash.url} target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-300">Unsplash</a>
@@ -415,7 +415,7 @@ const RechercheStockSequence = forwardRef<PanneauStockHandle, RechercheStockSequ
             className="flex grow sm:grow-0 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-purple-600 px-3 py-2 text-xs font-medium text-white hover:bg-purple-500 disabled:opacity-40 transition-colors"
           >
             {chargement ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
-            Rechercher
+            {tUi('rechercher')}
           </button>
         </div>
 

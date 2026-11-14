@@ -281,7 +281,7 @@ export default function AudioDuckingTimeline({
       >
         <span className="flex items-center gap-1.5">
           {advancedOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-          Avancé · auto-mix et keyframes ({sorted.length})
+          {tUi('avance_auto_mix_et_keyframes')}{sorted.length})
         </span>
         <span className="text-[9px] text-gray-500">
           {advancedOpen ? 'Masquer' : 'Afficher'}

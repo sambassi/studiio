@@ -124,7 +124,7 @@ function ReglageDuree({ m, i, item, plan, occupe, onDuree }: {
     const estimee = plan.sourceParole === 'estimee';
     return (
       <span data-media-duree="voix" className="text-[10px] text-gray-500">
-        Durée liée à la voix{item ? <> · <span data-duree-valeur className="text-gray-300 tabular-nums">{estimee ? '≈ ' : ''}{formatSecondes(item.dureeEffective)} s</span></> : null}
+        {tUi('duree_liee_a_la_voix')}{item ? <> · <span data-duree-valeur className="text-gray-300 tabular-nums">{estimee ? '≈ ' : ''}{formatSecondes(item.dureeEffective)} s</span></> : null}
       </span>
     );
   }
@@ -173,7 +173,7 @@ export default function MediasSequenceVideo(p: MediasSequenceVideoProps) {
   return (
     <div data-medias-video className="mt-2 rounded-xl bg-gray-900/40 ring-1 ring-emerald-500/20 p-2 space-y-1.5 min-w-0">
       <div className="flex items-center justify-between gap-2 px-1">
-        <span className="text-[11px] text-gray-400">Médias de la séquence Vidéo{n > 1 ? ', joués dans cet ordre' : ''}</span>
+        <span className="text-[11px] text-gray-400">{tUi('medias_de_la_sequence_video')}{n > 1 ? ', joués dans cet ordre' : ''}</span>
         {p.occupe && <Loader2 className="w-3 h-3 animate-spin text-gray-500 flex-shrink-0" />}
       </div>
       {narration && (
@@ -308,7 +308,7 @@ export default function MediasSequenceVideo(p: MediasSequenceVideoProps) {
             ) : (
               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md px-2 py-1.5 text-[12px]">
                 <button type="button" role="menuitem" data-ajouter-avatar disabled className="flex items-center gap-2 text-gray-500 cursor-not-allowed">
-                  {p.etatAvatar === 'chargement' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserRound className="w-3.5 h-3.5" />} Mon avatar
+                  {p.etatAvatar === 'chargement' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserRound className="w-3.5 h-3.5" />} {tUi('mon_avatar')}
                 </button>
                 {p.etatAvatar !== 'chargement' && (
                   <a href={p.lienAvatar ?? '/dashboard/avatar'} className="text-[11px] text-purple-300 underline hover:text-purple-200">{tUi('configurer_mon_avatar')}</a>

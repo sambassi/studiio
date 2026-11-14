@@ -85,7 +85,7 @@ export default function QuotaCinema({ filmId, version }: { filmId: string | null
   const budget = (
     <div className="mt-1 flex flex-wrap items-center gap-2">
       {approuve
-        ? <span className="text-emerald-300">Budget du projet confirme ({LIBELLE[approuve.perimetre].toLowerCase()})</span>
+        ? <span className="text-emerald-300">{tUi('budget_du_projet_confirme')}{LIBELLE[approuve.perimetre].toLowerCase()})</span>
         : <span className="text-amber-300">{tUi('confirmez_le_budget_du_projet_avant_to')}</span>}
       {!approuve && choix}
       {approuve && <span className="text-slate-500">{tUi('modifier')}</span>}
@@ -105,8 +105,7 @@ export default function QuotaCinema({ filmId, version }: { filmId: string | null
         </p>
         {detail && (
           <p className="mt-1 text-slate-500">
-            {q.devis.imagesManquantes} image(s) a generer · {q.devis.animationsPossibles} animation(s) possible(s) ·
-            plafond par film {usd(q.plafondFilmUsd)} · aucun credit, aucune marge
+            {q.devis.imagesManquantes} image(s) a generer · {q.devis.animationsPossibles} {tUi('animation_s_possible_s_plafond_par_fil')} {usd(q.plafondFilmUsd)} {tUi('aucun_credit_aucune_marge')}
           </p>
         )}
         {budget}
@@ -131,9 +130,8 @@ export default function QuotaCinema({ filmId, version }: { filmId: string | null
       )}
       {detail && (
         <p className="mt-1 text-slate-500">
-          {q.scenes} scenes · {q.plans} plans · duree max d’un film {Math.round(q.dureeMaxFilmS / 60)} min ·
-          budget de generation utilise a {Math.round(q.partBudgetEngagee * 100)} % ·
-          aucun depassement payant : au-dela, la generation est refusee.
+          {q.scenes} scenes · {q.plans} {tUi('plans_duree_max_d_un_film')} {Math.round(q.dureeMaxFilmS / 60)} min ·
+          budget de generation utilise a {Math.round(q.partBudgetEngagee * 100)} {tUi('aucun_depassement_payant_au_dela_la_ge')}
         </p>
       )}
       {q.disponible && budget}

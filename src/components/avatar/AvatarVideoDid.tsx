@@ -142,10 +142,10 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
       </label>
       {reutilisable && (
         <div data-avatar-did-reutilisable className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 space-y-2">
-          <div className="flex items-center gap-2 text-sm text-emerald-200"><Check className="w-4 h-4" /> Consentement déjà validé pour {reutilisable.nom}</div>
+          <div className="flex items-center gap-2 text-sm text-emerald-200"><Check className="w-4 h-4" /> {tUi('consentement_deja_valide_pour')} {reutilisable.nom}</div>
           <p className="text-xs text-emerald-200/80">{tUi('aucune_nouvelle_phrase_a_lire_le_conse')}</p>
           <button data-avatar-did-action="reutiliser" onClick={reutiliser} disabled={!!occupe} className="button-primary flex items-center gap-2 disabled:opacity-40">
-            {occupe === 'reutiliser' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Réutiliser mon consentement
+            {occupe === 'reutiliser' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} {tUi('reutiliser_mon_consentement')}
           </button>
         </div>
       )}
@@ -207,7 +207,7 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
 
       {etape === 'consentement_reutilisable' && (
         <div className="space-y-3">
-          <p className="text-xs text-gray-400">Votre avatar précédent a été validé avec un consentement{nomConsentement ? ` au nom de ${nomConsentement}` : ''}. Pour cette nouvelle vidéo, réutilisez-le — ou indiquez un autre nom pour une nouvelle phrase.</p>
+          <p className="text-xs text-gray-400">{tUi('votre_avatar_precedent_a_ete_valide_av')}{nomConsentement ? ` au nom de ${nomConsentement}` : ''}{tUi('pour_cette_nouvelle_video_reutilisez_l')}</p>
           {blocNomEtChoix}
         </div>
       )}
@@ -273,7 +273,7 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
           <div className="flex flex-wrap items-center gap-3">
             <input data-avatar-did-nom type="text" value={nom} onChange={(e) => setNom(e.target.value)} maxLength={80} autoComplete="name" placeholder={tUi('prenom_nom')} className="rounded-lg bg-gray-900/60 border border-white/10 px-3 py-2 text-sm text-white" aria-label={tUi('votre_nom_exactement_comme_vous_le_pro')} />
             <button data-avatar-did-action="renouveler" onClick={() => demanderPhrase(true)} disabled={!!occupe || !nomValide} className="text-xs text-gray-300 hover:text-white flex items-center gap-1.5 disabled:opacity-40">
-              {occupe === 'phrase' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />} Obtenir une nouvelle phrase
+              {occupe === 'phrase' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />} {tUi('obtenir_une_nouvelle_phrase')}
             </button>
           </div>
           <input ref={inputRef} type="file" accept="video/mp4,video/quicktime" className="hidden" onChange={(e) => { setErreur(null); setFichier(e.target.files?.[0] ?? null); }} />
@@ -284,7 +284,7 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
             {/* Primaire seulement quand l'envoi est possible (fichier choisi, phrase valide) :
                 désactivé, il reste visible mais ne ressemble pas à un second CTA. */}
             <button data-avatar-did-action="video" onClick={envoyerVideoConsentement} disabled={!fichier || !!occupe || expiree} className={`${fichier && !expiree ? 'button-primary' : 'button-secondary'} flex items-center gap-2 disabled:opacity-40`}>
-              {occupe === 'video' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Envoyer ma vidéo de consentement
+              {occupe === 'video' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} {tUi('envoyer_ma_video_de_consentement')}
             </button>
           </div>
           {envoi && (

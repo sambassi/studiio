@@ -250,8 +250,12 @@ function traiter(fichier) {
         const enfants = (par.children || []).filter((c) => !(ts.isJsxText(c) && !c.text.trim()));
         const textes = enfants.filter((c) => ts.isJsxText(c));
         const expr = enfants.filter((c) => ts.isJsxExpression(c));
-        if (expr.length || textes.length > 1) ignore('fragment de phrase (texte + variable/balise en ligne)', coeur);
-        else if (/[{}]/.test(coeur)) ignore('accolades dans le texte', coeur);
+        // Texte à côté d'une expression / d'une balise : chaque MORCEAU est converti seul. Les
+        // espaces JSX autour sont conservés tels quels (seul le cœur du texte est remplacé), donc
+        // l'affichage français est identique ; l'ordre des mots d'une phrase coupée peut être
+        // imparfait dans une autre langue — limite consignée dans le rapport.
+        const morceau = expr.length || textes.length > 1;
+        if (/[{}]/.test(coeur)) ignore('accolades dans le texte', coeur);
         else {
           const dec = n.pos + brut.indexOf(coeur);
           convertir(n, dec, dec + coeur.length, coeur, norm(coeur), (k) => `{${HOOK}('${k}')}`);

@@ -241,7 +241,7 @@ export default function MediaPage() {
       <div className="mb-5 flex items-start gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2">
         <Clock size={14} className="mt-0.5 flex-shrink-0 text-amber-400" />
         <p className="text-[11px] leading-relaxed text-amber-300/90">
-          Les vidéos sont conservées <strong>24h</strong>. Les fichiers liés à un post
+          {tUi('les_videos_sont_conservees')} <strong>24h</strong>. Les fichiers liés à un post
           programmé sont conservés jusqu&apos;à publication.
         </p>
       </div>

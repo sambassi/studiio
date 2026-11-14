@@ -145,7 +145,7 @@ export default function JumeauAutopilote(props: {
             <div className="flex items-start gap-1.5 text-gray-500" data-jumeau-autopilote-video="migration">
               <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-300/80" />
               <span>
-                La vidéo du jumeau est disponible sur le serveur, mais le réglage n’est pas encore enregistrable (migration <code>2026-09-23-autopilot-jumeau.sql</code> à appliquer).
+                {tUi('la_video_du_jumeau_est_disponible_sur')} <code>2026-09-23-autopilot-jumeau.sql</code> {tUi('a_appliquer')}
               </span>
             </div>
           )}

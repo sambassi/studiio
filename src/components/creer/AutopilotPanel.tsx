@@ -1453,12 +1453,10 @@ export default function AutopilotPanel({
             data-autopilot-produire-confirmation
           >
             <p className="text-purple-100">
-              Une vidéo est rendue tout de suite avec vos sources et votre style,
-              puis déposée en <strong>brouillon</strong> dans le Calendrier, sans
-              aucun réseau : rien ne sera publié.
+              {tUi('une_video_est_rendue_tout_de_suite_ave')} <strong>brouillon</strong> {tUi('dans_le_calendrier_sans_aucun_reseau_r')}
             </p>
             <p className="text-purple-100" data-autopilot-produire-cout>
-              Coût : <strong>{devis
+              {tUi('cout')} <strong>{devis
                 ? annonceCout(devis.politique, { reel: devis.cout, tv: devis.cout }, 'reel', 1)
                 : annonceCout('credits', null, 'reel', 1)}</strong>
               {devis?.solde !== null && devis?.solde !== undefined && devis.politique === 'credits'
@@ -1469,8 +1467,8 @@ export default function AutopilotPanel({
               const d = devisFournisseurProduction(devis, config);
               return d ? (
                 <p className="text-purple-100" data-autopilot-produire-cout-fournisseur>
-                  Coût fournisseur estimé (HeyGen, cette vidéo) : <strong>{d.coutUsd ? libelleCoutUsd(d.coutUsd) : 'inconnu'}</strong>
-                  {' '}— « Lancer le rendu » le confirme.
+                  {tUi('cout_fournisseur_estime_heygen_cette_v')} <strong>{d.coutUsd ? libelleCoutUsd(d.coutUsd) : 'inconnu'}</strong>
+                  {' '}{tUi('lancer_le_rendu_le_confirme')}
                 </p>
               ) : null;
             })()}
@@ -1549,7 +1547,7 @@ export default function AutopilotPanel({
           <p className="flex items-start gap-1.5 text-xs text-emerald-400" data-autopilot-produire-resultat data-post-id={produire.postId ?? ''}>
             <Check className="w-3.5 h-3.5 mt-0.5 shrink-0" />
             <span>
-              Brouillon déposé dans le Calendrier le {produire.date ? dateLisible(produire.date) : 'aujourd’hui'}
+              {tUi('brouillon_depose_dans_le_calendrier_le')} {produire.date ? dateLisible(produire.date) : 'aujourd’hui'}
               {produire.time ? ` à ${produire.time}` : ''} ({produire.timezone}).
               {' '}
               <a href={produire.calendrierUrl} className="underline hover:text-white" data-autopilot-produire-lien>
@@ -1585,8 +1583,8 @@ export default function AutopilotPanel({
       {!ready && (
         <p className="flex items-start gap-1.5 text-xs text-amber-400">
           <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-          L’Autopilote n’est pas encore disponible sur ce serveur : la migration
-          <code className="mx-1">autopilot_config</code> n’a pas été appliquée.
+          {tUi('l_autopilote_n_est_pas_encore_disponib')}
+          <code className="mx-1">autopilot_config</code> {tUi('n_a_pas_ete_appliquee')}
         </p>
       )}
       {/* Le DIRE plutôt que de laisser croire que c'est enregistré : sans les
@@ -1596,8 +1594,8 @@ export default function AutopilotPanel({
       {ready && !identiteReady && (
         <p className="flex items-start gap-1.5 text-xs text-amber-400" data-autopilot-identite-absente>
           <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-          Couleurs, musique, voix et mixeur ne seront pas conservés : la migration
-          <code className="mx-1">2026-08-07-autopilot-branding</code> n’a pas été appliquée.
+          {tUi('couleurs_musique_voix_et_mixeur_ne_ser')}
+          <code className="mx-1">2026-08-07-autopilot-branding</code> {tUi('n_a_pas_ete_appliquee')}
         </p>
       )}
 
@@ -1642,7 +1640,7 @@ export default function AutopilotPanel({
         ))}
       </ol>
       <p className="sm:hidden text-[11px] text-gray-400" data-autopilot-etapes-compact>
-        Étape {etape + 1} sur {ETAPES.length} · <span className="text-white">{ETAPES[etape].titre}</span>
+        {tUi('etape')} {etape + 1} sur {ETAPES.length} · <span className="text-white">{ETAPES[etape].titre}</span>
         {etape < ETAPES.length - 1 && <> — Prochaine : {ETAPES[etape + 1].titre}</>}
       </p>
 
@@ -1742,8 +1740,8 @@ export default function AutopilotPanel({
           {ready && !briefReady && (
             <p className="flex items-start gap-1.5 text-xs text-amber-400" data-autopilot-brief-absent>
               <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-              Le brief ne sera pas conservé : la migration
-              <code className="mx-1">2026-09-21-autopilot-brief</code> n’a pas été appliquée.
+              {tUi('le_brief_ne_sera_pas_conserve_la_migra')}
+              <code className="mx-1">2026-09-21-autopilot-brief</code> {tUi('n_a_pas_ete_appliquee')}
             </p>
           )}
           <BriefVideo
@@ -2356,8 +2354,7 @@ export default function AutopilotPanel({
               <p className="text-[11px] text-gray-500" data-autopilot-style-recommande>
                 Valeurs actuelles : {RECAP_CONSTANT(config, voixClonees)
                   .filter(([cle]) => cle !== 'Couleurs' && cle !== 'Fond des cartes')
-                  .map(([cle, v]) => `${cle.toLowerCase()} ${v.toLowerCase()}`).join(' · ')}.
-                Vous pouvez les laisser telles quelles.
+                  .map(([cle, v]) => `${cle.toLowerCase()} ${v.toLowerCase()}`).join(' · ')}{tUi('vous_pouvez_les_laisser_telles_quelles')}
               </p>
 {/* ── Musique ──────────────────────────────────────────────────── */}
           <div>
@@ -2447,8 +2444,7 @@ export default function AutopilotPanel({
             )}
             {voixClonees.length === 0 ? (
               <p className="text-[11px] text-gray-500">
-                Aucune voix clonée. Rendez-vous dans <span className="text-gray-300">{tUi('mon_avatar')}</span> pour
-                en enregistrer une — sans elle, la narration utilise la voix par défaut.
+                {tUi('aucune_voix_clonee_rendez_vous_dans')} <span className="text-gray-300">{tUi('mon_avatar')}</span> {tUi('pour_en_enregistrer_une_sans_elle_la_n')}
               </p>
             ) : (
               <>
@@ -2475,8 +2471,7 @@ export default function AutopilotPanel({
             {!config.voiceEnabled && (
               <p className="flex items-start gap-1.5 text-[11px] text-gray-500 mt-1.5">
                 <Mic className="w-3 h-3 mt-0.5 shrink-0" />
-                La narration est désactivée : activez-la à l’étape <span className="text-gray-300">Options</span> pour
-                que ce choix serve.
+                {tUi('la_narration_est_desactivee_activez_la')} <span className="text-gray-300">Options</span> {tUi('pour_que_ce_choix_serve')}
               </p>
             )}
           </div>
@@ -2585,7 +2580,7 @@ export default function AutopilotPanel({
               {(config.musicUrl || rushEcoute) ? (
                 <>
                   <p className="text-[11px] text-gray-500">
-                    Les niveaux du mixeur, sur {config.musicUrl ? tUi('votre_musique') : ''}
+                    {tUi('les_niveaux_du_mixeur_sur')} {config.musicUrl ? tUi('votre_musique') : ''}
                     {config.musicUrl && rushEcoute ? ' et ' : ''}
                     {rushEcoute ? tUi('le_prochain_rush_de_la_rotation') : ''}.
                   </p>
@@ -2667,9 +2662,8 @@ export default function AutopilotPanel({
               {ready && !dateDebutReady && (
                 <p className="flex items-start gap-1.5 text-[11px] text-amber-400 mt-1" data-autopilot-start-date-absente>
                   <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                  La date de début n’est pas encore conservée : la migration
-                  <code className="mx-1">2026-09-21-autopilot-start-date</code> n’a pas été
-                  appliquée. L’Autopilote part dès le prochain passage.
+                  {tUi('la_date_de_debut_n_est_pas_encore_cons')}
+                  <code className="mx-1">2026-09-21-autopilot-start-date</code> {tUi('n_a_pas_ete_appliquee_l_autopilote_par')}
                 </p>
               )}
             </div>
@@ -2690,10 +2684,7 @@ export default function AutopilotPanel({
                 ))}
               </select>
               <p className="text-[11px] text-gray-500 mt-1">
-                Heure de {config.runTimezone.replace('_', ' ')} à laquelle Studiio
-                PRODUIT les vidéos. Ce n’est pas une heure de publication, et ce
-                n’est pas une commande immédiate : pour tester tout de suite,
-                utilisez « Produire un brouillon maintenant » ci-dessous.
+                Heure de {config.runTimezone.replace('_', ' ')} {tUi('a_laquelle_studiio_produit_les_videos')}
               </p>
             </div>
           </div>
@@ -2732,9 +2723,8 @@ export default function AutopilotPanel({
             {ready && !heurePublicationReady && (
               <p className="flex items-start gap-1.5 text-[11px] text-amber-400 mt-1" data-autopilot-publish-time-absente>
                 <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                L’heure de publication n’est pas encore conservée : la migration
-                <code className="mx-1">2026-09-21-autopilot-publish-time</code> n’a pas été
-                appliquée. Les vidéos restent programmées à 18:00.
+                {tUi('l_heure_de_publication_n_est_pas_encor')}
+                <code className="mx-1">2026-09-21-autopilot-publish-time</code> {tUi('n_a_pas_ete_appliquee_les_videos_reste')}
               </p>
             )}
           </div>
@@ -2774,7 +2764,7 @@ export default function AutopilotPanel({
                 className="w-full rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2 text-xs disabled:opacity-40"
               >
                 {Array.from({ length: MAX_PER_CYCLE }, (_, i) => i + 1).map((n) => (
-                  <option key={n} value={n}>{n} vidéo{n > 1 ? 's' : ''}</option>
+                  <option key={n} value={n}>{n} {tUi('video')}{n > 1 ? 's' : ''}</option>
                 ))}
               </select>
             </div>
@@ -3027,10 +3017,10 @@ export default function AutopilotPanel({
           {config.enabled && (
             <p className="flex items-start gap-1.5 text-[11px] text-gray-400" data-autopilot-depart>
               <Rocket className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-              Production à {heureLisible(config.runHour)} ({config.runTimezone}),
+              {tUi('production_a')} {heureLisible(config.runHour)} ({config.runTimezone}),
               {' '}{CADENCE_LABELS[config.cadence].toLowerCase()}.
               Prochaine production : {prochainDepart(config.runHour, config.runTimezone, new Date(), config.startDate)}.
-              {' '}Publication des vidéos produites : le lendemain à {heurePublicationLisible(config)}.
+              {' '}{tUi('publication_des_videos_produites_le_le')} {heurePublicationLisible(config)}.
             </p>
           )}
 

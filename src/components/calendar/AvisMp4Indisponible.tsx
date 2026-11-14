@@ -28,7 +28,7 @@ export default function AvisMp4Indisponible({ postId, onReussi }: { postId: stri
     >
       <AlertTriangle className="w-4 h-4 shrink-0" />
       <span>
-        MP4 indisponible — la vidéo reste au format WebM.
+        {tUi('mp4_indisponible_la_video_reste_au_for')}
         {etat === 'echec' && ' Nouvel essai sans succès.'}
       </span>
       <button

@@ -74,7 +74,7 @@ export default function ConsentementJumeauAdmin({ statutInitial, onAccepte }: { 
       <p className="text-xs text-gray-400">{tUi('acces_administrateur_test_interne_une')}</p>
       <div className="flex gap-3">
         <button onClick={enregistrer} disabled={envoi} className="rounded-lg bg-amber-500/20 px-3 py-2 text-xs text-amber-100 hover:bg-amber-500/30 disabled:opacity-50 flex items-center gap-2">
-          {envoi && <Loader2 className="w-3.5 h-3.5 animate-spin" />}Enregistrer mon consentement
+          {envoi && <Loader2 className="w-3.5 h-3.5 animate-spin" />}{tUi('enregistrer_mon_consentement')}
         </button>
         {statut === 'pending' && (
           <button onClick={verifier} className="text-xs text-gray-400 hover:text-white">{tUi('verifier_maintenant')}</button>

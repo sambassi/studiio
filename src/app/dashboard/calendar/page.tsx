@@ -2608,7 +2608,7 @@ export default function CalendarPage() {
                     className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600 disabled:opacity-50 text-white text-xs font-bold transition"
                   >
                     {saving ? <Loader2 size={14} className="animate-spin" /> : <Clock size={14} />}
-                    Planifier à {bulkScheduleTime}
+                    {tUi('planifier_a')} {bulkScheduleTime}
                   </button>
                   <button
                     onClick={handleCrossDateBulkDelete}

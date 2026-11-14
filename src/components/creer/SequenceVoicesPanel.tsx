@@ -619,7 +619,7 @@ export function SequenceVoicesPanel({
           className="ml-auto flex items-center gap-1 rounded bg-purple-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {generateAllBusy ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
-          Générer toutes les voix TTS
+          {tUi('generer_toutes_les_voix_tts')}
         </button>
       </div>
 

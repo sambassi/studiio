@@ -26,13 +26,14 @@ const pauseDisponible = () => typeof MediaRecorder !== 'undefined' && typeof Med
 
 /** Le guide de tournage : ce qui fait une bonne source, AVANT d'enregistrer. */
 function GuideTournage() {
+  const tUi = useTranslations('ui.componentsAvatarStudioEnregistreurSource');
   return (
     <ul data-enregistreur-guide className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-left text-xs text-gray-300">
       {GUIDE_TOURNAGE.map((ligne) => (
         <li key={ligne} className="flex items-start gap-2"><Check className="mt-0.5 w-3.5 h-3.5 shrink-0 text-emerald-400" />{ligne}</li>
       ))}
       <li className="flex items-start gap-2"><Check className="mt-0.5 w-3.5 h-3.5 shrink-0 text-emerald-400" />
-        Durée : {EXIGENCES_SOURCE_VIDEO.dureeMinS} s minimum, idéalement 2 minutes
+        {tUi('duree')} {EXIGENCES_SOURCE_VIDEO.dureeMinS} {tUi('s_minimum_idealement_2_minutes')}
       </li>
     </ul>
   );
@@ -376,7 +377,7 @@ export default function EnregistreurSource(props: {
 
       {phase === 'apercu' && prise && (
         <div className="space-y-3">
-          <p className="text-xs text-center text-gray-400">{formaterDuree(duree)} — {Math.max(1, Math.round(prise.fichier.size / 1024 / 1024))} Mo. Rien n’est envoyé tant que vous ne l’avez pas choisie.</p>
+          <p className="text-xs text-center text-gray-400">{formaterDuree(duree)} — {Math.max(1, Math.round(prise.fichier.size / 1024 / 1024))} {tUi('mo_rien_n_est_envoye_tant_que_vous_ne')}</p>
           {motifsPrise.length > 0 && (
             <ul data-enregistreur-refus className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-200 space-y-1">
               {motifsPrise.map((m) => <li key={m}>{m}</li>)}

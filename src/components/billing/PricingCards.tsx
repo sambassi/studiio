@@ -108,7 +108,7 @@ export function PricingCards({ onSelectPlan }: PricingCardsProps) {
                   <span className="text-gray-400 text-sm">{period}</span>
                 </div>
                 {billingCycle === 'yearly' && plan.key !== 'free' && plan.yearly_price_cents > 0 && (
-                  <p className="text-xs text-gray-500 mt-1">{centsToFr(totalAnnuelCentimes(plan.yearly_price_cents || 0))} facturé annuellement</p>
+                  <p className="text-xs text-gray-500 mt-1">{centsToFr(totalAnnuelCentimes(plan.yearly_price_cents || 0))} {tUi('facture_annuellement')}</p>
                 )}
               </CardHeader>
               <CardContent className="pt-6">

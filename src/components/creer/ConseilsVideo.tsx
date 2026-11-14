@@ -112,8 +112,8 @@ export function ConseilsVideo({ postId, metadata }: { postId: string; metadata: 
           <p className="flex items-start gap-1.5 text-[11px] text-gray-500">
             <Info className="w-3 h-3 mt-0.5 shrink-0" />
             <span>
-              Ces conseils ne modifient rien. Ils portent uniquement sur ce que Studiio a mesuré
-              {rapport.couverture.lisibilite ? '' : ' (taille et contraste des textes non mesurés pour cette vidéo)'} : il ne reconnaît pas encore les visages ni les types de plans.
+              {tUi('ces_conseils_ne_modifient_rien_ils_por')}
+              {rapport.couverture.lisibilite ? '' : ' (taille et contraste des textes non mesurés pour cette vidéo)'} {tUi('il_ne_reconnait_pas_encore_les_visages')}
             </span>
           </p>
         </div>
