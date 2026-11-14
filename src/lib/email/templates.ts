@@ -4,6 +4,8 @@
  * Stylized with Studiio's dark purple and pink branding
  */
 
+import { traducteur, intlDe } from '@/lib/i18n/serveur';
+
 // Color palette
 const colors = {
   primary: '#7C3AED', // Deep purple
@@ -44,6 +46,8 @@ const footerStyles = `
 `;
 
 interface PaymentConfirmationData {
+  /** Langue du destinataire (code `locale`) ; absente = français. */
+  locale?: string;
   orderId: string;
   amount: number;
   date: string;
@@ -58,6 +62,8 @@ interface PaymentConfirmationData {
  * Sent to customer after successful payment
  */
 export function paymentConfirmation(data: PaymentConfirmationData): string {
+  const m = traducteur(data.locale, 'email.paymentConfirmation');
+  const loc = intlDe(data.locale);
   const {
     orderId,
     amount,
@@ -68,7 +74,7 @@ export function paymentConfirmation(data: PaymentConfirmationData): string {
     customerName = 'Utilisateur',
   } = data;
 
-  const formattedAmount = new Intl.NumberFormat('fr-FR', {
+  const formattedAmount = new Intl.NumberFormat(loc, {
     style: 'currency',
     currency,
   }).format(amount);
@@ -85,10 +91,10 @@ export function paymentConfirmation(data: PaymentConfirmationData): string {
         <!-- Header -->
         <div style="${headerStyles}">
           <h1 style="margin: 0; font-size: 28px; font-weight: bold;">
-            Confirmation de Paiement
+            ${m('confirmation_de_paiement')}
           </h1>
           <p style="margin: 10px 0 0 0; font-size: 14px; opacity: 0.9;">
-            Merci pour votre achat
+            ${m('merci_pour_votre_achat')}
           </p>
         </div>
 
@@ -96,11 +102,11 @@ export function paymentConfirmation(data: PaymentConfirmationData): string {
         <div style="padding: 40px 20px;">
           <!-- Greeting -->
           <p style="margin-top: 0; margin-bottom: 30px;">
-            Bonjour <strong>${customerName}</strong>,
+            ${m('bonjour')} <strong>${customerName}</strong>,
           </p>
 
           <p style="margin-bottom: 30px;">
-            Nous vous remercions pour votre confiance ! Votre commande a été traitée avec succès.
+            ${m('nous_vous_remercions_pour_votre_co')}
           </p>
 
           <!-- Receipt Box -->
@@ -117,12 +123,12 @@ export function paymentConfirmation(data: PaymentConfirmationData): string {
               font-size: 18px;
               font-weight: 600;
             ">
-              Reçu de Commande
+              ${m('recu_de_commande')}
             </h2>
 
             <table style="width: 100%; border-collapse: collapse;">
               <tr style="border-bottom: 1px solid ${colors.border};">
-                <td style="padding: 12px 0; color: #6B7280;">Numéro de Commande:</td>
+                <td style="padding: 12px 0; color: #6B7280;">${m('numero_de_commande')}</td>
                 <td style="
                   padding: 12px 0;
                   text-align: right;
@@ -133,21 +139,21 @@ export function paymentConfirmation(data: PaymentConfirmationData): string {
                 </td>
               </tr>
               <tr style="border-bottom: 1px solid ${colors.border};">
-                <td style="padding: 12px 0; color: #6B7280;">Plan:</td>
+                <td style="padding: 12px 0; color: #6B7280;">${m('plan')}</td>
                 <td style="padding: 12px 0; text-align: right; font-weight: 500;">
                   ${planName}
                 </td>
               </tr>
               <tr style="border-bottom: 1px solid ${colors.border};">
-                <td style="padding: 12px 0; color: #6B7280;">Crédits Achetés:</td>
+                <td style="padding: 12px 0; color: #6B7280;">${m('credits_achetes')}</td>
                 <td style="padding: 12px 0; text-align: right; font-weight: 500;">
-                  ${creditsAmount.toLocaleString('fr-FR')} crédits
+                  ${creditsAmount.toLocaleString(loc)} crédits
                 </td>
               </tr>
               <tr style="border-bottom: 1px solid ${colors.border};">
-                <td style="padding: 12px 0; color: #6B7280;">Date:</td>
+                <td style="padding: 12px 0; color: #6B7280;">${m('date')}</td>
                 <td style="padding: 12px 0; text-align: right; font-weight: 500;">
-                  ${new Date(date).toLocaleDateString('fr-FR', {
+                  ${new Date(date).toLocaleDateString(loc, {
                     year: 'numeric',
                     month: 'long',
                     day: 'numeric',
@@ -161,7 +167,7 @@ export function paymentConfirmation(data: PaymentConfirmationData): string {
                   font-weight: 600;
                   color: ${colors.primary};
                 ">
-                  Montant Total:
+                  ${m('montant_total')}
                 </td>
                 <td style="
                   padding: 16px 0;
@@ -185,7 +191,7 @@ export function paymentConfirmation(data: PaymentConfirmationData): string {
             border-radius: 4px;
           ">
             <p style="margin: 0; color: ${colors.success}; font-weight: 500;">
-              ✓ Vos crédits ont été ajoutés à votre compte et sont maintenant disponibles.
+              ${m('vos_credits_ont_ete_ajoutes_a_votr')}
             </p>
           </div>
 
@@ -197,17 +203,17 @@ export function paymentConfirmation(data: PaymentConfirmationData): string {
               font-size: 16px;
               font-weight: 600;
             ">
-              Prochaines Étapes
+              ${m('prochaines_etapes')}
             </h3>
             <ol style="margin: 0; padding-left: 20px;">
               <li style="margin-bottom: 10px;">
-                Connectez-vous à votre compte Studiio
+                ${m('connectez_vous_a_votre_compte_stud')}
               </li>
               <li style="margin-bottom: 10px;">
-                Accédez à votre tableau de bord pour utiliser vos crédits
+                ${m('accedez_a_votre_tableau_de_bord_po')}
               </li>
               <li>
-                Créez vos vidéos et contenus professionnels
+                ${m('creez_vos_videos_et_contenus_profe')}
               </li>
             </ol>
           </div>
@@ -218,24 +224,24 @@ export function paymentConfirmation(data: PaymentConfirmationData): string {
             font-size: 14px;
             margin-bottom: 20px;
           ">
-            Une question ? Notre équipe support est disponible pour vous aider.
+            ${m('une_question_notre_equipe_support')}
           </p>
         </div>
 
         <!-- Footer -->
         <div style="${footerStyles}">
           <p style="margin: 0 0 10px 0;">
-            <strong>Studiio</strong> - Créateurs de Contenu Professionnel
+            <strong>Studiio</strong> ${m('createurs_de_contenu_professionnel')}
           </p>
           <p style="margin: 0; color: #9CA3AF;">
-            © 2024 Studiio. Tous droits réservés.
+            ${m('2024_studiio_tous_droits_reserves')}
           </p>
           <p style="margin: 10px 0 0 0;">
             <a href="https://studiio.pro" style="
               color: ${colors.primary};
               text-decoration: none;
             ">
-              visitez notre site
+              ${m('visitez_notre_site')}
             </a>
           </p>
         </div>
@@ -416,6 +422,8 @@ export function adminSaleNotification(data: AdminSaleNotificationData): string {
 }
 
 interface WelcomeEmailData {
+  /** Langue du destinataire (code `locale`) ; absente = français. */
+  locale?: string;
   name: string;
   freeCredits?: number;
 }
@@ -425,6 +433,8 @@ interface WelcomeEmailData {
  * Sent to new users after registration
  */
 export function welcomeEmail(data: WelcomeEmailData): string {
+  const m = traducteur(data.locale, 'email.welcomeEmail');
+  const loc = intlDe(data.locale);
   const { name, freeCredits = 100 } = data;
 
   return `
@@ -439,10 +449,10 @@ export function welcomeEmail(data: WelcomeEmailData): string {
         <!-- Header -->
         <div style="${headerStyles}">
           <h1 style="margin: 0; font-size: 28px; font-weight: bold;">
-            Bienvenue sur Studiio
+            ${m('bienvenue_sur_studiio')}
           </h1>
           <p style="margin: 10px 0 0 0; font-size: 14px; opacity: 0.9;">
-            Commencez à créer du contenu professionnel
+            ${m('commencez_a_creer_du_contenu_profe')}
           </p>
         </div>
 
@@ -450,13 +460,11 @@ export function welcomeEmail(data: WelcomeEmailData): string {
         <div style="padding: 40px 20px;">
           <!-- Greeting -->
           <p style="margin-top: 0; margin-bottom: 30px; font-size: 16px;">
-            Salut <strong>${name}</strong> ! 👋
+            ${m('salut')} <strong>${name}</strong> ! 👋
           </p>
 
           <p style="margin-bottom: 20px;">
-            Nous sommes ravis de vous accueillir dans la communauté Studiio.
-            Vous avez accès à des outils puissants pour créer des vidéos et du contenu
-            professionnel en quelques minutes.
+            ${m('nous_sommes_ravis_de_vous_accueill')}
           </p>
 
           <!-- Free Credits Box -->
@@ -473,20 +481,20 @@ export function welcomeEmail(data: WelcomeEmailData): string {
               font-size: 14px;
               opacity: 0.9;
             ">
-              Crédits gratuits offerts
+              ${m('credits_gratuits_offerts')}
             </p>
             <h2 style="
               margin: 0;
               font-size: 42px;
               font-weight: 700;
             ">
-              ${freeCredits.toLocaleString('fr-FR')}
+              ${freeCredits.toLocaleString(loc)}
             </h2>
             <p style="
               margin: 10px 0 0 0;
               font-size: 14px;
             ">
-              crédits à utiliser immédiatement
+              ${m('credits_a_utiliser_immediatement')}
             </p>
           </div>
 
@@ -498,7 +506,7 @@ export function welcomeEmail(data: WelcomeEmailData): string {
               font-size: 18px;
               font-weight: 600;
             ">
-              Pour Commencer
+              ${m('pour_commencer')}
             </h3>
 
             <div style="
@@ -512,10 +520,10 @@ export function welcomeEmail(data: WelcomeEmailData): string {
                 color: ${colors.dark};
                 font-weight: 600;
               ">
-                1. Complétez votre profil
+                ${m('1_completez_votre_profil')}
               </h4>
               <p style="margin: 0; color: #6B7280; font-size: 14px;">
-                Ajoutez une photo et des informations pour personnaliser votre expérience.
+                ${m('ajoutez_une_photo_et_des_informati')}
               </p>
             </div>
 
@@ -530,10 +538,10 @@ export function welcomeEmail(data: WelcomeEmailData): string {
                 color: ${colors.dark};
                 font-weight: 600;
               ">
-                2. Explorez les modèles
+                ${m('2_explorez_les_modeles')}
               </h4>
               <p style="margin: 0; color: #6B7280; font-size: 14px;">
-                Découvrez notre bibliothèque de modèles vidéo professionnels.
+                ${m('decouvrez_notre_bibliotheque_de_mo')}
               </p>
             </div>
 
@@ -547,10 +555,10 @@ export function welcomeEmail(data: WelcomeEmailData): string {
                 color: ${colors.dark};
                 font-weight: 600;
               ">
-                3. Créez votre première vidéo
+                ${m('3_creez_votre_premiere_video')}
               </h4>
               <p style="margin: 0; color: #6B7280; font-size: 14px;">
-                Utilisez l'éditeur intuitif pour créer du contenu en quelques minutes.
+                ${m('utilisez_l_editeur_intuitif_pour_c')}
               </p>
             </div>
           </div>
@@ -563,7 +571,7 @@ export function welcomeEmail(data: WelcomeEmailData): string {
               font-size: 18px;
               font-weight: 600;
             ">
-              Ce Que Vous Pouvez Faire
+              ${m('ce_que_vous_pouvez_faire')}
             </h3>
             <ul style="
               margin: 0;
@@ -571,19 +579,19 @@ export function welcomeEmail(data: WelcomeEmailData): string {
               color: #374151;
             ">
               <li style="margin-bottom: 10px;">
-                Créer des vidéos professionnelles avec des modèles prédéfinis
+                ${m('creer_des_videos_professionnelles')}
               </li>
               <li style="margin-bottom: 10px;">
-                Générer automatiquement des sous-titres en plusieurs langues
+                ${m('generer_automatiquement_des_sous_t')}
               </li>
               <li style="margin-bottom: 10px;">
-                Ajouter de la musique et des effets sonores
+                ${m('ajouter_de_la_musique_et_des_effet')}
               </li>
               <li style="margin-bottom: 10px;">
-                Exporter en haute définition
+                ${m('exporter_en_haute_definition')}
               </li>
               <li>
-                Collaborer avec votre équipe
+                ${m('collaborer_avec_votre_equipe')}
               </li>
             </ul>
           </div>
@@ -600,7 +608,7 @@ export function welcomeEmail(data: WelcomeEmailData): string {
               display: inline-block;
               font-size: 16px;
             ">
-              Accédez à votre tableau de bord
+              ${m('accedez_a_votre_tableau_de_bord')}
             </a>
           </div>
 
@@ -610,19 +618,19 @@ export function welcomeEmail(data: WelcomeEmailData): string {
             font-size: 14px;
             text-align: center;
           ">
-            Besoin d'aide ? Consultez notre
+            ${m('besoin_d_aide_consultez_notre')}
             <a href="https://studiio.pro/help" style="
               color: ${colors.primary};
               text-decoration: none;
             ">
-              centre d'aide
+              ${m('centre_d_aide')}
             </a>
              ou
             <a href="https://studiio.pro/contact" style="
               color: ${colors.primary};
               text-decoration: none;
             ">
-              contactez-nous
+              ${m('contactez_nous')}
             </a>
           </p>
         </div>
@@ -630,10 +638,10 @@ export function welcomeEmail(data: WelcomeEmailData): string {
         <!-- Footer -->
         <div style="${footerStyles}">
           <p style="margin: 0 0 10px 0;">
-            <strong>Studiio</strong> - Créateurs de Contenu Professionnel
+            <strong>Studiio</strong> ${m('createurs_de_contenu_professionnel')}
           </p>
           <p style="margin: 0; color: #9CA3AF;">
-            © 2024 Studiio. Tous droits réservés.
+            ${m('2024_studiio_tous_droits_reserves')}
           </p>
         </div>
       </div>
@@ -643,6 +651,8 @@ export function welcomeEmail(data: WelcomeEmailData): string {
 }
 
 interface AccountBannedData {
+  /** Langue du destinataire (code `locale`) ; absente = français. */
+  locale?: string;
   name: string;
   reason: string;
   appealEmail?: string;
@@ -653,6 +663,7 @@ interface AccountBannedData {
  * Sent to users when their account is banned
  */
 export function accountBanned(data: AccountBannedData): string {
+  const m = traducteur(data.locale, 'email.accountBanned');
   const {
     name,
     reason,
@@ -676,22 +687,21 @@ export function accountBanned(data: AccountBannedData): string {
           text-align: center;
         ">
           <h1 style="margin: 0; font-size: 28px; font-weight: bold;">
-            Compte Suspendu
+            ${m('compte_suspendu')}
           </h1>
           <p style="margin: 10px 0 0 0; font-size: 14px; opacity: 0.9;">
-            Action requise
+            ${m('action_requise')}
           </p>
         </div>
 
         <!-- Content -->
         <div style="padding: 40px 20px;">
           <p style="margin-top: 0; margin-bottom: 20px;">
-            Bonjour <strong>${name}</strong>,
+            ${m('bonjour')} <strong>${name}</strong>,
           </p>
 
           <p style="margin-bottom: 20px;">
-            Nous regrettons de vous informer que votre compte Studiio a été suspendu
-            en raison d'une violation de nos conditions d'utilisation.
+            ${m('nous_regrettons_de_vous_informer_q')}
           </p>
 
           <!-- Reason Box -->
@@ -707,7 +717,7 @@ export function accountBanned(data: AccountBannedData): string {
               color: #991B1B;
               font-weight: 600;
             ">
-              Raison de la Suspension
+              ${m('raison_de_la_suspension')}
             </h3>
             <p style="margin: 0; color: #7F1D1D;">
               ${reason}
@@ -722,11 +732,10 @@ export function accountBanned(data: AccountBannedData): string {
               font-size: 18px;
               font-weight: 600;
             ">
-              Contester la Décision
+              ${m('contester_la_decision')}
             </h3>
             <p style="margin-bottom: 15px;">
-              Si vous pensez que cette décision est une erreur, vous pouvez faire appel
-              en envoyant un email à notre équipe d'appels avec les informations suivantes:
+              ${m('si_vous_pensez_que_cette_decision')}
             </p>
             <ul style="
               margin: 0;
@@ -734,13 +743,13 @@ export function accountBanned(data: AccountBannedData): string {
               color: #374151;
             ">
               <li style="margin-bottom: 10px;">
-                Votre nom d'utilisateur ou ID de compte
+                ${m('votre_nom_d_utilisateur_ou_id_de_c')}
               </li>
               <li style="margin-bottom: 10px;">
-                Une explication détaillée de pourquoi vous pensez que cette suspension est incorrecte
+                ${m('une_explication_detaillee_de_pourq')}
               </li>
               <li>
-                Toute preuve pertinente soutenant votre appel
+                ${m('toute_preuve_pertinente_soutenant')}
               </li>
             </ul>
           </div>
@@ -754,7 +763,7 @@ export function accountBanned(data: AccountBannedData): string {
             text-align: center;
           ">
             <p style="margin: 0 0 15px 0;">
-              <strong>Envoyer un appel à:</strong>
+              <strong>${m('envoyer_un_appel_a')}</strong>
             </p>
             <a href="mailto:${appealEmail}" style="
               background-color: ${colors.primary};
@@ -768,7 +777,7 @@ export function accountBanned(data: AccountBannedData): string {
               ${appealEmail}
             </a>
             <p style="margin: 15px 0 0 0; font-size: 14px; color: #6B7280;">
-              Délai de réponse estimé: 3-5 jours ouvrables
+              ${m('delai_de_reponse_estime_3_5_jours')}
             </p>
           </div>
 
@@ -778,21 +787,21 @@ export function accountBanned(data: AccountBannedData): string {
             font-size: 14px;
             margin-bottom: 20px;
           ">
-            Veuillez consulter nos
+            ${m('veuillez_consulter_nos')}
             <a href="https://studiio.pro/terms" style="
               color: ${colors.primary};
               text-decoration: none;
             ">
-              conditions d'utilisation
+              ${m('conditions_d_utilisation')}
             </a>
-             pour comprendre les règles que nous appliquons à tous nos utilisateurs.
+             ${m('pour_comprendre_les_regles_que_nou')}
           </p>
         </div>
 
         <!-- Footer -->
         <div style="${footerStyles}">
           <p style="margin: 0;">
-            L'équipe Studiio
+            ${m('l_equipe_studiio')}
           </p>
         </div>
       </div>
@@ -802,6 +811,8 @@ export function accountBanned(data: AccountBannedData): string {
 }
 
 interface CreditsAddedData {
+  /** Langue du destinataire (code `locale`) ; absente = français. */
+  locale?: string;
   name: string;
   amount: number;
   newBalance: number;
@@ -813,6 +824,8 @@ interface CreditsAddedData {
  * Sent when admin adds credits to user account
  */
 export function creditsAdded(data: CreditsAddedData): string {
+  const m = traducteur(data.locale, 'email.creditsAdded');
+  const loc = intlDe(data.locale);
   const { name, amount, newBalance, reason } = data;
 
   return `
@@ -832,21 +845,21 @@ export function creditsAdded(data: CreditsAddedData): string {
           text-align: center;
         ">
           <h1 style="margin: 0; font-size: 28px; font-weight: bold;">
-            Crédits Ajoutés
+            ${m('credits_ajoutes')}
           </h1>
           <p style="margin: 10px 0 0 0; font-size: 14px; opacity: 0.9;">
-            Une bonne nouvelle
+            ${m('une_bonne_nouvelle')}
           </p>
         </div>
 
         <!-- Content -->
         <div style="padding: 40px 20px;">
           <p style="margin-top: 0; margin-bottom: 30px;">
-            Bonjour <strong>${name}</strong>,
+            ${m('bonjour')} <strong>${name}</strong>,
           </p>
 
           <p style="margin-bottom: 30px;">
-            Des crédits ont été ajoutés à votre compte Studiio !
+            ${m('des_credits_ont_ete_ajoutes_a_votr')}
           </p>
 
           <!-- Credits Box -->
@@ -864,14 +877,14 @@ export function creditsAdded(data: CreditsAddedData): string {
               font-weight: 700;
               color: ${colors.success};
             ">
-              +${amount.toLocaleString('fr-FR')}
+              +${amount.toLocaleString(loc)}
             </h2>
             <p style="
               margin: 0 0 20px 0;
               color: #6B7280;
               font-size: 14px;
             ">
-              crédits ajoutés à votre compte
+              ${m('credits_ajoutes_a_votre_compte')}
             </p>
 
             <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
@@ -881,7 +894,7 @@ export function creditsAdded(data: CreditsAddedData): string {
                   color: #6B7280;
                   border-bottom: 1px solid #DCFCE7;
                 ">
-                  Solde Antérieur:
+                  ${m('solde_anterieur')}
                 </td>
                 <td style="
                   padding: 12px 0;
@@ -890,7 +903,7 @@ export function creditsAdded(data: CreditsAddedData): string {
                   font-weight: 500;
                   border-bottom: 1px solid #DCFCE7;
                 ">
-                  ${(newBalance - amount).toLocaleString('fr-FR')}
+                  ${(newBalance - amount).toLocaleString(loc)}
                 </td>
               </tr>
               <tr>
@@ -898,7 +911,7 @@ export function creditsAdded(data: CreditsAddedData): string {
                   padding: 12px 0;
                   color: #6B7280;
                 ">
-                  <strong>Nouveau Solde:</strong>
+                  <strong>${m('nouveau_solde')}</strong>
                 </td>
                 <td style="
                   padding: 12px 0;
@@ -907,7 +920,7 @@ export function creditsAdded(data: CreditsAddedData): string {
                   font-weight: 700;
                   font-size: 18px;
                 ">
-                  ${newBalance.toLocaleString('fr-FR')}
+                  ${newBalance.toLocaleString(loc)}
                 </td>
               </tr>
             </table>
@@ -920,7 +933,7 @@ export function creditsAdded(data: CreditsAddedData): string {
               color: ${colors.primary};
               font-weight: 600;
             ">
-              Raison
+              ${m('raison')}
             </h3>
             <p style="
               margin: 0;
@@ -945,7 +958,7 @@ export function creditsAdded(data: CreditsAddedData): string {
               font-weight: 600;
               display: inline-block;
             ">
-              Commencez à Créer
+              ${m('commencez_a_creer')}
             </a>
           </div>
 
@@ -955,18 +968,17 @@ export function creditsAdded(data: CreditsAddedData): string {
             font-size: 14px;
             text-align: center;
           ">
-            Vos crédits sont maintenant disponibles sur votre compte.
-            Connectez-vous pour les utiliser.
+            ${m('vos_credits_sont_maintenant_dispon')}
           </p>
         </div>
 
         <!-- Footer -->
         <div style="${footerStyles}">
           <p style="margin: 0 0 10px 0;">
-            <strong>Studiio</strong> - Créateurs de Contenu Professionnel
+            <strong>Studiio</strong> ${m('createurs_de_contenu_professionnel')}
           </p>
           <p style="margin: 0; color: #9CA3AF;">
-            © 2024 Studiio. Tous droits réservés.
+            ${m('2024_studiio_tous_droits_reserves')}
           </p>
         </div>
       </div>

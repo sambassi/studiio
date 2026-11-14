@@ -20,9 +20,28 @@ vi.mock('next/navigation', () => ({
 const signInMock = vi.fn();
 vi.mock('next-auth/react', () => ({ signIn: (...a: unknown[]) => signInMock(...a) }));
 
-vi.mock('@/i18n/client', () => ({
-  useTranslations: () => (k: string) => k,
-}));
+// Les anciennes clés rendent la clé elle-même (comportement historique de ce test) ; les clés
+// `ui.*` (texte converti, V670) rendent leur français d'origine, comme sans fournisseur.
+vi.mock('@/i18n/client', async () => {
+  const fr = (await import('../../messages/fr.json')).default as Record<string, unknown>;
+  const lire = (chemin: string): string | null => {
+    let cur: unknown = fr;
+    for (const p of chemin.split('.')) {
+      if (cur && typeof cur === 'object' && p in (cur as Record<string, unknown>)) cur = (cur as Record<string, unknown>)[p];
+      else return null;
+    }
+    return typeof cur === 'string' ? cur : null;
+  };
+  return {
+    useTranslations: (ns?: string) => (k: string, params?: Record<string, unknown>) => {
+      const plein = ns ? `${ns}.${k}` : k;
+      let v = plein.startsWith('ui.') ? lire(plein) : null;
+      if (v === null) return k;
+      for (const [a, b] of Object.entries(params || {})) v = v.replace(`{${a}}`, String(b));
+      return v;
+    },
+  };
+});
 
 import {
   normaliserPlan,
