@@ -764,10 +764,22 @@
       "upload": "Upload an image"
     },
     "suggestions": {
-      "0": { "title": "TRANSFORM YOUR BODY", "subtitle": "Dance is your secret weapon" },
-      "1": { "title": "LIMITLESS ENERGY", "subtitle": "Push your limits every day" },
-      "2": { "title": "DANCE & PERFORMANCE", "subtitle": "Reach your goals faster" },
-      "3": { "title": "TOTAL WELL-BEING", "subtitle": "Body and mind in harmony" }
+      "0": {
+        "title": "TRANSFORM YOUR BODY",
+        "subtitle": "Dance is your secret weapon"
+      },
+      "1": {
+        "title": "LIMITLESS ENERGY",
+        "subtitle": "Push your limits every day"
+      },
+      "2": {
+        "title": "DANCE & PERFORMANCE",
+        "subtitle": "Reach your goals faster"
+      },
+      "3": {
+        "title": "TOTAL WELL-BEING",
+        "subtitle": "Body and mind in harmony"
+      }
     },
     "nextStepMedia": "Next step: Media",
     "backButton": "Back",
@@ -889,7 +901,15 @@
       "scheduled": "Scheduled",
       "published": "Published"
     },
-    "dayHeaders": ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    "dayHeaders": [
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri",
+      "Sat",
+      "Sun"
+    ],
     "selectDate": "Select a date",
     "clickDayToSee": "Click a day to view its posts",
     "noPosts": "No posts this day",
@@ -1192,7 +1212,9 @@
       "disconnectError": "Error during disconnection"
     },
     "comingSoonHint": "{platform} is coming soon. Connecting will reopen shortly.",
-    "voie": { "zernio": "your account" },
+    "voie": {
+      "zernio": "your account"
+    },
     "zernio": {
       "coupeCircuit": "Publishing to your own accounts is temporarily disabled.",
       "optionAbsente": "Enable the Publishing option to connect your own accounts."
@@ -1653,5 +1675,10 @@
     "rate_limit": "Rate limit reached (20 messages/hour). Try again later.",
     "close": "Close",
     "unauthorized": "Sign in to use the assistant."
+  },
+  "languageSelector": {
+    "label": "Language",
+    "beta": "beta",
+    "partial": "partial"
   }
 }

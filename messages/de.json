@@ -1212,7 +1212,9 @@
       "disconnectError": "Fehler beim Trennen"
     },
     "comingSoonHint": "{platform} ist demnächst verfügbar. Die Verbindung wird bald wieder möglich sein.",
-    "voie": { "zernio": "Ihr Konto" },
+    "voie": {
+      "zernio": "Ihr Konto"
+    },
     "zernio": {
       "coupeCircuit": "Das Veröffentlichen auf eigenen Konten ist vorübergehend deaktiviert.",
       "optionAbsente": "Aktivieren Sie die Option Veröffentlichung, um eigene Konten zu verbinden."
@@ -1673,5 +1675,10 @@
     "rate_limit": "Limit erreicht (20 Nachrichten/Stunde). Versuche es später erneut.",
     "close": "Schließen",
     "unauthorized": "Melde dich an, um den Assistenten zu nutzen."
+  },
+  "languageSelector": {
+    "label": "Sprache",
+    "beta": "Beta",
+    "partial": "teilweise"
   }
 }

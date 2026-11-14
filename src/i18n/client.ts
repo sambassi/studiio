@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext } from 'react';
-import type { Locale } from './config';
+import { intlLocales, type Locale } from './config';
 
 type Messages = Record<string, unknown>;
 
@@ -10,6 +10,12 @@ interface I18nContextType {
   messages: Messages;
   setLocale: (locale: Locale) => void;
 }
+
+// Textes de REPLI quand aucun fournisseur n'entoure le composant (rendu isolé, tests) :
+// injectés par l'appelant, jamais importés ici — le catalogue français ne doit pas entrer
+// dans le paquet principal. En production, le fournisseur fournit déjà français + surcouche.
+let messagesDeRepli: Messages = {};
+export function definirMessagesDeRepli(m: Messages): void { messagesDeRepli = m; }
 
 export const I18nContext = createContext<I18nContextType>({
   locale: 'fr',
@@ -31,7 +37,8 @@ export function useSetLocale(): (locale: Locale) => void {
  * Supports interpolation: t('greeting', { name: 'John' }) → "Hello John"
  */
 export function useTranslations(namespace?: string) {
-  const { messages } = useContext(I18nContext);
+  const ctx = useContext(I18nContext);
+  const messages = Object.keys(ctx.messages).length ? ctx.messages : messagesDeRepli;
 
   function getNestedValue(obj: unknown, path: string): string {
     const keys = path.split('.');
@@ -77,8 +84,7 @@ export function useFormattedDate() {
 
   return (date: Date | string, options?: Intl.DateTimeFormatOptions): string => {
     const d = typeof date === 'string' ? new Date(date) : date;
-    const localeMap: Record<string, string> = { fr: 'fr-FR', en: 'en-GB', de: 'de-DE' };
-    return d.toLocaleDateString(localeMap[locale] || 'fr-FR', options || {
+    return d.toLocaleDateString(intlLocales[locale] || 'fr-FR', options || {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
@@ -93,7 +99,6 @@ export function useFormattedNumber() {
   const { locale } = useContext(I18nContext);
 
   return (num: number, options?: Intl.NumberFormatOptions): string => {
-    const localeMap: Record<string, string> = { fr: 'fr-FR', en: 'en-GB', de: 'de-DE' };
-    return num.toLocaleString(localeMap[locale] || 'fr-FR', options);
+    return num.toLocaleString(intlLocales[locale] || 'fr-FR', options);
   };
 }

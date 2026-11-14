@@ -93,3 +93,13 @@ const connecterOriginal = net.Socket.prototype.connect;
   // aucun test légitime ne devrait produire cette ligne.
   throw new AppelReseauInterdit(hote);
 };
+
+// ───────────────────────────────────────────────────────────────────────────
+// TRADUCTION : sans fournisseur, `useTranslations` retombe sur le catalogue français.
+// Les composants convertis (texte en dur → t('clé')) se rendent donc dans les tests
+// exactement comme avant : le français, pas une clé brute. En production, c'est le
+// fournisseur qui apporte français + surcouche de la langue choisie.
+// ───────────────────────────────────────────────────────────────────────────
+import { definirMessagesDeRepli } from '@/i18n/client';
+import frMessages from '../../messages/fr.json';
+definirMessagesDeRepli(frMessages as Record<string, unknown>);
