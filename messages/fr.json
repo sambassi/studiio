@@ -3359,5 +3359,26 @@
       "enregistrement_court_le_clone_sera_moi": "Enregistrement court : le clone sera moins fidèle.",
       "je_certifie_que_la_voix_enregistree_es": "Je certifie que la voix enregistrée est la mienne et j’autorise Studiio et ses prestataires techniques à en créer un clone."
     }
+  },
+  "notifications": {
+    "credits": {
+      "title": "Autopilote en pause : crédits insuffisants",
+      "body": "Votre solde est descendu au seuil que vous avez fixé. Rechargez vos crédits ou abaissez le seuil pour qu’il reprenne."
+    },
+    "dureeAConfirmer": {
+      "title": "Autopilote en pause : durée à confirmer",
+      "body": "Avec votre avatar, la durée choisie est trop courte pour un message complet. Passez à 30 s dans l’Autopilote pour lancer la génération. Rien n’a été produit ni débité."
+    },
+    "sansRush": {
+      "title": "Autopilote en pause : ajoutez des rushes",
+      "body": "Votre Autopilote est actif mais aucun rush de sa banque n’est utilisable (banque vide, rushes expirés ou supprimés). Ajoutez-y au moins une vidéo pour qu’il puisse produire."
+    },
+    "rushIntrouvable": {
+      "titleOne": "{n} rush introuvable",
+      "titlePlural": "{n} rushes introuvables",
+      "bodyVide": "Votre banque est maintenant vide : ajoutez au moins une vidéo pour que l’Autopilote reprenne.",
+      "bodyOne": "{n} vidéo a disparu du stockage et a été retirée de votre banque.",
+      "bodyPlural": "{n} vidéos ont disparu du stockage et ont été retirées de votre banque."
+    }
   }
 }
