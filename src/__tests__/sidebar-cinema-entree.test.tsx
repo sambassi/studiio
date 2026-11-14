@@ -16,7 +16,7 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/dashboard',
 }));
 vi.mock('@/i18n/client', () => ({
-  useTranslations: () => (key: string) => key,
+  useTranslations: () => Object.assign((key: string) => key, { fr: (texte: string) => texte }),
   useLocale: () => 'fr',
   useSetLocale: () => () => {},
 }));

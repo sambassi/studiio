@@ -48,3 +48,21 @@ bm 8 %, bas 0 %. Cette étape n'ajoute **aucune** traduction aux catalogues : el
 ## 6. Pour la suite (une décision à prendre)
 Demander l'autorisation à SIL Cameroun (bàsàa) et à Linganed, ou recruter un relecteur par langue. La chaîne
 CSV → `/admin/traductions` → « Validée » est prête.
+
+## 7. Propositions IA (14/11/2026) — autorisées par le propriétaire, jamais publiées automatiquement
+Claude (sous-agents de la session, aucun appel API payant) a proposé des traductions **contextualisées** pour les clés d'écran
+les plus prioritaires (tableau de bord, CRÉER, Cinéma IA, Autopilote, abonnements, réglages, calendrier, bibliothèque, réseaux).
+Elles sont dans `messages/propositions/<langue>.json` (**non chargé par l'application**) et exportées en
+`docs/langues-africaines/<langue>-propositions-ia.csv`.
+
+| Langue | Propositions IA | Remarque |
+|---|---|---|
+| Lingala | 1 040 | emprunts fréquents au français (séquence, carte…) |
+| Wolof | 1 040 | termes choisis sans appui dictionnaire pour jumeau, séquence, grille… |
+| Bamanankan | 1 039 | « Baarakɛyɔrɔ » (tableau de bord), « Ɲɛsigi IA » (calendrier IA) peu sûrs |
+| Bàsàa | 1 | les agents refusent de proposer : langue non maîtrisée, rien d'inventé |
+
+Statut dans `/admin/traductions` : **« Proposition IA · à valider (non publiée) »**. Cycle : examiner → *Aperçu* (cookie, vous seul) →
+*Approuver* (unitaire ou « Approuver les N affichées ») → l'entrée devient « Validée » et s'affiche pour tous, sans déploiement.
+Les propositions n'écrasent jamais une traduction existante ni une correction de l'administration. L'approbation est faite par
+un administrateur, pas par un locuteur natif : une relecture native reste nécessaire avant d'afficher « Complète ».
