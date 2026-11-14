@@ -7,7 +7,7 @@
 | `fr` | Français | FR | source | Langue d'origine. |
 | `en`, `de` | English, Deutsch | EN, DE | complète | Interface traduite. |
 | `sw`, `ht` | Kiswahili, Kreyòl ayisyen | SW, CR | **bêta** | Interface entièrement traduite, **jamais relue par un locuteur natif**. Le menu l'indique (« bêta »). |
-| `ln`, `wo`, `bm`, `bas` | Lingála, Wolof, Bamanankan, Bàsàa | LN, WO, BM, BA | **partielle** | Un seul mot traduit (« Fermer », sauf bàsàa : aucun). **Tout le reste s'affiche en français.** Aucune phrase n'a été inventée : sans lexique validé ni relecteur natif, une traduction serait trompeuse. Le menu l'indique (« partiel »). |
+| `ln`, `wo`, `bm`, `bas` | Lingala, Wolof, Bamanankan, Bàsàa | LN, WO, BM, BA | **partielle** | Traductions **non relues** de libellés courts (lingala ≈ 15 %, wolof ≈ 13 %, bambara ≈ 3 %, bàsàa 5 textes) ; **le reste s'affiche en français**. Aucune phrase inventée. Détail, sources et expressions à valider : `docs/I18N-LANGUES-AFRICAINES.md`. Le menu l'indique (« partiel »). |
 
 Les codes sont techniques et stables (cookie `locale`, fichiers `messages/<code>.json`). Le sigle visible diffère du code pour le bàsàa (BA/`bas`) et le créole (CR/`ht`).
 
@@ -43,4 +43,4 @@ Les codes sont techniques et stables (cookie `locale`, fichiers `messages/<code>
 
 1. `node scripts/i18n/exporter-relecture.cjs sw > sw.csv` (idem `ht`) → relecture par un locuteur natif → corriger `messages/sw.json` / `ht.json`.
 2. Quand une langue est relue en entier, passer son statut de `draft` à `complete` dans `src/i18n/config.ts` : la mention « bêta » disparaît du menu.
-3. Pour ln/wo/bm/bas : fournir un lexique validé (ou un relecteur) avant toute traduction.
+3. Pour ln/wo/bm/bas : voir `docs/I18N-LANGUES-AFRICAINES.md` (export CSV, réimport des corrections d'un locuteur natif).
