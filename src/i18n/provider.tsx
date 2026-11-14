@@ -31,6 +31,23 @@ function storeLocale(locale: Locale) {
   } catch { /* cookies bloqués : le choix vaut pour la session */ }
 }
 
+/**
+ * Mémorise la langue côté serveur (`user_settings.creator_preferences.locale`, fusion sans
+ * écraser le reste) pour que les e-mails et reçus partent dans la langue de l'utilisateur.
+ * Silencieux : visiteur non connecté (401), réseau coupé ou base absente ne gênent jamais le
+ * changement de langue, qui reste immédiat grâce au cookie.
+ */
+function enregistrerPreference(locale: Locale) {
+  try {
+    if (typeof fetch !== 'function') return;
+    void fetch('/api/user/preferences', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ locale }),
+    }).catch(() => {});
+  } catch { /* ignoré */ }
+}
+
 /** Français + surcouche. Si la surcouche échoue à charger : français seul (jamais une page cassée). */
 export async function chargerMessages(loc: Locale): Promise<Messages> {
   const base = await chargeurs.fr();
@@ -57,6 +74,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const setLocale = useCallback((newLocale: Locale) => {
     const loc = normalizeLocale(newLocale);
     storeLocale(loc);
+    enregistrerPreference(loc);
     // On ne change la langue affichée qu'une fois les textes prêts : pas de mélange à l'écran.
     chargerMessages(loc).then((m) => { setMessages(m); setLocaleState(loc); });
   }, []);
