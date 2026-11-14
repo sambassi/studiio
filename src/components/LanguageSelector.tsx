@@ -67,7 +67,9 @@ export function LanguageSelector({ variant = 'sidebar' }: LanguageSelectorProps)
       setOpen(false);
     };
     const clavier = (e: KeyboardEvent) => { if (e.key === 'Escape') { setOpen(false); bouton.current?.focus(); } };
-    const defil = (e: Event) => { if (!menu.current?.contains(e.target as Node)) setOpen(false); };
+    // Défilement de la page (le toucher d'un bouton lointain fait défiler jusqu'à lui) : le menu
+    // SUIT le bouton au lieu de se fermer ; seul un défilement INTERNE au menu est laissé tranquille.
+    const defil = (e: Event) => { if (!menu.current?.contains(e.target as Node)) placer(); };
     document.addEventListener('mousedown', dehors);
     document.addEventListener('touchstart', dehors);
     document.addEventListener('keydown', clavier);

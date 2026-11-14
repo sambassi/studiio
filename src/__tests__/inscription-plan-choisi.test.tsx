@@ -33,6 +33,9 @@ vi.mock('@/i18n/client', async () => {
     return typeof cur === 'string' ? cur : null;
   };
   return {
+    // Le sélecteur de langue (affiché sur cette page) lit ces deux-là.
+    useLocale: () => 'fr',
+    useSetLocale: () => () => {},
     useTranslations: (ns?: string) => (k: string, params?: Record<string, unknown>) => {
       const plein = ns ? `${ns}.${k}` : k;
       let v = plein.startsWith('ui.') ? lire(plein) : null;

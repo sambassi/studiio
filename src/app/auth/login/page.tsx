@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import { Chrome, Facebook, Loader2 } from 'lucide-react';
 import { useTranslations } from '@/i18n/client';
+import { LanguageSelector } from '@/components/LanguageSelector';
 import { normaliserPlan, normaliserFacturation, destinationApresConnexion } from '@/lib/billing/plan-choisi';
 
 function LoginContent() {
@@ -25,7 +26,9 @@ function LoginContent() {
   };
 
   return (
-    <div className="min-h-screen bg-studiio-dark flex items-center justify-center px-4">
+    <div className="min-h-screen bg-studiio-dark flex items-center justify-center px-4 relative">
+      {/* V670 : la langue doit pouvoir se choisir AVANT de se connecter. */}
+      <div className="absolute top-4 right-4"><LanguageSelector variant="navbar" /></div>
       <div className="w-full max-w-md">
         <div className="card-base p-8 space-y-6">
           <div className="text-center">

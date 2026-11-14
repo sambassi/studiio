@@ -277,6 +277,10 @@ export default function LandingPage() {
                     {t('nav.login')}
                   </Link>
                 </div>
+                {/* V670 : sur téléphone le sélecteur du bandeau est masqué (place) — il vit dans ce menu. */}
+                <div className="pt-3 border-t border-gray-800/50" data-testid="mobile-lang-selector">
+                  <LanguageSelector variant="sidebar" />
+                </div>
               </div>
             </div>
           )}
