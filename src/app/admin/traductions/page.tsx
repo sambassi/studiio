@@ -19,10 +19,11 @@ const COULEUR: Record<Statut, string> = {
   non_validee_attestee: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
   non_validee_a_verifier: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
   non_validee: 'bg-gray-500/15 text-gray-300 border-gray-500/30',
+  proposee_ia: 'bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30',
   manquante: 'bg-red-500/10 text-red-300 border-red-500/30',
 };
-type Filtre = 'toutes' | 'non_validees' | 'a_verifier' | 'validees' | 'manquantes';
-const FILTRES: Array<[Filtre, string]> = [['toutes', 'Toutes'], ['non_validees', 'Non validées'], ['a_verifier', 'À vérifier en priorité'], ['validees', 'Validées'], ['manquantes', 'Manquantes']];
+type Filtre = 'propositions' | 'toutes' | 'non_validees' | 'a_verifier' | 'validees' | 'manquantes';
+const FILTRES: Array<[Filtre, string]> = [['propositions', 'Propositions IA à examiner'], ['toutes', 'Toutes'], ['non_validees', 'Non validées'], ['a_verifier', 'À vérifier en priorité'], ['validees', 'Validées'], ['manquantes', 'Manquantes']];
 
 interface Rapport { importees: number; inchangees: number; vides: number; refusees: Array<{ cle: string; raison: string }>; refuseesTotal: number }
 
@@ -42,6 +43,13 @@ export default function TraductionsAdminPage() {
   const [validees, setValidees] = useState(false);
   const [rapport, setRapport] = useState<Rapport | null>(null);
   const fichier = useRef<HTMLInputElement>(null);
+  const [apercu, setApercu] = useState(false);
+  useEffect(() => { setApercu(/(?:^|;\s*)i18n_apercu_ia=1/.test(document.cookie)); }, []);
+  function basculerApercu() {
+    // Cookie d'aperçu : concerne CE navigateur et ne fait effet que pour un administrateur connecté (contrôlé côté serveur).
+    document.cookie = apercu ? 'i18n_apercu_ia=; path=/; max-age=0; samesite=lax' : 'i18n_apercu_ia=1; path=/; max-age=86400; samesite=lax';
+    setApercu(!apercu);
+  }
 
   const charger = useCallback(async (l: string) => {
     setChargement(true); setErreur(''); setEdition(null); setRapport(null); setMessage(null);
@@ -50,6 +58,8 @@ export default function TraductionsAdminPage() {
       const j = await r.json();
       if (!r.ok || !j.success) throw new Error(j.error || 'Chargement impossible');
       setLignes(j.lignes); setCompteurs(j.compteurs);
+      // Des propositions IA attendent un examen : on les montre d'abord.
+      setFiltre(j.compteurs?.propositionsIA > 0 ? 'propositions' : 'non_validees');
     } catch (e) { setErreur(e instanceof Error ? e.message : 'Chargement impossible'); setLignes([]); setCompteurs(null); }
     finally { setChargement(false); }
   }, []);
@@ -60,6 +70,7 @@ export default function TraductionsAdminPage() {
   const visibles = useMemo(() => {
     const q = recherche.trim().toLowerCase();
     return lignes.filter((l) => {
+      if (filtre === 'propositions' && l.statut !== 'proposee_ia') return false;
       if (filtre === 'non_validees' && !(l.statut.startsWith('non_validee'))) return false;
       if (filtre === 'a_verifier' && l.statut !== 'non_validee_a_verifier') return false;
       if (filtre === 'validees' && l.statut !== 'validee') return false;
@@ -81,6 +92,20 @@ export default function TraductionsAdminPage() {
       setLignes((ls) => ls.map((l) => (l.cle === cle ? j.ligne : l))); setCompteurs(j.compteurs); setEdition(null);
       setMessage({ type: 'ok', texte: 'Enregistré.' });
     } catch (e) { setMessage({ type: 'erreur', texte: e instanceof Error ? e.message : 'Enregistrement impossible' }); }
+    finally { setOccupe(false); }
+  }
+
+  async function approuverLot(cles: string[]) {
+    setOccupe(true); setMessage(null);
+    try {
+      for (let i = 0; i < cles.length; i += 600) {
+        const r = await fetch('/api/admin/traductions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ locale, approuver: cles.slice(i, i + 600) }) });
+        const j = await r.json();
+        if (!r.ok || !j.success) throw new Error(j.error || 'Approbation impossible');
+        setLignes(j.lignes); setCompteurs(j.compteurs);
+        setMessage({ type: 'ok', texte: `${j.approuvees} proposition(s) approuvée(s) : elles s’affichent maintenant aux utilisateurs.` });
+      }
+    } catch (e) { setMessage({ type: 'erreur', texte: e instanceof Error ? e.message : 'Approbation impossible' }); }
     finally { setOccupe(false); }
   }
 
@@ -124,13 +149,27 @@ export default function TraductionsAdminPage() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardHeader><CardTitle>Propositions IA — aperçu et approbation</CardTitle></CardHeader>
+        <CardContent className="space-y-3 text-sm text-gray-300">
+          <p>Les propositions de l’IA sont <strong>à valider</strong> : elles ne s’affichent <strong>pas</strong> aux utilisateurs tant que vous ne les avez pas approuvées. L’aperçu vous les montre, à vous seul, dans Studiio.</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <button onClick={basculerApercu} data-testid="tr-apercu" aria-pressed={apercu} className={`px-3 py-2 rounded-lg border text-sm ${apercu ? 'border-fuchsia-500/50 bg-fuchsia-500/15 text-fuchsia-200' : 'border-gray-600 text-gray-200 hover:bg-gray-800'}`}>{apercu ? 'Aperçu activé — désactiver' : 'Activer l’aperçu pour moi'}</button>
+            <a href="/dashboard" target="_blank" rel="noreferrer" className="text-orange-300 underline" data-testid="tr-voir-dashboard">Voir le tableau de bord</a>
+            <a href="/dashboard/creer" target="_blank" rel="noreferrer" className="text-orange-300 underline">Voir CRÉER</a>
+            <a href="/dashboard/cinema" target="_blank" rel="noreferrer" className="text-orange-300 underline">Voir Cinéma IA</a>
+          </div>
+          <p className="text-xs text-gray-500">Choisissez ensuite la langue dans le menu de Studiio (cookie d’aperçu : ce navigateur, 24 h).</p>
+        </CardContent>
+      </Card>
+
       {erreur && <div role="alert" className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-4 text-red-300"><AlertCircle size={18} />{erreur}</div>}
       {chargement && <div className="flex items-center gap-2 text-gray-400"><Loader2 className="animate-spin" size={18} />Chargement…</div>}
 
       {compteurs && !chargement && (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-3" data-testid="tr-compteurs">
-            {[['Clés', compteurs.total], ['Traduites', compteurs.traduites], ['Validées', compteurs.validees], ['Non validées', compteurs.nonValidees], ['À vérifier en priorité', compteurs.aVerifier], ['Manquantes', compteurs.manquantes]].map(([t, n]) => (
+          <div className="grid grid-cols-2 md:grid-cols-7 gap-3" data-testid="tr-compteurs">
+            {[['Clés', compteurs.total], ['Traduites', compteurs.traduites], ['Validées', compteurs.validees], ['Non validées', compteurs.nonValidees], ['À vérifier en priorité', compteurs.aVerifier], ['Propositions IA', compteurs.propositionsIA], ['Manquantes', compteurs.manquantes]].map(([t, n]) => (
               <Card key={String(t)}><CardContent className="pt-4"><div className="text-xs text-gray-400">{t}</div><div className="text-2xl font-bold text-white">{n}</div></CardContent></Card>
             ))}
           </div>
@@ -176,6 +215,9 @@ export default function TraductionsAdminPage() {
         </select>
         <input value={recherche} onChange={(e) => setRecherche(e.target.value)} placeholder="Rechercher (clé, français, traduction)" aria-label="Rechercher" data-testid="tr-recherche" className="bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 min-w-[260px]" />
         <span className="text-xs text-gray-500" data-testid="tr-nb">{visibles.length} entrée(s)</span>
+        {filtre === 'propositions' && visibles.length > 0 && (
+          <button disabled={occupe} data-testid="tr-approuver-lot" onClick={() => { if (window.confirm(`Approuver ${visibles.length} proposition(s) IA et les publier aux utilisateurs ?`)) void approuverLot(visibles.map((l) => l.cle)); }} className="px-3 py-1.5 rounded-lg border border-green-500/40 text-green-300 hover:bg-green-500/10 text-xs">Approuver les {visibles.length} affichées</button>
+        )}
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-gray-800">
@@ -197,6 +239,8 @@ export default function TraductionsAdminPage() {
                         <button onClick={() => setEdition(null)} className="px-2 py-1 rounded text-gray-400 hover:text-white text-xs">Annuler</button>
                       </div>
                     </div>
+                  ) : l.proposition ? (
+                    <div><div className="text-fuchsia-100" data-testid={`tr-proposition-${l.cle}`}>{l.proposition}</div><div className="text-[11px] text-gray-500 mt-1">Non publiée — le français s’affiche tant qu’elle n’est pas approuvée.</div></div>
                   ) : (l.texte || <span className="text-gray-600 italic">— français affiché —</span>)}
                 </td>
                 <td className="p-3">
@@ -205,7 +249,8 @@ export default function TraductionsAdminPage() {
                   {l.par && <div className="text-[11px] text-gray-600 mt-0.5">{l.par}</div>}
                 </td>
                 <td className="p-3 whitespace-nowrap space-y-1">
-                  <button onClick={() => setEdition({ cle: l.cle, texte: l.texte })} data-testid={`tr-modifier-${l.cle}`} className="block px-2 py-1 rounded border border-gray-600 text-gray-200 hover:bg-gray-800 text-xs">{l.texte ? 'Modifier' : 'Traduire'}</button>
+                  {l.proposition && <button disabled={occupe} onClick={() => enregistrer(l.cle, { texte: l.proposition, valider: true })} data-testid={`tr-approuver-${l.cle}`} className="block px-2 py-1 rounded border border-green-500/40 text-green-300 hover:bg-green-500/10 text-xs">Approuver</button>}
+                  <button onClick={() => setEdition({ cle: l.cle, texte: l.texte || l.proposition || '' })} data-testid={`tr-modifier-${l.cle}`} className="block px-2 py-1 rounded border border-gray-600 text-gray-200 hover:bg-gray-800 text-xs">{l.texte || l.proposition ? 'Modifier' : 'Traduire'}</button>
                   {l.texte && l.statut !== 'validee' && <button disabled={occupe} onClick={() => enregistrer(l.cle, { valider: true })} data-testid={`tr-valider-${l.cle}`} className="block px-2 py-1 rounded border border-green-500/40 text-green-300 hover:bg-green-500/10 text-xs">Valider</button>}
                   {l.statut === 'validee' && <button disabled={occupe} onClick={() => enregistrer(l.cle, { valider: false })} className="block px-2 py-1 rounded text-gray-400 hover:text-white text-xs">Retirer la validation</button>}
                 </td>

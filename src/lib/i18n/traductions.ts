@@ -19,7 +19,7 @@ export interface EntreeCorrection {
 }
 export type Corrections = Record<string, EntreeCorrection>;
 
-export type Statut = 'validee' | 'non_validee_attestee' | 'non_validee_a_verifier' | 'non_validee' | 'manquante';
+export type Statut = 'validee' | 'proposee_ia' | 'non_validee_attestee' | 'non_validee_a_verifier' | 'non_validee' | 'manquante';
 
 export const LIBELLES_STATUT: Record<Statut, string> = {
   validee: 'Validée',
@@ -27,6 +27,7 @@ export const LIBELLES_STATUT: Record<Statut, string> = {
   non_validee_a_verifier: 'Non validée · à vérifier en priorité',
   non_validee: 'Non validée',
   manquante: 'Manquante (français affiché)',
+  proposee_ia: 'Proposition IA · à valider (non publiée)',
 };
 
 export interface MetaEntree { c: 'h' | 'm'; s: string }
@@ -42,6 +43,8 @@ export interface Ligne {
   source: string;
   par?: string;
   le?: string;
+  /** Proposition IA NON publiée (visible seulement en aperçu administrateur, jusqu'à approbation). */
+  proposition?: string;
 }
 
 export interface Compteurs {
@@ -52,6 +55,7 @@ export interface Compteurs {
   aVerifier: number;
   nonValidees: number;
   manquantes: number;
+  propositionsIA: number;
   pourcentTraduit: number;
 }
 
@@ -130,20 +134,24 @@ export function construireLignes(p: {
   statique: Record<string, string>;
   meta?: Meta;
   corrections: Corrections;
+  propositions?: Record<string, string>;
 }): Ligne[] {
   const lignes: Ligne[] = [];
   for (const cle of Object.keys(p.fr)) {
     const c = p.corrections[cle];
     const texte = c ? c.t : (p.statique[cle] || '');
-    const s = statutDe(texte, c, p.meta?.[cle]);
-    lignes.push({ cle, ns: namespaceDe(cle), fr: p.fr[cle], texte, statut: s.statut, confiance: s.confiance, source: s.source, par: c?.par, le: c?.le });
+    let s = statutDe(texte, c, p.meta?.[cle]);
+    const proposition = !texte.trim() ? p.propositions?.[cle] : undefined;
+    if (proposition) s = { statut: 'proposee_ia', confiance: '', source: 'Proposition IA (Claude) — non vérifiée par un locuteur' };
+    lignes.push({ cle, ns: namespaceDe(cle), fr: p.fr[cle], texte, statut: s.statut, confiance: s.confiance, source: s.source, par: c?.par, le: c?.le, ...(proposition ? { proposition } : {}) });
   }
   return lignes;
 }
 
 export function compter(lignes: Ligne[]): Compteurs {
-  const c: Compteurs = { total: lignes.length, traduites: 0, validees: 0, attestees: 0, aVerifier: 0, nonValidees: 0, manquantes: 0, pourcentTraduit: 0 };
+  const c: Compteurs = { total: lignes.length, traduites: 0, validees: 0, attestees: 0, aVerifier: 0, nonValidees: 0, manquantes: 0, propositionsIA: 0, pourcentTraduit: 0 };
   for (const l of lignes) {
+    if (l.statut === 'proposee_ia') { c.propositionsIA += 1; c.manquantes += 1; continue; }   // non publiée : le français s'affiche
     if (l.statut === 'manquante') { c.manquantes += 1; continue; }
     c.traduites += 1;
     if (l.statut === 'validee') c.validees += 1;

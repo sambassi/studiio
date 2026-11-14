@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdmin, logAdminAction } from '@/lib/admin';
 import { localeStatus } from '@/i18n/config';
-import { ecrireCorrections, frAplati, langueEditable, lireCorrections, tableTraductions } from '@/lib/i18n/stockage';
+import { ecrireCorrections, frAplati, langueEditable, lireCorrections, propositionsDe, tableTraductions } from '@/lib/i18n/stockage';
 import { LIBELLES_STATUT, validerTexte, type Corrections } from '@/lib/i18n/traductions';
 import { ecrireCsv } from '@/lib/i18n/csv';
 
@@ -33,8 +33,30 @@ export async function GET(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const { error, session } = await requireAdmin();
   if (error) return error;
-  const body = (await req.json().catch(() => null)) as { locale?: unknown; cle?: unknown; texte?: unknown; valider?: unknown } | null;
+  const body = (await req.json().catch(() => null)) as { locale?: unknown; cle?: unknown; texte?: unknown; valider?: unknown; approuver?: unknown } | null;
   if (!body || typeof body !== 'object') return NextResponse.json({ success: false, error: 'Corps invalide' }, { status: 400 });
+  // APPROBATION EN LOT des propositions IA : une lecture, une écriture. Seules les clés SANS traduction et AYANT une proposition comptent.
+  if (body.approuver !== undefined) {
+    if (!langueEditable(body.locale)) return NextResponse.json({ success: false, error: 'Langue inconnue ou non éditable' }, { status: 400 });
+    if (!Array.isArray(body.approuver) || body.approuver.length === 0 || body.approuver.length > 600 || body.approuver.some((c) => typeof c !== 'string')) return NextResponse.json({ success: false, error: 'Liste de clés invalide (1 à 600)' }, { status: 400 });
+    const loc = body.locale;
+    const lecture = await lireCorrections(loc);
+    if (!lecture.ok) return NextResponse.json({ success: false, error: 'Lecture des corrections impossible : rien n’a été modifié' }, { status: 503 });
+    const corr: Corrections = { ...lecture.corrections };
+    const props = propositionsDe(loc);
+    const vides = new Set(tableTraductions(loc, corr).lignes.filter((l) => l.statut === 'proposee_ia').map((l) => l.cle));
+    const le = new Date().toISOString();
+    let approuvees = 0;
+    for (const k of body.approuver as string[]) {
+      if (!vides.has(k) || !(k in frAplati) || validerTexte(frAplati[k], props[k] || '')) continue;
+      corr[k] = { t: props[k], v: true, par: session!.user!.email!, le }; approuvees += 1;
+    }
+    if (approuvees === 0) return NextResponse.json({ success: false, error: 'Aucune proposition approuvable dans la sélection' }, { status: 422 });
+    if (!(await ecrireCorrections(loc, corr))) return NextResponse.json({ success: false, error: 'Échec de l’enregistrement' }, { status: 500 });
+    await logAdminAction({ adminEmail: session!.user!.email!, action: 'i18n_approbation_ia', targetType: 'traduction', targetId: loc, details: { approuvees } });
+    const t = tableTraductions(loc, corr);
+    return NextResponse.json({ success: true, approuvees, lignes: t.lignes, compteurs: t.compteurs });
+  }
   const { locale, cle } = body;
   if (!langueEditable(locale)) return NextResponse.json({ success: false, error: 'Langue inconnue ou non éditable' }, { status: 400 });
   if (typeof cle !== 'string' || !(cle in frAplati)) return NextResponse.json({ success: false, error: 'Clé inconnue' }, { status: 400 });

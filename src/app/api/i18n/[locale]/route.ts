@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { langueEditable, lireCorrections } from '@/lib/i18n/stockage';
+import { requireAdmin } from '@/lib/admin';
+import { langueEditable, lireCorrections, propositionsDe } from '@/lib/i18n/stockage';
 import { textesDesCorrections } from '@/lib/i18n/traductions';
 
 /**
@@ -13,9 +14,19 @@ export const dynamic = 'force-dynamic';
 const MEMO_MS = 20_000;
 const memo = new Map<string, { a: number; c: Record<string, string> }>();
 
-export async function GET(_req: NextRequest, { params }: { params: { locale: string } }) {
+export async function GET(req: NextRequest, { params }: { params: { locale: string } }) {
   const locale = params.locale;
   if (!langueEditable(locale)) return NextResponse.json({ corrections: {} }, { status: 404 });
+  // APERÇU des propositions IA : réservé aux administrateurs (jamais en cache, jamais pour un visiteur).
+  // Les corrections de l'administration (approuvées ou non) priment sur les propositions.
+  if (new URL(req.url).searchParams.get('apercu') === '1') {
+    const { error } = await requireAdmin();
+    if (!error) {
+      const { ok, corrections } = await lireCorrections(locale);
+      const c = { ...propositionsDe(locale), ...(ok ? textesDesCorrections(corrections) : {}) };
+      return NextResponse.json({ corrections: c, apercu: true }, { headers: { 'Cache-Control': 'no-store' } });
+    }
+  }
   const m = memo.get(locale);
   if (m && Date.now() - m.a < MEMO_MS) {
     return NextResponse.json({ corrections: m.c }, { headers: { 'Cache-Control': 'public, max-age=20, stale-while-revalidate=120' } });

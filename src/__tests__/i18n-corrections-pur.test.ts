@@ -74,7 +74,7 @@ describe('statuts et compteurs', () => {
     expect(par['a.y']).toMatchObject({ texte: 'y2', statut: 'validee' });
     expect(par['b.z']).toMatchObject({ texte: 'z2', statut: 'non_validee', confiance: 'admin' });
     expect(par['ui.fichier.k'].statut).toBe('manquante');
-    expect(compter(lignes)).toEqual({ total: 4, traduites: 3, validees: 1, attestees: 1, aVerifier: 0, nonValidees: 2, manquantes: 1, pourcentTraduit: 75 });
+    expect(compter(lignes)).toEqual({ total: 4, traduites: 3, validees: 1, attestees: 1, aVerifier: 0, nonValidees: 2, manquantes: 1, propositionsIA: 0, pourcentTraduit: 75 });
   });
   it('namespaceDe regroupe ui.<fichier>', () => {
     expect(namespaceDe('ui.appDashboardCinema.titre')).toBe('ui.appDashboardCinema');

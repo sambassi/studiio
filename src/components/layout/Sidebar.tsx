@@ -188,7 +188,7 @@ export function Sidebar() {
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={`lg:hidden fixed top-0 left-0 z-50 p-4 text-gray-400 hover:text-white mt-4 rounded-lg ${ETAT_INTERACTIF_SANS_FOND}`}
-        title="Menu"
+        title={t.fr('Menu')}
       >
         <Menu size={24} />
       </button>
@@ -211,7 +211,7 @@ export function Sidebar() {
         <button
           onClick={() => setIsOpen(false)}
           className={`absolute top-6 right-6 text-gray-400 hover:text-white rounded-md ${ETAT_INTERACTIF_SANS_FOND}`}
-          title="Close"
+          title={t.fr('Fermer')}
         >
           <X size={24} />
         </button>

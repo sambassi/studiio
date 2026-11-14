@@ -202,7 +202,7 @@ export default function BriefVideo({
             <div className="flex items-center justify-between gap-2 mb-1">
               <label htmlFor={id} className="block text-xs font-medium text-gray-300">
                 {tUi.fr(BRIEF_LABELS[cle])}
-                <span className="text-gray-600 font-normal"> · facultatif</span>
+                <span className="text-gray-600 font-normal"> · {tUi.fr('facultatif')}</span>
               </label>
               {profil && (
                 <button
@@ -294,7 +294,7 @@ export default function BriefVideo({
         <div className="space-y-2 pt-1" data-brief-duree-rythme>
           <div>
             <p className="text-xs font-medium text-gray-300 mb-1">
-              {tUi('duree_souhaitee')}<span className="text-gray-600 font-normal"> · facultatif</span>
+              {tUi('duree_souhaitee')}<span className="text-gray-600 font-normal"> · {tUi.fr('facultatif')}</span>
             </p>
             <div className="flex flex-wrap items-center gap-1">
               {DUREES_BRIEF.map((d) => {
@@ -359,7 +359,7 @@ export default function BriefVideo({
           </div>
           <div>
             <p className="text-xs font-medium text-gray-300 mb-1">
-              Rythme<span className="text-gray-600 font-normal"> · facultatif</span>
+              {tUi.fr('Rythme')}<span className="text-gray-600 font-normal"> · {tUi.fr('facultatif')}</span>
             </p>
             <div className="flex flex-wrap gap-1">
               {RYTHMES_BRIEF.map((r) => (

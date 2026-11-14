@@ -14,9 +14,16 @@ import metaLn from '../../../messages/meta/ln.json';
 import metaWo from '../../../messages/meta/wo.json';
 import metaBm from '../../../messages/meta/bm.json';
 import metaBas from '../../../messages/meta/bas.json';
+import propLn from '../../../messages/propositions/ln.json';
+import propWo from '../../../messages/propositions/wo.json';
+import propBm from '../../../messages/propositions/bm.json';
+import propBas from '../../../messages/propositions/bas.json';
 import { cleStockage, compter, construireLignes, type Compteurs, type Corrections, type Ligne, type Meta } from '@/lib/i18n/traductions';
 
 const META: Partial<Record<Locale, Meta>> = { ln: metaLn as Meta, wo: metaWo as Meta, bm: metaBm as Meta, bas: metaBas as Meta };
+const PROPOSITIONS: Partial<Record<Locale, Record<string, string>>> = { ln: propLn, wo: propWo, bm: propBm, bas: propBas };
+/** Propositions IA d'une langue : jamais publiées, seulement examinées dans l'administration. */
+export const propositionsDe = (locale: Locale): Record<string, string> => PROPOSITIONS[locale] || {};
 export const frAplati: Record<string, string> = aplatir(fr as Messages);
 
 /** Langues dont les textes se corrigent dans l'administration : toutes sauf le français (la source). */
@@ -61,6 +68,6 @@ export async function ecrireCorrections(locale: Locale, corrections: Corrections
 }
 
 export function tableTraductions(locale: Locale, corrections: Corrections): { lignes: Ligne[]; compteurs: Compteurs } {
-  const lignes = construireLignes({ fr: frAplati, statique: aplatir(surcoucheStatique(locale)), meta: META[locale], corrections });
+  const lignes = construireLignes({ fr: frAplati, statique: aplatir(surcoucheStatique(locale)), meta: META[locale], corrections, propositions: propositionsDe(locale) });
   return { lignes, compteurs: compter(lignes) };
 }

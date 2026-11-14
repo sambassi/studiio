@@ -59,7 +59,9 @@ async function lireCorrectionsServeur(loc: Locale): Promise<Record<string, strin
     const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const minuteur = ctrl ? setTimeout(() => ctrl.abort(), 3000) : null;
     try {
-      const r = await fetch(`/api/i18n/${loc}`, { signal: ctrl?.signal });
+      // Aperçu administrateur des propositions IA (cookie posé depuis /admin/traductions) : sans effet pour un visiteur.
+      const apercu = typeof document !== 'undefined' && /(?:^|;\s*)i18n_apercu_ia=1/.test(document.cookie);
+      const r = await fetch(`/api/i18n/${loc}${apercu ? '?apercu=1' : ''}`, { signal: ctrl?.signal });
       if (!r.ok) return {};
       const j = await r.json();
       return j && typeof j.corrections === 'object' && j.corrections ? (j.corrections as Record<string, string>) : {};
