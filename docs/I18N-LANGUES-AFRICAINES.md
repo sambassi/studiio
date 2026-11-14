@@ -10,24 +10,56 @@
 3. **Incident de méthode** : un agent a utilisé *une* recherche Firecrawl (outil payant) malgré l'interdiction. Elle n'a servi qu'à vérifier « kalandriye » (calendrier). Interdit explicitement pour tous les lots suivants.
 4. **Aucune de ces traductions n'a été relue par un locuteur natif.** « Attestée » signifie « trouvée dans une source écrite », pas « validée par un locuteur ».
 
+## Sources consultées et conditions d'utilisation (passe « dictionnaires »)
+
+Consultations **ciblées** pour bâtir un glossaire d'interface (≈ 130 termes par langue) ; aucune base n'est copiée dans le dépôt (seulement le glossaire : mot, traduction, source) et chaque entrée garde son origine.
+
+| Source | Langue | Ce qui a été fait | Conditions / incidents |
+|---|---|---|---|
+| dic.lingala.be | lingala | 60 consultations, une entrée par mot | aucune restriction affichée ; à citer |
+| **Linganed (Université de Gand)** | lingala | **non utilisée** | sa mention légale **interdit toute copie, y compris par requêtes répétées ou automatisées** |
+| dictionary.wolofacademy.com | wolof | 56 requêtes ciblées | aucune restriction affichée ; **7 réponses HTTP 429 (limitation de débit) après une rafale de requêtes de l'un de mes agents** : arrêt immédiat, aucun réessai |
+| dictionary.ankataa.com | bambara | 32 requêtes | aucune restriction affichée ; la recherche n'étant pas exploitable automatiquement, l'agent a lu l'**index par lettre** (22 pages) — **écart à la règle « une recherche = un terme »**, signalé ; seules ~70 entrées utiles sont conservées |
+| bamadaba.coastsystems.net | bambara | page vide (site dynamique) | non exploitable |
+| webonary.org/basaa, lgidf.cnrs.fr | bàsàa | **HTTP 403 : accès automatique refusé — non contourné** | l'index de recherche public n'expose pas les définitions : 2 termes attestés (prix = ndàmbà, demain = lìkɛɛ) |
+| Corpus Wikimedia (MediaWiki) | ln / wo / bm | traductions humaines publiques anglais → langue | — |
+
+Les glossaires (terme, traduction, confiance, source) sont dans `docs/langues-africaines/glossaire-<langue>.csv`.
+
 ## Couverture réelle
 
-Interface retenue : 2 906 clés (hors espace administrateur, e-mails, textes légaux, qui ne se traduisent pas sans relecteur humain).
+**Catalogue** (3 336 clés ; interface retenue ≈ 2 900) :
 
-| Langue | Entrées | Attestées | À vérifier en priorité | Part du texte visible traduit (tableau de bord, bureau) |
+| Langue | Entrées | Attestées | À vérifier en priorité |
+|---|---|---|---|
+| Lingala | 556 | 167 | 389 |
+| Wolof | 485 | 181 | 304 |
+| Bamanankan | 134 | 51 | 83 |
+| Bàsàa | 5 | 3 | 2 |
+
+**Texte réellement visible dans l'application** (Chrome/Playwright, bureau, 8 pages, part des textes affichés différents du français) :
+
+| Page | Lingala | Wolof | Bamanankan | Bàsàa |
 |---|---|---|---|---|
-| Lingala | 438 | 156 | 282 | **36 %** |
-| Wolof | 388 | 169 | 219 | **26 %** |
-| Bamanankan | 80 | 36 | 44 | **10 %** |
-| Bàsàa | 5 | 3 | 2 | **5 %** |
+| Tableau de bord | 32 % | 33 % | 7 % | 0 % |
+| CRÉER | 16 % | 19 % | 3 % | 0 % |
+| Calendrier | 33 % | 35 % | 12 % | 0 % |
+| Bibliothèque | 46 % | 50 % | 20 % | 0 % |
+| Avatar | 23 % | 28 % | 6 % | 0 % |
+| Réglages | 22 % | 22 % | 12 % | 0 % |
+| Réseaux sociaux | 29 % | 25 % | 6 % | 0 % |
+| **Ensemble (8 pages)** | **26 %** | **28 %** | **8 %** | **0 %** |
 
-Part du texte visible mesurée dans un navigateur : textes du tableau de bord qui diffèrent du français. Ailleurs (bureau) : connexion 80 % / 80 % / 20 % / 20 % ; bibliothèque 51 % / 44 % / 24 % / 6 % ; CRÉER 16 % / 13 % / 6 % / 2 % ; **Cinéma IA 0 % pour les quatre** (aucune phrase de ce parcours n'a pu être défendue).
+Avant la passe dictionnaires : lingala 25 %, wolof 16 %, bambara 5 %, bàsàa 0 %. Cinéma IA : 0 % (page non rendue dans l'environnement de test, et aucune phrase défendable).
+
+**Inventaire précis de ce qui reste en français à l'écran** : `docs/langues-africaines/<langue>-restant-a-l-ecran.csv` (clé, texte français, page).
 
 ## Pourquoi si peu
 
-- **Bàsàa** : aucune ressource d'interface n'existe en ligne accessible ; les dictionnaires en ligne ont refusé l'accès ou ne montrent pas leurs entrées. Seuls 5 textes sont traduits (langue = Hɔp, oui = Èè, non = Tô, plus = Ǹtoŋ, bienvenue = Malô malam).
-- **Bambara** : 74 paires seulement ; les mots de base ont été vérifiés un à un, mais ni « paramètres », « bibliothèque », « calendrier », « abonnement » ni « crédits » n'ont pu être attestés.
-- **Lingala et wolof** : le vocabulaire de wiki permet les boutons et libellés courts ; les phrases longues (Autopilote, avatar, montage, voix, consentements, erreurs) ne peuvent pas être rendues sans inventer du vocabulaire.
+- **Les dictionnaires donnent des mots, pas des interfaces** : ils n'attestent presque jamais « tableau de bord », « calendrier », « abonnement », « aperçu », « montage », « séquence » ni les verbes d'une application. Sans mot attesté, une phrase d'interface ne peut pas être composée sans inventer.
+- **Bàsàa** : les deux sources demandées refusent les accès automatiques et leur index public n'expose pas les définitions. Pour avancer, il faut que quelqu'un exporte le dictionnaire Webonary (SIL propose des exports de ses données selon sa licence) ou qu'un locuteur fournisse un CSV ; l'import et l'approbation sont prêts (`/admin/traductions`).
+- **Bambara** : l'index d'Ankataa n'atteste ni « paramètres », « bibliothèque », « calendrier », « abonnement » ni « crédits » (« juru » signifie dette/prêt).
+- **Lingala / wolof** : les libellés courts sont couverts ; les phrases longues (Autopilote, avatar, montage, voix, consentements, erreurs) restent en français.
 
 ## Ce qui reste en français (par choix)
 
