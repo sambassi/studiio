@@ -1133,7 +1133,7 @@ export default function CinemaPage() {
                       <p className="flex flex-wrap items-center gap-2 text-xs text-amber-200" data-points-a-verifier>
                         <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                         {bloquants.length} point{bloquants.length > 1 ? 's' : ''} {tUi('a_verifier_dans_ton_histoire')}
-                        {methode === 'ia' && generationMode === 'reelle' ? ' avant de créer des images payantes' : ''}.
+                        {methode === 'ia' && generationMode === 'reelle' ? ` ${tUi.fr('avant de créer des images payantes')}` : ''}.
                         <button type="button" onClick={() => allerAEtape(3)} className="underline">{tUi('voir_les_points')}</button>
                       </p>
                     )}
@@ -1178,7 +1178,7 @@ export default function CinemaPage() {
                       <button
                         type="button"
                         onClick={() => selectionnerScene(scene.id, true)}
-                        aria-label={`Selectionner la scene ${scene.index + 1} : ${scene.titre}`}
+                        aria-label={tUi('selectionner_la_scene_n_titre', { n: scene.index + 1, titre: scene.titre })}
                         aria-current={selectionnee ? 'true' : undefined}
                         className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
                       >
@@ -1274,7 +1274,7 @@ export default function CinemaPage() {
                             <span className="inline-flex items-center gap-1" role="group" aria-label={tUi('choisir_le_plan')}>
                               {scene.plans.map((pl, k) => (
                                 <button key={pl.id} type="button" onClick={() => setPlanParScene((m) => ({ ...m, [scene.id]: k }))}
-                                  aria-pressed={k === indexPlan} aria-label={`Modifier le plan ${k + 1}`} title={`Visuel ${k + 1}`}
+                                  aria-pressed={k === indexPlan} aria-label={tUi('modifier_le_plan_n', { n: k + 1 })} title={`Visuel ${k + 1}`}
                                   className={`h-6 min-w-6 rounded border px-1 text-[11px] tabular-nums ${k === indexPlan ? 'border-violet-400 bg-violet-500/20 text-violet-100' : 'border-slate-700 text-slate-400 hover:border-violet-500/50'}`}>
                                   {k + 1}
                                 </button>
@@ -1296,7 +1296,7 @@ export default function CinemaPage() {
                             const texte = e.target.value;
                             if (texte !== (plan.dialogue?.texte ?? plan.description)) enregistrer({ plans: [{ id: plan.id, texte }] });
                           }}
-                          aria-label={`Description du plan ${indexPlan + 1}`}
+                          aria-label={tUi('description_du_plan_n', { n: indexPlan + 1 })}
                           className="w-full min-w-0 rounded bg-slate-950 border border-slate-800 px-3 py-2 text-sm"
                         />
 
@@ -1433,7 +1433,7 @@ export default function CinemaPage() {
                               {film.personnages.map((pp) => (
                                 <li key={pp.id} className="flex items-center gap-2">
                                   <PortraitPersonnage filmId={film.id} personnage={pp} selectionne taille={28} />
-                                  <span className="min-w-0 flex-1 truncate">{pp.nom}{aUnePhoto(pp) ? '' : ' — aucune photo'}</span>
+                                  <span className="min-w-0 flex-1 truncate">{pp.nom}{aUnePhoto(pp) ? '' : ` — ${tUi.fr('aucune photo')}`}</span>
                                   <label title={aUnePhoto(pp) ? tUi('remplacer_la_photo_de_nom', { nom: pp.nom }) : tUi('ajouter_une_photo_de_reference_pour_no', { nom: pp.nom })} className={`${BOUTON_ICONE} cursor-pointer`}>
                                     {enCours === `reference:${pp.id}` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <ImagePlus className="h-4 w-4" aria-hidden="true" />}
                                     <input type="file" accept=".jpg,.jpeg,.png,.webp" className="sr-only"

@@ -297,11 +297,11 @@ export default function FluxSourceAvatar(props: {
                   statut="en_cours"
                   pourcentage={envoi.pourcentage}
                   detail={detailEnvoi(envoi)}
-                  note={envoi.pourcentage >= 100 ? 'Envoi terminé — Studiio crée la nouvelle version et la confie au service de génération…' : null}
+                  note={envoi.pourcentage >= 100 ? tUi.fr('Envoi terminé — Studiio crée la nouvelle version et la confie au service de génération…') : null}
                 />
               ) : (
                 <ProgressStatus
-                  titre={remplacer ? 'Création de la nouvelle version' : 'Création de votre avatar'}
+                  titre={remplacer ? tUi.fr('Création de la nouvelle version') : tUi.fr('Création de votre avatar')}
                   statut="en_cours"
                   description={tUi('enregistrement_de_la_source_et_envoi_a')}
                   detail="Progression exacte indisponible."

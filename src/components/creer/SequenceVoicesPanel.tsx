@@ -779,7 +779,7 @@ export function SequenceVoicesPanel({
                 </label>
                 <p className="text-[10px] text-gray-500" style={REGLAGE_AIDE_STYLE} data-voice-aide="dynamisme">
                   {voixElevenLabs
-                    ? '0 % = posé ; plus haut = plus d’expressivité et d’intonation.'
+                    ? tUi.fr('0 % = posé ; plus haut = plus d’expressivité et d’intonation.')
                     : tUi('le_dynamisme_expressivite_n_agit_qu_av')}
                 </p>
                 <button

@@ -1350,8 +1350,8 @@ export default function AutopilotPanel({
           {ligne('Avatar :', <>{avatarOui && <MiniatureAvatar vignette={vignetteAvatar} className="w-7 h-7" />}{avatarOui ? 'OUI' : 'NON'}</>,
             { 'data-autopilot-medias-avatar': avatarOui ? 'oui' : 'non' })}
           {ligne('Rushes personnels :', personnels, { 'data-autopilot-medias-rushes': personnels })}
-          {ligne('Vidéos suggérées :', videosSuggerees, { 'data-autopilot-medias-videos': videosSuggerees })}
-          {ligne('Photos suggérées :', photosSuggerees, { 'data-autopilot-medias-photos': photosSuggerees })}
+          {ligne(tUi.fr('Vidéos suggérées :'), videosSuggerees, { 'data-autopilot-medias-videos': videosSuggerees })}
+          {ligne(tUi.fr('Photos suggérées :'), photosSuggerees, { 'data-autopilot-medias-photos': photosSuggerees })}
           {stockProposes > 0 && ligne('Propositions en attente :', stockProposes, { 'data-autopilot-medias-stock': stockProposes })}
         </dl>
         {vignettes.length > 0 && (
@@ -1954,7 +1954,7 @@ export default function AutopilotPanel({
                           variante: 'danger',
                           onClick: () => enregistrer({ rushUrls: config.rushUrls.filter((u) => u !== url) }),
                           disabled: saving,
-                          ariaLabel: 'Supprimer ce rush',
+                          ariaLabel: tUi.fr('Supprimer ce rush'),
                           titre: tUi('retirer_ce_media_de_la_banque'),
                         }]}
                       />
@@ -2044,7 +2044,7 @@ export default function AutopilotPanel({
                               variante: 'danger',
                               onClick: () => retirerStock(m.url),
                               disabled: saving,
-                              ariaLabel: `Supprimer cette ${m.type === 'video' ? 'vidéo' : 'photo'} suggérée`,
+                              ariaLabel: m.type === 'video' ? tUi.fr('Supprimer cette vidéo suggérée') : tUi.fr('Supprimer cette photo suggérée'),
                               attrs: { 'data-autopilot-stock-retirer': cleMediaStock(m) },
                             }]}
                           />
@@ -2093,7 +2093,7 @@ export default function AutopilotPanel({
               format={formatStock}
               accent={accent}
               dejaRetenus={sources.stock.map(cleMediaStock)}
-              titre={`Rechercher un média pour la séquence ${rechercheLigne.lignes.findIndex((l) => l.id === rechercheLigne.id) + 1}`}
+              titre={tUi('rechercher_un_media_pour_la_sequence_n', { n: rechercheLigne.lignes.findIndex((l) => l.id === rechercheLigne.id) + 1 })}
               onFermer={() => setRechercheLigne(null)}
               onRetenir={(m) => { retenirStock(m, rechercheLigne); setRechercheLigne(null); }}
             />

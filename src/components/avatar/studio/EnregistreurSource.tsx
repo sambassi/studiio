@@ -296,7 +296,7 @@ export default function EnregistreurSource(props: {
           <video data-enregistreur-video="prise" src={prise.url} controls playsInline className="absolute inset-0 w-full h-full object-contain bg-black" />
         )}
         {(phase === 'pret' || phase === 'decompte' || phase === 'enregistrement') && (
-          <OvaleVisage attribut="data-enregistreur-ovale" legende={phase === 'pret' ? 'Placez votre visage dans l’ovale' : undefined} />
+          <OvaleVisage attribut="data-enregistreur-ovale" legende={phase === 'pret' ? tUi.fr('Placez votre visage dans l’ovale') : undefined} />
         )}
         {phase === 'decompte' && (
           <div data-enregistreur-decompte={decompte} className="absolute inset-0 flex items-center justify-center bg-black/40">

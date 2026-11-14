@@ -1,6 +1,7 @@
 'use client';
 
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { useTranslations } from '@/i18n/client';
 
 const activities = [
   { id: 1, type: 'subscription', user: 'Jean Dupont', action: 'a souscrit au plan Pro', time: 'il y a 2h', icon: '📱' },
@@ -11,10 +12,11 @@ const activities = [
 ];
 
 export function ActivityFeed() {
+  const tUi = useTranslations('ui.componentsAdminActivityFeed');
   return (
     <Card>
       <CardHeader className="border-b border-gray-800">
-        <CardTitle>Activité récente</CardTitle>
+        <CardTitle>{tUi('activite_recente')}</CardTitle>
       </CardHeader>
       <CardContent className="pt-4">
         <div className="space-y-4">
@@ -23,7 +25,7 @@ export function ActivityFeed() {
               <div className="text-2xl">{activity.icon}</div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-gray-300">
-                  <span className="font-semibold text-white">{activity.user}</span> {activity.action}
+                  <span className="font-semibold text-white">{activity.user}</span> {tUi.fr(activity.action)}
                 </p>
                 <p className="text-xs text-gray-500 mt-1">{activity.time}</p>
               </div>

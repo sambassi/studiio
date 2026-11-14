@@ -293,7 +293,7 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
               statut="en_cours"
               pourcentage={envoi.pourcentage}
               detail={detailEnvoi(envoi)}
-              note={envoi.pourcentage >= 100 ? 'Envoi terminé — Studiio transmet votre vidéo pour vérification.' : null}
+              note={envoi.pourcentage >= 100 ? tUi.fr('Envoi terminé — Studiio transmet votre vidéo pour vérification.') : null}
               compact
             />
           )}
@@ -314,7 +314,7 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
               niveau="succes"
               titre={tUi('consentement_accepte')}
               detail={tUi('vous_pouvez_maintenant_creer_votre_ava')}
-              actionPrincipale={{ libelle: occupe === 'creer' ? 'Création en cours…' : 'Créer mon avatar', onClick: () => appeler('creer', '/api/avatar/did/creer'), disabled: !!occupe }}
+              actionPrincipale={{ libelle: occupe === 'creer' ? tUi.fr('Création en cours…') : tUi.fr('Créer mon avatar'), onClick: () => appeler('creer', '/api/avatar/did/creer'), disabled: !!occupe }}
             />
           </div>
           {/* Un seul CTA : celui de la notification (verrou `enCoursRef` : un clic, un POST). */}

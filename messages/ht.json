@@ -2031,7 +2031,10 @@
       "les_scenes_terminees_sont_conservees_s": "Sèn ki fini yo kenbe. Si sèvè a rdemare, pwodiksyon an kontinye kote li te rete a, san refè sèn ki deja rann yo.",
       "les_scenes_deja_rendues_sont_conservee": "Sèn ki deja rann yo kenbe : relanse ekspòtasyon an refè sèlman sa ki manke.",
       "meme_chronologie_que_le_mp4_les_debuts": "Menm kwonoloji ak MP4 la : kòmansman yo ak dire yo soti nan montaj API a retounen an. Yon plan san medya se yon plas storyboard, se pa yon videyo.",
-      "remplace_a_l_ecran_seulement_les_media": "Ranplase, sou ekran an sèlman, medya ki manke yo ak klip egzanp lokal pou montre rezilta yon vrè montaj. Anyen pa anrejistre, anyen pa jenere, pa gen okenn kou : se pa videyo fim ou an."
+      "remplace_a_l_ecran_seulement_les_media": "Ranplase, sou ekran an sèlman, medya ki manke yo ak klip egzanp lokal pou montre rezilta yon vrè montaj. Anyen pa anrejistre, anyen pa jenere, pa gen okenn kou : se pa videyo fim ou an.",
+      "selectionner_la_scene_n_titre": "Chwazi sèn {n} : {titre}",
+      "modifier_le_plan_n": "Modifye plan {n}",
+      "description_du_plan_n": "Deskripsyon plan {n}"
     },
     "appDashboardCreerAssistantWizard": {
       "revenir_au_choix_des_modes": "Retounen nan chwa mòd yo",
@@ -2742,7 +2745,8 @@
       "media_manquant": "Medya ki manke",
       "storyboard_du_film": "Storyboard fim nan",
       "demo": "demo",
-      "plan_cadre_importez_une_image_ou_une_v": "Plan {cadre} · enpòte yon imaj oswa yon videyo"
+      "plan_cadre_importez_une_image_ou_une_v": "Plan {cadre} · enpòte yon imaj oswa yon videyo",
+      "plan_n_scene_m": "Plan {n}, sèn {m}"
     },
     "componentsCinemaChoixMouvements": {
       "mouvements_de_camera": "Mouvman kamera",
@@ -3078,7 +3082,8 @@
       "seuil_de_credits": "Papòt kredi",
       "la_video_de_votre_avatar_n_a_pas_pu_et": "Videyo avatar ou a pa t kapab prepare : bouyon an te monte san li.",
       "ce_qui_change_a_chaque_video": "Sa ki chanje chak videyo",
-      "ce_qui_ne_change_jamais": "Sa ki pa janm chanje"
+      "ce_qui_ne_change_jamais": "Sa ki pa janm chanje",
+      "rechercher_un_media_pour_la_sequence_n": "Chèche yon medya pou sekans {n}"
     },
     "componentsCreerAvatarPrincipalAutopilote": {
       "mon_avatar": "Avatar mwen",
@@ -3912,7 +3917,61 @@
       "h19op0ya": "opsyonèl",
       "h14ih0ha6": "Ritm",
       "h7q5wa4": "Meni",
-      "h1ov4v8e6": "Fèmen"
+      "h1ov4v8e6": "Fèmen",
+      "h3bmk84m": "te abòne nan plan Pro",
+      "hm5zsw4t": "te kreye yon videyo (50 kredi)",
+      "hjwkr3hk": "te achte 500 kredi",
+      "hc3ev1td": "enskri",
+      "h6s2roo": "te anile abònman li",
+      "h5qhw8i3": "Fev",
+      "hbk0qlok": "Voye videyo w la",
+      "h4pinwvk": "Voye foto w la",
+      "h1fozml91d": "Voye fini — Studiio ap anrejistre fichye w la.",
+      "h1mjebrsh": "poko louvri",
+      "hy2ek7bl": "Videyo w la pare",
+      "h19hyf1em": "Jenerasyon an echwe",
+      "hxo6vwkn": "Kreyasyon videyo w la",
+      "h15uttfh2l": "Sa pran kèk minit anjeneral. Ou ka rechaje paj la : swivi a ap kontinye.",
+      "h1eaobsb2q": "Ou ka kite paj sa a : jimo w la ap kontinye bò sèvè a epi l ap repran lè w tounen.",
+      "h1fgigsy33": "Koneksyon an te koupe. Anyen pa t anrejistre ; modifikasyon w yo toujou sou ekran an, eseye ankò.",
+      "hum5o4f5": "medya",
+      "hivdff2e": "Pèsonalize",
+      "h1ymex91c": "Okenn filt",
+      "hdvl6sz7": "afiche",
+      "h8eo1gp6": "kache",
+      "h1m4rhq63c": "Koupe pi bon moman yo nan rush la. Premye ekstrè a vin sekans Videyo a ; lòt yo rete nan medya tèk la.",
+      "h7afkj5v": "— pri sèvè a se li ki valab.",
+      "hed431410": "Chwazi yon kat nan apèsi a",
+      "hfulbq9m": "Double seleksyon an",
+      "h1u4kerh18": "Chwazi omwen de kat (Maj+klik)",
+      "h1pgdkxds": "Deplase kat sa yo ansanm",
+      "hybilp31a": "Okenn kat chwazi pa nan yon gwoup",
+      "h1vn97nox": "Separe kat yo ak gwoup yo",
+      "h10wr51ux": "Fòk ou kenbe omwen yon kat",
+      "h1dc0dyxm": "Efase seleksyon an",
+      "h15gfeg8s": "Double kopi CTA sa a",
+      "hriv4mdg": "Double CTA a",
+      "h14luhen14": "Style konfigire (koulè, afich, son)",
+      "h1dzy2euh": "Efase rush sa a",
+      "h1ty92pc5": "videyo",
+      "h1ly0foii": "tèm ou chwazi yo",
+      "h15abcjv": "Glise pou deplase eleman an",
+      "hvk5fud2q": "Distribisyon tan an prevwa ; pandan pwodiksyon, li ajiste sou dire reyèl vwa a (pa janm akselere).",
+      "h72teop11": "Doub-klik pou regle sou-tit la",
+      "hfrtc831p": "0 % = kalm ; pi wo = plis ekspresyon ak entonasyon.",
+      "hzvhhrp1r": "Voye fini — Studiio ap transmèt videyo w la pou verifikasyon.",
+      "hp2w3jxi": "Kreyasyon ap fèt…",
+      "h1xrlmz3g": "Kreye avatar mwen",
+      "h1p3hfv92f": "Voye fini — Studiio ap kreye nouvo vèsyon an epi l ap konfye l bay sèvis jenerasyon an…",
+      "h6qg15ov": "Kreyasyon nouvo vèsyon an",
+      "h2fnqgoo": "Kreyasyon avatar ou a",
+      "h1pmv3ag11": "Paj sa a mete l ajou poukont li.",
+      "hohp7u3w": "Mete figi w andedan oval la",
+      "h6ebwdva": "Ap demare…",
+      "hpy260k1d": "Voye fini — Studiio ap verifye videyo a…",
+      "h1ymjl4gn": "Ogmante abonne yo",
+      "hgi6r77n": "Fè pwomosyon pwodwi yo",
+      "h11f8l28m": "Pataje tutorial"
     },
     "componentsBillingCreditsDisplay": {
       "credits_disponibles": "Kredi disponib",
@@ -3920,6 +3979,26 @@
     },
     "componentsUiSelect": {
       "selectionner": "Chwazi..."
+    },
+    "componentsAdminActivityFeed": {
+      "activite_recente": "Aktivite resan"
+    },
+    "componentsAdminPaymentTable": {
+      "complete": "Konplete",
+      "echoue": "Echwe"
+    },
+    "componentsAdminRevenueChart": {
+      "revenus_par_mois": "Revni pa mwa"
+    },
+    "componentsAdminSubscriptionTable": {
+      "aucun_abonnement_actif": "Pa gen abònman aktif",
+      "annuler": "Anile",
+      "modifier_l_abonnement": "Modifye abònman an"
+    },
+    "componentsAdminUserTable": {
+      "credits": "Kredi",
+      "inscrit_le": "Enskri le",
+      "editer": "Modifye"
     }
   },
   "notifications": {

@@ -2031,7 +2031,10 @@
       "les_scenes_terminees_sont_conservees_s": "Fertige Szenen bleiben erhalten. Wenn der Server neu startet, setzt die Produktion dort fort, wo sie aufgehört hat, ohne bereits gerenderte Szenen zu wiederholen.",
       "les_scenes_deja_rendues_sont_conservee": "Bereits gerenderte Szenen bleiben erhalten: Ein erneuter Export erstellt nur neu, was fehlt.",
       "meme_chronologie_que_le_mp4_les_debuts": "Gleiche Zeitleiste wie das MP4: Anfänge und Dauern stammen aus dem von der API zurückgegebenen Schnitt. Eine Einstellung ohne Medium ist ein Storyboard-Platzhalter, kein Video.",
-      "remplace_a_l_ecran_seulement_les_media": "Ersetzt nur auf dem Bildschirm fehlende Medien durch lokale Beispielclips, um das Ergebnis eines echten Schnitts zu zeigen. Nichts wird gespeichert, nichts wird generiert, keine Kosten: Es sind keine Videos Ihres Films."
+      "remplace_a_l_ecran_seulement_les_media": "Ersetzt nur auf dem Bildschirm fehlende Medien durch lokale Beispielclips, um das Ergebnis eines echten Schnitts zu zeigen. Nichts wird gespeichert, nichts wird generiert, keine Kosten: Es sind keine Videos Ihres Films.",
+      "selectionner_la_scene_n_titre": "Szene {n} auswählen: {titre}",
+      "modifier_le_plan_n": "Einstellung {n} bearbeiten",
+      "description_du_plan_n": "Beschreibung der Einstellung {n}"
     },
     "appDashboardCreerAssistantWizard": {
       "revenir_au_choix_des_modes": "Zurück zur Modusauswahl",
@@ -2742,7 +2745,8 @@
       "media_manquant": "Medium fehlt",
       "storyboard_du_film": "Storyboard des Films",
       "demo": "Demo",
-      "plan_cadre_importez_une_image_ou_une_v": "Einstellung {cadre} · Bild oder Video importieren"
+      "plan_cadre_importez_une_image_ou_une_v": "Einstellung {cadre} · Bild oder Video importieren",
+      "plan_n_scene_m": "Einstellung {n}, Szene {m}"
     },
     "componentsCinemaChoixMouvements": {
       "mouvements_de_camera": "Kamerabewegungen",
@@ -3078,7 +3082,8 @@
       "seuil_de_credits": "Credit-Schwelle",
       "la_video_de_votre_avatar_n_a_pas_pu_et": "Das Video deines Avatars konnte nicht vorbereitet werden: Der Entwurf wurde ohne es geschnitten.",
       "ce_qui_change_a_chaque_video": "Was sich bei jedem Video ändert",
-      "ce_qui_ne_change_jamais": "Was sich nie ändert"
+      "ce_qui_ne_change_jamais": "Was sich nie ändert",
+      "rechercher_un_media_pour_la_sequence_n": "Medium für Sequenz {n} suchen"
     },
     "componentsCreerAvatarPrincipalAutopilote": {
       "mon_avatar": "Mein Avatar",
@@ -3912,7 +3917,61 @@
       "h19op0ya": "optional",
       "h14ih0ha6": "Rhythmus",
       "h7q5wa4": "Menü",
-      "h1ov4v8e6": "Schließen"
+      "h1ov4v8e6": "Schließen",
+      "h3bmk84m": "hat den Pro-Plan abonniert",
+      "hm5zsw4t": "hat ein Video erstellt (50 Credits)",
+      "hjwkr3hk": "hat 500 Credits gekauft",
+      "hc3ev1td": "hat sich registriert",
+      "h6s2roo": "hat das Abonnement gekündigt",
+      "h5qhw8i3": "Feb.",
+      "hbk0qlok": "Ihr Video wird hochgeladen",
+      "h4pinwvk": "Ihr Foto wird hochgeladen",
+      "h1fozml91d": "Upload abgeschlossen – Studiio speichert Ihre Datei.",
+      "h1mjebrsh": "noch nicht geöffnet",
+      "hy2ek7bl": "Ihr Video ist fertig",
+      "h19hyf1em": "Die Generierung ist fehlgeschlagen",
+      "hxo6vwkn": "Ihr Video wird erstellt",
+      "h15uttfh2l": "Das dauert in der Regel einige Minuten. Sie können die Seite neu laden: Die Verfolgung wird fortgesetzt.",
+      "h1eaobsb2q": "Sie können diese Seite verlassen: Ihr Zwilling läuft serverseitig weiter und wird bei Ihrer Rückkehr fortgesetzt.",
+      "h1fgigsy33": "Die Verbindung wurde unterbrochen. Es wurde nichts gespeichert; Ihre Änderungen sind weiterhin auf dem Bildschirm, versuchen Sie es erneut.",
+      "hum5o4f5": "Medium",
+      "hivdff2e": "Benutzerdefiniert",
+      "h1ymex91c": "Kein Filter",
+      "hdvl6sz7": "angezeigt",
+      "h8eo1gp6": "ausgeblendet",
+      "h1m4rhq63c": "Die Highlights des Rushs ausschneiden. Der erste Ausschnitt wird zur Video-Sequenz; die übrigen bleiben in der Mediathek.",
+      "h7afkj5v": "– maßgeblich ist der Tarif des Servers.",
+      "hed431410": "Wählen Sie eine Karte in der Vorschau aus",
+      "hfulbq9m": "Auswahl duplizieren",
+      "h1u4kerh18": "Wählen Sie mindestens zwei Karten aus (Umschalt+Klick)",
+      "h1pgdkxds": "Diese Karten gemeinsam verschieben",
+      "hybilp31a": "Keine ausgewählte Karte gehört zu einer Gruppe",
+      "h1vn97nox": "Karten aus ihrer Gruppe lösen",
+      "h10wr51ux": "Mindestens eine Karte muss erhalten bleiben",
+      "h1dc0dyxm": "Auswahl löschen",
+      "h15gfeg8s": "Diese Kopie des CTA duplizieren",
+      "hriv4mdg": "CTA duplizieren",
+      "h14luhen14": "Stil konfiguriert (Farben, Poster, Ton)",
+      "h1dzy2euh": "Diesen Rush löschen",
+      "h1ty92pc5": "Video",
+      "h1ly0foii": "die gewählten Themen",
+      "h15abcjv": "Ziehen, um das Element zu verschieben",
+      "hvk5fud2q": "Geplantes Timing; bei der Produktion wird es an die tatsächliche Dauer der Stimme angepasst (nie beschleunigt).",
+      "h72teop11": "Doppelklick, um den Untertitel einzustellen",
+      "hfrtc831p": "0 % = ruhig; höher = mehr Ausdruck und Intonation.",
+      "hzvhhrp1r": "Upload abgeschlossen – Studiio übermittelt Ihr Video zur Prüfung.",
+      "hp2w3jxi": "Wird erstellt …",
+      "h1xrlmz3g": "Meinen Avatar erstellen",
+      "h1p3hfv92f": "Upload abgeschlossen – Studiio erstellt die neue Version und übergibt sie an den Generierungsdienst …",
+      "h6qg15ov": "Neue Version wird erstellt",
+      "h2fnqgoo": "Ihr Avatar wird erstellt",
+      "h1pmv3ag11": "Diese Seite aktualisiert sich von selbst.",
+      "hohp7u3w": "Positionieren Sie Ihr Gesicht im Oval",
+      "h6ebwdva": "Start …",
+      "hpy260k1d": "Upload abgeschlossen – Studiio prüft das Video …",
+      "h1ymjl4gn": "Follower gewinnen",
+      "hgi6r77n": "Produkte bewerben",
+      "h11f8l28m": "Tutorials teilen"
     },
     "componentsBillingCreditsDisplay": {
       "credits_disponibles": "Verfügbare Credits",
@@ -3920,6 +3979,26 @@
     },
     "componentsUiSelect": {
       "selectionner": "Auswählen..."
+    },
+    "componentsAdminActivityFeed": {
+      "activite_recente": "Letzte Aktivität"
+    },
+    "componentsAdminPaymentTable": {
+      "complete": "Abgeschlossen",
+      "echoue": "Fehlgeschlagen"
+    },
+    "componentsAdminRevenueChart": {
+      "revenus_par_mois": "Umsatz pro Monat"
+    },
+    "componentsAdminSubscriptionTable": {
+      "aucun_abonnement_actif": "Kein aktives Abonnement",
+      "annuler": "Abbrechen",
+      "modifier_l_abonnement": "Abonnement ändern"
+    },
+    "componentsAdminUserTable": {
+      "credits": "Credits",
+      "inscrit_le": "Registriert am",
+      "editer": "Bearbeiten"
     }
   },
   "notifications": {

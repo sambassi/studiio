@@ -1521,11 +1521,11 @@ export default function AvatarPage() {
                   cette barre ne prétend rien de plus. */}
               {envoiSource && (
                 <ProgressStatus
-                  titre={kind === 'video' ? 'Envoi de votre vidéo' : 'Envoi de votre photo'}
+                  titre={kind === 'video' ? tUi.fr('Envoi de votre vidéo') : tUi.fr('Envoi de votre photo')}
                   statut="en_cours"
                   pourcentage={envoiSource.pourcentage}
                   detail={detailEnvoi(envoiSource)}
-                  note={envoiSource.pourcentage >= 100 ? 'Envoi terminé — Studiio enregistre votre fichier.' : null}
+                  note={envoiSource.pourcentage >= 100 ? tUi.fr('Envoi terminé — Studiio enregistre votre fichier.') : null}
                   compact
                 />
               )}
@@ -1777,7 +1777,7 @@ export default function AvatarPage() {
                     >
                       {qualites.map((q) => (
                         <option key={q.qualite} value={q.qualite} disabled={!q.ouverte} data-avatar-qualite-option={q.qualite} data-avatar-qualite-ouverte={q.ouverte ? 'oui' : 'non'}>
-                          {q.libelle}{q.moteurLibelle ? ` — ${q.moteurLibelle}` : ''}{q.description ? ` · ${q.description.toLowerCase()}` : ''}{q.ouverte ? '' : ` (indisponible : ${q.motif ?? 'pas encore ouvert'})`}
+                          {q.libelle}{q.moteurLibelle ? ` — ${q.moteurLibelle}` : ''}{q.description ? ` · ${q.description.toLowerCase()}` : ''}{q.ouverte ? '' : ` (indisponible : ${q.motif ?? tUi.fr('pas encore ouvert')})`}
                         </option>
                       ))}
                     </select>
@@ -1857,7 +1857,7 @@ export default function AvatarPage() {
                 return (
                   <div data-avatar-generation-progression={genStatus} data-avatar-generation-mode={genEtape.mode} data-avatar-generation-phase={genEtape.etape} data-avatar-generation-sous-etat={busy && genEtape.etape === 'generation' ? (sousEtat ?? 'en_cours') : undefined}>
                     <ProgressStatus
-                      titre={genStatus === 'completed' ? 'Votre vidéo est prête' : genStatus === 'failed' ? 'La génération a échoué' : 'Création de votre vidéo'}
+                      titre={genStatus === 'completed' ? tUi.fr('Votre vidéo est prête') : genStatus === 'failed' ? tUi.fr('La génération a échoué') : tUi.fr('Création de votre vidéo')}
                       statut={genStatus === 'completed' ? 'succes' : genStatus === 'failed' ? 'erreur' : 'en_cours'}
                       etapes={prog.etapes}
                       description={busy ? prog.message : undefined}
@@ -1868,7 +1868,7 @@ export default function AvatarPage() {
                         motif: prog.echec.motif,
                         actions: [{ libelle: prog.echec.action, onClick: () => { void handleGenerate(); }, principale: true }],
                       } : undefined}
-                      note={busy ? 'Cela prend généralement quelques minutes. Vous pouvez recharger la page : le suivi reprendra.' : null}
+                      note={busy ? tUi.fr('Cela prend généralement quelques minutes. Vous pouvez recharger la page : le suivi reprendra.') : null}
                       compact={!busy && genStatus === 'completed'}
                     />
                   </div>

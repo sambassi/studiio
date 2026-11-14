@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
+import { useTranslations } from '@/i18n/client';
 
 interface Subscription {
   id: string;
@@ -21,6 +22,7 @@ interface Subscription {
 }
 
 export function SubscriptionTable() {
+  const tUi = useTranslations('ui.componentsAdminSubscriptionTable');
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -141,7 +143,7 @@ export function SubscriptionTable() {
       )}
 
       {subscriptions.length === 0 ? (
-        <p className="text-gray-400 text-center py-8">Aucun abonnement actif</p>
+        <p className="text-gray-400 text-center py-8">{tUi('aucun_abonnement_actif')}</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -197,7 +199,7 @@ export function SubscriptionTable() {
                           disabled={actionLoading}
                           className="text-red-400 hover:text-red-300"
                         >
-                          Annuler
+                          {tUi('annuler')}
                         </Button>
                       )}
                     </div>
@@ -209,7 +211,7 @@ export function SubscriptionTable() {
         </div>
       )}
 
-      <Modal isOpen={editModal} onClose={() => { setEditModal(false); setSelectedSub(null); }} title="Modifier l'abonnement">
+      <Modal isOpen={editModal} onClose={() => { setEditModal(false); setSelectedSub(null); }} title={tUi('modifier_l_abonnement')}>
         <div className="space-y-4">
           <Select
             label="Plan"
@@ -233,7 +235,7 @@ export function SubscriptionTable() {
           />
           <div className="flex gap-3 pt-4">
             <Button variant="secondary" className="flex-1" onClick={() => { setEditModal(false); setSelectedSub(null); }} disabled={actionLoading}>
-              Annuler
+              {tUi('annuler')}
             </Button>
             <Button variant="primary" className="flex-1" onClick={handleEdit} disabled={actionLoading}>
               {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Sauvegarder'}

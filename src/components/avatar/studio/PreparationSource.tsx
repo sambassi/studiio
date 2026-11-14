@@ -330,8 +330,8 @@ export default function PreparationSource(props: {
             titre={tUi('envoi_de_la_video_d_origine')}
             statut="en_cours"
             {...(progression ? { pourcentage: progression.pourcentage } : {})}
-            detail={progression ? detailEnvoi(progression) : 'Démarrage…'}
-            note={progression && progression.pourcentage >= 100 ? 'Envoi terminé — contrôle de la vidéo par Studiio…' : null}
+            detail={progression ? detailEnvoi(progression) : tUi.fr('Démarrage…')}
+            note={progression && progression.pourcentage >= 100 ? tUi.fr('Envoi terminé — contrôle de la vidéo par Studiio…') : null}
           />
           <p data-preparation-progression className="sr-only">{progression ? `${progression.pourcentage} % — ${detailEnvoi(progression)}` : tUi('demarrage')}</p>
         </div>

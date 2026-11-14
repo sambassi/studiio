@@ -496,7 +496,7 @@ export function BriefRecurrentRecap({ brief, sujets, admin = false }: {
           <span
             className="ml-auto inline-flex items-center gap-1 text-[11px] text-emerald-400 order-last"
             data-autopilot-brief-recap-coherent
-            title={`Brief cohérent avec ${liste.length > 1 ? 'les thèmes choisis' : `le thème ${coherence.sujet}`}`}
+            title={`Brief cohérent avec ${liste.length > 1 ? tUi.fr('les thèmes choisis') : `le thème ${coherence.sujet}`}`}
           >
             <CheckCircle2 className="w-3 h-3" aria-hidden="true" />
             {tUi('coherent')}

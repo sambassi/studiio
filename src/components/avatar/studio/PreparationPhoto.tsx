@@ -138,7 +138,7 @@ export default function PreparationPhoto(props: {
             titre={tUi('envoi_de_la_photo_d_origine')}
             statut="en_cours"
             {...(progression ? { pourcentage: progression.pourcentage } : {})}
-            detail={progression ? detailEnvoi(progression) : 'Démarrage…'}
+            detail={progression ? detailEnvoi(progression) : tUi.fr('Démarrage…')}
             note={null}
           />
         </div>

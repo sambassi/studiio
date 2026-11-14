@@ -299,7 +299,7 @@ export default function MesAvatars(props: {
                       description={p.message}
                       detail={p.description}
                       debutLe={c.creeLe}
-                      note={a.versionActive ? `Votre version v${a.versionActive.version} reste utilisée en attendant.` : 'Cette page se met à jour toute seule.'}
+                      note={a.versionActive ? `Votre version v${a.versionActive.version} reste utilisée en attendant.` : tUi.fr('Cette page se met à jour toute seule.')}
                     />
                   </div>
                 );

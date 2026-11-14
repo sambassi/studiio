@@ -209,7 +209,7 @@ export default function PlanAvantGeneration({
               <span className="block" data-plan-duree-avertissement>
                 {estimee
                   ? 'Durée estimée : la voix de votre avatar n’est pas encore générée. À la production, sa durée réelle est mesurée (jamais accélérée, jamais coupée) ; plus courte que la cible, une clôture complète la vidéo jusqu’à la cible (8 s au plus) ; plus longue, la vidéo suit la parole.'
-                  : 'Minutage prévu ; à la production, il est recalé sur la durée réelle de la voix (jamais accélérée).'}
+                  : tUi.fr('Minutage prévu ; à la production, il est recalé sur la durée réelle de la voix (jamais accélérée).')}
               </span>
             )}
           </InfoBulle>

@@ -3,6 +3,7 @@
 import { Table } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { useTranslations } from '@/i18n/client';
 
 const mockUsers = [
   { id: '1', avatar: '👤', name: 'Jean Dupont', email: 'jean@example.com', plan: 'Pro', credits: 450, joined: '2024-01-15', status: 'active' },
@@ -13,6 +14,7 @@ const mockUsers = [
 ];
 
 export function UserTable() {
+  const tUi = useTranslations('ui.componentsAdminUserTable');
   const columns = [
     {
       key: 'name' as const,
@@ -34,12 +36,12 @@ export function UserTable() {
     },
     {
       key: 'credits' as const,
-      label: 'Crédits',
+      label: tUi('credits'),
       render: (value: any) => value === null ? '∞' : value,
     },
     {
       key: 'joined' as const,
-      label: 'Inscrit le',
+      label: tUi('inscrit_le'),
     },
     {
       key: 'status' as const,
@@ -56,7 +58,7 @@ export function UserTable() {
       render: () => (
         <div className="flex gap-2">
           <Button size="sm" variant="secondary">Voir</Button>
-          <Button size="sm" variant="secondary">Éditer</Button>
+          <Button size="sm" variant="secondary">{tUi('editer')}</Button>
         </div>
       ),
     },

@@ -2031,7 +2031,10 @@
       "les_scenes_terminees_sont_conservees_s": "Les scenes terminees sont conservees. Si le serveur redemarre, la production reprend la ou elle s'est arretee, sans refaire les scenes deja rendues.",
       "les_scenes_deja_rendues_sont_conservee": "Les scenes deja rendues sont conservees : relancer l'export ne refait que ce qui manque.",
       "meme_chronologie_que_le_mp4_les_debuts": "Meme chronologie que le MP4 : les debuts et durees viennent du montage renvoye par l'API. Un plan sans media est un emplacement de storyboard, pas une video.",
-      "remplace_a_l_ecran_seulement_les_media": "Remplace, a l'ecran seulement, les medias manquants par des clips d'exemple locaux pour montrer le rendu d'un vrai montage. Rien n'est enregistre, rien n'est genere, aucun cout : ce ne sont pas des videos de votre film."
+      "remplace_a_l_ecran_seulement_les_media": "Remplace, a l'ecran seulement, les medias manquants par des clips d'exemple locaux pour montrer le rendu d'un vrai montage. Rien n'est enregistre, rien n'est genere, aucun cout : ce ne sont pas des videos de votre film.",
+      "selectionner_la_scene_n_titre": "Selectionner la scene {n} : {titre}",
+      "modifier_le_plan_n": "Modifier le plan {n}",
+      "description_du_plan_n": "Description du plan {n}"
     },
     "appDashboardCreerAssistantWizard": {
       "revenir_au_choix_des_modes": "Revenir au choix des modes",
@@ -2742,7 +2745,8 @@
       "media_manquant": "Média manquant",
       "storyboard_du_film": "Storyboard du film",
       "demo": "démo",
-      "plan_cadre_importez_une_image_ou_une_v": "Plan {cadre} · importez une image ou une vidéo"
+      "plan_cadre_importez_une_image_ou_une_v": "Plan {cadre} · importez une image ou une vidéo",
+      "plan_n_scene_m": "Plan {n}, scène {m}"
     },
     "componentsCinemaChoixMouvements": {
       "mouvements_de_camera": "Mouvements de caméra",
@@ -3078,7 +3082,8 @@
       "seuil_de_credits": "Seuil de crédits",
       "la_video_de_votre_avatar_n_a_pas_pu_et": "La vidéo de votre avatar n’a pas pu être préparée : le brouillon a été monté sans elle.",
       "ce_qui_change_a_chaque_video": "Ce qui change à chaque vidéo",
-      "ce_qui_ne_change_jamais": "Ce qui ne change jamais"
+      "ce_qui_ne_change_jamais": "Ce qui ne change jamais",
+      "rechercher_un_media_pour_la_sequence_n": "Rechercher un média pour la séquence {n}"
     },
     "componentsCreerAvatarPrincipalAutopilote": {
       "mon_avatar": "Mon avatar",
@@ -3912,7 +3917,61 @@
       "h19op0ya": "facultatif",
       "h14ih0ha6": "Rythme",
       "h7q5wa4": "Menu",
-      "h1ov4v8e6": "Fermer"
+      "h1ov4v8e6": "Fermer",
+      "h3bmk84m": "a souscrit au plan Pro",
+      "hm5zsw4t": "a créé une vidéo (50 crédits)",
+      "hjwkr3hk": "a acheté 500 crédits",
+      "hc3ev1td": "s'est inscrit",
+      "h6s2roo": "a résilié son abonnement",
+      "h5qhw8i3": "Fév",
+      "hbk0qlok": "Envoi de votre vidéo",
+      "h4pinwvk": "Envoi de votre photo",
+      "h1fozml91d": "Envoi terminé — Studiio enregistre votre fichier.",
+      "h1mjebrsh": "pas encore ouvert",
+      "hy2ek7bl": "Votre vidéo est prête",
+      "h19hyf1em": "La génération a échoué",
+      "hxo6vwkn": "Création de votre vidéo",
+      "h15uttfh2l": "Cela prend généralement quelques minutes. Vous pouvez recharger la page : le suivi reprendra.",
+      "h1eaobsb2q": "Vous pouvez quitter cette page : votre jumeau continue côté serveur et sera repris à votre retour.",
+      "h1fgigsy33": "La connexion a été interrompue. Rien n’a été enregistré ; vos modifications sont toujours à l’écran, réessayez.",
+      "hum5o4f5": "média",
+      "hivdff2e": "Personnalisées",
+      "h1ymex91c": "Aucun filtre",
+      "hdvl6sz7": "affiché",
+      "h8eo1gp6": "masqué",
+      "h1m4rhq63c": "Découper les temps forts du rush. Le premier extrait devient la séquence Vidéo ; les autres restent dans la médiathèque.",
+      "h7afkj5v": "— le tarif du serveur fait foi.",
+      "hed431410": "Sélectionnez une carte dans l’aperçu",
+      "hfulbq9m": "Dupliquer la sélection",
+      "h1u4kerh18": "Sélectionnez au moins deux cartes (Maj+clic)",
+      "h1pgdkxds": "Déplacer ces cartes ensemble",
+      "hybilp31a": "Aucune carte sélectionnée n’est dans un groupe",
+      "h1vn97nox": "Séparer les cartes de leur groupe",
+      "h10wr51ux": "Il faut garder au moins une carte",
+      "h1dc0dyxm": "Supprimer la sélection",
+      "h15gfeg8s": "Dupliquer cette copie du CTA",
+      "hriv4mdg": "Dupliquer le CTA",
+      "h14luhen14": "Style configuré (couleurs, affiche, son)",
+      "h1dzy2euh": "Supprimer ce rush",
+      "h1ty92pc5": "vidéo",
+      "h1ly0foii": "les thèmes choisis",
+      "h15abcjv": "Glisser pour déplacer l’élément",
+      "hvk5fud2q": "Minutage prévu ; à la production, il est recalé sur la durée réelle de la voix (jamais accélérée).",
+      "h72teop11": "Double-clic pour régler le sous-titre",
+      "hfrtc831p": "0 % = posé ; plus haut = plus d’expressivité et d’intonation.",
+      "hzvhhrp1r": "Envoi terminé — Studiio transmet votre vidéo pour vérification.",
+      "hp2w3jxi": "Création en cours…",
+      "h1xrlmz3g": "Créer mon avatar",
+      "h1p3hfv92f": "Envoi terminé — Studiio crée la nouvelle version et la confie au service de génération…",
+      "h6qg15ov": "Création de la nouvelle version",
+      "h2fnqgoo": "Création de votre avatar",
+      "h1pmv3ag11": "Cette page se met à jour toute seule.",
+      "hohp7u3w": "Placez votre visage dans l’ovale",
+      "h6ebwdva": "Démarrage…",
+      "hpy260k1d": "Envoi terminé — contrôle de la vidéo par Studiio…",
+      "h1ymjl4gn": "Augmenter les followers",
+      "hgi6r77n": "Promouvoir les produits",
+      "h11f8l28m": "Partager des tutorials"
     },
     "componentsBillingCreditsDisplay": {
       "credits_disponibles": "Crédits disponibles",
@@ -3920,6 +3979,26 @@
     },
     "componentsUiSelect": {
       "selectionner": "Sélectionner..."
+    },
+    "componentsAdminActivityFeed": {
+      "activite_recente": "Activité récente"
+    },
+    "componentsAdminPaymentTable": {
+      "complete": "Complété",
+      "echoue": "Échoué"
+    },
+    "componentsAdminRevenueChart": {
+      "revenus_par_mois": "Revenus par mois"
+    },
+    "componentsAdminSubscriptionTable": {
+      "aucun_abonnement_actif": "Aucun abonnement actif",
+      "annuler": "Annuler",
+      "modifier_l_abonnement": "Modifier l'abonnement"
+    },
+    "componentsAdminUserTable": {
+      "credits": "Crédits",
+      "inscrit_le": "Inscrit le",
+      "editer": "Éditer"
     }
   },
   "notifications": {

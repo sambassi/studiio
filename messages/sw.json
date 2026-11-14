@@ -2031,7 +2031,10 @@
       "les_scenes_terminees_sont_conservees_s": "Matukio yaliyokamilika huhifadhiwa. Seva ikianza upya, uzalishaji huendelea pale ulipoishia, bila kurudia matukio yaliyokwisha tengenezwa.",
       "les_scenes_deja_rendues_sont_conservee": "Matukio yaliyokwisha tengenezwa huhifadhiwa: kuanzisha usafirishaji tena hurudia tu yale yanayokosekana.",
       "meme_chronologie_que_le_mp4_les_debuts": "Mpangilio wa muda ni uleule kama MP4: nyakati za kuanza na muda hutoka kwenye uhariri unaorejeshwa na API. Picha isiyo na media ni nafasi ya ubao wa hadithi, si video.",
-      "remplace_a_l_ecran_seulement_les_media": "Hubadilisha, kwenye skrini tu, media zinazokosekana kwa klipu za mfano za ndani ili kuonyesha matokeo ya uhariri halisi. Hakuna kinachohifadhiwa, hakuna kinachozalishwa, hakuna gharama: hizi si video za filamu yako."
+      "remplace_a_l_ecran_seulement_les_media": "Hubadilisha, kwenye skrini tu, media zinazokosekana kwa klipu za mfano za ndani ili kuonyesha matokeo ya uhariri halisi. Hakuna kinachohifadhiwa, hakuna kinachozalishwa, hakuna gharama: hizi si video za filamu yako.",
+      "selectionner_la_scene_n_titre": "Chagua onyesho {n}: {titre}",
+      "modifier_le_plan_n": "Hariri shoti {n}",
+      "description_du_plan_n": "Maelezo ya shoti {n}"
     },
     "appDashboardCreerAssistantWizard": {
       "revenir_au_choix_des_modes": "Rudi kwenye uchaguzi wa hali",
@@ -2742,7 +2745,8 @@
       "media_manquant": "Media inakosekana",
       "storyboard_du_film": "Ubao wa hadithi wa filamu",
       "demo": "onyesho",
-      "plan_cadre_importez_une_image_ou_une_v": "Picha {cadre} · leta picha au video"
+      "plan_cadre_importez_une_image_ou_une_v": "Picha {cadre} · leta picha au video",
+      "plan_n_scene_m": "Shoti {n}, onyesho {m}"
     },
     "componentsCinemaChoixMouvements": {
       "mouvements_de_camera": "Mwendo wa kamera",
@@ -3078,7 +3082,8 @@
       "seuil_de_credits": "Kiwango cha chini cha krediti",
       "la_video_de_votre_avatar_n_a_pas_pu_et": "Video ya avatar yako haikuweza kutayarishwa: rasimu imehaririwa bila hiyo.",
       "ce_qui_change_a_chaque_video": "Kinachobadilika kila video",
-      "ce_qui_ne_change_jamais": "Kisichobadilika kamwe"
+      "ce_qui_ne_change_jamais": "Kisichobadilika kamwe",
+      "rechercher_un_media_pour_la_sequence_n": "Tafuta media kwa mfuatano {n}"
     },
     "componentsCreerAvatarPrincipalAutopilote": {
       "mon_avatar": "Avatar yangu",
@@ -3912,7 +3917,61 @@
       "h19op0ya": "hiari",
       "h14ih0ha6": "Mdundo",
       "h7q5wa4": "Menyu",
-      "h1ov4v8e6": "Funga"
+      "h1ov4v8e6": "Funga",
+      "h3bmk84m": "amejiunga na mpango wa Pro",
+      "hm5zsw4t": "ameunda video (krediti 50)",
+      "hjwkr3hk": "amenunua krediti 500",
+      "hc3ev1td": "amejisajili",
+      "h6s2roo": "amesitisha usajili wake",
+      "h5qhw8i3": "Feb",
+      "hbk0qlok": "Inatuma video yako",
+      "h4pinwvk": "Inatuma picha yako",
+      "h1fozml91d": "Kutuma kumekamilika — Studiio inahifadhi faili yako.",
+      "h1mjebrsh": "haijafunguliwa bado",
+      "hy2ek7bl": "Video yako iko tayari",
+      "h19hyf1em": "Uundaji umeshindwa",
+      "hxo6vwkn": "Inaunda video yako",
+      "h15uttfh2l": "Kwa kawaida huchukua dakika chache. Unaweza kupakia upya ukurasa: ufuatiliaji utaendelea.",
+      "h1eaobsb2q": "Unaweza kuondoka kwenye ukurasa huu: pacha wako anaendelea kwenye seva na ataendelezwa utakaporudi.",
+      "h1fgigsy33": "Muunganisho umekatika. Hakuna kilichohifadhiwa; mabadiliko yako bado yako skrinini, jaribu tena.",
+      "hum5o4f5": "media",
+      "hivdff2e": "Maalum",
+      "h1ymex91c": "Hakuna kichujio",
+      "hdvl6sz7": "imeonyeshwa",
+      "h8eo1gp6": "imefichwa",
+      "h1m4rhq63c": "Kata sehemu bora za rush. Kipande cha kwanza kinakuwa mfuatano wa Video; vingine vinabaki kwenye maktaba ya media.",
+      "h7afkj5v": "— bei ya seva ndiyo inayotumika.",
+      "hed431410": "Chagua kadi kwenye hakiki",
+      "hfulbq9m": "Nakili uteuzi",
+      "h1u4kerh18": "Chagua angalau kadi mbili (Shift+bofya)",
+      "h1pgdkxds": "Sogeza kadi hizi pamoja",
+      "hybilp31a": "Hakuna kadi iliyochaguliwa iliyo kwenye kikundi",
+      "h1vn97nox": "Tenganisha kadi na kikundi chake",
+      "h10wr51ux": "Lazima ubaki na angalau kadi moja",
+      "h1dc0dyxm": "Futa uteuzi",
+      "h15gfeg8s": "Nakili nakala hii ya CTA",
+      "hriv4mdg": "Nakili CTA",
+      "h14luhen14": "Mtindo umewekwa (rangi, bango, sauti)",
+      "h1dzy2euh": "Futa rush hii",
+      "h1ty92pc5": "video",
+      "h1ly0foii": "mada zilizochaguliwa",
+      "h15abcjv": "Buruta ili kusogeza kipengele",
+      "hvk5fud2q": "Muda uliopangwa; wakati wa utayarishaji, hurekebishwa kulingana na urefu halisi wa sauti (haiharakishwi kamwe).",
+      "h72teop11": "Bofya mara mbili ili kurekebisha kichwa kidogo",
+      "hfrtc831p": "0 % = tulivu; juu zaidi = hisia na kiimbo zaidi.",
+      "hzvhhrp1r": "Kutuma kumekamilika — Studiio inawasilisha video yako kwa ukaguzi.",
+      "hp2w3jxi": "Inaundwa…",
+      "h1xrlmz3g": "Unda avatar yangu",
+      "h1p3hfv92f": "Kutuma kumekamilika — Studiio inaunda toleo jipya na kulikabidhi kwa huduma ya uundaji…",
+      "h6qg15ov": "Inaunda toleo jipya",
+      "h2fnqgoo": "Inaunda avatar yako",
+      "h1pmv3ag11": "Ukurasa huu unajisasisha wenyewe.",
+      "hohp7u3w": "Weka uso wako ndani ya mviringo",
+      "h6ebwdva": "Inaanza…",
+      "hpy260k1d": "Kutuma kumekamilika — Studiio inakagua video…",
+      "h1ymjl4gn": "Kuongeza wafuasi",
+      "hgi6r77n": "Kutangaza bidhaa",
+      "h11f8l28m": "Kushiriki mafunzo"
     },
     "componentsBillingCreditsDisplay": {
       "credits_disponibles": "Krediti zilizopo",
@@ -3920,6 +3979,26 @@
     },
     "componentsUiSelect": {
       "selectionner": "Chagua..."
+    },
+    "componentsAdminActivityFeed": {
+      "activite_recente": "Shughuli za hivi karibuni"
+    },
+    "componentsAdminPaymentTable": {
+      "complete": "Imekamilika",
+      "echoue": "Imeshindwa"
+    },
+    "componentsAdminRevenueChart": {
+      "revenus_par_mois": "Mapato kwa mwezi"
+    },
+    "componentsAdminSubscriptionTable": {
+      "aucun_abonnement_actif": "Hakuna usajili unaotumika",
+      "annuler": "Ghairi",
+      "modifier_l_abonnement": "Hariri usajili"
+    },
+    "componentsAdminUserTable": {
+      "credits": "Krediti",
+      "inscrit_le": "Alijisajili tarehe",
+      "editer": "Hariri"
     }
   },
   "notifications": {

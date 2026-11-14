@@ -464,7 +464,7 @@ export default function CompleterRushesStock({
         {slots.map((s) => {
           const cle = s.manque.sequence;
           const media = mediaDu(s);
-          const nomType = media?.type === 'photo' ? 'photo' : 'vidéo';
+          const nomType = media?.type === 'photo' ? 'photo' : tUi.fr('vidéo');
           if (s.etat === 'supprime') {
             return (
               <li key={cle} className="text-[11px] text-gray-500" data-autopilot-stock-slot={cle} data-etat="supprime">
@@ -527,7 +527,7 @@ export default function CompleterRushesStock({
                             onClick={() => majSlot(cle, (x) => ({ ...x, choix: i, erreur: null }))}
                             disabled={s.etat === 'import'}
                             aria-pressed={i === s.choix}
-                            aria-label={`Proposition ${i + 1} sur ${s.candidats.length} (${c.type === 'photo' ? 'photo' : 'vidéo'})`}
+                            aria-label={`Proposition ${i + 1} sur ${s.candidats.length} (${c.type === 'photo' ? 'photo' : tUi.fr('vidéo')})`}
                             data-autopilot-stock-candidat={c.providerAssetId}
                             className={`relative overflow-hidden rounded ${i === s.choix ? 'ring-2 ring-studiio-primary' : 'ring-1 ring-white/10 opacity-70 hover:opacity-100'}`}
                             style={{ width: 40, height: 40 }}

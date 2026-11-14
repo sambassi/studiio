@@ -2031,7 +2031,10 @@
       "les_scenes_terminees_sont_conservees_s": "Completed scenes are kept. If the server restarts, production resumes where it stopped, without redoing scenes already rendered.",
       "les_scenes_deja_rendues_sont_conservee": "Scenes already rendered are kept: restarting the export only redoes what is missing.",
       "meme_chronologie_que_le_mp4_les_debuts": "Same timeline as the MP4: start times and durations come from the edit returned by the API. A shot without media is a storyboard placeholder, not a video.",
-      "remplace_a_l_ecran_seulement_les_media": "Replaces, on screen only, missing media with local sample clips to show what a real edit looks like. Nothing is saved, nothing is generated, no cost: these are not videos of your film."
+      "remplace_a_l_ecran_seulement_les_media": "Replaces, on screen only, missing media with local sample clips to show what a real edit looks like. Nothing is saved, nothing is generated, no cost: these are not videos of your film.",
+      "selectionner_la_scene_n_titre": "Select scene {n}: {titre}",
+      "modifier_le_plan_n": "Edit shot {n}",
+      "description_du_plan_n": "Description of shot {n}"
     },
     "appDashboardCreerAssistantWizard": {
       "revenir_au_choix_des_modes": "Back to mode selection",
@@ -2742,7 +2745,8 @@
       "media_manquant": "Missing media",
       "storyboard_du_film": "Film storyboard",
       "demo": "demo",
-      "plan_cadre_importez_une_image_ou_une_v": "Shot {cadre} · import an image or a video"
+      "plan_cadre_importez_une_image_ou_une_v": "Shot {cadre} · import an image or a video",
+      "plan_n_scene_m": "Shot {n}, scene {m}"
     },
     "componentsCinemaChoixMouvements": {
       "mouvements_de_camera": "Camera movements",
@@ -3078,7 +3082,8 @@
       "seuil_de_credits": "Credit threshold",
       "la_video_de_votre_avatar_n_a_pas_pu_et": "Your avatar's video could not be prepared: the draft was edited without it.",
       "ce_qui_change_a_chaque_video": "What changes in every video",
-      "ce_qui_ne_change_jamais": "What never changes"
+      "ce_qui_ne_change_jamais": "What never changes",
+      "rechercher_un_media_pour_la_sequence_n": "Search for media for sequence {n}"
     },
     "componentsCreerAvatarPrincipalAutopilote": {
       "mon_avatar": "My avatar",
@@ -3912,7 +3917,61 @@
       "h19op0ya": "optional",
       "h14ih0ha6": "Rhythm",
       "h7q5wa4": "Menu",
-      "h1ov4v8e6": "Close"
+      "h1ov4v8e6": "Close",
+      "h3bmk84m": "subscribed to the Pro plan",
+      "hm5zsw4t": "created a video (50 credits)",
+      "hjwkr3hk": "bought 500 credits",
+      "hc3ev1td": "signed up",
+      "h6s2roo": "canceled their subscription",
+      "h5qhw8i3": "Feb",
+      "hbk0qlok": "Uploading your video",
+      "h4pinwvk": "Uploading your photo",
+      "h1fozml91d": "Upload complete — Studiio is saving your file.",
+      "h1mjebrsh": "not opened yet",
+      "hy2ek7bl": "Your video is ready",
+      "h19hyf1em": "Generation failed",
+      "hxo6vwkn": "Creating your video",
+      "h15uttfh2l": "This usually takes a few minutes. You can reload the page: tracking will resume.",
+      "h1eaobsb2q": "You can leave this page: your twin keeps running on the server and will pick up when you return.",
+      "h1fgigsy33": "The connection was interrupted. Nothing was saved; your changes are still on screen, please try again.",
+      "hum5o4f5": "media",
+      "hivdff2e": "Custom",
+      "h1ymex91c": "No filter",
+      "hdvl6sz7": "shown",
+      "h8eo1gp6": "hidden",
+      "h1m4rhq63c": "Cut the highlights from the rush. The first clip becomes the Video sequence; the others stay in the media library.",
+      "h7afkj5v": "— the server price prevails.",
+      "hed431410": "Select a card in the preview",
+      "hfulbq9m": "Duplicate selection",
+      "h1u4kerh18": "Select at least two cards (Shift+click)",
+      "h1pgdkxds": "Move these cards together",
+      "hybilp31a": "No selected card is in a group",
+      "h1vn97nox": "Separate the cards from their group",
+      "h10wr51ux": "You must keep at least one card",
+      "h1dc0dyxm": "Delete selection",
+      "h15gfeg8s": "Duplicate this copy of the CTA",
+      "hriv4mdg": "Duplicate the CTA",
+      "h14luhen14": "Style configured (colors, poster, sound)",
+      "h1dzy2euh": "Delete this rush",
+      "h1ty92pc5": "video",
+      "h1ly0foii": "the chosen themes",
+      "h15abcjv": "Drag to move the element",
+      "hvk5fud2q": "Planned timing; at production it is re-aligned to the actual voice duration (never sped up).",
+      "h72teop11": "Double-click to adjust the subtitle",
+      "hfrtc831p": "0% = calm; higher = more expressiveness and intonation.",
+      "hzvhhrp1r": "Upload complete — Studiio is submitting your video for review.",
+      "hp2w3jxi": "Creating…",
+      "h1xrlmz3g": "Create my avatar",
+      "h1p3hfv92f": "Upload complete — Studiio is creating the new version and handing it to the generation service…",
+      "h6qg15ov": "Creating the new version",
+      "h2fnqgoo": "Creating your avatar",
+      "h1pmv3ag11": "This page updates by itself.",
+      "hohp7u3w": "Place your face in the oval",
+      "h6ebwdva": "Starting…",
+      "hpy260k1d": "Upload complete — Studiio is checking the video…",
+      "h1ymjl4gn": "Grow followers",
+      "hgi6r77n": "Promote products",
+      "h11f8l28m": "Share tutorials"
     },
     "componentsBillingCreditsDisplay": {
       "credits_disponibles": "Available credits",
@@ -3920,6 +3979,26 @@
     },
     "componentsUiSelect": {
       "selectionner": "Select..."
+    },
+    "componentsAdminActivityFeed": {
+      "activite_recente": "Recent activity"
+    },
+    "componentsAdminPaymentTable": {
+      "complete": "Completed",
+      "echoue": "Failed"
+    },
+    "componentsAdminRevenueChart": {
+      "revenus_par_mois": "Revenue by month"
+    },
+    "componentsAdminSubscriptionTable": {
+      "aucun_abonnement_actif": "No active subscriptions",
+      "annuler": "Cancel",
+      "modifier_l_abonnement": "Edit subscription"
+    },
+    "componentsAdminUserTable": {
+      "credits": "Credits",
+      "inscrit_le": "Signed up on",
+      "editer": "Edit"
     }
   },
   "notifications": {

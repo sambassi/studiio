@@ -132,7 +132,7 @@ export function Storyboard({ segments, courantId, portrait, surChoisir }: {
             <button
               type="button"
               onClick={() => surChoisir(s)}
-              aria-label={`Plan ${i + 1}, scène ${s.sceneIndex + 1}${s.media ? (s.demo ? ', média d’exemple' : '') : ', média manquant'}`}
+              aria-label={`${tUi('plan_n_scene_m', { n: i + 1, m: s.sceneIndex + 1 })}${s.media ? (s.demo ? `, ${tUi.fr('média d’exemple')}` : '') : `, ${tUi.fr('média manquant')}`}`}
               aria-current={actif ? 'true' : undefined}
               className={`relative block w-full overflow-hidden rounded-md border transition-colors ${actif ? 'border-violet-500 ring-1 ring-violet-500/50' : 'border-slate-800 hover:border-slate-600'}`}
               style={{ aspectRatio: ratioCadre(portrait ? '9:16' : '16:9'), background: '#0d0f16' }}

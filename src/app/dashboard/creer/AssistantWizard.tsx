@@ -7923,7 +7923,7 @@ export default function AssistantWizard() {
       detail={detailSuiviJumeau(jumeauPhase.phase, renderStage)}
       debutLe={jumeauPhase.debutLe}
       compact={compact}
-      note={compact ? null : 'Vous pouvez quitter cette page : votre jumeau continue côté serveur et sera repris à votre retour.'}
+      note={compact ? null : tUi.fr('Vous pouvez quitter cette page : votre jumeau continue côté serveur et sera repris à votre retour.')}
       className="w-full text-left"
     />
   ) : null;
@@ -11425,7 +11425,7 @@ export default function AssistantWizard() {
                   // et l'utilisateur repartirait en pensant son travail sauve.
                   ? tUi('ce_contenu_a_ete_modifie_ailleurs_entr')
                   : enregistrement.issue === 'reseau'
-                    ? 'La connexion a été interrompue. Rien n’a été enregistré ; vos modifications sont toujours à l’écran, réessayez.'
+                    ? tUi.fr('La connexion a été interrompue. Rien n’a été enregistré ; vos modifications sont toujours à l’écran, réessayez.')
                     : enregistrement.issue === 'session'
                       ? tUi('votre_session_a_expire_reconnectez_vou')
                       : enregistrement.issue === 'refuse' || enregistrement.issue === 'introuvable'
@@ -11507,7 +11507,7 @@ export default function AssistantWizard() {
                       {m.type === 'image' ? <ImageIcon className="w-4 h-4 shrink-0 text-red-300" /> : m.role === 'narration' ? <Mic className="w-4 h-4 shrink-0 text-red-300" /> : <Film className="w-4 h-4 shrink-0 text-red-300" />}
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-medium text-red-100" title={nom ?? undefined}>
-                          {typeof m.position === 'number' ? `Séquence Vidéo · ${m.type === 'image' ? 'média' : 'rush'} ${m.position}` : libelleMediaManquant({ ...m, cause: undefined })}
+                          {typeof m.position === 'number' ? `Séquence Vidéo · ${m.type === 'image' ? tUi.fr('média') : 'rush'} ${m.position}` : libelleMediaManquant({ ...m, cause: undefined })}
                           {nom && typeof m.position === 'number' ? ` · ${nom}` : ''}
                         </span>
                         <span className="block text-xs text-red-300/80">
@@ -11969,7 +11969,7 @@ export default function AssistantWizard() {
                 <StyleSection
                   id="couleurs"
                   title="Couleurs"
-                  hint={colors ? 'Personnalisées' : 'Kit de marque'}
+                  hint={colors ? tUi.fr('Personnalisées') : 'Kit de marque'}
                   swatches={[accent, gradStart, gradEnd]}
                   open={openSection === 'couleurs'}
                   onToggle={toggleSection}
@@ -12683,7 +12683,7 @@ export default function AssistantWizard() {
                 <StyleSection
                   id="ambiance"
                   title="Ambiance"
-                  hint={lut ? `${lut.nom} · ${Math.round(lut.intensite * 100)}%` : 'Aucun filtre'}
+                  hint={lut ? `${lut.nom} · ${Math.round(lut.intensite * 100)}%` : tUi.fr('Aucun filtre')}
                   open={openSection === 'ambiance'}
                   onToggle={toggleSection}
                 >
@@ -12767,7 +12767,7 @@ export default function AssistantWizard() {
                 <StyleSection
                   id="texte"
                   title={tUi('texte')}
-                  hint={`${textStyles.title.font} · filigrane ${watermarkVisible ? 'affiché' : 'masqué'}`}
+                  hint={`${textStyles.title.font} · filigrane ${watermarkVisible ? tUi.fr('affiché') : tUi.fr('masqué')}`}
                   open={openSection === 'texte'}
                   onToggle={toggleSection}
                 >
@@ -13276,7 +13276,7 @@ export default function AssistantWizard() {
                                       type="button"
                                       onClick={() => setClipSource({ url: rushUrl, name: rushName || 'rush' })}
                                       disabled={rushLoading}
-                                      title="Découper les temps forts du rush. Le premier extrait devient la séquence Vidéo ; les autres restent dans la médiathèque."
+                                      title={tUi.fr("Découper les temps forts du rush. Le premier extrait devient la séquence Vidéo ; les autres restent dans la médiathèque.")}
                                       aria-label={tUi('decouper_les_temps_forts_du_rush')}
                                       className="flex items-center gap-1 rounded-lg bg-gray-800 hover:bg-gray-700 px-2 py-1 text-[10px] font-medium text-gray-300 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
                                     >
@@ -13955,7 +13955,7 @@ export default function AssistantWizard() {
                           ? `— ${MENTION_AUCUN_CREDIT}`
                           : tarifsServeur
                             ? tUi('seront_debites_une_fois_le_rendu_termi')
-                            : '— le tarif du serveur fait foi.'}
+                            : tUi.fr('— le tarif du serveur fait foi.')}
                       </p>
                     </div>
 
@@ -14827,29 +14827,29 @@ export default function AssistantWizard() {
                       {
                         id: 'dupliquer', libelle: 'Dupliquer', Icone: Copy, onClick: duplicateSelection,
                         disabled: nbSel === 0 || nbCartes >= limiteCartes,
-                        aide: nbSel === 0 ? 'Sélectionnez une carte dans l’aperçu'
+                        aide: nbSel === 0 ? tUi.fr('Sélectionnez une carte dans l’aperçu')
                           : nbCartes >= limiteCartes ? `Maximum de ${limiteCartes} cartes dans ce format`
-                            : 'Dupliquer la sélection',
+                            : tUi.fr('Dupliquer la sélection'),
                       },
                       {
                         id: 'regrouper', libelle: 'Regrouper', Icone: GroupIcon, onClick: groupSelection,
                         disabled: nbSel < MIN_GROUP,
-                        aide: nbSel < MIN_GROUP ? 'Sélectionnez au moins deux cartes (Maj+clic)'
-                          : 'Déplacer ces cartes ensemble',
+                        aide: nbSel < MIN_GROUP ? tUi.fr('Sélectionnez au moins deux cartes (Maj+clic)')
+                          : tUi.fr('Déplacer ces cartes ensemble'),
                       },
                       {
                         id: 'dissocier', libelle: 'Dissocier', Icone: Ungroup, onClick: ungroupSelection,
                         disabled: !selectionGrouped,
-                        aide: !selectionGrouped ? 'Aucune carte sélectionnée n’est dans un groupe'
-                          : 'Séparer les cartes de leur groupe',
+                        aide: !selectionGrouped ? tUi.fr('Aucune carte sélectionnée n’est dans un groupe')
+                          : tUi.fr('Séparer les cartes de leur groupe'),
                       },
                       {
                         id: 'supprimer', libelle: tUi('supprimer'), Icone: Trash2, danger: true,
                         onClick: () => { for (const id of Array.from(selectedCards)) supprimerCarte(id); },
                         disabled: nbSel === 0 || nbSel >= nbCartes,
-                        aide: nbSel === 0 ? 'Sélectionnez une carte dans l’aperçu'
-                          : nbSel >= nbCartes ? 'Il faut garder au moins une carte'
-                            : 'Supprimer la sélection',
+                        aide: nbSel === 0 ? tUi.fr('Sélectionnez une carte dans l’aperçu')
+                          : nbSel >= nbCartes ? tUi.fr('Il faut garder au moins une carte')
+                            : tUi.fr('Supprimer la sélection'),
                       },
                     ]}
                   />
@@ -14864,7 +14864,7 @@ export default function AssistantWizard() {
                       disabled: ctaCopies.length >= MAX_CTA_COPIES,
                       aide: ctaCopies.length >= MAX_CTA_COPIES
                         ? `Maximum de ${MAX_CTA_COPIES} copies du CTA`
-                        : copieCtaCible ? 'Dupliquer cette copie du CTA' : 'Dupliquer le CTA',
+                        : copieCtaCible ? tUi.fr('Dupliquer cette copie du CTA') : tUi.fr('Dupliquer le CTA'),
                     },
                     // L'original ne se supprime pas d'ici : seule une copie.
                     ...(copieCtaCible ? [{
