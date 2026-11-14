@@ -30,6 +30,7 @@ import {
   getRetentionBgColor,
   getRetentionColor,
 } from '@/lib/storage/retention';
+import { useTranslations } from '@/i18n/client';
 
 const ACCENT = '#7C3AED';
 
@@ -58,6 +59,7 @@ function displayFilename(raw: string): string {
 }
 
 function ExpiryBadge({ file }: { file: MediaFile }) {
+  const tUi = useTranslations('ui.appDashboardMedia');
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 60_000);
@@ -68,9 +70,9 @@ function ExpiryBadge({ file }: { file: MediaFile }) {
     return (
       <span
         className="inline-flex items-center gap-0.5 rounded-full border border-green-500/30 bg-green-500/15 px-1.5 py-0.5 text-[9px] font-medium text-green-400"
-        title="Protégé : utilisé par un contenu (brouillon, programmé ou publié)"
+        title={tUi('protege_utilise_par_un_contenu_brouill')}
       >
-        <ShieldCheck size={9} /> Protégé (utilisé par un contenu)
+        <ShieldCheck size={9} /> {tUi('protege_utilise_par_un_contenu')}
       </span>
     );
   }
@@ -80,12 +82,13 @@ function ExpiryBadge({ file }: { file: MediaFile }) {
     <span
       className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[9px] font-medium ${getRetentionColor(remaining)} ${getRetentionBgColor(remaining)}`}
     >
-      <Clock size={9} /> {remaining > 0 ? formatRemaining(remaining) : 'Expiré'}
+      <Clock size={9} /> {remaining > 0 ? formatRemaining(remaining) : tUi('expire')}
     </span>
   );
 }
 
 export default function MediaPage() {
+  const tUi = useTranslations('ui.appDashboardMedia');
   const [files, setFiles] = useState<MediaFile[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -188,10 +191,9 @@ export default function MediaPage() {
       {/* En-tête */}
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">Média</h1>
+          <h1 className="text-2xl font-bold text-white">{tUi('media')}</h1>
           <p className="mt-1 text-sm text-gray-400">
-            Vos rushes vidéo. Lancez la détection des temps forts pour en extraire
-            automatiquement les meilleures séquences.
+            {tUi('vos_rushes_video_lancez_la_detection_d')}
           </p>
         </div>
         <label
@@ -201,7 +203,7 @@ export default function MediaPage() {
           style={{ backgroundColor: ACCENT }}
         >
           {uploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-          {uploading ? 'Envoi…' : 'Ajouter une vidéo'}
+          {uploading ? 'Envoi…' : tUi('ajouter_une_video')}
           <input
             type="file"
             accept="video/*"
@@ -230,7 +232,7 @@ export default function MediaPage() {
             onClick={() => setNotice(null)}
             className="flex-shrink-0 opacity-70 transition hover:opacity-100"
           >
-            Fermer
+            {tUi('fermer')}
           </button>
         </div>
       )}
@@ -251,7 +253,7 @@ export default function MediaPage() {
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Rechercher un rush…"
+          placeholder={tUi('rechercher_un_rush')}
           className="w-full rounded-lg border border-gray-700 bg-gray-800 py-2 pl-9 pr-3 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
         />
       </div>
@@ -265,11 +267,11 @@ export default function MediaPage() {
         <div className="rounded-2xl border border-dashed border-gray-700 py-16 text-center">
           <Film size={30} className="mx-auto mb-3 text-gray-600" />
           <p className="text-sm text-gray-400">
-            {search ? 'Aucun rush ne correspond à cette recherche.' : 'Aucun rush pour le moment.'}
+            {search ? tUi('aucun_rush_ne_correspond_a_cette_reche') : tUi('aucun_rush_pour_le_moment')}
           </p>
           {!search && (
             <p className="mt-1 text-xs text-gray-600">
-              Ajoutez une vidéo pour détecter ses temps forts.
+              {tUi('ajoutez_une_video_pour_detecter_ses_te')}
             </p>
           )}
         </div>
@@ -319,7 +321,7 @@ export default function MediaPage() {
                   <button
                     onClick={() => handleDelete(file)}
                     className="rounded-lg border border-gray-700 p-2 text-gray-500 transition hover:border-red-500/40 hover:text-red-400"
-                    title="Supprimer"
+                    title={tUi('supprimer')}
                   >
                     <Trash2 size={14} />
                   </button>

@@ -36,6 +36,7 @@ import {
   type TypeStock,
 } from '@/lib/stock/types';
 import ApercuMedia, { formatDuree, type EtatAjoutMedia, type MediaApercu } from './ApercuMedia';
+import { useTranslations } from '@/i18n/client';
 
 /** Ce que l'on garde d'un média stock choisi : de quoi le créditer et le retrouver. */
 export interface MetaStock {
@@ -121,11 +122,12 @@ export function mediaApercuDeStock(m: MediaStock): MediaApercu {
  * en un clic, au clavier comme à la souris (`<details>` natif).
  */
 export function CreditBanques({ attribut, className = '' }: { attribut?: string; className?: string }) {
+  const tUi = useTranslations('ui.componentsCreerRechercheStockSequence');
   return (
     <details {...(attribut ? { [attribut]: '' } : {})} data-credit-media data-media-infos className={`text-[10px] text-gray-600 ${className}`}>
       <summary className="flex cursor-pointer list-none items-center gap-1 hover:text-gray-300">
         <Info className="w-3 h-3" aria-hidden="true" />
-        Crédits médias
+        {tUi('credits_medias')}
       </summary>
       <p className="mt-1 pl-4">
         Photos et vidéos fournies par{' '}
@@ -179,6 +181,7 @@ export interface RechercheStockSequenceProps {
 }
 
 const RechercheStockSequence = forwardRef<PanneauStockHandle, RechercheStockSequenceProps>(function RechercheStockSequence(props, ref) {
+  const tUi = useTranslations('ui.componentsCreerRechercheStockSequence');
   const { role, sujet, objectif, texte, format } = props;
   const recherches = useMemo(
     () => construireRecherchesStock({ sujet, objectif, texte, role, format }),
@@ -284,7 +287,7 @@ const RechercheStockSequence = forwardRef<PanneauStockHandle, RechercheStockSequ
     try {
       const r = await importerStockClient({ provider: m.provider, type: m.type, providerAssetId: m.providerAssetId });
       if ('erreur' in r) {
-        setMessage('Ajout impossible pour le moment. Réessayez ou choisissez un autre média.');
+        setMessage(tUi('ajout_impossible_pour_le_moment_reessa'));
         return;
       }
       const meta = metaStockDe(r.media ?? m);
@@ -294,7 +297,7 @@ const RechercheStockSequence = forwardRef<PanneauStockHandle, RechercheStockSequ
         // l'infobulle montrent la durée MESURÉE à l'import (une seule vérité).
         props.onAjouterRush(r.url, 'Vidéo suggérée', m.dureeSecondes ? { ...meta, dureeAnnoncee: m.dureeSecondes } : meta);
         setAjoutes((prev) => ({ ...prev, [m.id]: true }));
-        setMessage('Vidéo ajoutée à vos rushes et à la Médiathèque.');
+        setMessage(tUi('video_ajoutee_a_vos_rushes_et_a_la_med'));
       } else {
         props.onUtiliserPhoto(r.url, meta);
         // Une séquence n'a qu'UN arrière-plan : la photo précédente ne l'est plus.
@@ -338,7 +341,7 @@ const RechercheStockSequence = forwardRef<PanneauStockHandle, RechercheStockSequ
       data-recherche-stock
       role={props.integre ? 'region' : 'dialog'}
       aria-modal={props.integre ? undefined : true}
-      aria-label="Médias suggérés"
+      aria-label={tUi('medias_suggeres')}
       className={props.integre ? '' : 'fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4'}
     >
       <div
@@ -348,17 +351,17 @@ const RechercheStockSequence = forwardRef<PanneauStockHandle, RechercheStockSequ
         <header className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <h3 className="font-semibold text-sm">
-              Médias suggérés
+              {tUi('medias_suggeres')}
               <span className="ml-1.5 text-gray-500 font-normal">— {props.libelleSequence}</span>
             </h3>
             <p className="mt-0.5 text-[11px] text-gray-500">
-              Trouvez rapidement une photo ou une vidéo adaptée à votre contenu.
+              {tUi('trouvez_rapidement_une_photo_ou_une_vi')}
             </p>
           </div>
           <button
             type="button"
-            aria-label="Fermer les médias suggérés"
-            title="Fermer"
+            aria-label={tUi('fermer_les_medias_suggeres')}
+            title={tUi('fermer')}
             onClick={props.onFermer}
             className="p-1 text-gray-400 hover:text-white rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-400"
           >
@@ -367,7 +370,7 @@ const RechercheStockSequence = forwardRef<PanneauStockHandle, RechercheStockSequ
         </header>
 
         {/* Filtre par TYPE — seulement ceux que la zone accepte. */}
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Type de média">
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={tUi('type_de_media')}>
           {filtres.map((f) => {
             const Icone = ICONE_FILTRE[f];
             return (
@@ -397,10 +400,10 @@ const RechercheStockSequence = forwardRef<PanneauStockHandle, RechercheStockSequ
               type="text"
               value={saisie}
               data-stock-requete
-              aria-label="Que recherchez-vous ?"
+              aria-label={tUi('que_recherchez_vous')}
               onChange={(e) => { setSaisie(e.target.value); setSuggestionActive(null); }}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); rechercher(); } }}
-              placeholder="Que recherchez-vous ?"
+              placeholder={tUi('que_recherchez_vous')}
               className="w-full rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none pl-8 pr-2.5 py-2 text-sm"
             />
           </div>
@@ -436,22 +439,22 @@ const RechercheStockSequence = forwardRef<PanneauStockHandle, RechercheStockSequ
         )}
 
         {props.fondExistant && autorises.includes('photo') && (
-          <p className="text-[11px] text-amber-400">Cette séquence a déjà un arrière-plan : une photo ajoutée le remplacera.</p>
+          <p className="text-[11px] text-amber-400">{tUi('cette_sequence_a_deja_un_arriere_plan')}</p>
         )}
 
         {/* Une banque tombée : discret, jamais bloquant, jamais nommé. */}
         {(echec || partiel) && (
           <p data-stock-echecs className="text-[11px] text-gray-500">
             {echec
-              ? 'La recherche est momentanément indisponible. Réessayez dans un instant.'
-              : 'Une partie des résultats n’est pas disponible pour le moment.'}
+              ? tUi('la_recherche_est_momentanement_indispo')
+              : tUi('une_partie_des_resultats_n_est_pas_dis')}
           </p>
         )}
 
         {/* Grille de cartes */}
         {medias.length > 0 ? (
           <>
-            <p className="text-[11px] text-gray-500">Cliquez sur un média pour le prévisualiser avant de l’ajouter.</p>
+            <p className="text-[11px] text-gray-500">{tUi('cliquez_sur_un_media_pour_le_previsual')}</p>
             <div ref={grilleRef} className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-96 overflow-y-auto pr-1" data-stock-grille>
               {medias.map((m) => {
                 const choisi = selection?.id === m.id;
@@ -501,11 +504,11 @@ const RechercheStockSequence = forwardRef<PanneauStockHandle, RechercheStockSequ
                           data-stock-apercu={m.id}
                           onClick={() => selectionner(m)}
                           aria-label={`Aperçu : ${libelle}`}
-                          title="Prévisualiser"
+                          title={tUi('previsualiser')}
                           className="flex min-w-0 flex-1 items-center justify-center gap-1 rounded-md border border-gray-800 px-1.5 py-1 text-[11px] text-gray-300 hover:text-white hover:border-gray-600 transition-colors"
                         >
                           <Play className="w-3 h-3 shrink-0" />
-                          <span className="truncate">Aperçu</span>
+                          <span className="truncate">{tUi('apercu')}</span>
                         </button>
                         <button
                           type="button"
@@ -513,7 +516,7 @@ const RechercheStockSequence = forwardRef<PanneauStockHandle, RechercheStockSequ
                           onClick={() => void ajouter(m)}
                           disabled={etat !== 'pret' || (!!enCours && enCours !== m.id)}
                           aria-label={etat === 'ajoute' ? `${libelle} : déjà ajoutée` : aideAjout(m)}
-                          title={etat === 'ajoute' ? 'Déjà ajouté' : aideAjout(m)}
+                          title={etat === 'ajoute' ? tUi('deja_ajoute') : aideAjout(m)}
                           className={`flex min-w-0 flex-1 items-center justify-center gap-1 rounded-md px-1.5 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed ${
                             etat === 'ajoute'
                               ? 'bg-emerald-600/20 text-emerald-300'
@@ -521,7 +524,7 @@ const RechercheStockSequence = forwardRef<PanneauStockHandle, RechercheStockSequ
                           }`}
                         >
                           {etat === 'en-cours' ? <Loader2 className="w-3 h-3 shrink-0 animate-spin" /> : etat === 'ajoute' ? <Check className="w-3 h-3 shrink-0" /> : <Plus className="w-3 h-3 shrink-0" />}
-                          <span className="truncate">{etat === 'ajoute' ? 'Ajouté' : 'Ajouter'}</span>
+                          <span className="truncate">{etat === 'ajoute' ? tUi('ajoute') : tUi('ajouter')}</span>
                         </button>
                       </div>
                     </div>

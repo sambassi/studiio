@@ -3,6 +3,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { ETAT_INTERACTIF_SANS_FOND } from '@/lib/ui/etats';
+import { useTranslations } from '@/i18n/client';
 
 interface FloatingPanelProps {
   title: string;
@@ -54,6 +55,7 @@ export default function FloatingPanel({
   closeOnClickOutside = true,
   onGeometryChange,
 }: FloatingPanelProps) {
+  const tUi = useTranslations('ui.componentsUiFloatingPanel');
   const [pos, setPos] = useState({ x: initialX, y: initialY });
   const [size, setSize] = useState({ w: initialWidth, h: initialHeight });
   const [dragging, setDragging] = useState(false);
@@ -218,7 +220,7 @@ export default function FloatingPanel({
           </div>
           <button
             onClick={onClose}
-            aria-label="Fermer"
+            aria-label={tUi('fermer')}
             className={`flex h-5 w-5 items-center justify-center rounded-full hover:bg-white/10 ${ETAT_INTERACTIF_SANS_FOND}`}
           >
             <X size={12} className="text-gray-400" />
@@ -249,7 +251,7 @@ export default function FloatingPanel({
             onMouseDown={handleResizeDown}
             title="Redimensionner"
             role="separator"
-            aria-label="Redimensionner la fenêtre"
+            aria-label={tUi('redimensionner_la_fenetre')}
             className="absolute bottom-0 right-0 h-4 w-4 cursor-nwse-resize"
             style={{
               background: `linear-gradient(135deg, transparent 0 50%, ${accentColor}80 50% 60%, transparent 60% 72%, ${accentColor}80 72% 82%, transparent 82%)`,

@@ -19,6 +19,7 @@ import { EXTRAITS_STYLES } from '@/lib/cinema/extraits-styles';
 import { CAMERAS_CINEMA, cameraCinema } from '@/lib/cinema/direction/camera';
 import type { IdCameraCinema, IdStyleCinema } from '@/lib/cinema/types';
 import { ratioCadre } from '@/lib/ui/lecteur-generation';
+import { useTranslations } from '@/i18n/client';
 
 const ICONES_CAMERA: Record<IdCameraCinema, LucideIcon> = {
   auto: Sparkles, fixe: Lock, travelling_avant: ZoomIn, travelling_arriere: ZoomOut,
@@ -55,18 +56,19 @@ export function SelecteurStyleFilm({ valeur, surChoisir, surMontrerExemple, exem
   /** Le style dont l'extrait est affiche dans l'apercu principal, pour le marquer. */
   exempleVu?: IdStyleCinema | null;
 }) {
+  const tUi = useTranslations('ui.componentsCinemaDirectionCinema');
   const actif = styleCinema(valeur);
   return (
     <div className="mt-4" data-direction="style-film">
       <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
         <Palette className="w-3.5 h-3.5 text-violet-400" />
-        Style du film
+        {tUi('style_du_film')}
         <Info2
           libelle="Ce que change un style"
           texte="Un style regle la lumiere, la palette, l’ambiance et la texture de l’image. Il ne change ni les personnages, ni les repliques, ni les lieux. Choisir un style ne lance aucune generation et ne coute rien : il s’applique a la prochaine image ou video generee."
         />
       </div>
-      <div role="radiogroup" aria-label="Style cinematique du film" className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+      <div role="radiogroup" aria-label={tUi('style_cinematique_du_film')} className="grid grid-cols-2 sm:grid-cols-3 gap-2">
         {STYLES_CINEMA.map((s) => {
           const choisi = valeur === s.id;
           const montre = exempleVu === s.id;
@@ -96,7 +98,7 @@ export function SelecteurStyleFilm({ valeur, surChoisir, surMontrerExemple, exem
       </div>
 
       <p className="mt-1.5 text-[11px] text-slate-500">
-        {actif ? <><span className="text-slate-300">{actif.libelle}</span> — {actif.resume}</> : 'Aucun style impose : le plan est genere d’apres sa seule description.'}
+        {actif ? <><span className="text-slate-300">{actif.libelle}</span> — {actif.resume}</> : tUi('aucun_style_impose_le_plan_est_genere')}
       </p>
       {actif && (
         <details className="mt-1 text-[11px] text-slate-400">
@@ -117,18 +119,19 @@ export function SelecteurStyleFilm({ valeur, surChoisir, surMontrerExemple, exem
 export function SelecteurStyleScene({ valeur, styleFilm, surChoisir }: {
   valeur: IdStyleCinema | null; styleFilm: IdStyleCinema | null; surChoisir: (id: IdStyleCinema | null) => void;
 }) {
+  const tUi = useTranslations('ui.componentsCinemaDirectionCinema');
   const parDefaut = styleCinema(styleFilm);
   return (
     <label className="inline-flex items-center gap-1.5 text-xs text-slate-400" data-direction="style-scene">
       <Palette className={`w-3.5 h-3.5 ${valeur ? 'text-violet-300' : 'text-slate-500'}`} aria-hidden="true" />
-      <span className="sr-only">Style de cette scene</span>
+      <span className="sr-only">{tUi('style_de_cette_scene')}</span>
       <select
         value={valeur ?? ''}
         onChange={(e) => surChoisir((e.target.value || null) as IdStyleCinema | null)}
-        aria-label="Style de cette scene"
+        aria-label={tUi('style_de_cette_scene')}
         className={`rounded bg-slate-950 border px-2 py-1 ${valeur ? 'border-violet-500/50 text-violet-200' : 'border-slate-700'}`}
       >
-        <option value="">{parDefaut ? `Style du film (${parDefaut.libelle})` : 'Style du film (aucun)'}</option>
+        <option value="">{parDefaut ? `Style du film (${parDefaut.libelle})` : tUi('style_du_film_aucun')}</option>
         {STYLES_CINEMA.map((s) => <option key={s.id} value={s.id}>{s.libelle}</option>)}
       </select>
     </label>
@@ -143,6 +146,7 @@ export function SelecteurStyleScene({ valeur, styleFilm, surChoisir }: {
 export function ExceptionStyleScene({ valeur, styleFilm, surValider }: {
   valeur: IdStyleCinema | null; styleFilm: IdStyleCinema | null; surValider: (id: IdStyleCinema | null) => void;
 }) {
+  const tUi = useTranslations('ui.componentsCinemaDirectionCinema');
   const [choix, setChoix] = useState<IdStyleCinema | null>(valeur);
   const hereditaire = styleCinema(styleFilm);
   const change = choix !== valeur;
@@ -157,11 +161,11 @@ export function ExceptionStyleScene({ valeur, styleFilm, surValider }: {
           type="button"
           onClick={() => surValider(choix)}
           disabled={!change}
-          aria-label="Valider l’exception de style pour cette scene"
-          title="Valider l’exception de style pour cette scene"
+          aria-label={tUi('valider_l_exception_de_style_pour_cett')}
+          title={tUi('valider_l_exception_de_style_pour_cett')}
           className="inline-flex items-center gap-1 rounded-lg border border-violet-500/50 px-2 py-1 text-xs text-violet-200 transition-colors hover:bg-violet-500/10 disabled:opacity-40"
         >
-          <Check className="h-3.5 w-3.5" aria-hidden="true" /> Valider
+          <Check className="h-3.5 w-3.5" aria-hidden="true" /> {tUi('valider')}
         </button>
       </div>
     </div>
@@ -172,6 +176,7 @@ export function ExceptionStyleScene({ valeur, styleFilm, surValider }: {
 export function SelecteurCamera({ valeur, automatique, ancien = false, surChoisir }: {
   valeur: IdCameraCinema; automatique: Exclude<IdCameraCinema, 'auto'>; ancien?: boolean; surChoisir: (id: IdCameraCinema) => void;
 }) {
+  const tUi = useTranslations('ui.componentsCinemaDirectionCinema');
   const Icone = ICONES_CAMERA[valeur];
   return (
     <span className="inline-flex items-center gap-1.5 text-xs text-slate-400" data-direction="camera">
@@ -179,7 +184,7 @@ export function SelecteurCamera({ valeur, automatique, ancien = false, surChoisi
       <select
         value={valeur}
         onChange={(e) => surChoisir(e.target.value as IdCameraCinema)}
-        aria-label="Mouvement de camera de ce plan"
+        aria-label={tUi('mouvement_de_camera_de_ce_plan')}
         className={`rounded bg-slate-950 border px-2 py-1 ${valeur === 'auto' ? 'border-slate-700' : 'border-violet-500/50 text-violet-200'}`}
       >
         {CAMERAS_CINEMA.map((c) => (
@@ -200,14 +205,15 @@ export function SelecteurCamera({ valeur, automatique, ancien = false, surChoisi
 
 /** Une ligne d'etat : le style du film et les scenes qui y font exception. */
 export function ResumeStyle({ styleFilm, exceptions }: { styleFilm: IdStyleCinema | null; exceptions: number }) {
+  const tUi = useTranslations('ui.componentsCinemaDirectionCinema');
   const s = styleCinema(styleFilm);
   return (
     <p className="flex flex-wrap items-center gap-x-2 text-xs text-slate-400" data-direction="resume">
       <Palette className="w-3.5 h-3.5 text-violet-400" aria-hidden="true" />
-      Style du film : <span className="text-slate-200">{s ? s.libelle : 'aucun impose'}</span>
+      Style du film : <span className="text-slate-200">{s ? s.libelle : tUi('aucun_impose')}</span>
       {exceptions > 0 && <span>· {exceptions} scene{exceptions > 1 ? 's' : ''} avec un style different</span>}
       <span className="inline-flex items-center gap-1 text-slate-500">
-        <AlertCircle className="w-3 h-3" aria-hidden="true" /> s’applique aux prochaines generations
+        <AlertCircle className="w-3 h-3" aria-hidden="true" /> {tUi('s_applique_aux_prochaines_generations')}
       </span>
     </p>
   );
@@ -219,6 +225,7 @@ export function ResumeStyle({ styleFilm, exceptions }: { styleFilm: IdStyleCinem
  * regenerer reste l'action habituelle du plan, avec son devis et sa validation.
  */
 export function PlanAregenerer({ genre }: { genre: 'image' | 'video' }) {
+  const tUi = useTranslations('ui.componentsCinemaDirectionCinema');
   return (
     <span
       data-direction="a-regenerer"
@@ -226,7 +233,7 @@ export function PlanAregenerer({ genre }: { genre: 'image' | 'video' }) {
       className="inline-flex items-center gap-1 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[11px] text-amber-200"
     >
       <RefreshCw className="w-3 h-3" aria-hidden="true" />
-      {genre === 'video' ? 'Video' : 'Image'} a regenerer : direction modifiee
+      {genre === 'video' ? 'Video' : tUi('image')} a regenerer : direction modifiee
     </span>
   );
 }

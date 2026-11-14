@@ -11,6 +11,7 @@
  */
 import { useEffect, useState } from 'react';
 import { Info, AlertTriangle, Check } from 'lucide-react';
+import { useTranslations } from '@/i18n/client';
 
 type Perimetre = 'images' | 'complet';
 interface DevisAdmin {
@@ -33,6 +34,7 @@ const pct = (n: number | null) => (n === null ? 'inconnu' : n >= 99 ? 'au-dela' 
 const LIBELLE: Record<Perimetre, string> = { images: 'Images', complet: 'Images + animations' };
 
 export default function QuotaCinema({ filmId, version }: { filmId: string | null; version: string }) {
+  const tUi = useTranslations('ui.componentsCinemaQuotaCinema');
   const [q, setQ] = useState<Reponse | null>(null);
   const [detail, setDetail] = useState(false);
   const [envoi, setEnvoi] = useState(false);
@@ -84,9 +86,9 @@ export default function QuotaCinema({ filmId, version }: { filmId: string | null
     <div className="mt-1 flex flex-wrap items-center gap-2">
       {approuve
         ? <span className="text-emerald-300">Budget du projet confirme ({LIBELLE[approuve.perimetre].toLowerCase()})</span>
-        : <span className="text-amber-300">Confirmez le budget du projet avant toute generation :</span>}
+        : <span className="text-amber-300">{tUi('confirmez_le_budget_du_projet_avant_to')}</span>}
       {!approuve && choix}
-      {approuve && <span className="text-slate-500">· modifier :</span>}
+      {approuve && <span className="text-slate-500">{tUi('modifier')}</span>}
       {approuve && choix}
     </div>
   );
@@ -97,7 +99,7 @@ export default function QuotaCinema({ filmId, version }: { filmId: string | null
       <div data-quota="admin" className="mt-3 text-xs text-slate-400">
         <p className="flex flex-wrap items-center gap-2">
           Cout fournisseur reel · {q.devis.scenes} scenes · {q.devis.plans} plans · deja engage {usd(q.devis.dejaEngageUsd)}
-          <button type="button" onClick={() => setDetail((v) => !v)} aria-label="Detail du devis" aria-expanded={detail} className="text-slate-500 hover:text-violet-300">
+          <button type="button" onClick={() => setDetail((v) => !v)} aria-label={tUi('detail_du_devis')} aria-expanded={detail} className="text-slate-500 hover:text-violet-300">
             <Info className="w-3.5 h-3.5" />
           </button>
         </p>
@@ -120,7 +122,7 @@ export default function QuotaCinema({ filmId, version }: { filmId: string | null
         <span>{q.dureeUtilisee} / {q.dureeIncluse}</span>
         <span>projet ≈ {q.dureeProjet}</span>
         <span className={q.disponible ? 'text-emerald-300' : 'text-amber-300'}>{q.disponible ? 'Disponible' : 'Limite atteinte'}</span>
-        <button type="button" onClick={() => setDetail((v) => !v)} aria-label="Detail du quota" aria-expanded={detail} className="text-slate-500 hover:text-violet-300">
+        <button type="button" onClick={() => setDetail((v) => !v)} aria-label={tUi('detail_du_quota')} aria-expanded={detail} className="text-slate-500 hover:text-violet-300">
           <Info className="w-3.5 h-3.5" />
         </button>
       </p>

@@ -7,6 +7,7 @@ import {
   choisirFormatEnregistrement, formaterDuree, messageErreurCamera, typeEtExtension, verifierPriseSource,
   DEBIT_AUDIO_ENREGISTREMENT, DEBIT_VIDEO_ENREGISTREMENT, EXIGENCES_SOURCE_VIDEO,
 } from '@/lib/avatar/capture';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * ENREGISTRER MA SOURCE — caméra + micro du navigateur (getUserMedia +
@@ -43,6 +44,7 @@ export default function EnregistreurSource(props: {
   onUtiliser: (fichier: File) => void;
   onImporterAlaPlace: () => void;
 }) {
+  const tUi = useTranslations('ui.componentsAvatarStudioEnregistreurSource');
   const [phase, setPhase] = useState<Phase>('inactif');
   const [erreur, setErreur] = useState<string | null>(null);
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
@@ -89,7 +91,7 @@ export default function EnregistreurSource(props: {
   const ouvrir = useCallback(async (ids?: { camera?: string; micro?: string; orientation?: 'user' | 'environment' }) => {
     setErreur(null);
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
-      setErreur('Votre navigateur ne permet pas d’enregistrer depuis la caméra. Importez une vidéo à la place.');
+      setErreur(tUi('votre_navigateur_ne_permet_pas_d_enreg'));
       setPhase('erreur');
       return;
     }
@@ -255,7 +257,7 @@ export default function EnregistreurSource(props: {
             <p className="flex items-center justify-center gap-1.5 text-xs font-medium text-white"><ListChecks className="w-4 h-4 text-purple-300" /> Guide de tournage</p>
             <GuideTournage />
           </div>
-          <button type="button" data-enregistreur-activer onClick={() => void ouvrir()} className="button-primary px-5 py-2.5 text-sm">Activer la caméra</button>
+          <button type="button" data-enregistreur-activer onClick={() => void ouvrir()} className="button-primary px-5 py-2.5 text-sm">{tUi('activer_la_camera')}</button>
         </div>
       )}
 
@@ -263,8 +265,8 @@ export default function EnregistreurSource(props: {
         <div data-enregistreur-erreur className="rounded-2xl bg-red-500/10 p-4 space-y-3">
           <p className="text-sm text-red-200">{erreur}</p>
           <div className="flex flex-wrap gap-4 text-sm">
-            <button type="button" onClick={() => void ouvrir()} className="text-gray-300 hover:text-white">Réessayer</button>
-            <button type="button" onClick={props.onImporterAlaPlace} className="text-purple-300 hover:text-purple-200">Importer une vidéo à la place</button>
+            <button type="button" onClick={() => void ouvrir()} className="text-gray-300 hover:text-white">{tUi('reessayer')}</button>
+            <button type="button" onClick={props.onImporterAlaPlace} className="text-purple-300 hover:text-purple-200">{tUi('importer_une_video_a_la_place')}</button>
           </div>
         </div>
       )}
@@ -315,7 +317,7 @@ export default function EnregistreurSource(props: {
           </div>
         )}
         {enDirect && (
-          <button type="button" aria-label="Plein écran" onClick={pleinEcran} className="absolute top-3 right-3 rounded-full bg-black/50 p-1.5 text-white/80 hover:text-white">
+          <button type="button" aria-label={tUi('plein_ecran')} onClick={pleinEcran} className="absolute top-3 right-3 rounded-full bg-black/50 p-1.5 text-white/80 hover:text-white">
             <Maximize2 className="w-4 h-4" />
           </button>
         )}
@@ -325,7 +327,7 @@ export default function EnregistreurSource(props: {
         <div className="space-y-4">
           {cameras.length > 1 && (
             <button type="button" data-enregistreur-changer-camera onClick={changerCamera} className="sm:hidden w-full inline-flex items-center justify-center gap-2 rounded-xl bg-gray-800 py-2.5 text-sm">
-              <SwitchCamera className="w-4 h-4" /> Changer de caméra
+              <SwitchCamera className="w-4 h-4" /> {tUi('changer_de_camera')}
             </button>
           )}
           <details className="rounded-2xl bg-gray-900/60 px-4 py-3">
@@ -336,7 +338,7 @@ export default function EnregistreurSource(props: {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {cameras.length > 1 && (
                 <label className="text-xs text-gray-400 space-y-1 block">
-                  <span>Caméra</span>
+                  <span>{tUi('camera')}</span>
                   <select data-enregistreur-camera value={camera} onChange={(e) => { setCamera(e.target.value); void ouvrir({ camera: e.target.value, micro }); }} className="input-base w-full">
                     {cameras.map((c, i) => <option key={c.deviceId || i} value={c.deviceId}>{c.label || `Caméra ${i + 1}`}</option>)}
                   </select>
@@ -367,7 +369,7 @@ export default function EnregistreurSource(props: {
             </button>
           )}
           <button type="button" data-enregistreur-arreter onClick={arreter} className="inline-flex items-center gap-1.5 rounded-xl bg-red-600 px-5 py-2.5 text-sm font-medium text-white">
-            <Square className="w-4 h-4 fill-current" /> Arrêter
+            <Square className="w-4 h-4 fill-current" /> {tUi('arreter')}
           </button>
         </div>
       )}
@@ -385,7 +387,7 @@ export default function EnregistreurSource(props: {
               <RotateCcw className="w-4 h-4" /> Recommencer
             </button>
             <button type="button" data-enregistreur-utiliser onClick={utiliser} disabled={motifsPrise.length > 0} className="button-primary inline-flex items-center justify-center gap-1.5 py-3 text-sm disabled:opacity-40">
-              <Check className="w-4 h-4" /> Utiliser cette vidéo
+              <Check className="w-4 h-4" /> {tUi('utiliser_cette_video')}
             </button>
           </div>
         </div>

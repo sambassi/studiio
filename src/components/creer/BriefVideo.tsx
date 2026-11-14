@@ -13,6 +13,7 @@ import {
 } from '@/lib/creer/brief-assistant';
 import { themeLabel } from '@/lib/themes';
 import { SEQUENCE_KEYS, type SequenceKey } from '@/lib/types/voice';
+import { useTranslations } from '@/i18n/client';
 
 /** « l'objectif », « le message »… — pour « Adapter l'objectif au thème Finance ». */
 const CHAMP_ARTICLE: Record<BriefKey, string> = {
@@ -86,6 +87,7 @@ export default function BriefVideo({
    */
   conseilDuree?: { message: string; recommandee: number } | null;
 }) {
+  const tUi = useTranslations('ui.componentsCreerBriefVideo');
   const listeSujets = useMemo(() => (sujets ?? []).filter((s) => s && s.trim()), [sujets]);
   const profil = useMemo(() => profilBrief(listeSujets), [listeSujets]);
   const placeholders = useMemo(() => placeholdersBrief(listeSujets), [listeSujets]);
@@ -176,7 +178,7 @@ export default function BriefVideo({
             className="shrink-0 inline-flex items-center gap-1 rounded-lg border border-purple-500/40 px-2 py-1 text-[11px] text-purple-200 hover:text-white hover:border-purple-400 disabled:opacity-40 transition-colors"
           >
             <Sparkles className="w-3 h-3" />
-            M’aider à remplir
+            {tUi('m_aider_a_remplir')}
           </button>
         )}
       </div>
@@ -211,7 +213,7 @@ export default function BriefVideo({
                   className="inline-flex items-center gap-1 text-[11px] text-purple-300 hover:text-white disabled:opacity-40 transition-colors"
                 >
                   <Wand2 className="w-3 h-3" />
-                  Suggérer
+                  {tUi('suggerer')}
                 </button>
               )}
             </div>
@@ -235,7 +237,7 @@ export default function BriefVideo({
                 data-brief-retablir={cle}
                 className="mt-1 text-[11px] text-gray-400 underline hover:text-white disabled:opacity-40"
               >
-                Rétablir mon texte
+                {tUi('retablir_mon_texte')}
               </button>
             )}
             {rapides.length > 0 && (
@@ -271,7 +273,7 @@ export default function BriefVideo({
                       data-brief-changer-theme
                       className="rounded-md border border-gray-700 px-2 py-0.5 text-[11px] text-gray-300 hover:text-white disabled:opacity-40"
                     >
-                      Changer le thème
+                      {tUi('changer_le_theme')}
                     </button>
                   )}
                   <button
@@ -280,7 +282,7 @@ export default function BriefVideo({
                     data-brief-continuer={cle}
                     className="rounded-md px-2 py-0.5 text-[11px] text-gray-500 hover:text-white"
                   >
-                    Continuer quand même
+                    {tUi('continuer_quand_meme')}
                   </button>
                 </div>
               </div>
@@ -292,7 +294,7 @@ export default function BriefVideo({
         <div className="space-y-2 pt-1" data-brief-duree-rythme>
           <div>
             <p className="text-xs font-medium text-gray-300 mb-1">
-              Durée souhaitée<span className="text-gray-600 font-normal"> · facultatif</span>
+              {tUi('duree_souhaitee')}<span className="text-gray-600 font-normal"> · facultatif</span>
             </p>
             <div className="flex flex-wrap items-center gap-1">
               {DUREES_BRIEF.map((d) => {
@@ -319,7 +321,7 @@ export default function BriefVideo({
                 data-brief-duree="personnalisee"
                 className={chip(dureePersonnalisee)}
               >
-                Personnalisée
+                {tUi('personnalisee')}
               </button>
               {dureePersonnalisee && (
                 <input
@@ -333,7 +335,7 @@ export default function BriefVideo({
                     if (Number.isFinite(n) && n >= DUREE_BRIEF_MIN && n <= DUREE_BRIEF_MAX) poserDuree(Math.round(n));
                   }}
                   disabled={disabled}
-                  aria-label="Durée personnalisée en secondes"
+                  aria-label={tUi('duree_personnalisee_en_secondes')}
                   data-brief-duree-libre
                   className="w-16 rounded-md bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none px-1.5 py-0.5 text-[11px]"
                 />
@@ -406,12 +408,13 @@ export function NarrationRecap({
   onModifier?: () => void;
   brief?: VideoBrief;
 }) {
+  const tUi = useTranslations('ui.componentsCreerBriefVideo');
   const lignes = textes
     ? SEQUENCE_KEYS.map((k) => [k, (textes[k] ?? '').trim()] as const).filter(([, t]) => t.length > 0)
     : [];
   return (
     <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-3 space-y-2" data-brief-narration>
-      <div className="text-sm font-medium text-white">Ce que la vidéo dira</div>
+      <div className="text-sm font-medium text-white">{tUi('ce_que_la_video_dira')}</div>
       {lignes.length > 0 ? (
         <ul className="space-y-1.5">
           {lignes.map(([k, t]) => (
@@ -438,7 +441,7 @@ export function NarrationRecap({
           className="inline-flex items-center gap-1.5 text-[11px] text-purple-300 hover:text-white transition-colors"
         >
           <Pencil className="w-3 h-3" />
-          Modifier le texte de la narration (étape Contenu)
+          {tUi('modifier_le_texte_de_la_narration_etap')}
         </button>
       )}
     </div>
@@ -463,6 +466,7 @@ export function BriefRecurrentRecap({ brief, sujets, admin = false }: {
   /** Montre le score brut de cohérence (diagnostic). */
   admin?: boolean;
 }) {
+  const tUi = useTranslations('ui.componentsCreerBriefVideo');
   const rempli = briefRempli(brief);
   const liste = (sujets ?? []).filter((s) => s && s.trim());
   const coherence = analyserCoherenceBrief(liste, brief);
@@ -487,7 +491,7 @@ export function BriefRecurrentRecap({ brief, sujets, admin = false }: {
       data-brief-score={coherence.score ?? ''}
     >
       <div className="flex items-center gap-1.5">
-        <div className="text-sm font-medium text-white">Ce que dira chaque vidéo</div>
+        <div className="text-sm font-medium text-white">{tUi('ce_que_dira_chaque_video')}</div>
         {coherence.niveau === 'bonne' && (
           <span
             className="ml-auto inline-flex items-center gap-1 text-[11px] text-emerald-400 order-last"
@@ -495,17 +499,16 @@ export function BriefRecurrentRecap({ brief, sujets, admin = false }: {
             title={`Brief cohérent avec ${liste.length > 1 ? 'les thèmes choisis' : `le thème ${coherence.sujet}`}`}
           >
             <CheckCircle2 className="w-3 h-3" aria-hidden="true" />
-            Cohérent
+            {tUi('coherent')}
           </span>
         )}
-        <InfoBulle label="En savoir plus sur ce que dira chaque vidéo" titre="Ce que dira chaque vidéo" marqueur="brief-recap">
+        <InfoBulle label={tUi('en_savoir_plus_sur_ce_que_dira_chaque')} titre="Ce que dira chaque vidéo" marqueur="brief-recap">
           <span className="block" data-autopilot-brief-recap-note>
-            La narration exacte de chaque vidéo est produite à chaque cycle, à partir de ce brief et du
-            sujet du jour. Aucun audio n’existe avant le rendu — rien n’est généré ni facturé ici.
+            {tUi('la_narration_exacte_de_chaque_video_es')}
           </span>
           {coherence.niveau === 'bonne' && (
             <span className="block text-emerald-400">
-              Brief cohérent avec {liste.length > 1 ? 'les thèmes choisis' : `le thème ${coherence.sujet}`}.
+              Brief cohérent avec {liste.length > 1 ? tUi('les_themes_choisis') : `le thème ${coherence.sujet}`}.
             </span>
           )}
           {admin && coherence.score !== null && (
@@ -528,7 +531,7 @@ export function BriefRecurrentRecap({ brief, sujets, admin = false }: {
       )}
       {!rempli && (
         <p className="text-[11px] text-gray-500" data-autopilot-brief-recap-vide>
-          Aucun brief : chaque vidéo ne dira que ce que son sujet du jour inspire.
+          {tUi('aucun_brief_chaque_video_ne_dira_que_c')}
         </p>
       )}
       {coherence.niveau === 'a-verifier' && (
@@ -542,7 +545,7 @@ export function BriefRecurrentRecap({ brief, sujets, admin = false }: {
         </p>
       )}
       {/* Information de COÛT : jamais masquée, en une ligne. */}
-      <p className="text-[11px] text-gray-500" data-autopilot-brief-recap-cout>Aucun coût à cette étape</p>
+      <p className="text-[11px] text-gray-500" data-autopilot-brief-recap-cout>{tUi('aucun_cout_a_cette_etape')}</p>
     </div>
   );
 }

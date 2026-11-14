@@ -14,6 +14,7 @@ import { Loader2, Plus, Star, RefreshCw, Eye, Check, X, AlertTriangle, Settings2
 import FluxSourceAvatar from '@/components/avatar/FluxSourceAvatar';
 import ProgressStatus from '@/components/ux/ProgressStatus';
 import { progressionVersion, type EtatApercuVersion } from '@/lib/avatar/progression';
+import { useTranslations } from '@/i18n/client';
 
 export type EtatVersionPublic = 'preparation' | 'entrainement' | 'prete' | 'echec' | 'abandonnee';
 export interface VersionPublique {
@@ -69,6 +70,7 @@ export default function MesAvatars(props: {
    */
   carteActive?: { attributs: Record<string, string>; contenu: ReactNode; actions?: ReactNode; apres?: ReactNode; nom: string; type: 'photo' | 'video' };
 }) {
+  const tUi = useTranslations('ui.componentsAvatarMesAvatars');
   const [donnees, setDonnees] = useState<DonneesAvatars | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [flux, setFlux] = useState<Flux>(null);
@@ -203,11 +205,11 @@ export default function MesAvatars(props: {
         )}
         {parDefaut && (
           <span data-badge-defaut className="inline-flex items-center gap-1 rounded-full bg-gray-800 text-gray-200 px-2 py-0.5 text-[10px]">
-            <Star className="w-3 h-3" /> Par défaut
+            <Star className="w-3 h-3" /> {tUi('par_defaut')}
           </span>
         )}
       </div>
-      {type && <div className="text-xs text-gray-300 mt-0.5">{type === 'video' ? 'Avatar vidéo' : 'Avatar photo'}</div>}
+      {type && <div className="text-xs text-gray-300 mt-0.5">{type === 'video' ? tUi('avatar_video') : 'Avatar photo'}</div>}
     </div>
   );
   // Les classes du produit : `card-base` et les boutons `button-*` (globals.css).
@@ -221,7 +223,7 @@ export default function MesAvatars(props: {
     if (!ca) {
       return erreur
         ? <div data-mes-avatars-erreur className="rounded-lg bg-red-500/10 border border-red-500/30 p-2.5 text-xs text-red-200">{erreur}</div>
-        : <p data-mes-avatars-chargement role="status" className="flex items-center gap-2 text-xs text-gray-400"><Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden /> Chargement de vos avatars…</p>;
+        : <p data-mes-avatars-chargement role="status" className="flex items-center gap-2 text-xs text-gray-400"><Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden /> {tUi('chargement_de_vos_avatars')}</p>;
     }
     return (
       <section data-mes-avatars="carte-seule" className="space-y-3">
@@ -241,7 +243,7 @@ export default function MesAvatars(props: {
     <section data-mes-avatars className="space-y-4">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-white">Mes avatars</h2>
+          <h2 className="text-base font-semibold text-white">{tUi('mes_avatars')}</h2>
         </div>
         <button
           type="button"
@@ -249,14 +251,14 @@ export default function MesAvatars(props: {
           onClick={() => setFlux({ mode: 'nouveau' })}
           className="button-secondary shrink-0 gap-1.5"
         >
-          <Plus className="w-3.5 h-3.5" /> Créer un nouvel avatar
+          <Plus className="w-3.5 h-3.5" /> {tUi('creer_un_nouvel_avatar')}
         </button>
       </div>
 
       {erreur && <div data-mes-avatars-erreur className="rounded-lg bg-red-500/10 border border-red-500/30 p-2.5 text-xs text-red-200">{erreur}</div>}
 
       {donnees.avatars.length === 0 && (
-        <p className="text-sm text-gray-300">Aucun avatar pour l’instant. Créez le premier à partir d’une photo ou d’une vidéo.</p>
+        <p className="text-sm text-gray-300">{tUi('aucun_avatar_pour_l_instant_creez_le_p')}</p>
       )}
 
       <div className="grid grid-cols-1 gap-3">
@@ -308,7 +310,7 @@ export default function MesAvatars(props: {
                   <div className="flex items-start gap-2 text-red-100">
                     <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                     <div>
-                      <div className="font-medium">La nouvelle version n’a pas pu être créée</div>
+                      <div className="font-medium">{tUi('la_nouvelle_version_n_a_pas_pu_etre_cr')}</div>
                       {c.message && <div className="text-red-200/90 mt-0.5">{c.message}</div>}
                     </div>
                   </div>
@@ -316,8 +318,8 @@ export default function MesAvatars(props: {
                   <ProgressStatus titre={`Nouvelle version de l’avatar (v${c.version})`} statut="erreur" etapes={progressionVersion(c).etapes} compact note={null} />
                   {a.versionActive && <div className="text-red-100/80">Votre version v{a.versionActive.version} reste utilisée.</div>}
                   <div className="flex flex-wrap gap-2">
-                    <button type="button" data-action="reessayer" onClick={() => setFlux({ mode: 'remplacer', avatar: a })} className={TERTIAIRE}>Réessayer</button>
-                    <button type="button" data-action="modifier-video" onClick={() => setFlux({ mode: 'remplacer', avatar: a })} className={TERTIAIRE}>Modifier la vidéo</button>
+                    <button type="button" data-action="reessayer" onClick={() => setFlux({ mode: 'remplacer', avatar: a })} className={TERTIAIRE}>{tUi('reessayer')}</button>
+                    <button type="button" data-action="modifier-video" onClick={() => setFlux({ mode: 'remplacer', avatar: a })} className={TERTIAIRE}>{tUi('modifier_la_video')}</button>
                     <button type="button" data-action="abandonner" disabled={occupe !== null} onClick={() => void action(`garder-${c.id}`, `/api/avatars/versions/${c.id}`, { action: 'garder' })} className={TERTIAIRE}>{enCours(`garder-${c.id}`, 'Abandonner', 'Enregistrement…')}</button>
                   </div>
                 </div>
@@ -325,11 +327,11 @@ export default function MesAvatars(props: {
 
               {c?.etat === 'prete' && (
                 <div data-candidate="prete" className="rounded-xl bg-emerald-500/10 border border-emerald-500/30 p-3 text-xs space-y-2">
-                  <div className="font-medium text-emerald-100">Votre nouvel avatar est prêt</div>
-                  <div className="text-emerald-100/90">Regardez l’aperçu, puis choisissez : rien ne change tant que vous n’avez pas décidé.</div>
+                  <div className="font-medium text-emerald-100">{tUi('votre_nouvel_avatar_est_pret')}</div>
+                  <div className="text-emerald-100/90">{tUi('regardez_l_apercu_puis_choisissez_rien')}</div>
                   {(() => {
                     const p = progressionVersion(c);
-                    return <div data-candidate-apercu={c.apercu ?? 'inconnu'}><ProgressStatus titre={p.titre} statut={occupe === `apercu-${c.id}` && p.statut === 'attente' ? 'en_cours' : p.statut} etapes={p.etapes} description={occupe === `apercu-${c.id}` && p.statut === 'attente' ? 'Ouverture de l’aperçu…' : p.message} detail={p.description} note={null} /></div>;
+                    return <div data-candidate-apercu={c.apercu ?? 'inconnu'}><ProgressStatus titre={p.titre} statut={occupe === `apercu-${c.id}` && p.statut === 'attente' ? 'en_cours' : p.statut} etapes={p.etapes} description={occupe === `apercu-${c.id}` && p.statut === 'attente' ? tUi('ouverture_de_l_apercu') : p.message} detail={p.description} note={null} /></div>;
                   })()}
                   {apercu?.versionId === c.id && (
                     <video data-apercu-candidate src={apercu.url} controls playsInline className="block mx-auto max-h-72 w-auto max-w-full rounded-lg bg-black" />
@@ -342,14 +344,14 @@ export default function MesAvatars(props: {
                       type="button"
                       data-action="utiliser-version"
                       disabled={occupe !== null || apercu?.versionId !== c.id}
-                      title={apercu?.versionId !== c.id ? 'Regardez d’abord l’aperçu' : undefined}
+                      title={apercu?.versionId !== c.id ? tUi('regardez_d_abord_l_apercu') : undefined}
                       onClick={() => void action(`utiliser-${c.id}`, `/api/avatars/versions/${c.id}`, { action: 'utiliser', jeton: apercu?.jeton }, () => setApercu(null))}
                       className="button-primary gap-1 !min-h-[30px] !text-xs disabled:opacity-40"
                     >
-                      {enCours(`utiliser-${c.id}`, <><Check className="w-3 h-3" /> Utiliser cette version</>, 'Activation de la version…')}
+                      {enCours(`utiliser-${c.id}`, <><Check className="w-3 h-3" /> {tUi('utiliser_cette_version')}</>, 'Activation de la version…')}
                     </button>
                     <button type="button" data-action="garder" disabled={occupe !== null} onClick={() => void action(`garder-${c.id}`, `/api/avatars/versions/${c.id}`, { action: 'garder' }, () => setApercu(null))} className={TERTIAIRE}>
-                      {enCours(`garder-${c.id}`, <><X className="w-3 h-3" /> Garder ma version actuelle</>, 'Enregistrement…')}
+                      {enCours(`garder-${c.id}`, <><X className="w-3 h-3" /> {tUi('garder_ma_version_actuelle')}</>, 'Enregistrement…')}
                     </button>
                   </div>
                 </div>
@@ -368,23 +370,23 @@ export default function MesAvatars(props: {
                   </button>
                 ) : null}
                 <button type="button" data-action="gerer" aria-expanded={gerer === a.id} onClick={() => setGerer(gerer === a.id ? null : a.id)} className={TERTIAIRE}>
-                  <Settings2 className="w-3 h-3" /> Gérer
+                  <Settings2 className="w-3 h-3" /> {tUi('gerer')}
                 </button>
               </div>
 
               {a.parDefaut && choixAvatar && (
                 <div data-choix-avatar className="rounded-lg border border-gray-800 bg-gray-950/50 p-3 text-xs space-y-2">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-1.5 text-gray-200 font-medium"><Users className="w-3.5 h-3.5" aria-hidden /> Choisir parmi mes avatars</div>
-                    <button type="button" aria-label="Fermer" onClick={() => setChoixAvatar(false)} className="p-1 text-gray-400 hover:text-white"><X className="w-3.5 h-3.5" /></button>
+                    <div className="flex items-center gap-1.5 text-gray-200 font-medium"><Users className="w-3.5 h-3.5" aria-hidden /> {tUi('choisir_parmi_mes_avatars')}</div>
+                    <button type="button" aria-label={tUi('fermer')} onClick={() => setChoixAvatar(false)} className="p-1 text-gray-400 hover:text-white"><X className="w-3.5 h-3.5" /></button>
                   </div>
-                  <p className="text-gray-400">L’avatar choisi devient celui de Créer et de l’Autopilote. Aucun entraînement n’est relancé.</p>
+                  <p className="text-gray-400">{tUi('l_avatar_choisi_devient_celui_de_creer')}</p>
                   {ordre.filter((o) => o.id !== a.id).length === 0 && (
-                    <p data-choix-avatar-vide className="text-gray-300">Vous n’avez pas d’autre avatar pour l’instant.</p>
+                    <p data-choix-avatar-vide className="text-gray-300">{tUi('vous_n_avez_pas_d_autre_avatar_pour_l')}</p>
                   )}
                   {ordre.filter((o) => o.id !== a.id).map((o) => (
                     <div key={o.id} data-choix-avatar-ligne={o.id} className="flex items-center justify-between gap-2 text-gray-200">
-                      <span className="min-w-0 truncate">{o.nom} · {o.type === 'video' ? 'Avatar vidéo' : 'Avatar photo'}{o.versionActive ? ` · Version v${o.versionActive.version}` : ''}</span>
+                      <span className="min-w-0 truncate">{o.nom} · {o.type === 'video' ? tUi('avatar_video') : 'Avatar photo'}{o.versionActive ? ` · Version v${o.versionActive.version}` : ''}</span>
                       {o.utilisable ? (
                         <button type="button" data-choix-avatar-utiliser={o.id} disabled={occupe !== null} onClick={() => void action(`defaut-${o.id}`, '/api/avatars/defaut', { avatarId: o.id }, () => setChoixAvatar(false))} className={TERTIAIRE}>
                           {enCours(`defaut-${o.id}`, 'Utiliser cet avatar', 'Activation…')}
@@ -395,7 +397,7 @@ export default function MesAvatars(props: {
                     </div>
                   ))}
                   <button type="button" data-choix-avatar-nouveau onClick={() => { setChoixAvatar(false); setFlux({ mode: 'nouveau' }); }} className={TERTIAIRE}>
-                    <Plus className="w-3 h-3" /> Créer un nouvel avatar
+                    <Plus className="w-3 h-3" /> {tUi('creer_un_nouvel_avatar')}
                   </button>
                 </div>
               )}
@@ -414,9 +416,9 @@ export default function MesAvatars(props: {
                       <div className="text-gray-200 font-medium">Versions de l’avatar</div>
                       {/* VERSION ≠ QUALITÉ : v3, v4… numérotent les entraînements successifs de cet
                           avatar ; la qualité de rendu se choisit à chaque génération. */}
-                      <p data-historique-version-qualite className="text-gray-400 mt-0.5">v1, v2, v3… sont les versions successives de cet avatar, pas des niveaux de qualité. La qualité (Standard, Qualité, Premium) se choisit à chaque génération de vidéo.</p>
+                      <p data-historique-version-qualite className="text-gray-400 mt-0.5">{tUi('v1_v2_v3_sont_les_versions_successives')}</p>
                     </div>
-                    {versions.length === 0 && <div className="text-gray-400">Aucune version pour l’instant.</div>}
+                    {versions.length === 0 && <div className="text-gray-400">{tUi('aucune_version_pour_l_instant')}</div>}
                     {versions.map((h) => {
                       const active = h.id === a.versionActive?.id;
                       const revenir = !active && h.etat === 'prete' && !!h.valideeLe;
@@ -437,16 +439,16 @@ export default function MesAvatars(props: {
                               <dt className="text-gray-500">Version</dt>
                               <dd data-version-numero className="text-white font-medium">v{h.version} — {statutVersion(h)}</dd>
                               <dt className="text-gray-500">Source</dt>
-                              <dd data-version-source>{h.type === 'video' ? 'Vidéo' : 'Photo'}{h.originalConserve ? ' (original conservé)' : ''}</dd>
-                              <dt className="text-gray-500">Créée le</dt>
+                              <dd data-version-source>{h.type === 'video' ? tUi('video') : 'Photo'}{h.originalConserve ? ' (original conservé)' : ''}</dd>
+                              <dt className="text-gray-500">{tUi('creee_le')}</dt>
                               <dd>{date(h.creeLe) ?? '—'}</dd>
-                              {h.activeeLe && <><dt className="text-gray-500">{active ? 'Active depuis' : 'Utilisée le'}</dt><dd>{date(h.activeeLe)}</dd></>}
+                              {h.activeeLe && <><dt className="text-gray-500">{active ? 'Active depuis' : tUi('utilisee_le')}</dt><dd>{date(h.activeeLe)}</dd></>}
                             </dl>
                           </div>
                           <div className="flex flex-wrap gap-2">
                             {!active && h.apercu === 'pret' && (
                               <button type="button" data-action="apercu-version" disabled={occupe !== null} onClick={() => void voirApercuHistorique(h)} className={TERTIAIRE}>
-                                {enCours(`apercu-${h.id}`, <><Eye className="w-3 h-3" /> {apercuHistorique?.versionId === h.id ? 'Masquer l’aperçu' : 'Aperçu'}</>, 'Ouverture…')}
+                                {enCours(`apercu-${h.id}`, <><Eye className="w-3 h-3" /> {apercuHistorique?.versionId === h.id ? tUi('masquer_l_apercu') : tUi('apercu')}</>, 'Ouverture…')}
                               </button>
                             )}
                             {revenir && (
@@ -456,11 +458,11 @@ export default function MesAvatars(props: {
                             )}
                             {h.source && (
                               <button type="button" data-action="voir-source" aria-expanded={!!vue} onClick={() => setSourceVue(vue ? null : { versionId: h.id, originale: false })} className={TERTIAIRE}>
-                                {vue ? 'Masquer la source' : 'Voir la source'}
+                                {vue ? tUi('masquer_la_source') : tUi('voir_la_source')}
                               </button>
                             )}
                           </div>
-                          {revenir && <p className="text-gray-500">Réactive cette version déjà prête : aucun nouvel entraînement, aucun frais.</p>}
+                          {revenir && <p className="text-gray-500">{tUi('reactive_cette_version_deja_prete_aucu')}</p>}
                           {apercuHistorique?.versionId === h.id && (
                             <video data-apercu-version={h.id} src={apercuHistorique.url} controls playsInline className="block mx-auto max-h-72 w-auto max-w-full rounded-lg bg-black" />
                           )}
@@ -472,7 +474,7 @@ export default function MesAvatars(props: {
                                 : <img src={srcSource(vue.originale)} alt={`Source de la version v${h.version}`} className="block mx-auto max-h-72 w-auto max-w-full rounded-lg bg-black" />}
                               {h.originalConserve && (
                                 <button type="button" data-action="voir-original" onClick={() => setSourceVue({ versionId: h.id, originale: !vue.originale })} className={TERTIAIRE}>
-                                  {vue.originale ? 'Voir la version envoyée' : 'Voir l’original importé'}
+                                  {vue.originale ? tUi('voir_la_version_envoyee') : tUi('voir_l_original_importe')}
                                 </button>
                               )}
                             </div>

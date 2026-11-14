@@ -23,6 +23,7 @@ import {
   type SequenceVoices,
   type SequenceVoicesUserEdited,
 } from '@/lib/types/voice';
+import { useTranslations } from '@/i18n/client';
 
 const VOICE_STORAGE_KEY = 'tts.voiceId';
 const DEFAULT_VOICE_ID = 'fr-FR-DeniseNeural';
@@ -84,6 +85,7 @@ function PreviewPlayer({
   onError?: (msg: string) => void;
   label: string;
 }) {
+  const tUi = useTranslations('ui.componentsCreerSequenceVoicesPanel');
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [errored, setErrored] = useState(false);
@@ -154,13 +156,13 @@ function PreviewPlayer({
         {playing ? <Pause size={12} /> : <Play size={12} />}
       </button>
       <span className={`flex-1 truncate text-[10px] ${errored ? 'text-red-400' : 'text-gray-400'}`}>
-        {errored ? 'Audio indisponible' : 'Audio prêt'}
+        {errored ? 'Audio indisponible' : tUi('audio_pret')}
       </span>
       <button
         type="button"
         onClick={onDelete}
         className="rounded bg-red-500/10 p-1.5 text-red-400 hover:bg-red-500/20"
-        aria-label="Supprimer l'audio"
+        aria-label={tUi('supprimer_l_audio')}
       >
         <Trash2 size={12} />
       </button>
@@ -238,6 +240,7 @@ export function SequenceVoicesPanel({
   onVoiceIdChange,
   demandeRegeneration = null,
 }: Props) {
+  const tUi = useTranslations('ui.componentsCreerSequenceVoicesPanel');
   // Shared TTS voice picker (one voice for all sequences in this panel —
   // simpler UX than per-sequence voice selectors). Persists in localStorage
   // so the choice survives a refresh.
@@ -579,17 +582,17 @@ export function SequenceVoicesPanel({
         <div>
           <h3 className="flex items-center gap-1.5 text-sm font-semibold text-white">
             <Mic size={14} className="text-purple-400" />
-            Voix-off par séquence
+            {tUi('voix_off_par_sequence')}
           </h3>
           <p className="mt-0.5 text-[10px] text-gray-400">
-            Une voix-off indépendante pour chaque séquence. Texte auto-rempli depuis le contenu — modifiable.
+            {tUi('une_voix_off_independante_pour_chaque')}
           </p>
         </div>
       </div>
 
       {/* Shared TTS voice + Generate all */}
       <div className="flex min-w-0 flex-wrap items-center gap-2 rounded bg-gray-800/40 px-2 py-2">
-        <label className="text-[10px] text-gray-400">Voix TTS</label>
+        <label className="text-[10px] text-gray-400">{tUi('voix_tts')}</label>
         <select
           value={selectedTtsVoiceId}
           onChange={(e) => setSelectedTtsVoiceId(e.target.value)}
@@ -712,7 +715,7 @@ export function SequenceVoicesPanel({
                 onChange={(e) => handleTextChange(key, e.target.value)}
                 rows={2}
                 maxLength={500}
-                placeholder="Texte de la voix-off…"
+                placeholder={tUi('texte_de_la_voix_off')}
                 className="w-full resize-y rounded border border-gray-700 bg-gray-800 px-2 py-1 text-[11px] text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
               />
 
@@ -743,7 +746,7 @@ export function SequenceVoicesPanel({
                   <span className="text-right text-gray-300" style={REGLAGE_VALEUR_STYLE}>×{(normaliserReglages(sv.reglages)?.vitesse ?? 1).toFixed(2).replace('.', ',')}</span>
                 </label>
                 <p className="text-[10px] text-gray-500" style={REGLAGE_AIDE_STYLE} data-voice-aide="vitesse">
-                  ×1,00 = débit naturel
+                  {tUi('1_00_debit_naturel')}
                 </p>
                 <label
                   className="text-[10px] text-gray-400"
@@ -771,14 +774,14 @@ export function SequenceVoicesPanel({
                     // Pas de curseur ni de pourcentage : une valeur affichée
                     // laisserait croire qu'elle agit sur cette voix.
                     <span className="text-gray-500" style={REGLAGE_TEXTE_PLEIN_STYLE} data-voice-dynamisme-non-pris-en-charge={key}>
-                      Non pris en charge par cette voix
+                      {tUi('non_pris_en_charge_par_cette_voix')}
                     </span>
                   )}
                 </label>
                 <p className="text-[10px] text-gray-500" style={REGLAGE_AIDE_STYLE} data-voice-aide="dynamisme">
                   {voixElevenLabs
                     ? '0 % = posé ; plus haut = plus d’expressivité et d’intonation.'
-                    : 'Le dynamisme (expressivité) n’agit qu’avec une voix clonée ou premium.'}
+                    : tUi('le_dynamisme_expressivite_n_agit_qu_av')}
                 </p>
                 <button
                   type="button"
@@ -786,14 +789,14 @@ export function SequenceVoicesPanel({
                   data-voice-reglages-tous={key}
                   className="block max-w-full text-left text-[10px] text-gray-500 hover:text-gray-300 underline-offset-2 hover:underline"
                 >
-                  Appliquer ces réglages à toutes les voix
+                  {tUi('appliquer_ces_reglages_a_toutes_les_vo')}
                 </button>
                 <p className="text-[10px] text-gray-500" data-voice-reglages-tous-note={key}>
-                  Les audios déjà générés des autres séquences devront être régénérés.
+                  {tUi('les_audios_deja_generes_des_autres_seq')}
                 </p>
                 {!sv.audioUrl && (
                   <p className="text-[10px] text-gray-500" data-voice-reglages-prochaine={key}>
-                    Réglages appliqués à la prochaine génération de cette voix.
+                    {tUi('reglages_appliques_a_la_prochaine_gene')}
                   </p>
                 )}
               </div>
@@ -805,9 +808,9 @@ export function SequenceVoicesPanel({
                     onClick={() => startRecording(key)}
                     disabled={!!recording || isBusy}
                     className="flex items-center gap-1 rounded bg-gray-800 px-2 py-1 text-[11px] text-gray-300 hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
-                    title="Enregistrer au micro"
+                    title={tUi('enregistrer_au_micro')}
                   >
-                    <Mic size={11} /> Enregistrer
+                    <Mic size={11} /> {tUi('enregistrer')}
                   </button>
                 ) : (
                   <button
@@ -823,7 +826,7 @@ export function SequenceVoicesPanel({
                   onClick={() => generateTts(key)}
                   disabled={isBusy || !sv.text.trim() || isRecordingThis}
                   className="flex items-center gap-1 rounded bg-purple-600/80 px-2 py-1 text-[11px] text-white hover:bg-purple-600 disabled:cursor-not-allowed disabled:opacity-50"
-                  title="Synthétiser avec la voix TTS sélectionnée"
+                  title={tUi('synthetiser_avec_la_voix_tts_selection')}
                 >
                   {isBusy ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
                   TTS
@@ -833,7 +836,7 @@ export function SequenceVoicesPanel({
                     type="button"
                     onClick={() => onResetText(key)}
                     className="ml-auto text-[10px] text-gray-500 hover:text-gray-300"
-                    title="Réinitialiser le texte depuis le contenu de l'éditeur"
+                    title={tUi('reinitialiser_le_texte_depuis_le_conte')}
                   >
                     ↺ auto
                   </button>
@@ -857,16 +860,16 @@ export function SequenceVoicesPanel({
                       <AlertTriangle size={10} className="mt-0.5 flex-shrink-0 text-amber-400" />
                       {/* Jamais tronqué : le motif est ce qui permet de décider. */}
                       <span className="flex-1 min-w-0" style={{ overflowWrap: 'anywhere' }}>
-                        <span className="font-semibold">Audio périmé</span>
+                        <span className="font-semibold">{tUi('audio_perime')}</span>
                         {' — '}
                         {perime.motif === 'voix'
-                          ? (voixDeGeneration ? `généré avec ${voixDeGeneration}, une autre voix que celle choisie.` : 'généré avec une autre voix que celle choisie.')
+                          ? (voixDeGeneration ? `généré avec ${voixDeGeneration}, une autre voix que celle choisie.` : tUi('genere_avec_une_autre_voix_que_celle_c'))
                           : perime.motif === 'texte'
-                            ? 'le texte a changé depuis la génération.'
+                            ? tUi('le_texte_a_change_depuis_la_generation')
                             : perime.motif === 'reglages'
                               ? (voixPrendDynamisme(sv.ttsVoice || selectedTtsVoiceId)
-                                ? 'la vitesse ou le dynamisme ont changé depuis la génération.'
-                                : 'la vitesse a changé depuis la génération.')
+                                ? tUi('la_vitesse_ou_le_dynamisme_ont_change')
+                                : tUi('la_vitesse_a_change_depuis_la_generati'))
                               : ''}
                       </span>
                       <button
@@ -875,7 +878,7 @@ export function SequenceVoicesPanel({
                         disabled={isBusy || !sv.text.trim() || isRecordingThis}
                         className="rounded border border-current/40 px-1.5 py-0.5 text-[10px] font-semibold hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        Régénérer
+                        {tUi('regenerer')}
                       </button>
                     </div>
                   )}

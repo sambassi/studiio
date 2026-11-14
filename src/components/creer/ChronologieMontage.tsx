@@ -21,6 +21,7 @@ import type { CSSProperties } from 'react';
 import MiniatureVideo from '@/components/medias/MiniatureVideo';
 import { MiniatureAvatar, type VignetteAvatar } from '@/components/creer/AvatarPrincipalAutopilote';
 import { formatSecondes, type EtapeApercu, type LigneChronologie } from '@/lib/creer/medias-video';
+import { useTranslations } from '@/i18n/client';
 
 export type GenreSegmentChronologie = 'avatar' | 'rush' | 'video' | 'photo' | 'cta';
 
@@ -126,10 +127,11 @@ export default function ChronologieMontage({
   /** Vignettes déjà connues (médias suggérés), par URL de média. */
   vignettes?: Readonly<Record<string, string>>;
 }) {
+  const tUi = useTranslations('ui.componentsCreerChronologieMontage');
   return (
     <ol
       data-chronologie
-      aria-label="Chronologie du montage"
+      aria-label={tUi('chronologie_du_montage')}
       className="flex gap-1 min-w-0 overflow-x-auto pb-1"
       style={{ scrollSnapType: 'x proximity', WebkitOverflowScrolling: 'touch' }}
     >
@@ -179,7 +181,7 @@ export default function ChronologieMontage({
                 onClick={() => onRemplacer!(s)}
                 data-chronologie-remplacer={s.id}
                 aria-label={`Remplacer ce média (${s.libelle})`}
-                title="Remplacer ce média"
+                title={tUi('remplacer_ce_media')}
                 className="absolute top-0.5 right-0.5 rounded bg-black/60 p-0.5 text-gray-200 hover:text-white"
               >
                 <RefreshCw className="w-3 h-3" />

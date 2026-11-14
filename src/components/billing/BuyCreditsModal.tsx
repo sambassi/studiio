@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
+import { useTranslations } from '@/i18n/client';
 
 interface Pack {
   key: string; name: string; amount: number; price_cents: number; popular?: boolean;
@@ -19,6 +20,7 @@ interface BuyCreditsModalProps {
 }
 
 export function BuyCreditsModal({ isOpen, onClose }: BuyCreditsModalProps) {
+  const tUi = useTranslations('ui.componentsBillingBuyCreditsModal');
   const [loading, setLoading] = useState<string | null>(null);
   const [packs, setPacks] = useState<Pack[]>([]);
 
@@ -41,11 +43,11 @@ export function BuyCreditsModal({ isOpen, onClose }: BuyCreditsModalProps) {
       const url = data.url || data.data?.sessionUrl;
       if (url) window.location.href = url;
       else alert(data.error || 'Erreur');
-    } catch { alert('Erreur de connexion'); } finally { setLoading(null); }
+    } catch { alert(tUi('erreur_de_connexion')); } finally { setLoading(null); }
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Acheter des crédits" size="lg">
+    <Modal isOpen={isOpen} onClose={onClose} title={tUi('acheter_des_credits')} size="lg">
       <div className="grid sm:grid-cols-2 gap-4">
         {packs.map((pkg) => {
           const unitLabel = pkg.amount > 0 ? `${centsToFr(Math.round(pkg.price_cents / pkg.amount * 100) / 100)}/crédit` : '';

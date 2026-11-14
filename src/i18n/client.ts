@@ -11,9 +11,10 @@ interface I18nContextType {
   setLocale: (locale: Locale) => void;
 }
 
-// Textes de REPLI quand aucun fournisseur n'entoure le composant (rendu isolé, tests) :
-// injectés par l'appelant, jamais importés ici — le catalogue français ne doit pas entrer
-// dans le paquet principal. En production, le fournisseur fournit déjà français + surcouche.
+// Textes de REPLI (arbre `ui.*` seulement) quand aucun fournisseur n'entoure le composant
+// (rendu isolé, tests) : injectés par l'appelant, jamais importés ici — le catalogue français
+// ne doit pas entrer dans le paquet principal. En production, le fournisseur fournit déjà
+// français + surcouche.
 let messagesDeRepli: Messages = {};
 export function definirMessagesDeRepli(m: Messages): void { messagesDeRepli = m; }
 
@@ -38,7 +39,7 @@ export function useSetLocale(): (locale: Locale) => void {
  */
 export function useTranslations(namespace?: string) {
   const ctx = useContext(I18nContext);
-  const messages = Object.keys(ctx.messages).length ? ctx.messages : messagesDeRepli;
+  const messages = ctx.messages;
 
   function getNestedValue(obj: unknown, path: string): string {
     const keys = path.split('.');
@@ -56,6 +57,13 @@ export function useTranslations(namespace?: string) {
   function t(key: string, params?: Record<string, string | number>): string {
     const fullPath = namespace ? `${namespace}.${key}` : key;
     let value = getNestedValue(messages, fullPath);
+    // Rendu sans fournisseur (tests) : les clés de l'arbre `ui.*` — celles issues de la
+    // conversion du texte en dur — retombent sur le français d'origine. Les anciennes clés
+    // gardent leur comportement historique (renvoyer la clé), dont des tests dépendent.
+    if (value === fullPath && fullPath.startsWith('ui.')) {
+      const repli = getNestedValue(messagesDeRepli, fullPath);
+      if (repli !== fullPath) value = repli;
+    }
 
     // If not found with namespace, try without
     if (value === fullPath && namespace) {

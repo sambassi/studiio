@@ -26,6 +26,7 @@ import {
   creerVideo, phraseChaine, type EtapeChaine,
 } from '@/lib/autopilot/analyse/chaine-passerelle';
 import type { AutopilotMontageStyle } from '@/lib/autopilot/textStyle';
+import { useTranslations } from '@/i18n/client';
 
 interface Props {
   /** L'analyse source. Toujours `reussie` — l'appelant s'en assure. */
@@ -60,6 +61,7 @@ type EtatChaine =
   | { sorte: 'dit'; texte: string; alerte: boolean };
 
 export default function PassagesSuggeres({ analyseId, montage, onVideoLancee }: Props) {
+  const tUi = useTranslations('ui.componentsCreerPassagesSuggeres');
   const [generation, setGeneration] = useState<GenerationEcran | null>(null);
   const [chargement, setChargement] = useState(true);
   const [indisponible, setIndisponible] = useState<string | null>(null);
@@ -109,7 +111,7 @@ export default function PassagesSuggeres({ analyseId, montage, onVideoLancee }: 
     if (r.sorte === 'lancee') setGeneration(r.generation);
     else if (r.sorte === 'indisponible') setIndisponible(r.message);
     else if (r.sorte === 'deja_en_cours') {
-      setErreur('Une recherche est déjà en cours pour cette analyse.');
+      setErreur(tUi('une_recherche_est_deja_en_cours_pour_c'));
     } else setErreur(r.message);
 
     setDemande(false);
@@ -220,8 +222,8 @@ export default function PassagesSuggeres({ analyseId, montage, onVideoLancee }: 
             {demande
               ? 'Recherche…'
               : candidats.length > 0
-                ? 'Chercher à nouveau'
-                : 'Trouver les meilleurs passages'}
+                ? tUi('chercher_a_nouveau')
+                : tUi('trouver_les_meilleurs_passages')}
           </button>
         )}
       </div>
@@ -241,7 +243,7 @@ export default function PassagesSuggeres({ analyseId, montage, onVideoLancee }: 
 
       {!indisponible && !erreur && candidats.length === 0 && (
         <p className="text-[10px] text-gray-500 leading-relaxed" data-passages-vide>
-          Aucun passage proposé pour l’instant.
+          {tUi('aucun_passage_propose_pour_l_instant')}
         </p>
       )}
 
@@ -290,11 +292,11 @@ export default function PassagesSuggeres({ analyseId, montage, onVideoLancee }: 
           >
             {chaine.sorte === 'encours'
               ? phraseChaine(chaine.etape)
-              : 'Générer une vidéo de ce rush'}
+              : tUi('generer_une_video_de_ce_rush')}
           </button>
           {chaine.sorte === 'inactif' && (
             <p className="text-[10px] text-gray-500 leading-relaxed" data-chaine-portee>
-              Vidéo ponctuelle, à partir de ce rush seulement. L’Autopilote n’en a pas besoin pour continuer.
+              {tUi('video_ponctuelle_a_partir_de_ce_rush_s')}
             </p>
           )}
           {chaine.sorte === 'dit' && (

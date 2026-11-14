@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { Check, XCircle, Loader2, Hand } from 'lucide-react';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * LA progression de Studiio — une seule forme pour toute opération longue
@@ -101,6 +102,7 @@ export default function ProgressStatus({
   titre, statut, description, pourcentage, etapeCourante, totalEtapes, etapes, detail, debutLe, resteEstime,
   echec, suite, compact = false, note, className = '', children,
 }: ProgressStatusProps) {
+  const tUi = useTranslations('ui.componentsUxProgressStatus');
   const ecoulee = useDureeEcoulee(debutLe);
   const determinee = statut === 'succes' ? true : typeof pourcentage === 'number';
   const valeur = statut === 'succes' ? 100 : determinee ? borne(pourcentage as number) : null;
@@ -183,7 +185,7 @@ export default function ProgressStatus({
           {workflow !== null && (
             <p className="text-[11px] text-gray-400" data-progress-workflow={workflow}>
               Progression du workflow : <span className="text-gray-200 tabular-nums">{workflow} %</span>
-              {valeur === null && enCours && <span> — opération en cours : progression inconnue</span>}
+              {valeur === null && enCours && <span> {tUi('operation_en_cours_progression_inconnu')}</span>}
             </p>
           )}
         </div>
@@ -193,7 +195,7 @@ export default function ProgressStatus({
       {(detail || ecoulee || resteEstime) && (
         <p className="text-[11px] text-gray-400 flex flex-wrap gap-x-3 gap-y-0.5" data-progress-temps>
           {detail && <span data-progress-detail>{detail}</span>}
-          {ecoulee && enCours && <span data-progress-ecoulee>Durée écoulée : <span className="tabular-nums text-gray-200">{ecoulee}</span></span>}
+          {ecoulee && enCours && <span data-progress-ecoulee>{tUi('duree_ecoulee')} <span className="tabular-nums text-gray-200">{ecoulee}</span></span>}
           {resteEstime && enCours && <span data-progress-reste>Temps estimé restant : {resteEstime}</span>}
         </p>
       )}

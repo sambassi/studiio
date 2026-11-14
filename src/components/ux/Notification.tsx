@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { Check, Info, AlertTriangle, XCircle, X } from 'lucide-react';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * LA notification de Studiio — une seule forme pour Créer, Autopilote et
@@ -52,6 +53,7 @@ const STYLES: Record<NiveauNotification, { boite: string; icone: ReactNode; libe
 export default function Notification({
   niveau, titre, detail, conseils, motif, actionPrincipale, actionSecondaire, onFermer, className = '', children,
 }: NotificationProps) {
+  const tUi = useTranslations('ui.componentsUxNotification');
   const s = STYLES[niveau];
   const details = detail === undefined ? [] : Array.isArray(detail) ? detail : [detail];
   return (
@@ -95,13 +97,13 @@ export default function Notification({
         )}
         {motif && (
           <details className="text-[11px] opacity-70" data-notification-motif>
-            <summary className="cursor-pointer select-none">Détail technique</summary>
+            <summary className="cursor-pointer select-none">{tUi('detail_technique')}</summary>
             <p className="mt-1 break-words">{motif}</p>
           </details>
         )}
       </div>
       {onFermer && (
-        <button type="button" onClick={onFermer} aria-label="Masquer ce message" className="flex-shrink-0 opacity-60 hover:opacity-100 transition" data-notification-fermer>
+        <button type="button" onClick={onFermer} aria-label={tUi('masquer_ce_message')} className="flex-shrink-0 opacity-60 hover:opacity-100 transition" data-notification-fermer>
           <X className="w-4 h-4" aria-hidden />
         </button>
       )}

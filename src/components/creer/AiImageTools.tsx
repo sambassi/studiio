@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { CLE_ACTION_IA, TARIFS_DEFAUT, type GrilleTarifs } from '@/lib/tarifs/catalogue';
 import { useTarifs } from '@/lib/tarifs/client';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * Outils IA d'image — catalogue PARTAGE et composant autonome.
@@ -102,6 +103,7 @@ export default function AiImageTools({
   actions?: AiAction[];
   disabled?: boolean;
 }) {
+  const tUi = useTranslations('ui.componentsCreerAiImageTools');
   const [loading, setLoading] = useState<AiAction | null>(null);
   const [promptFor, setPromptFor] = useState<AiAction | null>(null);
   const [prompt, setPrompt] = useState('');
@@ -179,7 +181,7 @@ export default function AiImageTools({
               data-ai-action={tool.action}
               title={
                 tool.needsImage && !imageUrl
-                  ? 'Choisissez d’abord une photo d’affiche'
+                  ? tUi('choisissez_d_abord_une_photo_d_affiche')
                   : `${tool.label} — ${prixOutil(tool)} crédits`
               }
               aria-busy={loading === tool.action || undefined}
@@ -240,7 +242,7 @@ export default function AiImageTools({
                 onClick={() => setPromptFor(null)}
                 className="rounded-lg border border-gray-800 px-2 py-1.5 text-[11px] text-gray-400 hover:text-white transition-colors"
               >
-                Annuler
+                {tUi('annuler')}
               </button>
             </div>
           </div>

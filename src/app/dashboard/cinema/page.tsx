@@ -39,6 +39,7 @@ import { VOIX_FILM, voixDistincte } from '@/lib/cinema/personnages';
 import DialogueGenerationIA, { type DonneesDialogue, type Verification } from '@/components/cinema/DialogueGenerationIA';
 import { styleCinema as styleDe } from '@/lib/cinema/direction/styles';
 import { MediaDuPlan, EmplacementVide, Storyboard, appliquerDemo, bilanMedias } from '@/components/cinema/ApercuStoryboard';
+import { useTranslations } from '@/i18n/client';
 
 interface SegmentApi {
   sceneId: string; sceneIndex: number; planId: string; cadre: string;
@@ -82,13 +83,14 @@ const HISTOIRE_EXEMPLE = "Nina entre dans la salle avant le lever du jour. Le ta
 
 /** Detail replie derriere une icone — l'UI reste epuree, l'information reste accessible. */
 function Detail({ texte }: { texte: string }) {
+  const tUi = useTranslations('ui.appDashboardCinema');
   const [ouvert, setOuvert] = useState(false);
   return (
     <span className="inline-flex items-center align-middle">
       <button
         type="button"
         onClick={() => setOuvert((v) => !v)}
-        aria-label="Afficher le detail"
+        aria-label={tUi('afficher_le_detail')}
         className="ml-2 text-slate-500 hover:text-violet-300 transition-colors"
       >
         <Info className="w-4 h-4" />
@@ -104,6 +106,7 @@ function Detail({ texte }: { texte: string }) {
 const BOUTON_ICONE = 'inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-700 text-slate-300 transition-colors hover:border-violet-500/60 hover:text-violet-200 disabled:opacity-40';
 
 export default function CinemaPage() {
+  const tUi = useTranslations('ui.appDashboardCinema');
   const [titre, setTitre] = useState(TITRE_EXEMPLE);
   const [histoire, setHistoire] = useState(HISTOIRE_EXEMPLE);
   const [format, setFormat] = useState<'16:9' | '9:16'>('16:9');
@@ -680,8 +683,8 @@ export default function CinemaPage() {
    */
   /** « Qui dit cette replique ? » : un clic pour CHOISIR (jamais d'attribution au hasard). */
   const choixLocuteur = (planId: string) => film && (
-    <span className="inline-flex flex-wrap items-center gap-1.5" role="group" aria-label="Qui dit cette réplique ?" data-choix-locuteur>
-      <span className="text-slate-300">Qui dit cette réplique ?</span>
+    <span className="inline-flex flex-wrap items-center gap-1.5" role="group" aria-label={tUi('qui_dit_cette_replique')} data-choix-locuteur>
+      <span className="text-slate-300">{tUi('qui_dit_cette_replique')}</span>
       {film.personnages.map((pp) => (
         <button key={pp.id} type="button" onClick={() => enregistrer({ plans: [{ id: planId, locuteur: pp.id }] })}
           aria-label={`${pp.nom} dit cette réplique`}
@@ -701,18 +704,18 @@ export default function CinemaPage() {
       {e.genre === 'locuteur_devine' && e.planId && (
         <div className="flex flex-wrap items-center gap-2 pl-[18px]">
           {choixLocuteur(e.planId)}
-          <button type="button" onClick={() => setEtape(0)} className="rounded-lg border border-slate-600 px-2 py-1 text-slate-200 hover:border-violet-500/60">Modifier mon histoire</button>
+          <button type="button" onClick={() => setEtape(0)} className="rounded-lg border border-slate-600 px-2 py-1 text-slate-200 hover:border-violet-500/60">{tUi('modifier_mon_histoire')}</button>
         </div>
       )}
       {e.critique && e.genre !== 'locuteur_devine' && (acceptes.has(e.cle) ? (
         <p className="flex flex-wrap items-center gap-2 pl-[18px] text-emerald-300">
           <Check className="h-3 w-3" aria-hidden="true" /> Accepté tel quel : {e.consequence}
-          <button type="button" onClick={() => retirerAcceptation(e.cle)} aria-label="Retirer l’acceptation" className="underline">Annuler</button>
+          <button type="button" onClick={() => retirerAcceptation(e.cle)} aria-label="Retirer l’acceptation" className="underline">{tUi('annuler')}</button>
         </p>
       ) : (
         <div className="flex flex-wrap items-center gap-2 pl-[18px]">
           <button type="button" onClick={() => setEtape(0)} className="rounded-lg border border-slate-600 px-2 py-1 text-slate-200 hover:border-violet-500/60">
-            Modifier mon histoire
+            {tUi('modifier_mon_histoire')}
           </button>
           <button type="button" onClick={() => accepterEcart(e.cle)} aria-label={`Accepter cet ecart : ${e.consequence ?? ''}`}
             title={e.consequence} className="rounded-lg border border-amber-500/40 px-2 py-1 text-amber-200 hover:bg-amber-500/10">
@@ -768,13 +771,13 @@ export default function CinemaPage() {
               {mesFilms.map((f) => <option key={f.id} value={f.id}>{f.titre || f.id}</option>)}
             </select>
             {film && mesFilms.some((f) => f.id === film.id) && (suppressionArmee ? (
-              <span className="inline-flex items-center gap-1 text-rose-300" role="group" aria-label="Confirmer la suppression du film">
-                Supprimer le film et ses fichiers ?
-                <button type="button" onClick={supprimerFilmOuvert} disabled={enCours !== null} aria-label="Confirmer la suppression du film" className="p-1 rounded hover:bg-rose-500/20 disabled:opacity-50"><Check className="w-4 h-4" /></button>
-                <button type="button" onClick={() => setSuppressionArmee(false)} aria-label="Annuler la suppression" className="p-1 rounded hover:bg-slate-700"><X className="w-4 h-4" /></button>
+              <span className="inline-flex items-center gap-1 text-rose-300" role="group" aria-label={tUi('confirmer_la_suppression_du_film')}>
+                {tUi('supprimer_le_film_et_ses_fichiers')}
+                <button type="button" onClick={supprimerFilmOuvert} disabled={enCours !== null} aria-label={tUi('confirmer_la_suppression_du_film')} className="p-1 rounded hover:bg-rose-500/20 disabled:opacity-50"><Check className="w-4 h-4" /></button>
+                <button type="button" onClick={() => setSuppressionArmee(false)} aria-label={tUi('annuler_la_suppression')} className="p-1 rounded hover:bg-slate-700"><X className="w-4 h-4" /></button>
               </span>
             ) : (
-              <button type="button" onClick={() => setSuppressionArmee(true)} disabled={enCours !== null} aria-label="Supprimer ce film" title="Supprimer ce film" className="p-1 rounded text-slate-500 hover:text-rose-300 hover:bg-slate-800 disabled:opacity-50"><Trash2 className="w-4 h-4" /></button>
+              <button type="button" onClick={() => setSuppressionArmee(true)} disabled={enCours !== null} aria-label={tUi('supprimer_ce_film')} title={tUi('supprimer_ce_film')} className="p-1 rounded text-slate-500 hover:text-rose-300 hover:bg-slate-800 disabled:opacity-50"><Trash2 className="w-4 h-4" /></button>
             ))}
           </label>
         )}
@@ -889,7 +892,7 @@ export default function CinemaPage() {
                       {enCours === `media:${pl.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <ImagePlus className="h-3.5 w-3.5" aria-hidden="true" />}
                       Ajouter une image ou une vidéo
                       <input type="file" accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.webm,.m4v" className="sr-only"
-                        aria-label="Ajouter une image ou une vidéo à cette scène"
+                        aria-label={tUi('ajouter_une_image_ou_une_video_a_cette')}
                         onChange={(e) => { const f = e.target.files?.[0]; if (f) importerMedia(pl.id, f); e.target.value = ''; }} />
                     </label>
                   );
@@ -898,11 +901,11 @@ export default function CinemaPage() {
                   return generationIa ? (
                     <button type="button" onClick={() => genererMedia(pl.id, 'image')} data-action-vide="ia"
                       className="mt-1 inline-flex items-center gap-1.5 rounded-lg border border-violet-500/60 px-3 py-1.5 text-xs text-violet-100 hover:bg-violet-500/10">
-                      <Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> Préparer l’image avec l’IA
+                      <Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> {tUi('preparer_l_image_avec_l_ia')}
                     </button>
-                  ) : <p className="text-[11px] text-slate-500">La création d’images par IA n’est pas disponible pour le moment.</p>;
+                  ) : <p className="text-[11px] text-slate-500">{tUi('la_creation_d_images_par_ia_n_est_pas')}</p>;
                 }
-                return <p className="text-[11px] text-slate-500" data-action-vide="choisir">Choisis d’abord comment créer tes images.</p>;
+                return <p className="text-[11px] text-slate-500" data-action-vide="choisir">{tUi('choisis_d_abord_comment_creer_tes_imag')}</p>;
               })()}
             />
           ) : montage ? (
@@ -934,7 +937,7 @@ export default function CinemaPage() {
             <input
               value={titre}
               onChange={(e) => setTitre(e.target.value)}
-              placeholder="Titre du film"
+              placeholder={tUi('titre_du_film')}
               className="w-full mb-3 rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm"
             />
             <div className="relative">
@@ -942,7 +945,7 @@ export default function CinemaPage() {
                 value={histoire}
                 onChange={(e) => setHistoire(e.target.value)}
                 rows={5}
-                placeholder="Une phrase par plan. Pour une replique, mettez-la entre guillemets apres le nom du personnage."
+                placeholder={tUi('une_phrase_par_plan_pour_une_replique')}
                 className="w-full rounded-lg bg-slate-950 border border-slate-700 py-2 pl-3 pr-11 text-sm leading-relaxed"
               />
               {/* Aide a la redaction : mise en forme locale + redaction assistee par le
@@ -955,7 +958,7 @@ export default function CinemaPage() {
               />
             </div>
             <p className="mt-1 flex items-center gap-1 text-[11px] text-slate-500">
-              Une phrase = un plan.
+              {tUi('une_phrase_un_plan')}
               <Detail texte="Une phrase entre guillemets devient une replique dite par le personnage nomme dans la phrase ; sans guillemets, c'est le narrateur. Decrire la lumiere et le lieu dans la phrase ameliore l'image du plan : c'est ce texte qui sert de description visuelle." />
             </p>
             <div className="mt-3 flex flex-wrap gap-4 text-sm">
@@ -1005,7 +1008,7 @@ export default function CinemaPage() {
                   {modeAudioAffiche === 'personnages' && (
                     <label className="col-span-2 flex flex-wrap items-center gap-2 text-xs text-slate-400" data-voix-personnage>
                       <Mic className="h-3.5 w-3.5 shrink-0 text-violet-300" aria-hidden="true" />
-                      <span>Voix de {p.nom || 'ce personnage'}</span>
+                      <span>Voix de {p.nom || tUi('ce_personnage')}</span>
                       <select
                         value={p.voix ?? voixDistincte(i)}
                         aria-label={`Voix de ${p.nom || `personnage ${i + 1}`}`}
@@ -1021,7 +1024,7 @@ export default function CinemaPage() {
                         {VOIX_FILM.map((v) => <option key={v.id} value={v.id}>{v.libelle}</option>)}
                       </select>
                       {casting.some((c, k) => k !== i && (c.voix ?? voixDistincte(k)) === (p.voix ?? voixDistincte(i)) && c.nom && p.nom) && (
-                        <span className="text-amber-300" data-voix-partagee>Même voix qu’un autre personnage : choisis-en une autre pour les distinguer.</span>
+                        <span className="text-amber-300" data-voix-partagee>{tUi('meme_voix_qu_un_autre_personnage_chois')}</span>
                       )}
                     </label>
                   )}
@@ -1030,11 +1033,11 @@ export default function CinemaPage() {
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
               <button onClick={() => setCasting([...casting, { nom: '', role: '', description: '', urlImage: '' }])} className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm hover:border-violet-500/50">
-                <Plus className="w-4 h-4" /> Ajouter un personnage
+                <Plus className="w-4 h-4" /> {tUi('ajouter_un_personnage')}
               </button>
               {casting.length > 1 && (
                 <button onClick={() => setCasting(casting.slice(0, -1))} className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm hover:border-red-500/50">
-                  <Trash2 className="w-4 h-4" /> Retirer le dernier
+                  <Trash2 className="w-4 h-4" /> {tUi('retirer_le_dernier')}
                 </button>
               )}
             </div>
@@ -1065,36 +1068,36 @@ export default function CinemaPage() {
               <>
                 {!methode ? (
                   /* LE CHOIX : deux cartes, rien d'autre. Cliquer ne lance AUCUNE generation et ne coute rien. */
-                  <div className="grid gap-3 sm:grid-cols-2" role="group" aria-label="Comment créer les images de ton film ?" data-choix-methode>
+                  <div className="grid gap-3 sm:grid-cols-2" role="group" aria-label={tUi('comment_creer_les_images_de_ton_film')} data-choix-methode>
                     <button
                       type="button"
                       onClick={() => { choisirMethode('ia'); }}
                       disabled={!generationIa}
                       aria-disabled={!generationIa}
-                      title={generationIa ? 'Studiio crée les images, un visuel à la fois, après ta confirmation' : 'La création d’images par IA n’est pas disponible pour le moment'}
+                      title={generationIa ? tUi('studiio_cree_les_images_un_visuel_a_la') : tUi('la_creation_d_images_par_ia_n_est_pas_2')}
                       className="rounded-xl border border-slate-700 bg-slate-900/50 p-4 text-left transition-colors hover:border-violet-500/60 disabled:cursor-not-allowed disabled:opacity-50"
                       data-methode="ia"
                     >
                       <span className="mb-2 flex h-9 w-9 items-center justify-center rounded-lg bg-violet-500/15 text-violet-300"><Sparkles className="h-5 w-5" aria-hidden="true" /></span>
-                      <span className="block text-sm font-semibold text-slate-50">Créer les images avec l’IA</span>
+                      <span className="block text-sm font-semibold text-slate-50">{tUi('creer_les_images_avec_l_ia')}</span>
                       <span className="mt-1 block text-xs leading-relaxed text-slate-400">
                         {!generationIa
-                          ? 'Pas disponible pour le moment.'
+                          ? tUi('pas_disponible_pour_le_moment')
                           : generationMode === 'simulee'
-                            ? 'Mode démonstration gratuit : des visuels de test (un aplat de couleur), pas de vraies images.'
-                            : 'Studiio prépare les images de ton film. Tu vois le coût et tu confirmes avant chaque création.'}
+                            ? tUi('mode_demonstration_gratuit_des_visuels')
+                            : tUi('studiio_prepare_les_images_de_ton_film')}
                       </span>
                     </button>
                     <button
                       type="button"
                       onClick={() => { choisirMethode('import'); }}
-                      title="Tu ajoutes tes propres images ou vidéos, scène par scène"
+                      title={tUi('tu_ajoutes_tes_propres_images_ou_video')}
                       className="rounded-xl border border-slate-700 bg-slate-900/50 p-4 text-left transition-colors hover:border-violet-500/60"
                       data-methode="import"
                     >
                       <span className="mb-2 flex h-9 w-9 items-center justify-center rounded-lg bg-violet-500/15 text-violet-300"><Upload className="h-5 w-5" aria-hidden="true" /></span>
-                      <span className="block text-sm font-semibold text-slate-50">Utiliser mes images ou vidéos</span>
-                      <span className="mt-1 block text-xs leading-relaxed text-slate-400">Tu ajoutes tes propres médias, une scène après l’autre. Gratuit.</span>
+                      <span className="block text-sm font-semibold text-slate-50">{tUi('utiliser_mes_images_ou_videos')}</span>
+                      <span className="mt-1 block text-xs leading-relaxed text-slate-400">{tUi('tu_ajoutes_tes_propres_medias_une_scen')}</span>
                     </button>
                   </div>
                 ) : (
@@ -1102,47 +1105,47 @@ export default function CinemaPage() {
                   <section className="mb-3 space-y-2 rounded-lg border border-slate-800 bg-slate-900/40 p-3" data-methode-active={methode}>
                     <div className="flex items-center gap-2">
                       {methode === 'ia' ? <Sparkles className="h-4 w-4 shrink-0 text-violet-300" aria-hidden="true" /> : <Upload className="h-4 w-4 shrink-0 text-violet-300" aria-hidden="true" />}
-                      <h3 className="min-w-0 flex-1 text-sm font-semibold text-slate-100">{methode === 'ia' ? 'Créer les images avec l’IA' : 'Utiliser mes images ou vidéos'}</h3>
-                      <button type="button" onClick={() => choisirMethode(null)} className="shrink-0 text-xs text-slate-400 underline hover:text-slate-200">Changer de méthode</button>
+                      <h3 className="min-w-0 flex-1 text-sm font-semibold text-slate-100">{methode === 'ia' ? tUi('creer_les_images_avec_l_ia') : tUi('utiliser_mes_images_ou_videos')}</h3>
+                      <button type="button" onClick={() => choisirMethode(null)} className="shrink-0 text-xs text-slate-400 underline hover:text-slate-200">{tUi('changer_de_methode')}</button>
                     </div>
                     <p className="text-xs text-slate-300" data-visuels>
                       {visuelsAPreparer > 0
                         ? `${visuelsAPreparer} visuel${visuelsAPreparer > 1 ? 's' : ''} à préparer dans ${scenesSansVisuel} scène${scenesSansVisuel > 1 ? 's' : ''}.`
-                        : 'Tous les visuels de ton film sont prêts.'}
+                        : tUi('tous_les_visuels_de_ton_film_sont_pret')}
                     </p>
                     {methode === 'ia' ? (
                       <>
                         <p className="text-xs leading-relaxed text-slate-400" data-cout-previsionnel>
                           {generationMode === 'simulee'
-                            ? 'Démonstration gratuite : aucun crédit n’est utilisé, mais ce sont des visuels de test (un aplat de couleur), pas de vraies images.'
+                            ? tUi('demonstration_gratuite_aucun_credit_n')
                             : visuelsAPreparer > 0
                               ? `Coût prévisionnel : ${libelleCredits(visuelsAPreparer * tarifs.prix['ai.generate_background'])} pour ${visuelsAPreparer} image${visuelsAPreparer > 1 ? 's' : ''} (${libellePrix(tarifs, 'ai.generate_background')} chacune). Rien n’est débité tant que tu n’as pas confirmé chaque image.`
-                              : 'Rien à créer : tous les visuels existent déjà.'}
+                              : tUi('rien_a_creer_tous_les_visuels_existent')}
                         </p>
                         <p className="text-xs leading-relaxed text-slate-400">
-                          Studiio crée un visuel à la fois : choisis une scène, puis l’étoile ✦ du visuel.
+                          {tUi('studiio_cree_un_visuel_a_la_fois_chois')}
                         </p>
                       </>
                     ) : (
-                      <p className="text-xs leading-relaxed text-slate-400">Choisis une scène, puis ajoute ton image ou ta vidéo avec l’icône d’import.</p>
+                      <p className="text-xs leading-relaxed text-slate-400">{tUi('choisis_une_scene_puis_ajoute_ton_imag')}</p>
                     )}
                     {bloquants.length > 0 && (
                       <p className="flex flex-wrap items-center gap-2 text-xs text-amber-200" data-points-a-verifier>
                         <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                         {bloquants.length} point{bloquants.length > 1 ? 's' : ''} à vérifier dans ton histoire
                         {methode === 'ia' && generationMode === 'reelle' ? ' avant de créer des images payantes' : ''}.
-                        <button type="button" onClick={() => allerAEtape(3)} className="underline">Voir les points</button>
+                        <button type="button" onClick={() => allerAEtape(3)} className="underline">{tUi('voir_les_points')}</button>
                       </p>
                     )}
                     {aProduire.length > 0 && (
                       <p className="flex items-start gap-2 text-xs text-slate-300" data-a-mettre-a-jour>
                         <RefreshCw className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-300" aria-hidden="true" />
-                        <span>{aProduire.length === 1 ? 'Une scène doit être mise à jour' : `${aProduire.length} scènes doivent être mises à jour`} : son contenu a changé depuis la dernière version de la vidéo. Elle sera refaite à l’export.</span>
+                        <span>{aProduire.length === 1 ? tUi('une_scene_doit_etre_mise_a_jour') : `${aProduire.length} scènes doivent être mises à jour`} : son contenu a changé depuis la dernière version de la vidéo. Elle sera refaite à l’export.</span>
                       </p>
                     )}
                     {visuelsAPreparer > 0 && (
                       <button type="button" onClick={allerAuPremierVisuel} className="rounded-lg border border-violet-500/50 px-3 py-1.5 text-xs text-violet-100 hover:bg-violet-500/10">
-                        {methode === 'ia' ? 'Commencer par le premier visuel' : 'Ajouter au premier visuel manquant'}
+                        {methode === 'ia' ? tUi('commencer_par_le_premier_visuel') : tUi('ajouter_au_premier_visuel_manquant')}
                       </button>
                     )}
                   </section>
@@ -1198,12 +1201,12 @@ export default function CinemaPage() {
                               : aRefaire ? <RefreshCw className="h-3 w-3 shrink-0 text-amber-300" aria-hidden="true" />
                               : aPreparer === 0 ? <CheckCircle2 className="h-3 w-3 shrink-0 text-emerald-400/70" aria-hidden="true" />
                               : <Circle className="h-3 w-3 shrink-0 text-slate-600" aria-hidden="true" />}
-                            <span>{aPreparer === 0 ? 'Visuels prêts' : `${aPreparer} visuel${aPreparer > 1 ? 's' : ''} à préparer`}</span>
+                            <span>{aPreparer === 0 ? tUi('visuels_prets') : `${aPreparer} visuel${aPreparer > 1 ? 's' : ''} à préparer`}</span>
                             {aRefaire && (
-                              <span className="text-amber-300" title="Tu as changé le contenu de cette scène depuis la dernière version de la vidéo : elle sera refaite à l’export.">· à mettre à jour</span>
+                              <span className="text-amber-300" title={tUi('tu_as_change_le_contenu_de_cette_scene')}>{tUi('a_mettre_a_jour')}</span>
                             )}
                             {pointsCritiques > 0 && (
-                              <span className="inline-flex items-center gap-0.5 text-amber-300" title="Points à vérifier dans ton histoire pour cette scène">
+                              <span className="inline-flex items-center gap-0.5 text-amber-300" title={tUi('points_a_verifier_dans_ton_histoire_po')}>
                                 <AlertTriangle className="h-3 w-3" aria-hidden="true" />{pointsCritiques} point{pointsCritiques > 1 ? 's' : ''} à vérifier
                               </span>
                             )}
@@ -1216,7 +1219,7 @@ export default function CinemaPage() {
                         aria-expanded={ouverte}
                         aria-controls={`outils-${scene.id}`}
                         aria-label={ouverte ? `Fermer les outils de la scene ${scene.index + 1}` : `Ouvrir les outils de la scene ${scene.index + 1}`}
-                        title={ouverte ? 'Fermer les outils' : 'Modifier cette scene'}
+                        title={ouverte ? tUi('fermer_les_outils') : tUi('modifier_cette_scene')}
                         className={`${BOUTON_ICONE} ${ouverte ? 'border-violet-500/60 text-violet-200' : ''}`}
                       >
                         {ouverte ? <ChevronUp className="h-4 w-4" aria-hidden="true" /> : <Pencil className="h-4 w-4" aria-hidden="true" />}
@@ -1231,9 +1234,9 @@ export default function CinemaPage() {
                         <button
                           type="button"
                           onClick={() => enregistrer({ scenes: [{ id: scene.id, etat: scene.etat === 'validee' ? 'brouillon' : 'validee' }] })}
-                          aria-label={scene.etat === 'validee' ? 'Repasser la scene en brouillon' : 'Valider la scene'}
+                          aria-label={scene.etat === 'validee' ? tUi('repasser_la_scene_en_brouillon') : tUi('valider_la_scene')}
                           aria-pressed={scene.etat === 'validee'}
-                          title={scene.etat === 'validee' ? 'Repasser en brouillon' : 'Valider la scene'}
+                          title={scene.etat === 'validee' ? 'Repasser en brouillon' : tUi('valider_la_scene')}
                           className={BOUTON_ICONE}
                         >
                           <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
@@ -1242,8 +1245,8 @@ export default function CinemaPage() {
                           type="button"
                           onClick={() => produire([scene.id])}
                           disabled={enCours !== null || ACTIF(travail)}
-                          aria-label="Regenerer cette scene"
-                          title="Regenerer cette scene"
+                          aria-label={tUi('regenerer_cette_scene')}
+                          title={tUi('regenerer_cette_scene')}
                           className={BOUTON_ICONE}
                         >
                           <RefreshCw className="h-4 w-4" aria-hidden="true" />
@@ -1268,7 +1271,7 @@ export default function CinemaPage() {
                       <div className="space-y-2.5 rounded-lg border border-slate-800/80 bg-slate-900/40 p-2.5" data-plan-editeur={plan.id}>
                         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
                           {scene.plans.length > 1 && (
-                            <span className="inline-flex items-center gap-1" role="group" aria-label="Choisir le plan">
+                            <span className="inline-flex items-center gap-1" role="group" aria-label={tUi('choisir_le_plan')}>
                               {scene.plans.map((pl, k) => (
                                 <button key={pl.id} type="button" onClick={() => setPlanParScene((m) => ({ ...m, [scene.id]: k }))}
                                   aria-pressed={k === indexPlan} aria-label={`Modifier le plan ${k + 1}`} title={`Visuel ${k + 1}`}
@@ -1280,7 +1283,7 @@ export default function CinemaPage() {
                           )}
                           {plan.dialogue && (
                             <span className="inline-flex min-w-0 max-w-full items-center rounded-full border border-pink-500/30 px-2 py-0.5 text-[11px] text-pink-300"
-                              title={plan.dialogue.personnageId ? undefined : 'Phrase de recit : lue en narration, attribuee a aucun personnage'}>
+                              title={plan.dialogue.personnageId ? undefined : tUi('phrase_de_recit_lue_en_narration_attri')}>
                               <span className="truncate">{film.personnages.find((pp) => pp.id === plan.dialogue?.personnageId)?.nom ?? 'Narration'}</span>
                             </span>
                           )}
@@ -1312,14 +1315,14 @@ export default function CinemaPage() {
                         </div>
 
                         {/* Les actions : de petites icones, toutes nommees (infobulle + libelle accessible). */}
-                        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Media du plan">
-                          <label title={plan.media ? 'Remplacer le media de ce plan' : 'Importer une image ou une video'} className={`${BOUTON_ICONE} cursor-pointer ${methode === 'import' && !plan.media ? 'border-violet-400 text-violet-200' : ''}`}>
+                        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={tUi('media_du_plan')}>
+                          <label title={plan.media ? tUi('remplacer_le_media_de_ce_plan') : tUi('importer_une_image_ou_une_video')} className={`${BOUTON_ICONE} cursor-pointer ${methode === 'import' && !plan.media ? 'border-violet-400 text-violet-200' : ''}`}>
                             {enCours === `media:${plan.id}` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <ImagePlus className="h-4 w-4" aria-hidden="true" />}
                             <input
                               type="file"
                               accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.webm,.m4v"
                               className="sr-only"
-                              aria-label={plan.media ? 'Remplacer le media de ce plan' : 'Importer une image ou une video'}
+                              aria-label={plan.media ? tUi('remplacer_le_media_de_ce_plan') : tUi('importer_une_image_ou_une_video')}
                               onChange={(e) => { const f = e.target.files?.[0]; if (f) importerMedia(plan.id, f); e.target.value = ''; }}
                             />
                           </label>
@@ -1329,7 +1332,7 @@ export default function CinemaPage() {
                               disabled={enCours !== null || !!generationActiveDe(film)}
                               data-cinema-generation="image"
                               aria-label={generationMode === 'simulee' ? 'Generer l’image (IA, simule)' : 'Generer l’image (IA)'}
-                              title={generationMode === 'simulee' ? 'Generer l’image (simulation locale gratuite)' : 'Generer l’image par IA'}
+                              title={generationMode === 'simulee' ? 'Generer l’image (simulation locale gratuite)' : tUi('generer_l_image_par_ia')}
                               className={`${BOUTON_ICONE} ${generationMode === 'reelle' ? 'w-auto gap-1 px-2' : ''}`}
                             >
                               {enCours === `generation:${plan.id}:image` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Sparkles className="h-4 w-4" aria-hidden="true" />}
@@ -1342,7 +1345,7 @@ export default function CinemaPage() {
                               disabled={enCours !== null || !!generationActiveDe(film)}
                               data-cinema-generation="video"
                               aria-label={generationMode === 'simulee' ? 'Animer en video (IA, simule)' : 'Animer en video (IA)'}
-                              title={generationMode === 'simulee' ? 'Animer en video (simulation locale gratuite)' : 'Animer cette image en video par IA'}
+                              title={generationMode === 'simulee' ? 'Animer en video (simulation locale gratuite)' : tUi('animer_cette_image_en_video_par_ia')}
                               className={`${BOUTON_ICONE} ${generationMode === 'reelle' ? 'w-auto gap-1 px-2' : ''}`}
                             >
                               {enCours === `generation:${plan.id}:video` ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Clapperboard className="h-4 w-4" aria-hidden="true" />}
@@ -1350,13 +1353,13 @@ export default function CinemaPage() {
                             </button>
                           )}
                           {plan.media && (retraitEnAttente === plan.id ? (
-                            <span className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/40 px-2 py-1 text-[11px] text-rose-200" role="group" aria-label="Confirmer le retrait du media">
-                              Retirer ce media ?
-                              <button type="button" onClick={() => { setRetraitEnAttente(null); enregistrer({ plans: [{ id: plan.id, media: null }] }); }} aria-label="Confirmer le retrait" className="underline">Oui</button>
-                              <button type="button" onClick={() => setRetraitEnAttente(null)} aria-label="Annuler le retrait" className="underline">Non</button>
+                            <span className="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/40 px-2 py-1 text-[11px] text-rose-200" role="group" aria-label={tUi('confirmer_le_retrait_du_media')}>
+                              {tUi('retirer_ce_media')}
+                              <button type="button" onClick={() => { setRetraitEnAttente(null); enregistrer({ plans: [{ id: plan.id, media: null }] }); }} aria-label={tUi('confirmer_le_retrait')} className="underline">Oui</button>
+                              <button type="button" onClick={() => setRetraitEnAttente(null)} aria-label={tUi('annuler_le_retrait')} className="underline">Non</button>
                             </span>
                           ) : (
-                            <button type="button" onClick={() => setRetraitEnAttente(plan.id)} aria-label="Retirer le media de ce plan" title="Retirer le media de ce plan (le fichier d’origine n’est pas supprime)" className={BOUTON_ICONE}>
+                            <button type="button" onClick={() => setRetraitEnAttente(plan.id)} aria-label={tUi('retirer_le_media_de_ce_plan')} title={tUi('retirer_le_media_de_ce_plan_le_fichier')} className={BOUTON_ICONE}>
                               <Trash2 className="h-4 w-4" aria-hidden="true" />
                             </button>
                           ))}
@@ -1374,7 +1377,7 @@ export default function CinemaPage() {
                         />
 
                         {/* Les personnages DE CE PLAN : leurs portraits (vraie photo de reference, sinon icone neutre). */}
-                        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Personnages de ce plan">
+                        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={tUi('personnages_de_ce_plan')}>
                           {film.personnages.map((pp) => {
                             const present = plan.personnages.includes(pp.id);
                             return (
@@ -1383,7 +1386,7 @@ export default function CinemaPage() {
                             );
                           })}
                           <span className="min-w-0 truncate text-[11px] text-slate-500">
-                            {film.personnages.filter((pp) => plan.personnages.includes(pp.id)).map((pp) => pp.nom).join(', ') || 'Aucun personnage'}
+                            {film.personnages.filter((pp) => plan.personnages.includes(pp.id)).map((pp) => pp.nom).join(', ') || tUi('aucun_personnage')}
                           </span>
                         </div>
                       </div>
@@ -1392,7 +1395,7 @@ export default function CinemaPage() {
                       <details className="rounded-lg border border-slate-800/80 px-3 py-2" data-avance="scene">
                         <summary className="flex cursor-pointer list-none items-center gap-2 text-xs text-slate-400 hover:text-slate-200">
                           <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" /> Options avancees
-                          {scene.styleCinema && scene.styleCinema !== film.styleCinema && <span className="text-violet-300">· style different du film</span>}
+                          {scene.styleCinema && scene.styleCinema !== film.styleCinema && <span className="text-violet-300">{tUi('style_different_du_film')}</span>}
                         </summary>
                         <div className="mt-3 space-y-3 text-xs text-slate-400">
                           <p data-info-technique>
@@ -1405,11 +1408,11 @@ export default function CinemaPage() {
                             <button type="button" onClick={() => enregistrer({ plans: [{ id: plan.id, sonMedia: !plan.media?.sonActif }] })}
                               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 px-2 py-1 hover:border-violet-500/50">
                               {plan.media.sonActif ? <Volume2 className="h-3.5 w-3.5" aria-hidden="true" /> : <VolumeX className="h-3.5 w-3.5" aria-hidden="true" />}
-                              {plan.media.sonActif ? 'Son du rush garde' : 'Son du rush coupe'}
+                              {plan.media.sonActif ? tUi('son_du_rush_garde') : tUi('son_du_rush_coupe')}
                             </button>
                           )}
                           <div>
-                            <p className="mb-1 text-slate-500">Personnages de la scene</p>
+                            <p className="mb-1 text-slate-500">{tUi('personnages_de_la_scene')}</p>
                             <div className="flex flex-wrap gap-1.5">
                               {film.personnages.map((pp) => {
                                 const present = scene.personnages.includes(pp.id);
@@ -1459,7 +1462,7 @@ export default function CinemaPage() {
               </>
             ) : (
               <p className="rounded-lg border border-dashed border-slate-700 p-4 text-sm text-slate-400">
-                Composez d’abord le scenario a l’etape Personnages : les scenes en decouleront, phrase par phrase.
+                {tUi('composez_d_abord_le_scenario_a_l_etape')}
               </p>
             )}
           </div>
@@ -1490,7 +1493,7 @@ export default function CinemaPage() {
                     {mediasGeneres > 0
                       ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" aria-hidden="true" />
                       : <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" aria-hidden="true" />}
-                    {mediasGeneres > 0 ? `${mediasGeneres} media(s) sur vos plans` : 'Aucun media genere pour ce film'}
+                    {mediasGeneres > 0 ? `${mediasGeneres} media(s) sur vos plans` : tUi('aucun_media_genere_pour_ce_film')}
                   </p>
                 </div>
 
@@ -1518,7 +1521,7 @@ export default function CinemaPage() {
                       </details>
                     )}
                     <p className="mt-2 text-[11px] text-slate-400">
-                      Votre texte n’est jamais modifie. Corrigez-le puis recomposez le scenario, ou acceptez un ecart en connaissance de cause.
+                      {tUi('votre_texte_n_est_jamais_modifie_corri')}
                     </p>
                   </section>
                 )}
@@ -1530,14 +1533,14 @@ export default function CinemaPage() {
                   return (
                     <section className="mt-4 rounded-lg border border-slate-800 bg-slate-900/40 p-4" data-reglage="mode-audio">
                       <h3 className="mb-1 flex items-center gap-2 text-sm font-semibold text-slate-200">
-                        <Mic className="h-4 w-4 text-violet-300" aria-hidden="true" /> Comment ton film est raconté
+                        <Mic className="h-4 w-4 text-violet-300" aria-hidden="true" /> {tUi('comment_ton_film_est_raconte')}
                       </h3>
                       <p className="text-xs text-slate-300" data-mode-actuel>
                         {mode
                           ? `${LIBELLES_MODE[mode].titre} — ${LIBELLES_MODE[mode].phrase}`
-                          : 'Ancien réglage : le récit et les répliques sont lus (film créé avant les deux nouveaux modes). Rien ne change tant que tu ne choisis pas un mode.'}
+                          : tUi('ancien_reglage_le_recit_et_les_repliqu')}
                       </p>
-                      <div role="radiogroup" aria-label="Changer le mode audio" className="mt-2 flex flex-wrap gap-2">
+                      <div role="radiogroup" aria-label={tUi('changer_le_mode_audio')} className="mt-2 flex flex-wrap gap-2">
                         {(['personnages', 'narrateur'] as const).map((m) => (
                           <button key={m} type="button" role="radio" aria-checked={mode === m}
                             onClick={() => { if (mode !== m) void enregistrer({ modeAudio: m }); }}
@@ -1546,11 +1549,11 @@ export default function CinemaPage() {
                           </button>
                         ))}
                       </div>
-                      <p className="mt-1.5 text-[11px] text-slate-500">Changer de mode ne touche ni ton histoire, ni tes personnages, ni tes dialogues : seul le son des scènes concernées sera refait.</p>
+                      <p className="mt-1.5 text-[11px] text-slate-500">{tUi('changer_de_mode_ne_touche_ni_ton_histo')}</p>
                       {mode === 'personnages' && (
                         <p className="mt-1.5 flex items-start gap-1.5 text-[11px] text-slate-400" data-limite-labiale>
                           <Info className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
-                          Les personnages parlent avec leur voix, mais leurs lèvres ne bougent pas en synchronisation : Cinema IA ne fait pas de synchronisation labiale.
+                          {tUi('les_personnages_parlent_avec_leur_voix')}
                         </p>
                       )}
                       {problemes.length > 0 && (
@@ -1582,14 +1585,14 @@ export default function CinemaPage() {
                     <section className="mt-4 rounded-lg border border-slate-800 bg-slate-900/40 p-4" data-reglage="narration">
                       <h3 className="mb-1 flex items-center gap-2 text-sm font-semibold text-slate-200">
                         <Mic className="h-4 w-4 text-violet-300" aria-hidden="true" /> Narration
-                        <span title="Les phrases de recit (sans guillemets) sont lues par une voix de narrateur. Les repliques des personnages restent lues dans les deux cas." className="text-slate-500">
-                          <Info className="h-3.5 w-3.5" aria-label="Les repliques des personnages restent lues dans les deux cas" />
+                        <span title={tUi('les_phrases_de_recit_sans_guillemets_s')} className="text-slate-500">
+                          <Info className="h-3.5 w-3.5" aria-label={tUi('les_repliques_des_personnages_restent')} />
                         </span>
                       </h3>
-                      <div role="group" aria-label="Narration du film" className="flex items-center gap-2">
+                      <div role="group" aria-label={tUi('narration_du_film')} className="flex items-center gap-2">
                         <button type="button" aria-pressed={avec} onClick={() => !avec && enregistrer({ narration: true })}
                           className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs ${avec ? 'border-violet-500/70 bg-violet-500/15 text-violet-100' : 'border-slate-700 text-slate-300 hover:border-violet-500/40'}`}>
-                          <Mic className="h-3.5 w-3.5" aria-hidden="true" /> Avec narration
+                          <Mic className="h-3.5 w-3.5" aria-hidden="true" /> {tUi('avec_narration')}
                         </button>
                         <button type="button" aria-pressed={!avec} onClick={() => avec && enregistrer({ narration: false })}
                           className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs ${!avec ? 'border-violet-500/70 bg-violet-500/15 text-violet-100' : 'border-slate-700 text-slate-300 hover:border-violet-500/40'}`}>
@@ -1598,7 +1601,7 @@ export default function CinemaPage() {
                       </div>
                       <p className="mt-2 text-[11px] text-slate-400">
                         {nbRecit === 0
-                          ? 'Votre histoire n’a aucune phrase de recit : seules vos repliques sont lues.'
+                          ? tUi('votre_histoire_n_a_aucune_phrase_de_re')
                           : avec
                             ? `${nbRecit} phrase(s) de recit sont lues en narration ; les repliques des personnages sont lues a part.`
                             : `${nbRecit} phrase(s) de recit restent affichees mais ne sont pas lues ; les repliques des personnages restent lues.`}
@@ -1613,16 +1616,16 @@ export default function CinemaPage() {
                   </h3>
                   <p className="text-xs text-slate-400">
                     {devis
-                      ? (devis.totalUsd === null ? 'Cout inconnu (tarif non declare) : rien ne sera lance sans prix.'
+                      ? (devis.totalUsd === null ? tUi('cout_inconnu_tarif_non_declare_rien_ne')
                         : devis.totalUsd === 0 ? `Gratuit (rendu local) pour ${devis.secondesAProduire.toFixed(1)} s a produire.`
                         : `${devis.totalUsd.toFixed(4)} USD pour ${devis.secondesAProduire.toFixed(1)} s a produire.`)
-                      : 'Le devis s’affiche des que le scenario est compose.'}
+                      : tUi('le_devis_s_affiche_des_que_le_scenario')}
                   </p>
                 </section>
               </>
             ) : (
               <p className="rounded-lg border border-dashed border-slate-700 p-4 text-sm text-slate-400">
-                Composez le scenario pour verifier la fidelite a votre histoire.
+                {tUi('composez_le_scenario_pour_verifier_la')}
               </p>
             )}
           </div>
@@ -1643,13 +1646,13 @@ export default function CinemaPage() {
                 )}
                 <button onClick={() => produire()} disabled={enCours !== null || ACTIF(travail)} className="inline-flex items-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium hover:bg-violet-500 disabled:opacity-50">
                   {enCours === 'lancement' || ACTIF(travail) ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-                  {ACTIF(travail) ? 'Production en cours' : 'Exporter le film'}
+                  {ACTIF(travail) ? 'Production en cours' : tUi('exporter_le_film')}
                 </button>
                 {travail && film && <Production film={film} travail={travail} surArreter={arreterProduction} />}
               </section>
             ) : (
               <p className="rounded-lg border border-dashed border-slate-700 p-4 text-sm text-slate-400">
-                Composez d’abord le scenario : l’export viendra de votre film, pas d’un exemple.
+                {tUi('composez_d_abord_le_scenario_l_export')}
               </p>
             )}
           </div>
@@ -1681,6 +1684,7 @@ const ETAPES_LIBELLE: Record<string, string> = {
 };
 
 function Production({ film, travail, surArreter }: { film: FilmApi; travail: TravailApi; surArreter: () => void }) {
+  const tUi = useTranslations('ui.appDashboardCinema');
   const actif = ACTIF(travail);
   const pct = Math.max(0, Math.min(100, travail.progression.pourcent));
   const urlMp4 = `/api/cinema/films/${film.id}/travaux/${travail.id}/export`;
@@ -1697,20 +1701,20 @@ function Production({ film, travail, surArreter }: { film: FilmApi; travail: Tra
               type="button"
               onClick={surArreter}
               disabled={travail.annulationDemandee}
-              aria-label="Arreter la production"
-              title={travail.annulationDemandee ? 'Arret demande' : 'Arreter la production'}
+              aria-label={tUi('arreter_la_production')}
+              title={travail.annulationDemandee ? 'Arret demande' : tUi('arreter_la_production')}
               className="ml-auto rounded p-1.5 text-slate-500 hover:text-red-300 transition-colors disabled:opacity-40"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
           <div
-            role="progressbar" aria-label="Progression de la production" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}
+            role="progressbar" aria-label={tUi('progression_de_la_production')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}
             className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-800"
           >
             <div className="h-full rounded-full bg-violet-500 transition-[width] duration-500" style={{ width: `${pct}%` }} />
           </div>
-          <ul className="mt-3 flex flex-wrap gap-2 text-xs" aria-label="Etat des scenes">
+          <ul className="mt-3 flex flex-wrap gap-2 text-xs" aria-label={tUi('etat_des_scenes')}>
             {film.scenes.map((sc) => {
               const etat = travail.progression.scenes[sc.id] ?? 'a_faire';
               const fait = etat === 'faite' || etat === 'reutilisee';
@@ -1721,13 +1725,13 @@ function Production({ film, travail, surArreter }: { film: FilmApi; travail: Tra
                 >
                   {fait ? <Check className="w-3 h-3" /> : etat === 'en_cours' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Circle className="w-3 h-3" />}
                   <span>Scene {sc.index + 1}</span>
-                  <span className="sr-only">{etat === 'reutilisee' ? 'reprise du stockage' : etat === 'faite' ? 'rendue' : etat === 'en_cours' ? 'en cours' : 'en attente'}</span>
+                  <span className="sr-only">{etat === 'reutilisee' ? tUi('reprise_du_stockage') : etat === 'faite' ? 'rendue' : etat === 'en_cours' ? 'en cours' : 'en attente'}</span>
                 </li>
               );
             })}
           </ul>
           <p className="mt-3 text-xs text-slate-500">
-            La production continue sur le serveur : vous pouvez fermer cette page et revenir.
+            {tUi('la_production_continue_sur_le_serveur')}
             <Detail texte="Les scenes terminees sont conservees. Si le serveur redemarre, la production reprend la ou elle s'est arretee, sans refaire les scenes deja rendues." />
           </p>
         </div>
@@ -1737,7 +1741,7 @@ function Production({ film, travail, surArreter }: { film: FilmApi; travail: Tra
         <div className="flex items-start gap-3 rounded-lg border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200" role="alert">
           <AlertTriangle className="w-5 h-5 shrink-0" />
           <span>
-            {travail.erreur ?? 'La production a echoue.'}
+            {travail.erreur ?? tUi('la_production_a_echoue')}
             <Detail texte="Les scenes deja rendues sont conservees : relancer l'export ne refait que ce qui manque." />
           </span>
         </div>
@@ -1745,7 +1749,7 @@ function Production({ film, travail, surArreter }: { film: FilmApi; travail: Tra
 
       {travail.statut === 'annule' && (
         <p className="text-sm text-amber-300">
-          Production arretee. Les scenes deja rendues sont conservees.
+          {tUi('production_arretee_les_scenes_deja_ren')}
         </p>
       )}
 
@@ -1759,7 +1763,7 @@ function Production({ film, travail, surArreter }: { film: FilmApi; travail: Tra
             <>
               <video src={urlMp4} controls className="mt-3 w-full rounded-lg border border-slate-800" style={{ maxHeight: 480 }} />
               <a href={urlMp4} download={`${film.titre || film.id}.mp4`} className="mt-3 inline-flex items-center gap-2 text-sm text-violet-300 hover:text-violet-200">
-                <Download className="w-4 h-4" /> Telecharger le MP4
+                <Download className="w-4 h-4" /> {tUi('telecharger_le_mp4')}
               </a>
             </>
           )}
@@ -1785,6 +1789,7 @@ function SuiviGenerationPlan({ generation, confirmation, prix, surConfirmer, sur
   surConfirmer: () => void;
   surAnnuler: () => void;
 }) {
+  const tUi = useTranslations('ui.appDashboardCinema');
   const [maintenant, setMaintenant] = useState(() => Date.now());
   const enCours = generation?.statut === 'en_cours';
   // Un compteur d'une seconde, et SEULEMENT pendant une generation en cours.
@@ -1796,12 +1801,12 @@ function SuiviGenerationPlan({ generation, confirmation, prix, surConfirmer, sur
 
   if (confirmation) {
     return (
-      <span className="inline-flex items-center gap-2 rounded border border-amber-500/50 bg-amber-500/10 px-2 py-1 text-amber-100" role="group" aria-label="Confirmer la generation payante">
-        {confirmation === 'video' ? 'Animer ce plan en video' : 'Generer cette image'} · {prix}
+      <span className="inline-flex items-center gap-2 rounded border border-amber-500/50 bg-amber-500/10 px-2 py-1 text-amber-100" role="group" aria-label={tUi('confirmer_la_generation_payante')}>
+        {confirmation === 'video' ? tUi('animer_ce_plan_en_video') : tUi('generer_cette_image')} · {prix}
         <button type="button" onClick={surConfirmer} data-cinema-confirmer className="inline-flex items-center gap-1 rounded bg-amber-500/80 px-2 py-0.5 text-slate-950 font-semibold hover:bg-amber-400">
           <Check className="w-3 h-3" /> Confirmer
         </button>
-        <button type="button" onClick={surAnnuler} aria-label="Annuler" className="p-0.5 rounded hover:bg-slate-700"><X className="w-3 h-3" /></button>
+        <button type="button" onClick={surAnnuler} aria-label={tUi('annuler')} className="p-0.5 rounded hover:bg-slate-700"><X className="w-3 h-3" /></button>
       </span>
     );
   }
@@ -1812,7 +1817,7 @@ function SuiviGenerationPlan({ generation, confirmation, prix, surConfirmer, sur
     return (
       <span className="inline-flex items-center gap-1 rounded border border-violet-500/40 bg-violet-500/10 px-2 py-1 text-violet-200" data-cinema-generation-statut="en_cours">
         <Loader2 className="w-3 h-3 animate-spin" /> Generation {operation} en cours · {ecoule} s
-        {operation === 'video' && <span className="text-violet-300/70">(1 a plusieurs minutes — vous pouvez quitter la page)</span>}
+        {operation === 'video' && <span className="text-violet-300/70">{tUi('1_a_plusieurs_minutes_vous_pouvez_quit')}</span>}
       </span>
     );
   }
@@ -1848,6 +1853,7 @@ function SuiviGenerationPlan({ generation, confirmation, prix, surConfirmer, sur
  * production).
  */
 function ApercuVide({ format }: { format: string }) {
+  const tUi = useTranslations('ui.appDashboardCinema');
   const infobulle = 'L’apercu agrandi sera disponible une fois le scenario compose';
   return (
     <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-5">
@@ -1866,8 +1872,8 @@ function ApercuVide({ format }: { format: string }) {
           <span className="flex h-11 w-11 items-center justify-center rounded-full border border-violet-500/30 bg-violet-500/10">
             <Film className="w-5 h-5 text-violet-300" />
           </span>
-          <p className="text-sm font-medium text-slate-200">Votre film apparaitra ici</p>
-          <p className="text-xs text-slate-400">Ecrivez l’histoire, puis composez le scenario.</p>
+          <p className="text-sm font-medium text-slate-200">{tUi('votre_film_apparaitra_ici')}</p>
+          <p className="text-xs text-slate-400">{tUi('ecrivez_l_histoire_puis_composez_le_sc')}</p>
           <p className="text-[11px] text-slate-500">{format} · en attendant, choisissez un style ou un mouvement pour voir un exemple.</p>
         </div>
         {/* Meme position, meme taille que le bouton actif de `Apercu` ; `aria-disabled` +
@@ -1902,6 +1908,7 @@ function CadreMontage({ montage, segment, tempsS, taille, joue, son, children }:
   montage: MontageApi; segment: SegmentApi; tempsS: number;
   taille: 'ligne' | 'immersif'; joue: boolean; son: boolean; children?: React.ReactNode;
 }) {
+  const tUi = useTranslations('ui.appDashboardCinema');
   const portrait = montage.hauteur > montage.largeur;
   const immersif = taille === 'immersif';
   // Fond SOMBRE et neutre : le degrade violet de la « carte de plan » imitait une video. Le
@@ -1946,8 +1953,8 @@ function CadreMontage({ montage, segment, tempsS, taille, joue, son, children }:
       <div className="absolute inset-x-0 bottom-0 h-1/3" style={{ background: 'linear-gradient(180deg, rgba(5,6,10,0) 0%, rgba(5,6,10,0.78) 100%)' }} />
       <div className="absolute top-3 left-3 right-14 flex flex-wrap items-center gap-1.5 text-[10px]">
         <span className="rounded bg-slate-950/70 px-1.5 py-0.5 font-semibold tracking-wider text-slate-200">SCENE {segment.sceneIndex + 1}</span>
-        {segment.demo && <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-amber-200">Démonstration · clip d’exemple</span>}
-        {!segment.media && <span className="rounded bg-slate-800/80 px-1.5 py-0.5 text-slate-300">Prévisualisation</span>}
+        {segment.demo && <span className="rounded bg-amber-500/20 px-1.5 py-0.5 text-amber-200">{tUi('demonstration_clip_d_exemple')}</span>}
+        {!segment.media && <span className="rounded bg-slate-800/80 px-1.5 py-0.5 text-slate-300">{tUi('previsualisation')}</span>}
       </div>
       {/* Legende du plan (ce qui est dit ou montre) : une ligne discrete, pas un bloc central. */}
       <div className="absolute inset-x-0 bottom-0 px-4 pb-3 text-center">
@@ -1971,23 +1978,24 @@ function CommandesMontage({ montage, joue, tempsS, surBasculerLecture, surDeplac
   /** Au moins un plan garde le son de son media : on propose de le couper. */
   aDuSon?: boolean; son?: boolean; surBasculerSon?: () => void;
 }) {
+  const tUi = useTranslations('ui.appDashboardCinema');
   return (
     <div className="mt-4 flex flex-wrap items-center gap-3">
       <button onClick={surBasculerLecture} className="inline-flex items-center gap-2 rounded-lg border border-slate-700 px-3 py-2 text-sm hover:border-violet-500/50">
         {joue ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-        {joue ? 'Pause' : 'Lire le montage'}
+        {joue ? 'Pause' : tUi('lire_le_montage')}
       </button>
       <input
         type="range" min={0} max={montage.dureeS} step={0.1} value={tempsS}
         onChange={(e) => surDeplacer(Number(e.target.value))}
-        aria-label="Position dans le montage"
+        aria-label={tUi('position_dans_le_montage')}
         className="flex-1 min-w-[120px] accent-violet-500"
       />
       <span className="text-[11px] tabular-nums text-slate-400">{tempsS.toFixed(1)} / {montage.dureeS.toFixed(1)} s</span>
       {aDuSon && surBasculerSon && (
         <button
           type="button" onClick={surBasculerSon} aria-pressed={!son}
-          aria-label={son ? 'Couper le son' : 'Activer le son'} title={son ? 'Couper le son' : 'Activer le son'}
+          aria-label={son ? tUi('couper_le_son') : tUi('activer_le_son')} title={son ? tUi('couper_le_son') : tUi('activer_le_son')}
           className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-700 text-slate-300 hover:border-violet-500/50"
         >
           {son ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
@@ -2004,6 +2012,7 @@ function CommandesMontage({ montage, joue, tempsS, surBasculerLecture, surDeplac
 }
 
 function Apercu({ montage, surPreparerVoix, voixEnCours }: { montage: MontageApi; surPreparerVoix: () => void; voixEnCours: boolean }) {
+  const tUi = useTranslations('ui.appDashboardCinema');
   const [tempsS, setTempsS] = useState(0);
   const [joue, setJoue] = useState(false);
   /** Aperçu agrandi. Un simple affichage : la lecture et le temps ne bougent pas. */
@@ -2088,12 +2097,12 @@ function Apercu({ montage, surPreparerVoix, voixEnCours }: { montage: MontageApi
   return (
     <section className="mb-8 rounded-xl border border-slate-800 bg-slate-900/40 p-5">
       <h2 className="font-semibold mb-1 flex items-center gap-2">
-        <Play className="w-4 h-4 text-violet-400" /> {bilan.aucun && !demo ? 'Prévisualisation du scénario' : 'Apercu permanent'}
+        <Play className="w-4 h-4 text-violet-400" /> {bilan.aucun && !demo ? tUi('previsualisation_du_scenario') : 'Apercu permanent'}
         <Detail texte="Meme chronologie que le MP4 : les debuts et durees viennent du montage renvoye par l'API. Un plan sans media est un emplacement de storyboard, pas une video." />
       </h2>
       <p className="mb-3 text-xs text-slate-400" data-apercu="bilan">
         {bilan.aucun
-          ? 'Aucune image ni vidéo pour l’instant : c’est le scénario en storyboard, pas un film.'
+          ? tUi('aucune_image_ni_video_pour_l_instant_c')
           : bilan.manquants > 0
             ? `${bilan.avecMedia} plan${bilan.avecMedia > 1 ? 's' : ''} sur ${bilan.total} avec média · ${bilan.manquants} manquant${bilan.manquants > 1 ? 's' : ''}.`
             : `${bilan.total} plans avec média : vous voyez les vrais fichiers.`}
@@ -2133,7 +2142,7 @@ function Apercu({ montage, surPreparerVoix, voixEnCours }: { montage: MontageApi
             className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${demo ? 'border-amber-500/50 bg-amber-500/10 text-amber-200' : 'border-slate-700 text-slate-300 hover:border-violet-500/50'}`}
           >
             <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
-            {demo ? 'Quitter la démonstration' : 'Mode démonstration (gratuit)'}
+            {demo ? tUi('quitter_la_demonstration') : tUi('mode_demonstration_gratuit')}
           </button>
           <Detail texte="Remplace, a l'ecran seulement, les medias manquants par des clips d'exemple locaux pour montrer le rendu d'un vrai montage. Rien n'est enregistre, rien n'est genere, aucun cout : ce ne sont pas des videos de votre film." />
         </div>
@@ -2155,7 +2164,7 @@ function Apercu({ montage, surPreparerVoix, voixEnCours }: { montage: MontageApi
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="Apercu agrandi du montage"
+          aria-label={tUi('apercu_agrandi_du_montage')}
           className="fixed inset-0 flex flex-col items-center justify-center gap-2 bg-slate-950/95 p-3 sm:p-6"
           style={{ zIndex: 60 }}
           onClick={(e) => { if (e.target === e.currentTarget) fermerPlein(); }}
@@ -2184,7 +2193,7 @@ function Apercu({ montage, surPreparerVoix, voixEnCours }: { montage: MontageApi
               surDeplacer={setTempsS}
               aDuSon={aDuSon} son={son} surBasculerSon={() => setSon((v) => !v)}
             />
-            <p className="mt-2 text-center text-[11px] text-slate-500">Echap pour revenir</p>
+            <p className="mt-2 text-center text-[11px] text-slate-500">{tUi('echap_pour_revenir')}</p>
           </div>
         </div>,
         document.body,

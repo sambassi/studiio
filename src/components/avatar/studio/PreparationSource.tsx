@@ -16,6 +16,7 @@ import {
   LISSAGE_PAR_DEFAUT, libelleLissage,
   type InfosVideo, type ParametresAmelioration, type ParametresTraitement, type RatioCadre, type ResultatPreflight, type Rotation,
 } from '@/lib/avatar/preparation-source-regles';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * PRÉPARER MA VIDÉO SOURCE — avant tout fournisseur.
@@ -56,6 +57,7 @@ export default function PreparationSource(props: {
   onAnnuler: () => void;
   onPret: (r: { cleOriginal: string; cleTraitee: string; infos: InfosVideo; parametres?: ParametresTraitement }) => void;
 }) {
+  const tUi = useTranslations('ui.componentsAvatarStudioPreparationSource');
   const { fichier } = props;
   const [etape, setEtape] = useState<Etape>('envoi');
   const [progression, setProgression] = useState<ProgressionEnvoi | null>(null);
@@ -259,7 +261,7 @@ export default function PreparationSource(props: {
       setErreur(j?.error ?? 'La préparation a échoué. Réessayez.');
       setEtape('edition');
     } catch {
-      setErreur('Connexion impossible. Réessayez.');
+      setErreur(tUi('connexion_impossible_reessayez'));
       setEtape('edition');
     }
   };
@@ -315,8 +317,8 @@ export default function PreparationSource(props: {
   return (
     <div data-preparation-source={etape} className="card-base space-y-4 p-4 sm:p-5 max-w-full overflow-hidden">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-base font-semibold text-white">Préparer ma vidéo</h3>
-        <button type="button" data-preparation-annuler onClick={props.onAnnuler} aria-label="Annuler la préparation" className="rounded-full p-1.5 text-gray-400 hover:text-white">
+        <h3 className="text-base font-semibold text-white">{tUi('preparer_ma_video')}</h3>
+        <button type="button" data-preparation-annuler onClick={props.onAnnuler} aria-label={tUi('annuler_la_preparation')} className="rounded-full p-1.5 text-gray-400 hover:text-white">
           <X className="w-4 h-4" />
         </button>
       </div>
@@ -331,17 +333,17 @@ export default function PreparationSource(props: {
             detail={progression ? detailEnvoi(progression) : 'Démarrage…'}
             note={progression && progression.pourcentage >= 100 ? 'Envoi terminé — contrôle de la vidéo par Studiio…' : null}
           />
-          <p data-preparation-progression className="sr-only">{progression ? `${progression.pourcentage} % — ${detailEnvoi(progression)}` : 'Démarrage…'}</p>
+          <p data-preparation-progression className="sr-only">{progression ? `${progression.pourcentage} % — ${detailEnvoi(progression)}` : tUi('demarrage')}</p>
         </div>
       )}
 
       {etape === 'refus' && (
         <div data-preparation-refus className="space-y-3">
           <div className="rounded-xl bg-red-500/10 p-3 space-y-1.5">
-            <p className="text-sm font-medium text-red-200 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Cette vidéo ne peut pas servir de source</p>
+            <p className="text-sm font-medium text-red-200 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> {tUi('cette_video_ne_peut_pas_servir_de_sour')}</p>
             <ul className="text-xs text-red-200/90 space-y-1 list-disc pl-5">{motifs.map((m) => <li key={m}>{m}</li>)}</ul>
           </div>
-          <button type="button" onClick={props.onAnnuler} className="button-primary w-full py-2.5 text-sm">Choisir une autre vidéo</button>
+          <button type="button" onClick={props.onAnnuler} className="button-primary w-full py-2.5 text-sm">{tUi('choisir_une_autre_video')}</button>
         </div>
       )}
 
@@ -349,8 +351,8 @@ export default function PreparationSource(props: {
         <div data-preparation-erreur className="space-y-3">
           <p className="rounded-xl bg-red-500/10 p-3 text-sm text-red-200">{erreur}</p>
           <div className="grid grid-cols-2 gap-3">
-            <button type="button" onClick={props.onAnnuler} className="rounded-xl bg-gray-800 py-2.5 text-sm">Annuler</button>
-            <button type="button" onClick={() => setEssai((n) => n + 1)} className="button-primary py-2.5 text-sm">Réessayer</button>
+            <button type="button" onClick={props.onAnnuler} className="rounded-xl bg-gray-800 py-2.5 text-sm">{tUi('annuler')}</button>
+            <button type="button" onClick={() => setEssai((n) => n + 1)} className="button-primary py-2.5 text-sm">{tUi('reessayer')}</button>
           </div>
         </div>
       )}
@@ -404,14 +406,14 @@ export default function PreparationSource(props: {
                   style={{ left: '50%', backdropFilter: filtreApres, WebkitBackdropFilter: filtreApres }}
                 />
                 <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-xs text-white">Avant</span>
-                <span className="pointer-events-none absolute right-2 top-2 rounded-full bg-purple-600/80 px-2 py-0.5 text-xs text-white">Après</span>
+                <span className="pointer-events-none absolute right-2 top-2 rounded-full bg-purple-600/80 px-2 py-0.5 text-xs text-white">{tUi('apres')}</span>
               </>
             )}
             {/* Le cadre : tout ce qui est hors du cadre est assombri. */}
             <div
               data-preparation-cadre
               role={section === 'recadrer' ? 'group' : undefined}
-              aria-label={section === 'recadrer' ? 'Cadre — faites-le glisser, ou utilisez les flèches du clavier' : undefined}
+              aria-label={section === 'recadrer' ? tUi('cadre_faites_le_glisser_ou_utilisez_le') : undefined}
               tabIndex={section === 'recadrer' ? 0 : -1}
               onPointerDown={debutGlisse}
               onPointerMove={pendantGlisse}
@@ -429,7 +431,7 @@ export default function PreparationSource(props: {
           </div>
 
           {/* Les trois sections */}
-          <div role="tablist" aria-label="Réglages" className="grid grid-cols-3 gap-1 rounded-xl bg-gray-900/70 p-1">
+          <div role="tablist" aria-label={tUi('reglages')} className="grid grid-cols-3 gap-1 rounded-xl bg-gray-900/70 p-1">
             {([['recadrer', 'Recadrer', Crop], ['couper', 'Couper', Scissors], ['ameliorer', 'Améliorer', Sparkles]] as const).map(([cle, libelle, Icone]) => (
               <button
                 key={cle}
@@ -469,11 +471,11 @@ export default function PreparationSource(props: {
                 />
               </label>
               <div className="grid grid-cols-3 gap-2">
-                <button type="button" data-preparation-pivoter="gauche" onClick={() => pivoter(-1)} aria-label="Pivoter de 90° vers la gauche" className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gray-800 py-2 text-xs"><RotateCcw className="w-4 h-4" /> 90°</button>
-                <button type="button" data-preparation-pivoter="droite" onClick={() => pivoter(1)} aria-label="Pivoter de 90° vers la droite" className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gray-800 py-2 text-xs"><RotateCw className="w-4 h-4" /> 90°</button>
+                <button type="button" data-preparation-pivoter="gauche" onClick={() => pivoter(-1)} aria-label={tUi('pivoter_de_90_vers_la_gauche')} className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gray-800 py-2 text-xs"><RotateCcw className="w-4 h-4" /> 90°</button>
+                <button type="button" data-preparation-pivoter="droite" onClick={() => pivoter(1)} aria-label={tUi('pivoter_de_90_vers_la_droite')} className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gray-800 py-2 text-xs"><RotateCw className="w-4 h-4" /> 90°</button>
                 <button type="button" data-preparation-centrer onClick={centrer} className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gray-800 py-2 text-xs"><Crosshair className="w-4 h-4" /> Centrer</button>
               </div>
-              <p className="text-xs text-gray-500">Gardez tout le visage dans l’ovale, épaules comprises. Le cadre ne descend jamais sous 640 px.</p>
+              <p className="text-xs text-gray-500">{tUi('gardez_tout_le_visage_dans_l_ovale_epa')}</p>
             </div>
           )}
 
@@ -496,7 +498,7 @@ export default function PreparationSource(props: {
                       role="slider"
                       tabIndex={0}
                       data-preparation-poignee={q}
-                      aria-label={q === 'debut' ? 'Début de la coupe' : 'Fin de la coupe'}
+                      aria-label={q === 'debut' ? tUi('debut_de_la_coupe') : tUi('fin_de_la_coupe')}
                       aria-valuemin={0}
                       aria-valuemax={Math.round(dureeTotale)}
                       aria-valuenow={Math.round(valeur * 10) / 10}
@@ -520,7 +522,7 @@ export default function PreparationSource(props: {
                 </p>
               )}
               <button type="button" data-preparation-lire onClick={lireSelection} className="inline-flex items-center gap-1.5 rounded-xl bg-gray-800 px-4 py-2 text-sm">
-                {lecture ? <><Pause className="w-4 h-4" /> Pause</> : <><Play className="w-4 h-4" /> Lire la sélection</>}
+                {lecture ? <><Pause className="w-4 h-4" /> Pause</> : <><Play className="w-4 h-4" /> {tUi('lire_la_selection')}</>}
               </button>
             </div>
           )}
@@ -528,26 +530,26 @@ export default function PreparationSource(props: {
           {section === 'ameliorer' && (
             <div role="tabpanel" className="space-y-3">
               <label className="flex items-center justify-between gap-3 rounded-xl bg-gray-900/60 px-4 py-3 text-sm cursor-pointer">
-                <span className="flex items-center gap-2"><Sparkles className="w-4 h-4 text-purple-300" /> Amélioration automatique</span>
+                <span className="flex items-center gap-2"><Sparkles className="w-4 h-4 text-purple-300" /> {tUi('amelioration_automatique')}</span>
                 <input data-preparation-auto type="checkbox" role="switch" checked={amelioration.active} onChange={(e) => basculerAuto(e.target.checked)} className="accent-purple-500 w-4 h-4" />
               </label>
               <label className="flex items-center justify-between gap-3 rounded-xl bg-gray-900/60 px-4 py-3 text-sm cursor-pointer">
-                <span className="flex items-center gap-2"><Columns2 className="w-4 h-4 text-purple-300" /> Comparer avec l’original</span>
+                <span className="flex items-center gap-2"><Columns2 className="w-4 h-4 text-purple-300" /> {tUi('comparer_avec_l_original')}</span>
                 <input data-preparation-comparer type="checkbox" role="switch" checked={comparer} onChange={(e) => setComparer(e.target.checked)} className="accent-purple-500 w-4 h-4" />
               </label>
               {amelioration.active && (
                 <p data-preparation-reglages-auto className="text-xs text-gray-400">
-                  Lumière {amelioration.luminosite >= 0 ? '+' : ''}{Math.round(amelioration.luminosite * 100)} · Contraste {Math.round((amelioration.contraste - 1) * 100)} % · Netteté {amelioration.nettete > 0 ? 'légère' : 'inchangée'}{amelioration.debruitage ? ' · Grain réduit' : ''}
+                  Lumière {amelioration.luminosite >= 0 ? '+' : ''}{Math.round(amelioration.luminosite * 100)} · Contraste {Math.round((amelioration.contraste - 1) * 100)} % · Netteté {amelioration.nettete > 0 ? tUi('legere') : tUi('inchangee')}{amelioration.debruitage ? ' · Grain réduit' : ''}
                 </p>
               )}
-              <p className="text-xs text-gray-500">Corrections naturelles : lumière, contraste, netteté.</p>
+              <p className="text-xs text-gray-500">{tUi('corrections_naturelles_lumiere_contras')}</p>
 
               {/* EMBELLIR LE VISAGE — lissage de la peau seulement (filtre bilatéral : les
                   contours restent nets). Aucune déformation : forme du visage, nez, mâchoire,
                   yeux, bouche et proportions ne bougent pas. L'original reste conservé. */}
               <div data-preparation-embellir className="rounded-xl bg-gray-900/60 px-4 py-3 space-y-2">
                 <CurseurLissage valeur={amelioration.lissage ?? 0} onChange={lisser} onReinitialiser={reinitialiserRetouches} />
-                <p className="text-xs text-gray-500">L’effet est appliqué au rendu réel : « Prévisualiser » le montre, et vous pourrez comparer avec l’original.</p>
+                <p className="text-xs text-gray-500">{tUi('l_effet_est_applique_au_rendu_reel_pre')}</p>
               </div>
             </div>
           )}
@@ -560,7 +562,7 @@ export default function PreparationSource(props: {
           )}
 
           <div className="grid grid-cols-2 gap-3">
-            <button type="button" onClick={props.onAnnuler} className="rounded-xl bg-gray-800 py-3 text-sm">Annuler</button>
+            <button type="button" onClick={props.onAnnuler} className="rounded-xl bg-gray-800 py-3 text-sm">{tUi('annuler')}</button>
             <button
               type="button"
               data-preparation-previsualiser
@@ -568,7 +570,7 @@ export default function PreparationSource(props: {
               disabled={etape === 'traitement' || coupeInvalide}
               className="button-primary inline-flex items-center justify-center gap-1.5 py-3 text-sm disabled:opacity-40"
             >
-              {etape === 'traitement' ? <><Loader2 className="w-4 h-4 animate-spin" /> Préparation…</> : 'Prévisualiser'}
+              {etape === 'traitement' ? <><Loader2 className="w-4 h-4 animate-spin" /> {tUi('preparation')}</> : tUi('previsualiser')}
             </button>
           </div>
           {etape === 'traitement' && (
@@ -577,7 +579,7 @@ export default function PreparationSource(props: {
               <ProgressStatus
                 titre="Préparation de votre vidéo"
                 statut="en_cours"
-                description="Coupe, recadrage, retouches puis encodage de la version qui partira."
+                description={tUi('coupe_recadrage_retouches_puis_encodag')}
                 detail="Traitement en cours — progression exacte indisponible."
                 note="Cela peut prendre une minute. Votre original reste intact."
                 compact={false}
@@ -604,10 +606,10 @@ export default function PreparationSource(props: {
               />
             </div>
             <dl className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-              <div className="rounded-xl bg-gray-900/60 p-2.5"><dt className="text-gray-500">Durée</dt><dd data-preparation-duree className="text-white">{formaterDuree(resultat.infos.dureeS)}</dd></div>
-              <div className="rounded-xl bg-gray-900/60 p-2.5"><dt className="text-gray-500">Résolution</dt><dd data-preparation-resolution className="text-white">{l} × {h}</dd></div>
+              <div className="rounded-xl bg-gray-900/60 p-2.5"><dt className="text-gray-500">{tUi('duree')}</dt><dd data-preparation-duree className="text-white">{formaterDuree(resultat.infos.dureeS)}</dd></div>
+              <div className="rounded-xl bg-gray-900/60 p-2.5"><dt className="text-gray-500">{tUi('resolution')}</dt><dd data-preparation-resolution className="text-white">{l} × {h}</dd></div>
               <div className="rounded-xl bg-gray-900/60 p-2.5"><dt className="text-gray-500">Cadrage</dt><dd className="text-white">{libelleCadrage(l, h)}</dd></div>
-              <div className="rounded-xl bg-gray-900/60 p-2.5"><dt className="text-gray-500">Qualité</dt><dd><span data-preparation-qualite={niveauQualite(resultat.preflight)} className={`inline-block rounded-full px-2 py-0.5 ${qualite.classe}`}>{qualite.texte}</span></dd></div>
+              <div className="rounded-xl bg-gray-900/60 p-2.5"><dt className="text-gray-500">{tUi('qualite')}</dt><dd><span data-preparation-qualite={niveauQualite(resultat.preflight)} className={`inline-block rounded-full px-2 py-0.5 ${qualite.classe}`}>{qualite.texte}</span></dd></div>
             </dl>
             {resultat.preflight.avertissements.length > 0 && (
               <ul className="rounded-xl bg-amber-500/10 p-3 text-xs text-amber-200 space-y-1">
@@ -617,12 +619,12 @@ export default function PreparationSource(props: {
             {/* Avant / Après : le fichier préparé (ce qui partira) ou l'original, tous deux RÉELS. */}
             <div role="radiogroup" aria-label="Comparer" className="grid grid-cols-2 gap-1 rounded-xl bg-gray-900/70 p-1" data-preparation-avant-apres>
               <button type="button" role="radio" aria-checked={voirOriginal} data-preparation-voir="original" onClick={() => setVoirOriginal(true)} className={`rounded-lg py-1.5 text-xs ${voirOriginal ? 'bg-studiio-primary text-white' : 'text-gray-300'}`}>Avant — voir l’original</button>
-              <button type="button" role="radio" aria-checked={!voirOriginal} data-preparation-voir="preparee" onClick={() => setVoirOriginal(false)} className={`rounded-lg py-1.5 text-xs ${!voirOriginal ? 'bg-studiio-primary text-white' : 'text-gray-300'}`}>Après — version préparée</button>
+              <button type="button" role="radio" aria-checked={!voirOriginal} data-preparation-voir="preparee" onClick={() => setVoirOriginal(false)} className={`rounded-lg py-1.5 text-xs ${!voirOriginal ? 'bg-studiio-primary text-white' : 'text-gray-300'}`}>{tUi('apres_version_preparee')}</button>
             </div>
             <p className="text-xs text-gray-500" data-preparation-embellissement-applique>Lissage : {libelleLissage(resultat.parametres?.amelioration?.lissage ?? amelioration.lissage ?? 0)}. Votre vidéo d’origine est conservée telle quelle.</p>
             <div className="grid grid-cols-2 gap-3">
-              <button type="button" data-preparation-modifier onClick={() => setEtape('edition')} className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gray-800 py-3 text-sm"><ArrowLeft className="w-4 h-4" /> Modifier</button>
-              <button type="button" data-preparation-utiliser onClick={utiliser} disabled={!resultat.preflight.ok} className="button-primary inline-flex items-center justify-center gap-1.5 py-3 text-sm disabled:opacity-40"><Check className="w-4 h-4" /> Utiliser cette vidéo</button>
+              <button type="button" data-preparation-modifier onClick={() => setEtape('edition')} className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-gray-800 py-3 text-sm"><ArrowLeft className="w-4 h-4" /> {tUi('modifier')}</button>
+              <button type="button" data-preparation-utiliser onClick={utiliser} disabled={!resultat.preflight.ok} className="button-primary inline-flex items-center justify-center gap-1.5 py-3 text-sm disabled:opacity-40"><Check className="w-4 h-4" /> {tUi('utiliser_cette_video')}</button>
             </div>
           </div>
         );

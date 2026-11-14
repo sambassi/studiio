@@ -9,6 +9,7 @@ import MaVoixClonee from '@/components/creer/MaVoixClonee';
 import AudioDuckingTimeline from '@/components/creer/AudioDuckingTimeline';
 import AudioMixPreview from '@/components/creer/AudioMixPreview';
 import { analyseRushForDucking, detectVoiceSpeech, applyVoiceDucking, type AudioKeyframe } from '@/lib/creer/audioDucking';
+import { useTranslations } from '@/i18n/client';
 
 const VOICE_STORAGE_KEY = 'tts.voiceId';
 const DEFAULT_VOICE_ID = 'fr-FR-DeniseNeural';
@@ -34,6 +35,7 @@ function formatTime(s: number): string {
 }
 
 function MiniPlayer({ src, onDelete, volume = 1 }: { src: string; onDelete: () => void; volume?: number }) {
+  const tUi = useTranslations('ui.componentsCreerAudioStudioPanel');
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -88,7 +90,7 @@ function MiniPlayer({ src, onDelete, volume = 1 }: { src: string; onDelete: () =
         </div>
         <span className="text-[9px] text-gray-500 w-8 font-mono">{formatTime(duration)}</span>
       </div>
-      <button onClick={onDelete} className="text-gray-500 hover:text-red-400 p-0.5" title="Supprimer">
+      <button onClick={onDelete} className="text-gray-500 hover:text-red-400 p-0.5" title={tUi('supprimer')}>
         <Trash2 size={12} />
       </button>
     </div>
@@ -181,6 +183,7 @@ export function AudioStudioPanel({
   clonedVoiceCard = false,
   onError,
 }: AudioStudioPanelProps) {
+  const tUi = useTranslations('ui.componentsCreerAudioStudioPanel');
   const [ttsText, setTtsText] = useState('');
   const [localVoiceId, setLocalVoiceId] = useState<string>(loadInitialVoiceId);
   // Controle : la valeur du parent prime des qu'elle existe. L'etat local
@@ -401,7 +404,7 @@ export function AudioStudioPanel({
       const raw = await analyseRushForDucking(rushUrl!);
       const inWindow = raw.filter((k) => k.time < videoSeqDuration);
       if (inWindow.length === 0 && !duckVoice) {
-        setMixError('Aucune variation detectee dans le rush — niveaux inchanges');
+        setMixError(tUi('aucune_variation_detectee_dans_le_rush'));
         return;
       }
       if (inWindow.length > 0) {
@@ -444,7 +447,7 @@ export function AudioStudioPanel({
       if (duckVoice) {
         const segments = await detectVoiceSpeech(voiceUrl!);
         if (segments.length === 0) {
-          setMixError('Aucune parole detectee dans la voix off — niveaux inchanges');
+          setMixError(tUi('aucune_parole_detectee_dans_la_voix_of'));
           if (!hasRushWindow) return;
         } else {
           curve = applyVoiceDucking(curve, segments, { totalDuration });
@@ -458,7 +461,7 @@ export function AudioStudioPanel({
       setAutoMixSignature(layoutSignature);
     } catch (err) {
       console.error('[AudioPanel] auto-mix failed:', err);
-      setMixError('Analyse audio impossible — regle les niveaux a la main');
+      setMixError(tUi('analyse_audio_impossible_regle_les_niv'));
     } finally {
       setAutoDuckRunning(false);
     }
@@ -559,7 +562,7 @@ export function AudioStudioPanel({
       const blob = await synthesize(ttsText, selectedVoiceId);
 
       if (!blob || blob.size < 50) {
-        setTtsError('Synthèse vocale indisponible — réessaie ou choisis une autre voix');
+        setTtsError(tUi('synthese_vocale_indisponible_reessaie'));
         return;
       }
 
@@ -630,7 +633,7 @@ export function AudioStudioPanel({
       {/* ── Music ── */}
       <div>
         <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2 flex items-center gap-1.5">
-          <Music size={12} className="text-cyan-400" /> Musique
+          <Music size={12} className="text-cyan-400" /> {tUi('musique')}
         </div>
         {isUploadingMusic ? (
           <div className="flex items-center gap-2 rounded-lg bg-gray-800 px-3 py-3">
@@ -641,7 +644,7 @@ export function AudioStudioPanel({
           <div className="space-y-2">
             <div className="flex items-center gap-2 rounded-lg bg-gray-800 px-3 py-2">
               <Music size={14} className="text-gray-400 flex-shrink-0" />
-              <span className="text-xs text-white flex-1 truncate">{musicName || 'Musique'}</span>
+              <span className="text-xs text-white flex-1 truncate">{musicName || tUi('musique')}</span>
               <button onClick={() => setMusicMuted(!musicMuted)} className="text-gray-400 hover:text-white p-1" title={musicMuted ? 'Activer' : 'Couper'}>
                 {musicMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
               </button>
@@ -668,7 +671,7 @@ export function AudioStudioPanel({
             </label>
             <button onClick={() => { setMediaLibTarget('music'); setMediaLibOpen(true); }}
               className="flex items-center justify-center gap-1.5 rounded-lg border border-gray-600 px-2 py-3 text-xs text-gray-400 hover:border-gray-500 hover:text-white transition">
-              <Music size={12} /> Médiathèque
+              <Music size={12} /> {tUi('mediatheque')}
             </button>
           </div>
         )}
@@ -677,7 +680,7 @@ export function AudioStudioPanel({
       {/* ── Voice ── */}
       <div>
         <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2 flex items-center gap-1.5">
-          <Mic size={12} className="text-pink-400" /> Voix off
+          <Mic size={12} className="text-pink-400" /> {tUi('voix_off')}
         </div>
         {isUploadingVoice ? (
           <div className="flex items-center gap-2 rounded-lg bg-gray-800 px-3 py-3">
@@ -688,7 +691,7 @@ export function AudioStudioPanel({
           <div className="space-y-2">
             <div className="flex items-center gap-2 rounded-lg bg-gray-800 px-3 py-2">
               <Mic size={14} className="text-gray-400 flex-shrink-0" />
-              <span className="text-xs text-white flex-1 truncate">{voiceName || 'Voix off'}</span>
+              <span className="text-xs text-white flex-1 truncate">{voiceName || tUi('voix_off')}</span>
               <button onClick={() => setVoiceMuted(!voiceMuted)} className="text-gray-400 hover:text-white p-1" title={voiceMuted ? 'Activer' : 'Couper'}>
                 {voiceMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
               </button>
@@ -732,7 +735,7 @@ export function AudioStudioPanel({
             </label>
             <button onClick={() => { setMediaLibTarget('voice'); setMediaLibOpen(true); }}
               className="flex items-center justify-center gap-1.5 rounded-lg border border-gray-600 px-2 py-3 text-xs text-gray-400 hover:border-pink-500 hover:text-white transition">
-              <Mic size={12} /> Médiathèque
+              <Mic size={12} /> {tUi('mediatheque')}
             </button>
             <button
               onClick={isRecording ? stopRecording : startRecording}
@@ -742,7 +745,7 @@ export function AudioStudioPanel({
                   : 'border border-gray-600 text-gray-400 hover:border-red-500 hover:text-white'
               }`}
             >
-              {isRecording ? <><Square size={12} /> {formatTime(recordingTime)}</> : <><Mic size={12} /> Enregistrer</>}
+              {isRecording ? <><Square size={12} /> {formatTime(recordingTime)}</> : <><Mic size={12} /> {tUi('enregistrer')}</>}
             </button>
           </div>
         )}
@@ -764,12 +767,12 @@ export function AudioStudioPanel({
                 : 'border border-gray-700 text-gray-500 cursor-not-allowed'
             }`}
             title={hasAnyAudio
-              ? 'Régler musique, voix off et son de la vidéo au même endroit'
-              : 'Ajoute une musique, une voix off ou un rush pour mixer'}
+              ? tUi('regler_musique_voix_off_et_son_de_la_v')
+              : tUi('ajoute_une_musique_une_voix_off_ou_un')}
           >
             <SlidersHorizontal size={14} className={hasAnyAudio ? 'text-purple-300' : ''} />
             <span className="flex-1 text-left">Mixer</span>
-            <span className="text-[9px] font-normal text-gray-400">musique · voix · vidéo</span>
+            <span className="text-[9px] font-normal text-gray-400">{tUi('musique_voix_video')}</span>
             {mixerOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
           </button>
 
@@ -852,18 +855,18 @@ export function AudioStudioPanel({
       {/* ── TTS ── */}
       <div>
         <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2 flex items-center justify-between">
-          <span>Synthèse vocale (TTS)</span>
+          <span>{tUi('synthese_vocale_tts')}</span>
           <button
             onClick={suggestTtsText}
             disabled={ttsSuggestLoading}
             className="flex items-center gap-1 text-purple-400 hover:text-purple-300 disabled:opacity-50 transition"
-            title="Suggérer un texte avec IA"
+            title={tUi('suggerer_un_texte_avec_ia')}
           >
             {ttsSuggestLoading ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
             <span className="text-[9px]">IA</span>
           </button>
         </div>
-        <textarea value={ttsText} onChange={(e) => { setTtsText(e.target.value); setTtsError(''); setTtsStage('idle'); setTtsProgress(0); }} placeholder="Tapez votre texte ici..."
+        <textarea value={ttsText} onChange={(e) => { setTtsText(e.target.value); setTtsError(''); setTtsStage('idle'); setTtsProgress(0); }} placeholder={tUi('tapez_votre_texte_ici')}
           className="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-xs text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none resize-none" rows={3} />
         <div className="flex flex-wrap items-center gap-2 mt-2">
           <select value={selectedVoiceId} onChange={(e) => setSelectedVoiceId(e.target.value)}
@@ -897,9 +900,9 @@ export function AudioStudioPanel({
                 {ttsStage === 'done'
                   ? <Sparkles size={10} className="text-emerald-400" />
                   : <Loader2 size={10} className="animate-spin text-purple-400" />}
-                {ttsStage === 'synth' && 'Synthèse de la voix…'}
-                {ttsStage === 'upload' && 'Envoi du fichier audio…'}
-                {ttsStage === 'done' && 'Voix off prête'}
+                {ttsStage === 'synth' && tUi('synthese_de_la_voix')}
+                {ttsStage === 'upload' && tUi('envoi_du_fichier_audio')}
+                {ttsStage === 'done' && tUi('voix_off_prete')}
               </span>
               <span className="font-mono tabular-nums text-gray-400">{Math.round(ttsProgress)}%</span>
             </div>
@@ -922,7 +925,7 @@ export function AudioStudioPanel({
                 disabled={ttsLoading || !ttsText.trim()}
                 className="mt-1 text-[10px] font-medium text-red-200 underline underline-offset-2 hover:text-white disabled:opacity-50"
               >
-                Réessayer
+                {tUi('reessayer')}
               </button>
             </div>
           </div>
@@ -931,12 +934,12 @@ export function AudioStudioPanel({
 
       {/* ── Sequence Durations ── */}
       <div className="border-t border-gray-700 pt-3">
-        <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Durées des séquences</div>
+        <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">{tUi('durees_des_sequences')}</div>
         <div className={`grid gap-2 ${hasRush ? 'grid-cols-4' : 'grid-cols-3'}`}>
           <div>
             <label className="flex items-center gap-1 text-[9px] text-gray-500 mb-1">
               <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-amber-500/[0.12]"><ImageIcon size={10} className="text-amber-500" fill="currentColor" /></span>
-              Titre
+              {tUi('titre')}
             </label>
             <input type="number" min={1} max={30} step={0.1} value={introDuration} onChange={(e) => onIntroDurationChange(Number(e.target.value))}
               className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-white" />
@@ -953,7 +956,7 @@ export function AudioStudioPanel({
             <div>
               <label className="flex items-center gap-1 text-[9px] text-gray-500 mb-1">
                 <span className="inline-flex h-4 w-4 items-center justify-center rounded bg-emerald-500/[0.12]"><Film size={10} className="text-emerald-500" fill="currentColor" /></span>
-                Vidéo
+                {tUi('video')}
               </label>
               <input type="number" min={1} max={30} step={0.1} value={videoDuration} onChange={(e) => onVideoDurationChange(Number(e.target.value))}
                 className="w-full rounded bg-gray-800 border border-gray-700 px-2 py-1 text-xs text-white" />

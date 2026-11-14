@@ -3,6 +3,7 @@
 import { useEffect, useRef, type CSSProperties } from 'react';
 import { Film } from 'lucide-react';
 import { useVignetteVideo } from '@/lib/hooks/useVignetteVideo';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * MINIATURE D'UNE VIDÉO — l'image extraite une fois (`vignette-video.ts`),
@@ -26,6 +27,7 @@ export default function MiniatureVideo({
   onInfos?: (infos: { ratio: number; duree: number | null }) => void;
   attrs?: Record<string, string>;
 }) {
+  const tUi = useTranslations('ui.componentsMediasMiniatureVideo');
   const e = useVignetteVideo(url);
   const vignette = e.etat === 'pret' ? e.vignette : null;
   // Le rappel du parent change à chaque rendu : on ne relance que sur la vignette.
@@ -52,12 +54,12 @@ export default function MiniatureVideo({
       className={`${base} flex flex-col items-center justify-center text-gray-500`}
       style={{ gap: 4, ...pos }}
       data-miniature-video={echec ? 'echec' : 'chargement'}
-      title={echec ? 'Aperçu indisponible' : undefined}
+      title={echec ? tUi('apercu_indisponible') : undefined}
       {...attrs}
     >
       <Film className={compact ? 'w-3.5 h-3.5' : 'w-5 h-5'} style={echec ? undefined : { opacity: 0.6 }} />
       {echec && !compact && (
-        <span className="text-[10px] leading-tight text-gray-500" data-miniature-video-indisponible>Aperçu indisponible</span>
+        <span className="text-[10px] leading-tight text-gray-500" data-miniature-video-indisponible>{tUi('apercu_indisponible')}</span>
       )}
     </span>
   );

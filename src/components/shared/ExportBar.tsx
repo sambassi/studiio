@@ -2,6 +2,7 @@
 
 import { Calendar, Download, Loader2 } from 'lucide-react';
 import { ETAT_INTERACTIF_SANS_FOND } from '@/lib/ui/etats';
+import { useTranslations } from '@/i18n/client';
 
 interface ExportBarProps {
   onSchedule: () => void;
@@ -20,6 +21,7 @@ export function ExportBar({
   progress,
   creditCost,
 }: ExportBarProps) {
+  const tUi = useTranslations('ui.componentsSharedExportBar');
   return (
     <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-gray-800 bg-gray-900/95 backdrop-blur-sm lg:left-64">
       {isProcessing && progress !== undefined && (
@@ -39,7 +41,7 @@ export function ExportBar({
             </span>
           ) : creditCost ? (
             <span>
-              Coût : <span className="font-bold text-yellow-400">{creditCost} crédits</span>
+              {tUi('cout')} <span className="font-bold text-yellow-400">{creditCost} crédits</span>
             </span>
           ) : null}
         </div>

@@ -19,6 +19,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Play, Pause, Volume2, VolumeX, Maximize2, Minimize2 } from 'lucide-react';
+import { useTranslations } from '@/i18n/client';
 
 export interface LecteurVideoProps {
   src: string;
@@ -50,6 +51,7 @@ export default function LecteurVideo({
   src, poster, titre, sansSon = false, autoLecture = false, boucle = true,
   agrandissable = false, agrandi = false, surAgrandir, surReduire, badge, ajustement = 'cover', className = '',
 }: LecteurVideoProps) {
+  const tUi = useTranslations('ui.componentsCinemaLecteurVideo');
   const ref = useRef<HTMLVideoElement | null>(null);
   const [joue, setJoue] = useState(false);
   const [muet, setMuet] = useState(true);
@@ -133,7 +135,7 @@ export default function LecteurVideo({
           <button
             type="button"
             onClick={() => { setMuet((m) => { const v = ref.current; if (v) v.muted = !m; return !m; }); }}
-            aria-label={muet ? 'Activer le son' : 'Couper le son'} title={muet ? 'Activer le son' : 'Couper le son'}
+            aria-label={muet ? tUi('activer_le_son') : tUi('couper_le_son')} title={muet ? tUi('activer_le_son') : tUi('couper_le_son')}
             aria-pressed={!muet}
             className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded text-white/90 hover:text-white"
           >

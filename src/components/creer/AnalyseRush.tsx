@@ -15,6 +15,7 @@ import {
 } from '@/lib/autopilot/analyse/presentation';
 import PassagesSuggeres from './PassagesSuggeres';
 import type { AutopilotMontageStyle } from '@/lib/autopilot/textStyle';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * L'analyse d'UN rush, greffée sous sa ligne dans les sessions de tournage.
@@ -83,6 +84,7 @@ interface Refus {
 }
 
 export default function AnalyseRush({ rushId, montage, onVideoLancee }: Props) {
+  const tUi = useTranslations('ui.componentsCreerAnalyseRush');
   const [analyse, setAnalyse] = useState<AnalyseEcran | null>(null);
   const [chargement, setChargement] = useState(true);
   const [indisponible, setIndisponible] = useState<string | null>(null);
@@ -244,7 +246,7 @@ export default function AnalyseRush({ rushId, montage, onVideoLancee }: Props) {
         : relance
           ? <RotateCcw className="w-3.5 h-3.5 shrink-0" />
           : <ScanSearch className="w-3.5 h-3.5 shrink-0" />}
-      {demande ? 'Analyse demandée…' : libelle}
+      {demande ? tUi('analyse_demandee') : libelle}
     </button>
   );
 
@@ -299,7 +301,7 @@ export default function AnalyseRush({ rushId, montage, onVideoLancee }: Props) {
 
       {analyse?.etat === 'annulee' && (
         <div className="space-y-1.5">
-          <p className="text-[11px] text-gray-400">Analyse annulée.</p>
+          <p className="text-[11px] text-gray-400">{tUi('analyse_annulee')}</p>
           {boutonAnalyse('Relancer l’analyse', true)}
         </div>
       )}
@@ -358,7 +360,7 @@ export default function AnalyseRush({ rushId, montage, onVideoLancee }: Props) {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="inline-flex items-center gap-1.5 text-[11px] text-emerald-400" data-analyse-badge>
               <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-              Analysé
+              {tUi('analyse')}
             </span>
             {!refus?.relancable && boutonAnalyse('Relancer l’analyse', true)}
           </div>
@@ -376,7 +378,7 @@ export default function AnalyseRush({ rushId, montage, onVideoLancee }: Props) {
               interrogent continuent de les trouver. */}
           <details data-analyse-detail>
             <summary className="cursor-pointer list-none text-[10px] text-gray-500 hover:text-gray-300 min-h-[28px] flex items-center">
-              Voir l’analyse détaillée
+              {tUi('voir_l_analyse_detaillee')}
             </summary>
             <div className="mt-1.5 space-y-2">
 
@@ -399,7 +401,7 @@ export default function AnalyseRush({ rushId, montage, onVideoLancee }: Props) {
               {/* Repliés : la sonde utilisée intéresse le diagnostic, pas
                   l'usage courant — et sur un téléphone, chaque ligne compte. */}
               <summary className="cursor-pointer list-none text-[10px] text-gray-500 hover:text-gray-300 min-h-[28px] flex items-center">
-                Détails de la mesure
+                {tUi('details_de_la_mesure')}
               </summary>
               <dl className="mt-1 grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-1.5">
                 {details.map((l) => (
@@ -440,22 +442,21 @@ export default function AnalyseRush({ rushId, montage, onVideoLancee }: Props) {
 
           {vignettesManquantes && (
             <p className="text-[10px] text-gray-500" data-analyse-vignettes-absentes>
-              Aperçus indisponibles pour l’instant. La mesure, elle, est complète.
+              {tUi('apercus_indisponibles_pour_l_instant_l')}
             </p>
           )}
 
           {/* ── Ce qui viendra, dit comme tel ────────────────────────────── */}
           {aVenir ? (
             <p className="text-[10px] text-gray-500 leading-relaxed" data-analyse-a-venir>
-              Compréhension du contenu, parole et qualité : ces analyses arriveront
-              à une étape suivante.
+              {tUi('comprehension_du_contenu_parole_et_qua')}
             </p>
           ) : (
             <div className="space-y-1.5" data-analyse-interprete>
               {(contenu?.resume || (contenu?.textes.length ?? 0) > 0) && (
                 <section className="space-y-1" data-analyse-section="comprehension">
                   <h4 className="text-[10px] uppercase tracking-wide text-gray-500">
-                    Compréhension du contenu
+                    {tUi('comprehension_du_contenu')}
                   </h4>
                   {contenu?.resume && (
                     <p className="text-[11px] text-gray-300 leading-relaxed">{contenu.resume}</p>

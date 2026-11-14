@@ -22,6 +22,7 @@ import { MENTION_MOUVEMENTS, mouvementDemo } from '@/lib/cinema/mouvements-camer
 import { styleCinema } from '@/lib/cinema/direction/styles';
 import { cameraCinema, estCameraCinema } from '@/lib/cinema/direction/camera';
 import type { IdStyleCinema } from '@/lib/cinema/types';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * Le ratio NATIF de tous les extraits d'exemple (styles et mouvements) : 1280x720.
@@ -75,6 +76,7 @@ export default function ApercuExemple({ exemple, format, surRevenir, surAgrandir
   surRevenir: () => void;
   surAgrandir: () => void;
 }) {
+  const tUi = useTranslations('ui.componentsCinemaApercuExemple');
   const v = vueExemple(exemple);
   const sansExtrait = !v && exemple.type === 'mouvement' && estCameraCinema(exemple.id) && exemple.id !== 'auto';
   const section = useRef<HTMLElement | null>(null);
@@ -94,14 +96,14 @@ export default function ApercuExemple({ exemple, format, surRevenir, surAgrandir
             <Video className="h-4 w-4 shrink-0 text-violet-400" aria-hidden="true" /> <span className="truncate">{m.libelle}</span>
           </h2>
           <span className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-200">Exemple</span>
-          <button type="button" onClick={surRevenir} aria-label="Revenir à mon film" title="Revenir à mon film"
+          <button type="button" onClick={surRevenir} aria-label={tUi('revenir_a_mon_film')} title={tUi('revenir_a_mon_film')}
             className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-700 px-2 py-1.5 text-xs text-slate-200 transition-colors hover:border-violet-500/60 hover:text-violet-200">
-            <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" /> <span className="hidden sm:inline">Revenir à mon film</span>
+            <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" /> <span className="hidden sm:inline">{tUi('revenir_a_mon_film')}</span>
           </button>
         </div>
         <div className="mx-auto flex w-full flex-col items-center justify-center rounded-lg border border-dashed border-slate-700 px-3 text-center" style={{ aspectRatio: RATIO_NATIF_EXEMPLE }} data-ratio-exemple="16:9">
           <p className="text-sm font-semibold text-slate-200">Exemple indisponible</p>
-          <p className="mt-1 text-[11px] leading-snug text-slate-400">Aucun extrait filmé n’existe pour ce mouvement. Il sera appliqué à votre film, sans démonstration.</p>
+          <p className="mt-1 text-[11px] leading-snug text-slate-400">{tUi('aucun_extrait_filme_n_existe_pour_ce_m')}</p>
         </div>
       </section>
     );
@@ -122,11 +124,11 @@ export default function ApercuExemple({ exemple, format, surRevenir, surAgrandir
         <button
           type="button"
           onClick={surRevenir}
-          aria-label="Revenir à mon film"
-          title="Revenir à mon film"
+          aria-label={tUi('revenir_a_mon_film')}
+          title={tUi('revenir_a_mon_film')}
           className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-700 px-2 py-1.5 text-xs text-slate-200 transition-colors hover:border-violet-500/60 hover:text-violet-200"
         >
-          <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" /> <span className="hidden sm:inline">Revenir à mon film</span>
+          <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" /> <span className="hidden sm:inline">{tUi('revenir_a_mon_film')}</span>
         </button>
       </div>
       <p className="mb-2 truncate text-xs text-slate-400" title={v.sousTitre}>{v.sousTitre}</p>

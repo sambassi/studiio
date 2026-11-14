@@ -21,6 +21,7 @@ import InfoBulle from '@/components/ui/InfoBulle';
 import { classesCarteOption } from '@/lib/ui/etats';
 import { usePrefersReducedMotion } from '@/lib/hooks/usePrefersReducedMotion';
 import { STYLES_VIDEO, exempleStyle, type StyleVideo, type StyleVideoId } from '@/lib/styles-video/styles';
+import { useTranslations } from '@/i18n/client';
 
 export interface GalerieStylesVideoProps {
   choisi: StyleVideoId | null;
@@ -105,10 +106,11 @@ function CarteStyle({ style, choisi, retouches, onChoisir, joue, onSurvol }: {
 }
 
 export default function GalerieStylesVideo({ choisi, retouches, onChoisir }: GalerieStylesVideoProps) {
+  const tUi = useTranslations('ui.componentsCreerGalerieStylesVideo');
   const reduire = usePrefersReducedMotion();
   const [actif, setActif] = useState<StyleVideoId | null>(null);
   return (
-    <div role="group" aria-label="Styles vidéo" className="grid grid-cols-3 gap-2" data-galerie-styles>
+    <div role="group" aria-label={tUi('styles_video')} className="grid grid-cols-3 gap-2" data-galerie-styles>
       {STYLES_VIDEO.map((s) => (
         <CarteStyle
           key={s.id}

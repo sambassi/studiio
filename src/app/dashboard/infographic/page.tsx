@@ -102,6 +102,7 @@ const SALES_PHRASES = [
 ];
 
 export default function InfographiePage() {
+  const tUi = useTranslations('ui.appDashboardInfographic');
   const t = useTranslations('infographic');
   const tc = useTranslations('common');
   const { branding } = useBranding();
@@ -838,7 +839,7 @@ export default function InfographiePage() {
         <div className="absolute inset-0 flex flex-col items-center justify-center" style={{ background: `linear-gradient(135deg, ${accent}CC, #FF2DAA99, ${accent}66)` }}>
           <div className="text-center px-4">
             <p className="text-sm font-black text-white uppercase tracking-wider mb-2" style={{ textShadow: `0 0 15px ${accent}` }}>
-              {branding.ctaText || 'CHAT POUR PLUS D\'INFOS'}
+              {branding.ctaText || tUi('chat_pour_plus_d_infos')}
             </p>
             <p className="text-[8px] text-white/70 uppercase tracking-wider">{branding.ctaSubText || 'LIEN EN BIO'}</p>
             {salesPhrase && <p className="text-[9px] text-white/90 mt-2 italic font-medium">{salesPhrase}</p>}
@@ -911,7 +912,7 @@ export default function InfographiePage() {
 
               {/* Format selector */}
               <div className="mb-6">
-                <h3 className="text-sm font-semibold text-gray-300 mb-3">Format vidéo</h3>
+                <h3 className="text-sm font-semibold text-gray-300 mb-3">{tUi('format_video')}</h3>
                 <div className="flex gap-2">
                   <button onClick={() => setFormat('9:16')} className={`flex-1 py-2.5 px-4 rounded-lg font-medium text-sm transition-all flex items-center justify-center gap-2 ${format === '9:16' ? 'bg-gradient-to-r from-pink-600 to-pink-400 text-white' : 'bg-gray-800 text-gray-300 border border-gray-700 hover:border-gray-600'}`}>
                     <svg width="14" height="20" viewBox="0 0 14 20" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="0.5" y="0.5" width="13" height="19" rx="1.5" stroke="currentColor" strokeWidth="1"/></svg>
@@ -949,7 +950,7 @@ export default function InfographiePage() {
                       onChange={(e) => setBatchSearchQuery(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter' && batchSearchQuery.trim()) { batchPageRef.current = 0; generateBatchVariations(batchSearchQuery.trim()); } }}
                       className="w-full rounded-lg border border-gray-700 bg-gray-800 pl-9 pr-3 py-2 text-sm text-white placeholder-gray-500 focus:border-pink-500 focus:outline-none"
-                      placeholder="Rechercher des photos... (ex: yoga, manioc, danse)"
+                      placeholder={tUi('rechercher_des_photos_ex_yoga_manioc_d')}
                     />
                   </div>
                   <button

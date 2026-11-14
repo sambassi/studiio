@@ -79,6 +79,7 @@ import {
   lireRenduDeSession, messageEchec, orientation, phraseEnCours, renduEnCours,
   type Fetcher, type RenduEcran,
 } from '@/lib/autopilot/analyse/rendu-passerelle';
+import { useTranslations } from '@/i18n/client';
 
 interface Props {
   /** La session de tournage regardée. */
@@ -116,6 +117,7 @@ type Etat =
 export default function VideosPretes({
   sessionId, aucunRush, relance = 0, onEtat, fetcher,
 }: Props) {
+  const tUi = useTranslations('ui.componentsCreerVideosPretes');
   const [etat, setEtat] = useState<Etat>({ sorte: 'chargement' });
   const [lecture, setLecture] = useState(false);
   /**
@@ -273,7 +275,7 @@ export default function VideosPretes({
       <section className="space-y-1.5" data-videos-pretes data-videos-etat="aucun_rush">
         <Titre texte="Votre vidéo" />
         <p className="text-[11px] text-gray-500 leading-relaxed">
-          Ajoute des rushes : Studiio en fera une vidéo.
+          {tUi('ajoute_des_rushes_studiio_en_fera_une')}
         </p>
       </section>
     );
@@ -303,7 +305,7 @@ export default function VideosPretes({
       <section className="space-y-1.5" data-videos-pretes data-videos-etat="aucune_video">
         <Titre texte="Votre vidéo" />
         <p className="text-[11px] text-gray-500 leading-relaxed" data-videos-message>
-          Aucune vidéo pour l’instant.
+          {tUi('aucune_video_pour_l_instant')}
         </p>
       </section>
     );
@@ -327,7 +329,7 @@ export default function VideosPretes({
         >
           <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-400 shrink-0" />
           {rendu.etat === 'en_attente'
-            ? 'Ta vidéo va démarrer…'
+            ? tUi('ta_video_va_demarrer')
             : phraseEnCours(rendu.etape)}
         </p>
       </section>
@@ -372,7 +374,7 @@ export default function VideosPretes({
           ancienne, issue d'un rush, pour le résultat de l'Autopilote. */}
       <Titre texte="Vidéo ponctuelle de ce tournage" fort />
       <p className="text-[10px] text-gray-500 -mt-0.5" data-videos-provenance>
-        Créée à partir d’un rush — indépendante de l’Autopilote et de ses productions.
+        {tUi('creee_a_partir_d_un_rush_independante')}
       </p>
       <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-2 space-y-2">
         {lecture ? (
@@ -406,13 +408,13 @@ export default function VideosPretes({
                   <>
                     <AlertTriangle className="w-3 h-3 shrink-0 mt-px" />
                     <span className="min-w-0">
-                      La vidéo ne s’ouvre pas ici. Télécharge-la pour la regarder.
+                      {tUi('la_video_ne_s_ouvre_pas_ici_telecharge')}
                     </span>
                   </>
                 ) : (
                   <>
                     <Loader2 className="w-3 h-3 shrink-0 mt-px animate-spin" />
-                    <span className="min-w-0">La vidéo se charge…</span>
+                    <span className="min-w-0">{tUi('la_video_se_charge')}</span>
                   </>
                 )}
               </p>
@@ -458,7 +460,7 @@ export default function VideosPretes({
             data-videos-telecharger
             className="flex flex-1 min-h-[36px] items-center justify-center gap-1.5 rounded-lg border border-gray-800 px-3 py-2 text-xs text-gray-200 hover:text-white hover:border-gray-700 transition-colors"
           >
-            <Download className="w-3.5 h-3.5 shrink-0" /> Télécharger
+            <Download className="w-3.5 h-3.5 shrink-0" /> {tUi('telecharger')}
           </a>
 
           {/* ── La suite du parcours, nommée ────────────────────────────
@@ -472,7 +474,7 @@ export default function VideosPretes({
             className="flex w-full min-h-[36px] items-center justify-center gap-1.5 rounded-lg bg-purple-600 px-3 py-2 text-xs font-medium text-white hover:bg-purple-500 disabled:opacity-50 transition-colors"
           >
             <CalendarPlus className="w-3.5 h-3.5 shrink-0" />
-            {planif.sorte === 'encours' ? 'Ajout…' : 'Ajouter en brouillon au Calendrier'}
+            {planif.sorte === 'encours' ? 'Ajout…' : tUi('ajouter_en_brouillon_au_calendrier')}
           </button>
         </div>
 
@@ -490,7 +492,7 @@ export default function VideosPretes({
                   className="inline-flex items-center gap-1 underline hover:text-white"
                   data-videos-voir-calendrier
                 >
-                  <CalendarDays className="inline w-3 h-3" />Voir dans le Calendrier
+                  <CalendarDays className="inline w-3 h-3" />{tUi('voir_dans_le_calendrier')}
                 </a>
               </>
             )}

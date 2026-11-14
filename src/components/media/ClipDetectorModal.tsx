@@ -29,6 +29,7 @@ import {
   clampBounds, effectiveBounds, isTrimmed, timeToRatio, ratioToTime, boundsLabel,
   type Bounds,
 } from '@/lib/creer/clipTrim';
+import { useTranslations } from '@/i18n/client';
 
 export interface ExtractedClip {
   url: string;
@@ -134,6 +135,7 @@ export default function ClipDetectorModal({
   source,
   onExtracted,
 }: ClipDetectorModalProps) {
+  const tUi = useTranslations('ui.componentsMediaClipDetectorModal');
   const [phase, setPhase] = useState<Phase>('downloading');
   const [progress, setProgress] = useState(0);
   const [stage, setStage] = useState('');
@@ -237,7 +239,7 @@ export default function ClipDetectorModal({
         setPhase('review');
         if (result.clips.length === 0) {
           setError(
-            'Aucune séquence détectée. La vidéo est peut-être trop courte ou illisible par le navigateur.',
+            tUi('aucune_sequence_detectee_la_video_est'),
           );
         }
       } catch (err) {
@@ -479,7 +481,7 @@ export default function ClipDetectorModal({
           <button
             onClick={requestClose}
             className="rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-800 hover:text-white"
-            title={phase === 'extracting' ? 'Interrompre l’extraction' : 'Fermer'}
+            title={phase === 'extracting' ? 'Interrompre l’extraction' : tUi('fermer')}
           >
             <X size={18} />
           </button>
@@ -545,7 +547,7 @@ export default function ClipDetectorModal({
                 {extracted.length > 1 ? 's' : ''} à la médiathèque
               </p>
               <p className="mt-1 text-xs text-gray-500">
-                Retrouvez-les dans la grille, prêtes à être utilisées dans vos montages.
+                {tUi('retrouvez_les_dans_la_grille_pretes_a')}
               </p>
             </div>
           )}
@@ -634,7 +636,7 @@ export default function ClipDetectorModal({
                             data-clip-reset
                             className="ml-2 underline underline-offset-2 hover:text-white transition-colors"
                           >
-                            rétablir
+                            {tUi('retablir')}
                           </button>
                         )}
                       </span>
@@ -643,7 +645,7 @@ export default function ClipDetectorModal({
                         className="flex flex-shrink-0 items-center gap-1.5 rounded-lg bg-gray-800 px-2.5 py-1.5 text-[11px] font-medium text-gray-200 transition hover:bg-gray-700"
                       >
                         {playing ? <Pause size={12} /> : <Play size={12} />}
-                        {playing ? 'Pause' : 'Aperçu'}
+                        {playing ? 'Pause' : tUi('apercu')}
                       </button>
                     </div>
                     </>
@@ -667,7 +669,7 @@ export default function ClipDetectorModal({
                   }
                   className="rounded-lg bg-gray-800 px-2.5 py-1.5 text-[11px] font-medium text-gray-300 transition hover:text-white"
                 >
-                  {selectedCount === clips.length ? 'Tout désélectionner' : 'Tout sélectionner'}
+                  {selectedCount === clips.length ? tUi('tout_deselectionner') : tUi('tout_selectionner')}
                 </button>
               </div>
 
@@ -761,7 +763,7 @@ export default function ClipDetectorModal({
               onClick={onClose}
               className="rounded-lg px-3 py-2 text-xs font-medium text-gray-400 transition hover:text-white"
             >
-              {phase === 'done' ? 'Fermer' : 'Annuler'}
+              {phase === 'done' ? tUi('fermer') : tUi('annuler')}
             </button>
             {phase === 'review' && clips.length > 0 && (
               <button

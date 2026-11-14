@@ -12,6 +12,7 @@ interface TermsData {
 }
 
 export default function TermsPage() {
+  const tUi = useTranslations('ui.appTerms');
   const t = useTranslations('terms');
   const [terms, setTerms] = useState<TermsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -100,7 +101,7 @@ export default function TermsPage() {
         {/* Footer */}
         <div className="mt-12 pt-8 border-t border-gray-800">
           <p className="text-gray-500 text-sm">
-            © 2024 Studiio. Tous droits réservés.
+            {tUi('2024_studiio_tous_droits_reserves')}
           </p>
         </div>
       </div>

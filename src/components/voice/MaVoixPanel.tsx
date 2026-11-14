@@ -10,6 +10,7 @@ import { MAX_CARACTERES_PREECOUTE, MESSAGE_TROP_D_ECOUTES } from '@/lib/voice/pr
 import { suggererPrononciationLocale, suggestionUtile, expressionOrdinaire, MESSAGE_AUCUNE_SUGGESTION } from '@/lib/voice/suggestion-prononciation';
 import AudioCompletSection from '@/components/voice/AudioCompletSection';
 import LecteurVoixCompact from '@/components/voice/LecteurVoixCompact';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * « Ma voix & prononciations » — l'écran ne décide rien, il affiche ce que
@@ -58,6 +59,7 @@ interface Profil {
 const EXEMPLE = 'Bienvenue au cours Afroboost à Neuchâtel.';
 
 export default function MaVoixPanel() {
+  const tUi = useTranslations('ui.componentsVoiceMaVoixPanel');
   const [profil, setProfil] = useState<Profil | null>(null);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -212,7 +214,7 @@ export default function MaVoixPanel() {
       audio.onended = () => { if (lectureLigneRef.current?.url === url) arreterLectureLigne(); };
       await audio.play().catch(() => { /* lecture refusée par le navigateur : rien à jouer */ });
     } catch {
-      setErreurBrouillon('L’écoute a échoué.');
+      setErreurBrouillon(tUi('l_ecoute_a_echoue'));
     } finally {
       setEcouteBrouillonEnCours(false);
     }
@@ -281,14 +283,14 @@ export default function MaVoixPanel() {
       const dit = res.headers.get('X-Studiio-Spoken');
       setSpokenJoue(dit ? decodeURIComponent(dit) : null);
     } catch {
-      setErreur('L’écoute a échoué.');
+      setErreur(tUi('l_ecoute_a_echoue'));
     } finally {
       setEcouteEnCours(false);
     }
   };
 
   if (chargement) {
-    return <div className="text-sm text-gray-400 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Chargement de votre voix…</div>;
+    return <div className="text-sm text-gray-400 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> {tUi('chargement_de_votre_voix')}</div>;
   }
   if (!profil) {
     return <div className="text-sm text-red-200" data-voix-panel="erreur">{erreur ?? 'Profil vocal illisible.'}</div>;
@@ -299,24 +301,24 @@ export default function MaVoixPanel() {
     <div className="space-y-6" data-voix-panel>
       {/* ── VOIX UTILISÉE ───────────────────────────────────────────── */}
       <section className="space-y-3">
-        <h3 className="font-semibold flex items-center gap-2"><Mic className="w-4 h-4" /> Voix utilisée</h3>
+        <h3 className="font-semibold flex items-center gap-2"><Mic className="w-4 h-4" /> {tUi('voix_utilisee')}</h3>
         {profil.voixResolue ? (
           <div data-voix-selectionnee className="text-sm">
-            Voix sélectionnée : <span className="font-medium">« Ma voix — {profil.voixResolue.nom} »</span>
+            {tUi('voix_selectionnee')} <span className="font-medium">« Ma voix — {profil.voixResolue.nom} »</span>
           </div>
         ) : (
           <div data-voix-motif={profil.motifVoix ?? 'inconnu'} className="text-sm text-gray-400">{profil.messageVoix}</div>
         )}
         {profil.voix.length > 1 && (
           <label className="block text-sm">
-            <span className="text-gray-400">Choisir la voix à utiliser</span>
+            <span className="text-gray-400">{tUi('choisir_la_voix_a_utiliser')}</span>
             <select
               data-voix-selecteur
               value={profil.choix ?? ''}
               onChange={(e) => { if (e.target.value) void choisirVoix(e.target.value); }}
               className="mt-1 w-full rounded-lg bg-black/40 border border-white/10 p-2 text-sm"
             >
-              <option value="">— Choisir —</option>
+              <option value="">{tUi('choisir')}</option>
               {profil.voix.map((v) => (
                 <option key={v.id} value={v.id} disabled={!v.utilisable}>
                   Ma voix — {v.nom}{v.utilisable ? '' : ' (inutilisable)'}
@@ -331,7 +333,7 @@ export default function MaVoixPanel() {
       <section className="space-y-3">
         <h3 className="font-semibold">Prononciations</h3>
         <ul data-prononciations className="space-y-2">
-          {prononciations.length === 0 && <li className="text-sm text-gray-500">Aucune prononciation personnalisée.</li>}
+          {prononciations.length === 0 && <li className="text-sm text-gray-500">{tUi('aucune_prononciation_personnalisee')}</li>}
           {prononciations.map((p) => (
             <li key={p.affiche} data-prononciation={p.affiche} className="text-sm rounded-lg bg-white/5 px-3 py-2">
               <div className="flex items-center justify-between gap-3">
@@ -350,8 +352,8 @@ export default function MaVoixPanel() {
                 <span><span className="font-medium">{p.affiche}</span> <span className="text-gray-400">→</span> {p.prononce}</span>
               </span>
               <span className="flex items-center gap-2">
-                <button data-prononciation-modifier={p.affiche} onClick={() => ouvrirBrouillon({ affiche: p.affiche, prononce: p.prononce, origine: p.affiche })} className="text-gray-400 hover:text-white flex items-center gap-1 text-xs"><Pencil className="w-3.5 h-3.5" /> Modifier</button>
-                <button data-prononciation-supprimer={p.affiche} onClick={() => void supprimer(p.affiche)} className="text-gray-400 hover:text-red-300 flex items-center gap-1 text-xs"><Trash2 className="w-3.5 h-3.5" /> Supprimer</button>
+                <button data-prononciation-modifier={p.affiche} onClick={() => ouvrirBrouillon({ affiche: p.affiche, prononce: p.prononce, origine: p.affiche })} className="text-gray-400 hover:text-white flex items-center gap-1 text-xs"><Pencil className="w-3.5 h-3.5" /> {tUi('modifier')}</button>
+                <button data-prononciation-supprimer={p.affiche} onClick={() => void supprimer(p.affiche)} className="text-gray-400 hover:text-red-300 flex items-center gap-1 text-xs"><Trash2 className="w-3.5 h-3.5" /> {tUi('supprimer')}</button>
               </span>
               </div>
               {erreurLigne?.affiche === p.affiche && (
@@ -364,26 +366,26 @@ export default function MaVoixPanel() {
               <div className="flex items-center justify-between gap-3">
                 <span><span className="font-medium">{p.affiche}</span> <span className="text-gray-400">→</span> {p.prononce}</span>
                 <span className="flex items-center gap-2">
-                  <button data-prononciation-identique-modifier={p.affiche} onClick={() => ouvrirBrouillon({ affiche: p.affiche, prononce: '', origine: null })} className="text-gray-300 hover:text-white flex items-center gap-1 text-xs"><Pencil className="w-3.5 h-3.5" /> Modifier</button>
-                  <button data-prononciation-identique-supprimer={p.affiche} onClick={() => void enregistrerListe(prononciations, [p.affiche])} className="text-gray-300 hover:text-red-300 flex items-center gap-1 text-xs"><Trash2 className="w-3.5 h-3.5" /> Supprimer</button>
+                  <button data-prononciation-identique-modifier={p.affiche} onClick={() => ouvrirBrouillon({ affiche: p.affiche, prononce: '', origine: null })} className="text-gray-300 hover:text-white flex items-center gap-1 text-xs"><Pencil className="w-3.5 h-3.5" /> {tUi('modifier')}</button>
+                  <button data-prononciation-identique-supprimer={p.affiche} onClick={() => void enregistrerListe(prononciations, [p.affiche])} className="text-gray-300 hover:text-red-300 flex items-center gap-1 text-xs"><Trash2 className="w-3.5 h-3.5" /> {tUi('supprimer')}</button>
                 </span>
               </div>
-              <div className="mt-1 text-xs text-amber-200">Cette prononciation est identique au texte original : elle n’est pas appliquée.</div>
+              <div className="mt-1 text-xs text-amber-200">{tUi('cette_prononciation_est_identique_au_t')}</div>
             </li>
           ))}
         </ul>
         {brouillon ? (
           <div data-prononciation-formulaire className="space-y-2 rounded-lg bg-white/5 p-3">
             <div className="grid gap-2 sm:grid-cols-2">
-              <label className="text-xs text-gray-400">Texte d’origine (tel qu’il apparaît dans vos vidéos)
-                <input data-prononciation-affiche value={brouillon.affiche} onChange={(e) => setBrouillon({ ...brouillon, affiche: e.target.value })} placeholder="3-en-1 OS RENFORCÉS" className="mt-1 w-full rounded-lg bg-black/40 border border-white/10 p-2 text-sm text-white" />
+              <label className="text-xs text-gray-400">{tUi('texte_d_origine_tel_qu_il_apparait_dan')}
+                <input data-prononciation-affiche value={brouillon.affiche} onChange={(e) => setBrouillon({ ...brouillon, affiche: e.target.value })} placeholder={tUi('3_en_1_os_renforces')} className="mt-1 w-full rounded-lg bg-black/40 border border-white/10 p-2 text-sm text-white" />
               </label>
-              <label className="text-xs text-gray-400">Ce que la voix dit (modifiable)
-                <input data-prononciation-prononce value={brouillon.prononce} onChange={(e) => setBrouillon({ ...brouillon, prononce: e.target.value })} placeholder="trois en un os renforcés" className="mt-1 w-full rounded-lg bg-black/40 border border-white/10 p-2 text-sm text-white" />
+              <label className="text-xs text-gray-400">{tUi('ce_que_la_voix_dit_modifiable')}
+                <input data-prononciation-prononce value={brouillon.prononce} onChange={(e) => setBrouillon({ ...brouillon, prononce: e.target.value })} placeholder={tUi('trois_en_un_os_renforces')} className="mt-1 w-full rounded-lg bg-black/40 border border-white/10 p-2 text-sm text-white" />
               </label>
             </div>
             {prononciationIdentique(brouillon.affiche, brouillon.prononce) && (
-              <div data-prononciation-brouillon-identique className="text-xs text-amber-200">Cette prononciation est identique au texte original : elle ne changerait rien.</div>
+              <div data-prononciation-brouillon-identique className="text-xs text-amber-200">{tUi('cette_prononciation_est_identique_au_t_2')}</div>
             )}
             <span className="flex flex-wrap gap-2">
               <button type="button" data-prononciation-suggerer onClick={() => void suggerer()} disabled={suggestionEnCours || !brouillon.affiche.trim()} className="text-gray-300 hover:text-white flex items-center gap-1 text-sm disabled:opacity-40">
@@ -394,21 +396,21 @@ export default function MaVoixPanel() {
                   {ecouteBrouillonEnCours ? <Loader2 className="w-4 h-4 animate-spin" /> : <Volume2 className="w-4 h-4" />} Écouter
                 </button>
               )}
-              <button data-prononciation-valider onClick={() => void validerBrouillon()} disabled={prononciationIdentique(brouillon.affiche, brouillon.prononce)} className="button-primary flex items-center gap-1 text-sm disabled:opacity-40"><Check className="w-4 h-4" /> Enregistrer</button>
-              <button data-prononciation-annuler onClick={() => ouvrirBrouillon(null)} className="text-gray-400 hover:text-white flex items-center gap-1 text-sm"><X className="w-4 h-4" /> Annuler</button>
+              <button data-prononciation-valider onClick={() => void validerBrouillon()} disabled={prononciationIdentique(brouillon.affiche, brouillon.prononce)} className="button-primary flex items-center gap-1 text-sm disabled:opacity-40"><Check className="w-4 h-4" /> {tUi('enregistrer')}</button>
+              <button data-prononciation-annuler onClick={() => ouvrirBrouillon(null)} className="text-gray-400 hover:text-white flex items-center gap-1 text-sm"><X className="w-4 h-4" /> {tUi('annuler')}</button>
             </span>
             {noteSuggestion && <div data-prononciation-note className="text-xs text-gray-400">{noteSuggestion}</div>}
             {erreurBrouillon && <div data-prononciation-brouillon-erreur className="text-xs text-red-200">{erreurBrouillon}</div>}
-            <div className="text-xs text-gray-500">Seule la voix change : le texte d’origine reste identique dans vos vidéos et sous-titres.</div>
+            <div className="text-xs text-gray-500">{tUi('seule_la_voix_change_le_texte_d_origin')}</div>
           </div>
         ) : (
-          <button data-prononciation-ajouter onClick={() => ouvrirBrouillon({ affiche: '', prononce: '', origine: null })} className="text-sm text-gray-300 hover:text-white flex items-center gap-1.5"><Plus className="w-4 h-4" /> Ajouter une prononciation</button>
+          <button data-prononciation-ajouter onClick={() => ouvrirBrouillon({ affiche: '', prononce: '', origine: null })} className="text-sm text-gray-300 hover:text-white flex items-center gap-1.5"><Plus className="w-4 h-4" /> {tUi('ajouter_une_prononciation')}</button>
         )}
       </section>
 
       {/* ── APERÇU ───────────────────────────────────────────────────── */}
       <section className="space-y-3">
-        <h3 className="font-semibold">Aperçu du texte prononcé</h3>
+        <h3 className="font-semibold">{tUi('apercu_du_texte_prononce')}</h3>
         <textarea
           data-apercu-texte
           value={texte}
@@ -419,11 +421,11 @@ export default function MaVoixPanel() {
         />
         <div className="grid gap-2 sm:grid-cols-2 text-sm">
           <div className="rounded-lg bg-white/5 p-3">
-            <div className="text-xs text-gray-400 mb-1">Texte affiché :</div>
+            <div className="text-xs text-gray-400 mb-1">{tUi('texte_affiche')}</div>
             <div data-apercu-affiche>« {texte} »</div>
           </div>
           <div className="rounded-lg bg-purple-500/10 border border-purple-500/30 p-3">
-            <div className="text-xs text-purple-200 mb-1">Sera prononcé :</div>
+            <div className="text-xs text-purple-200 mb-1">{tUi('sera_prononce')}</div>
             <div data-apercu-prononce>« {spoken} »</div>
           </div>
         </div>
@@ -433,7 +435,7 @@ export default function MaVoixPanel() {
           <div className="space-y-2">
             <div data-preecoute-indice className="text-xs text-gray-400">Pré-écoute gratuite : environ 5 secondes ({spoken.length}/{MAX_CARACTERES_PREECOUTE} caractères prononcés).</div>
             {spokenTropLong && (
-              <div data-preecoute-trop-long className="text-xs text-amber-200">Le texte prononcé dépasse la pré-écoute gratuite : raccourcissez-le.</div>
+              <div data-preecoute-trop-long className="text-xs text-amber-200">{tUi('le_texte_prononce_depasse_la_pre_ecout')}</div>
             )}
             <button data-ecouter onClick={() => void ecouter()} disabled={ecouteEnCours || !texte.trim() || spokenTropLong} className="button-primary flex items-center gap-2 disabled:opacity-40">
               {ecouteEnCours ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />} Écouter ma voix
@@ -448,7 +450,7 @@ export default function MaVoixPanel() {
           </div>
         ) : (
           <div data-ecoute-indisponible className="text-sm text-gray-400">
-            L’écoute de votre voix personnelle n’est pas encore disponible.
+            {tUi('l_ecoute_de_votre_voix_personnelle_n_e')}
           </div>
         )}
       </section>

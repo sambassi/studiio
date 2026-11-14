@@ -55,6 +55,7 @@ interface AgentIAModalProps {
 }
 
 export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalProps) {
+  const tUi = useTranslations('ui.componentsCreerAgentIAModal');
   const router = useRouter();
   const t = useTranslations('calendar');
   const tc = useTranslations('common');
@@ -705,7 +706,7 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-400 mb-1.5">Durée par vidéo</label>
+                  <label className="block text-xs text-gray-400 mb-1.5">{tUi('duree_par_video')}</label>
                   <div className="flex gap-1">
                     {([15, 20, 30] as const).map((d) => (
                       <button key={d} onClick={() => setMontageDuration(d)}
@@ -717,9 +718,9 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-gray-400 mb-1.5">Prompt personnalisé (optionnel)</label>
+                <label className="block text-xs text-gray-400 mb-1.5">{tUi('prompt_personnalise_optionnel')}</label>
                 <textarea value={customPrompt} onChange={(e) => setCustomPrompt(e.target.value)}
-                  placeholder="Ex: montre l'ambiance joyeuse du cours de danse, focus sur les sourires"
+                  placeholder={tUi('ex_montre_l_ambiance_joyeuse_du_cours')}
                   className="w-full rounded-lg bg-gray-800 border border-gray-700 px-3 py-2 text-xs text-white placeholder-gray-500 focus:border-pink-500 focus:outline-none resize-none" rows={2} />
               </div>
             </div>
@@ -771,7 +772,7 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
             {/* Right col */}
             <div className="space-y-3">
               <div>
-                <label className="block text-xs text-gray-400 mb-1.5">Thèmes de contenu</label>
+                <label className="block text-xs text-gray-400 mb-1.5">{tUi('themes_de_contenu')}</label>
                 <div className="grid grid-cols-2 gap-1 max-h-[180px] overflow-y-auto pr-1">
                   {AGENT_THEMES.map((theme) => (
                     <button
@@ -855,7 +856,7 @@ export function AgentIAModal({ isOpen, onClose, onAfterGenerate }: AgentIAModalP
                 if (!aiGenerating) onClose();
               }}
             >
-              {aiGenerating ? 'Annuler' : tc('cancel')}
+              {aiGenerating ? tUi('annuler') : tc('cancel')}
             </Button>
             <button
               onClick={handleAIGenerate}

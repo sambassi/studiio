@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { Film, ImageIcon, Info, Loader2, Pause, Play, X, type LucideIcon } from 'lucide-react';
 import { LIBELLES_ORIGINE, dureeLisible, type OrigineMedia } from '@/lib/medias/libelles';
 import MiniatureVideo from '@/components/medias/MiniatureVideo';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * CARTE MÉDIA — un média montré comme un média : une vignette, sa durée, ce
@@ -62,6 +63,7 @@ function lancer(v: HTMLVideoElement | null) {
 
 /** « Informations du média » — l'attribution, repliée tant qu'on ne la demande pas. */
 export function InformationsMedia({ credit }: { credit: CreditMediaCarte }) {
+  const tUi = useTranslations('ui.componentsMediasCarteMedia');
   const [ouvert, setOuvert] = useState(false);
   return (
     <div className="text-[10px] text-gray-500" data-credit-media>
@@ -72,7 +74,7 @@ export function InformationsMedia({ credit }: { credit: CreditMediaCarte }) {
         data-carte-informations
         className="flex items-center gap-1 hover:text-gray-300"
       >
-        <Info className="w-3 h-3" /> Informations du média
+        <Info className="w-3 h-3" /> {tUi('informations_du_media')}
       </button>
       {ouvert && (
         <p className="mt-1 break-words" data-carte-credit>
@@ -81,7 +83,7 @@ export function InformationsMedia({ credit }: { credit: CreditMediaCarte }) {
             <>
               {' · '}
               <a href={credit.lien} target="_blank" rel="noopener noreferrer" className="underline hover:text-white" data-carte-credit-lien>
-                Voir la page du média
+                {tUi('voir_la_page_du_media')}
               </a>
             </>
           ) : null}
@@ -96,6 +98,7 @@ export function InformationsMedia({ credit }: { credit: CreditMediaCarte }) {
  * fermée par Échap, le bouton ou un clic hors du lecteur.
  */
 export function ApercuMedia({ media, onFermer }: { media: MediaApercu; onFermer: () => void }) {
+  const tUi = useTranslations('ui.componentsMediasCarteMedia');
   const video = useRef<HTMLVideoElement | null>(null);
   const [lecture, setLecture] = useState(true);
   const [prete, setPrete] = useState(false);
@@ -128,7 +131,7 @@ export function ApercuMedia({ media, onFermer }: { media: MediaApercu; onFermer:
       >
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs font-medium text-gray-200 min-w-0 truncate">{media.libelle}</p>
-          <button type="button" onClick={onFermer} aria-label="Fermer l’aperçu" data-carte-apercu-fermer className="shrink-0 text-gray-400 hover:text-white">
+          <button type="button" onClick={onFermer} aria-label={tUi('fermer_l_apercu')} data-carte-apercu-fermer className="shrink-0 text-gray-400 hover:text-white">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -216,6 +219,7 @@ export default function CarteMedia({
    */
   metadonnees?: boolean;
 }) {
+  const tUi = useTranslations('ui.componentsMediasCarteMedia');
   const nom = libelle ?? LIBELLES_ORIGINE[origine];
   const [duree, setDuree] = useState<number | null>(dureeSecondes ?? null);
   const [videoKo, setVideoKo] = useState(false);
@@ -293,7 +297,7 @@ export default function CarteMedia({
               data-carte-apercu
               className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] ${CLASSES_ACTION.neutre}`}
             >
-              <Play className="w-2.5 h-2.5" /> Aperçu
+              <Play className="w-2.5 h-2.5" /> {tUi('apercu')}
             </button>
           )}
           {actions.map((a) => {

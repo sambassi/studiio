@@ -9,6 +9,7 @@ import {
   type CycleFacturation,
   type PlanPayant,
 } from '@/lib/billing/plan-choisi';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * Plan choisi sur la landing, présélectionné après l'inscription.
@@ -18,6 +19,7 @@ import {
  * `PricingCards` (`/api/stripe/create-checkout`, `{ plan, billingCycle }`).
  */
 export function PlanPreselectionne({ plan, billing }: { plan: PlanPayant; billing: CycleFacturation }) {
+  const tUi = useTranslations('ui.appDashboardBillingPlanPreselectionne');
   const resume = resumePlan(plan);
   const [cycle, setCycle] = useState<CycleFacturation>(billing);
   const [live, setLive] = useState<{ price_cents?: number; yearly_price_cents?: number; credits?: number } | null>(null);
@@ -54,7 +56,7 @@ export function PlanPreselectionne({ plan, billing }: { plan: PlanPayant; billin
       if (url) { window.location.href = url; return; }
       setError(data.error || 'Impossible de démarrer le paiement.');
     } catch {
-      setError('Erreur de connexion');
+      setError(tUi('erreur_de_connexion'));
     }
     setLoading(false);
   };
@@ -117,7 +119,7 @@ export function PlanPreselectionne({ plan, billing }: { plan: PlanPayant; billin
 
       <p className="text-center text-sm text-gray-400">
         <Link href="/dashboard/settings?tab=abonnement" className="text-studiio-primary hover:text-purple-400 font-semibold">
-          Voir tous les plans
+          {tUi('voir_tous_les_plans')}
         </Link>
       </p>
     </div>

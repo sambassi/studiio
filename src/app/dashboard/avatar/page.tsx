@@ -40,6 +40,7 @@ import { CLE_GENERATION_EN_COURS, lireGenerationEnCours, type GenerationEnCours 
 import {
   etapeDepuisStatutAvatar, progressionVideoAvatar, type CleEtapeVideoAvatar, type SousEtatGenerationAvatar,
 } from '@/lib/avatar/etapes-video-avatar';
+import { useTranslations } from '@/i18n/client';
 
 /** Valeur du sélecteur pour une voix clonée : `clone:<user_voices.id>` — jamais un identifiant fournisseur. */
 const PREFIXE_VOIX_CLONEE = 'clone:';
@@ -138,6 +139,7 @@ const relireGeneration = (): GenerationEnCours | null => {
 /** Phase du moteur du jumeau → étape affichée dans Mon avatar (pas de montage ici). */
 
 export default function AvatarPage() {
+  const tUi = useTranslations('ui.appDashboardAvatar');
   const [loading, setLoading] = useState(true);
   const [avatar, setAvatar] = useState<AvatarRow | null>(null);
   const [voices, setVoices] = useState<Voice[]>([]);
@@ -195,7 +197,7 @@ export default function AvatarPage() {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ avatarId, qualite: q }),
     }).then((r) => r.json()).then((j) => {
       if (!j?.success) { setQualiteSauvegardee(avant); setError(j?.error || 'La qualité n’a pas pu être enregistrée.'); }
-    }).catch(() => { setQualiteSauvegardee(avant); setError('La qualité n’a pas pu être enregistrée.'); });
+    }).catch(() => { setQualiteSauvegardee(avant); setError(tUi('la_qualite_n_a_pas_pu_etre_enregistree')); });
   };
   const tarifs = useTarifs();
   const [genStatus, setGenStatus] = useState<GenStatus>('idle');
@@ -346,7 +348,7 @@ export default function AvatarPage() {
         : ' Votre fichier source a été retiré du stockage.';
       setNotification({ niveau: 'succes', titre: 'Avatar supprimé.', detail: `Vos vidéos déjà générées sont conservées.${source}${fournisseur}`.trim() });
     } catch {
-      setError("La suppression de l'avatar a échoué.");
+      setError(tUi('la_suppression_de_l_avatar_a_echoue'));
     } finally {
       setSuppressionEnCours(false);
       setSuppressionArmee(false);
@@ -409,7 +411,7 @@ export default function AvatarPage() {
       setApercu({ statut: 'en_cours', generationId: json.data.generationId });
       poll(json.data.generationId);
     } catch {
-      setError("L'aperçu n'a pas pu être lancé.");
+      setError(tUi('l_apercu_n_a_pas_pu_etre_lance'));
     } finally {
       setApercuEnCours(false);
     }
@@ -436,7 +438,7 @@ export default function AvatarPage() {
       if (!json.success) { setError(json.error || "L'ouverture de l'aperçu n'a pas pu être enregistrée."); await loadApercu(); return; }
       setApercuOuvert({ jeton: json.data.jeton, version: json.data.version, generationId: json.data.generationId });
     } catch {
-      setError("L'ouverture de l'aperçu n'a pas pu être enregistrée.");
+      setError(tUi('l_ouverture_de_l_apercu_n_a_pas_pu_etr'));
     } finally {
       ouvertureEnCoursRef.current = false;
     }
@@ -460,7 +462,7 @@ export default function AvatarPage() {
       setApercuVisible(false);
       await loadAvatar(false);
     } catch {
-      setError('La validation a échoué.');
+      setError(tUi('la_validation_a_echoue'));
     } finally {
       setValidationEnCours(false);
     }
@@ -509,7 +511,7 @@ export default function AvatarPage() {
       setVoiceId(json.data.defaultVoiceId || list[0]?.voiceId || '');
       if (list.length === 0) {
         setNotice(
-          "Les voix n'ont pas pu être chargées. La génération utilisera une voix de secours — le résultat peut ne pas être en français.",
+          tUi('les_voix_n_ont_pas_pu_etre_chargees_la'),
         );
       }
     }
@@ -628,7 +630,7 @@ export default function AvatarPage() {
       return;
     }
     if (videoDid && f.type !== 'video/mp4' && f.type !== 'video/quicktime') {
-      setError('Format vidéo non supporté pour l’avatar vidéo. Utilisez MP4 ou MOV.');
+      setError(tUi('format_video_non_supporte_pour_l_avata'));
       e.target.value = '';
       return;
     }
@@ -700,7 +702,7 @@ export default function AvatarPage() {
       // Le compte avait déjà un avatar : le serveur a préparé une VERSION
       // CANDIDATE, l'actuelle reste utilisée. On relit, sans rien écraser.
       if (!json.data.avatar) {
-        setNotice('Nouvelle version en préparation. Votre version actuelle reste utilisée en attendant.');
+        setNotice(tUi('nouvelle_version_en_preparation_votre'));
         setFile(null);
         setPhotoPreparee(null);
         if (preview) URL.revokeObjectURL(preview);
@@ -724,7 +726,7 @@ export default function AvatarPage() {
       setPreview(null);
       setConsent(false);
     } catch {
-      setError('Connexion impossible. Réessayez.');
+      setError(tUi('connexion_impossible_reessayez'));
     } finally {
       setEnvoiSource(null);
       setCreating(false);
@@ -903,7 +905,7 @@ export default function AvatarPage() {
     } catch {
       setGenEchec('Connexion impossible. Réessayez.');
       setGenStatus('failed');
-      setError('Connexion impossible. Réessayez.');
+      setError(tUi('connexion_impossible_reessayez'));
     }
   };
 
@@ -1145,15 +1147,15 @@ export default function AvatarPage() {
         media: kind === 'video'
           ? <video src={preview} className="w-full h-full object-contain bg-black" muted playsInline controls />
           /* eslint-disable-next-line @next/next/no-img-element */
-          : <img src={preview} alt="Aperçu de votre photo" className="w-full h-full object-contain" />,
+          : <img src={preview} alt={tUi('apercu_de_votre_photo')} className="w-full h-full object-contain" />,
       };
     }
     if (etatEffectif === 'valide') {
       // Sous le formulaire de génération, pas de légende visible (la hauteur va au lecteur) :
       // le titre dit ce qu'on voit, la légende reste lue par les lecteurs d'écran.
-      if (videoUrl && vueApercu === 'video') return { vue: 'video', titre: 'Votre vidéo', ratio: ratiosMedias[videoUrl] ?? ratioFormat, etat: { statut: 'pret' }, media: <><video src={videoUrl} controls playsInline onLoadedMetadata={noterRatio(videoUrl)} className="w-full h-full object-contain bg-black" /><span className="sr-only">Vidéo prête.</span></> };
+      if (videoUrl && vueApercu === 'video') return { vue: 'video', titre: 'Votre vidéo', ratio: ratiosMedias[videoUrl] ?? ratioFormat, etat: { statut: 'pret' }, media: <><video src={videoUrl} controls playsInline onLoadedMetadata={noterRatio(videoUrl)} className="w-full h-full object-contain bg-black" /><span className="sr-only">{tUi('video_prete')}</span></> };
       // ⚠️ Le RENDU RÉCENT garde son ratio réel : un ancien fichier n'est jamais transformé.
-      if (renduRecent && (vueApercu === 'rendu' || !srcVersionActive)) return { vue: 'rendu', titre: `${TITRE_RENDU_RECENT} · v${renduRecent.version}`, ratio: ratiosMedias[renduRecent.url] ?? ratioFormat, etat: { statut: 'pret' }, media: <><video data-avatar-rendu-recent={renduRecent.generationId} src={renduRecent.url} controls playsInline onLoadedMetadata={noterRatio(renduRecent.url)} className="w-full h-full object-contain bg-black" /><span className="sr-only">{busy ? 'Votre vidéo est en cours de création.' : `Exemple de résultat — ${libelleAvatarActif(renduRecent.version)}.`}</span></> };
+      if (renduRecent && (vueApercu === 'rendu' || !srcVersionActive)) return { vue: 'rendu', titre: `${TITRE_RENDU_RECENT} · v${renduRecent.version}`, ratio: ratiosMedias[renduRecent.url] ?? ratioFormat, etat: { statut: 'pret' }, media: <><video data-avatar-rendu-recent={renduRecent.generationId} src={renduRecent.url} controls playsInline onLoadedMetadata={noterRatio(renduRecent.url)} className="w-full h-full object-contain bg-black" /><span className="sr-only">{busy ? tUi('votre_video_est_en_cours_de_creation') : `Exemple de résultat — ${libelleAvatarActif(renduRecent.version)}.`}</span></> };
       // APERÇU DU FORMAT CHOISI : la source de l'avatar actif, REMPLISSANT le cadre du
       // format (recadrée au centre, jamais étirée) — le cadrage que produira la
       // génération (`fit: cover` chez HeyGen). Lecture privée, aucun fournisseur.
@@ -1193,7 +1195,7 @@ export default function AvatarPage() {
    * récent » (son ratio réel), « Votre vidéo » (celle qui vient d'être générée).
    */
   const ongletsApercu = avatar && etatEffectif === 'valide' && !viaDid && (renduRecent || videoUrl) ? (
-    <span role="tablist" aria-label="Aperçu" className="flex flex-wrap items-center gap-1 normal-case tracking-normal">
+    <span role="tablist" aria-label={tUi('apercu')} className="flex flex-wrap items-center gap-1 normal-case tracking-normal">
       {([
         ['format', `Aperçu ${ratio}`, !!srcVersionActive],
         ['rendu', 'Rendu récent', !!renduRecent],
@@ -1209,7 +1211,7 @@ export default function AvatarPage() {
           className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${zone.vue === cle ? 'bg-studiio-primary/25 text-purple-100' : 'text-gray-400 hover:text-white'}`}
         >
           {libelle}
-          {cle === 'rendu' && <span className="sr-only"> avec cet avatar</span>}
+          {cle === 'rendu' && <span className="sr-only"> {tUi('avec_cet_avatar')}</span>}
         </button>
       ))}
     </span>
@@ -1291,7 +1293,7 @@ export default function AvatarPage() {
     return (
       <div data-avatar-chargement role="status" className="min-h-[60vh] flex flex-col items-center justify-center gap-3">
         <Loader2 className="w-8 h-8 animate-spin text-purple-500" aria-hidden />
-        <p className="text-sm text-gray-300">Chargement de votre avatar…</p>
+        <p className="text-sm text-gray-300">{tUi('chargement_de_votre_avatar')}</p>
       </div>
     );
   }
@@ -1309,15 +1311,15 @@ export default function AvatarPage() {
       <div className="space-y-3">
         <div className="text-xs text-gray-300" data-avatar-actif-meta>
           {/* VERSION ≠ QUALITÉ : « v3 » numérote l'avatar ; la qualité se choisit à la génération. */}
-          {avatar.version ? `Version v${avatar.version}` : ''} · Prêt · {avatar.avatar_type === 'video' ? 'Avatar vidéo' : 'Avatar photo'}
+          {avatar.version ? `Version v${avatar.version}` : ''} · Prêt · {avatar.avatar_type === 'video' ? tUi('avatar_video') : 'Avatar photo'}
         </div>
-        <p className="text-sm text-gray-300">Cet avatar est celui utilisé dans Créer et Autopilote.</p>
+        <p className="text-sm text-gray-300">{tUi('cet_avatar_est_celui_utilise_dans_cree')}</p>
       </div>
     ),
     // Une seule rangée d'actions dans la carte : celles de la page, puis Remplacer / Gérer.
     actions: (
       <>
-        <Link href="/dashboard/creer" data-avatar-actif-action="creer" data-avatar-action="utiliser-creer" className="button-ghost gap-1.5 !min-h-[30px] !text-xs">Utiliser dans Créer</Link>
+        <Link href="/dashboard/creer" data-avatar-actif-action="creer" data-avatar-action="utiliser-creer" className="button-ghost gap-1.5 !min-h-[30px] !text-xs">{tUi('utiliser_dans_creer')}</Link>
         {/* « Changer d'avatar » = choisir parmi MES avatars (« Remplacer » crée une nouvelle version,
             « Créer un nouvel avatar » une nouvelle identité). */}
         <button type="button" onClick={() => setDemandeChoixAvatar((n) => n + 1)} data-avatar-actif-action="changer" className="button-ghost gap-1.5 !min-h-[30px] !text-xs">
@@ -1331,7 +1333,7 @@ export default function AvatarPage() {
         <details data-avatar-source-section className="rounded-lg border border-gray-800 bg-gray-950/50">
           <summary className="cursor-pointer px-3 py-2 text-xs text-gray-300 hover:text-white">{TITRE_SOURCE_AVATAR}</summary>
           <div className="p-3 space-y-2">
-            <p className="text-xs text-gray-300">Cette {avatar.avatar_type === 'video' ? 'vidéo' : 'photo'} a servi à créer votre avatar.</p>
+            <p className="text-xs text-gray-300">Cette {avatar.avatar_type === 'video' ? tUi('video') : 'photo'} a servi à créer votre avatar.</p>
             <div className="w-28 rounded-lg overflow-hidden bg-black" style={{ aspectRatio: avatar.avatar_type === 'video' ? '9 / 16' : '1 / 1' }}>{mediaSource}</div>
           </div>
         </details>
@@ -1359,7 +1361,7 @@ export default function AvatarPage() {
               celle-ci, et la colonne d'aperçu démarre dès sous l'en-tête de page. */}
           <div className="border-b border-gray-800">
             <Onglets
-              label="Sections de Mon avatar"
+              label={tUi('sections_de_mon_avatar')}
               actif={onglet}
               onChange={(id) => setOnglet(id === 'voix' ? 'voix' : 'avatar')}
               onglets={[
@@ -1413,10 +1415,10 @@ export default function AvatarPage() {
             >
               {!avatar && kind === 'video' && didVideoActif && (
                 <ul data-avatar-did-conseils className="list-disc pl-4 space-y-0.5 text-[12px] text-gray-300 rounded-lg border border-gray-800 bg-gray-900/40 p-3">
-                  <li><span className="text-gray-100 font-medium">Au moins 1 minute</span> de vidéo.</li>
-                  <li>Parlez naturellement, regardez régulièrement la caméra.</li>
-                  <li>Lumière stable, visage bien visible.</li>
-                  <li>Évitez le montage et les coupures rapides.</li>
+                  <li><span className="text-gray-100 font-medium">{tUi('au_moins_1_minute')}</span> {tUi('de_video')}</li>
+                  <li>{tUi('parlez_naturellement_regardez_regulier')}</li>
+                  <li>{tUi('lumiere_stable_visage_bien_visible')}</li>
+                  <li>{tUi('evitez_le_montage_et_les_coupures_rapi')}</li>
                   <li>MP4 ou MOV, <span className="text-gray-100">{MAX_VIDEO_DID_MB} Mo maximum</span>.</li>
                 </ul>
               )}
@@ -1446,7 +1448,7 @@ export default function AvatarPage() {
                   >
                     {soon && (
                       <span className="absolute top-2 right-2 rounded-full bg-purple-500/20 text-purple-200 text-[10px] font-semibold px-2 py-0.5 ring-1 ring-purple-500/40">
-                        Bientôt disponible
+                        {tUi('bientot_disponible')}
                       </span>
                     )}
                     <Icon className={`w-5 h-5 mb-2 ${kind === id && !soon ? 'text-purple-300' : 'text-gray-400'}`} />
@@ -1477,16 +1479,16 @@ export default function AvatarPage() {
                   {file
                     ? `${file.name} — ${Math.round(file.size / 1024 / 1024)} Mo`
                     : kind === 'video'
-                      ? 'Choisir une vidéo'
-                      : 'Choisir une photo'}
+                      ? tUi('choisir_une_video')
+                      : tUi('choisir_une_photo')}
                 </span>
               </button>
 
               {/* Photo : « Embellir le visage », facultatif — le parcours d'avant reste identique sans lui. */}
               {kind === 'photo' && file && !ameliorerPhoto && (
                 <div data-avatar-photo-embellir className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-gray-900/60 p-3 text-sm">
-                  <span className="text-gray-300">{photoPreparee ? `Lissage : ${libelleLissage(photoPreparee.lissage)} — original conservé.` : 'Lissage du visage (facultatif)'}</span>
-                  <button type="button" data-avatar-photo-ameliorer onClick={() => setAmeliorerPhoto(true)} className="button-ghost !min-h-[30px] !text-xs">{photoPreparee ? 'Modifier' : 'Améliorer ma photo'}</button>
+                  <span className="text-gray-300">{photoPreparee ? `Lissage : ${libelleLissage(photoPreparee.lissage)} — original conservé.` : tUi('lissage_du_visage_facultatif')}</span>
+                  <button type="button" data-avatar-photo-ameliorer onClick={() => setAmeliorerPhoto(true)} className="button-ghost !min-h-[30px] !text-xs">{photoPreparee ? tUi('modifier') : tUi('ameliorer_ma_photo')}</button>
                 </div>
               )}
               {kind === 'photo' && file && ameliorerPhoto && (
@@ -1507,10 +1509,10 @@ export default function AvatarPage() {
                 />
                 <span className="text-sm text-gray-300">
                   {kind === 'video' && didVideoActif
-                    ? "Je certifie être la personne visible dans la vidéo et j'autorise Studiio et D-ID à l'utiliser pour entraîner un avatar à mon effigie."
+                    ? tUi('je_certifie_etre_la_personne_visible_d')
                     : kind === 'video'
-                      ? "Je certifie être la personne visible dans la vidéo et j'autorise Studiio et ses prestataires techniques à l'utiliser pour entraîner un avatar à mon effigie."
-                      : "Je certifie être la personne visible sur l'image et j'autorise Studiio à en créer un avatar animé."}
+                      ? tUi('je_certifie_etre_la_personne_visible_d_2')
+                      : tUi('je_certifie_etre_la_personne_visible_s')}
                 </span>
               </label>
 
@@ -1535,12 +1537,12 @@ export default function AvatarPage() {
                 {creating ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    {kind === 'video' ? 'Envoi de la vidéo…' : 'Envoi de la photo…'}
+                    {kind === 'video' ? tUi('envoi_de_la_video') : tUi('envoi_de_la_photo')}
                   </>
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4" />
-                    {kind === 'video' && didVideoActif ? 'Importer ma vidéo' : kind === 'video' ? 'Créer mon avatar vidéo' : 'Créer mon avatar'}
+                    {kind === 'video' && didVideoActif ? tUi('importer_ma_video') : kind === 'video' ? tUi('creer_mon_avatar_video') : tUi('creer_mon_avatar')}
                   </>
                 )}
               </button>
@@ -1556,8 +1558,8 @@ export default function AvatarPage() {
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 bg-black [&>*]:w-12 [&>*]:h-12 [&>*]:object-cover">{mediaSource}</div>
                   <div className="min-w-0">
-                    <div className="font-semibold truncate">{avatar.name || 'Mon avatar'}</div>
-                    <div className="text-xs text-gray-500">{avatar.avatar_type === 'video' ? 'Avatar vidéo' : 'Avatar photo'}</div>
+                    <div className="font-semibold truncate">{avatar.name || tUi('mon_avatar')}</div>
+                    <div className="text-xs text-gray-500">{avatar.avatar_type === 'video' ? tUi('avatar_video') : 'Avatar photo'}</div>
                   </div>
                 </div>
               )}
@@ -1592,14 +1594,14 @@ export default function AvatarPage() {
                   etapes={etapesEntrainementHeygen}
                   detail="Entraînement en cours — progression exacte indisponible."
                   debutLe={avatar.consent_at ?? undefined}
-                  description="Cela prend généralement plusieurs minutes."
+                  description={tUi('cela_prend_generalement_plusieurs_minu')}
                 />
               )}
 
               {/* Aperçu affiché, lecture pas encore démarrée : « Valider » n'existe pas encore. */}
               {etatEffectif === 'entraine_non_valide' && apercuPret && apercuVisible && !(apercuOuvert && apercu && 'generationId' in apercu && apercuOuvert.generationId === apercu.generationId) && (
                 <div data-avatar-apercu="en-attente-lecture" className="text-xs text-gray-400">
-                  Lancez la lecture de votre aperçu : le bouton de validation apparaîtra ensuite.
+                  {tUi('lancez_la_lecture_de_votre_apercu_le_b')}
                 </div>
               )}
 
@@ -1634,7 +1636,7 @@ export default function AvatarPage() {
                     onClick={() => setSuppressionArmee(true)}
                     className="text-xs text-gray-400 hover:text-red-300 flex items-center gap-1.5"
                   >
-                    <Trash2 className="w-3.5 h-3.5" /> Supprimer mon avatar
+                    <Trash2 className="w-3.5 h-3.5" /> {tUi('supprimer_mon_avatar')}
                   </button>
                 )}
               </div>
@@ -1693,7 +1695,7 @@ export default function AvatarPage() {
             <div data-avatar-generation className="card-base !p-4 space-y-2.5">
               <div>
                 <div className="flex items-baseline justify-between gap-2 mb-1">
-                  <label className="text-xs font-medium text-gray-100">Ce que dit votre avatar</label>
+                  <label className="text-xs font-medium text-gray-100">{tUi('ce_que_dit_votre_avatar')}</label>
                   <span className="text-xs text-gray-400">{script.length} / {MAX_SCRIPT_CHARS}</span>
                 </div>
                 <textarea
@@ -1709,7 +1711,7 @@ export default function AvatarPage() {
                   « Générer la vidéo » tiennent ensemble à l'ouverture, de 1366×768 à 1440×900. */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div className="min-w-0">
-                  <label className="block text-xs font-medium text-gray-100 mb-1">Voix</label>
+                  <label className="block text-xs font-medium text-gray-100 mb-1">{tUi('voix')}</label>
                   <select
                     data-avatar-voix
                     value={voiceId}
@@ -1717,12 +1719,12 @@ export default function AvatarPage() {
                     disabled={voices.length === 0 && voixClonees.length === 0}
                     className="w-full rounded-lg bg-gray-800 border border-gray-700 focus:border-studiio-primary focus:ring-1 focus:ring-studiio-primary outline-none px-2.5 py-2 text-sm text-gray-100 disabled:opacity-50"
                   >
-                    {voices.length === 0 && voixClonees.length === 0 && <option value="">Voix indisponibles</option>}
+                    {voices.length === 0 && voixClonees.length === 0 && <option value="">{tUi('voix_indisponibles')}</option>}
                     {/* MA VOIX en premier — seulement si le compte en a une. Toute voix PRÊTE
                         se choisit ici, pour cette vidéo seulement (la voix enregistrée du
                         compte, celle de Créer et de l'Autopilote, ne change pas). */}
                     {voixClonees.length > 0 && (
-                      <optgroup label="Ma voix" data-avatar-voix-groupe="clonees">
+                      <optgroup label={tUi('ma_voix')} data-avatar-voix-groupe="clonees">
                         {voixClonees.map((v) => {
                           const ok = voixSelectionnable(v);
                           return (
@@ -1734,7 +1736,7 @@ export default function AvatarPage() {
                       </optgroup>
                     )}
                     {voixClonees.length > 0 && voices.length > 0 ? (
-                      <optgroup label="Voix disponibles" data-avatar-voix-groupe="disponibles">
+                      <optgroup label={tUi('voix_disponibles')} data-avatar-voix-groupe="disponibles">
                         {voices.map((v) => (
                           <option key={v.voiceId} value={v.voiceId}>
                             {v.name}
@@ -1751,7 +1753,7 @@ export default function AvatarPage() {
                   </select>
                   {voixCloneeChoisie && !voixCloneeChoisieIndisponible && (
                     <span data-voix-clonee-badge className="mt-1.5 inline-flex items-center gap-1 rounded-full bg-studiio-primary/20 text-purple-200 px-2 py-0.5 text-[10px] font-semibold">
-                      <Mic className="w-3 h-3" /> Voix clonée
+                      <Mic className="w-3 h-3" /> {tUi('voix_clonee')}
                     </span>
                   )}
                   {voixCloneeChoisieIndisponible && (
@@ -1764,7 +1766,7 @@ export default function AvatarPage() {
                     Un niveau fermé reste visible, grisé, avec SA raison dans son libellé. */}
                 {qualites.length > 0 && (
                   <div data-avatar-qualite className="min-w-0">
-                    <label htmlFor="avatar-qualite" className="block text-xs font-medium text-gray-100 mb-1">Qualité de génération</label>
+                    <label htmlFor="avatar-qualite" className="block text-xs font-medium text-gray-100 mb-1">{tUi('qualite_de_generation')}</label>
                     <select
                       id="avatar-qualite"
                       data-avatar-qualite-choix
@@ -1810,11 +1812,11 @@ export default function AvatarPage() {
               <BlocPrix data-avatar-prix={tarifs.exempte ? 'administrateur' : 'utilisateur'} lignes={lignesPrixGenererAvatar(prixGeneration, tarifs.exempte)} />
               {devisAdmin && (
                 <div data-avatar-cout-fournisseur={devisAdmin.moteur ?? ''} className="rounded-lg border border-gray-800 bg-gray-900/60 px-3 py-2 text-[11px] text-gray-300 space-y-0.5">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Coût fournisseur estimé (admin)</p>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{tUi('cout_fournisseur_estime_admin')}</p>
                   <p data-avatar-cout-ligne="moteur">HeyGen — {LIBELLE_MOTEUR_DEVIS[devisAdmin.moteur ?? ''] ?? devisAdmin.moteur} · durée estimée {libelleDuree(devisAdmin.dureeSecondes)}</p>
                   <p data-avatar-cout-ligne="cout">
                     {devisAdmin.tarifUsdParSeconde !== null ? `${devisAdmin.tarifUsdParSeconde.toLocaleString('fr-FR', { maximumFractionDigits: 4 })} $ / s · ` : ''}
-                    {devisAdmin.coutUsd ? `coût ${libelleCoutUsd(devisAdmin.coutUsd)}` : 'Coût fournisseur exact non disponible'} · crédits Studiio : 0
+                    {devisAdmin.coutUsd ? `coût ${libelleCoutUsd(devisAdmin.coutUsd)}` : tUi('cout_fournisseur_exact_non_disponible')} · crédits Studiio : 0
                   </p>
                 </div>
               )}
@@ -1830,7 +1832,7 @@ export default function AvatarPage() {
                 {busy ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    {genStatus === 'pending' ? 'Lancement…' : 'Génération en cours…'}
+                    {genStatus === 'pending' ? 'Lancement…' : tUi('generation_en_cours')}
                   </>
                 ) : (
                   <>
@@ -1878,21 +1880,21 @@ export default function AvatarPage() {
                   avec la VERSION de l'avatar (« v5 » numérote un entraînement, pas un moteur). */}
               {premium && (
                 <div data-avatar-premium={premium.ouverte ? (qualite === 'premium' ? 'selectionne' : 'disponible') : 'indisponible'} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-gray-300">
-                  <span className="rounded-full bg-studiio-primary/25 px-1.5 py-0.5 text-[10px] font-semibold text-purple-100" data-avatar-premium-badge>Meilleure qualité</span>
+                  <span className="rounded-full bg-studiio-primary/25 px-1.5 py-0.5 text-[10px] font-semibold text-purple-100" data-avatar-premium-badge>{tUi('meilleure_qualite')}</span>
                   {premium.ouverte ? (
                     qualite === 'premium'
-                      ? <span>Premium — Avatar V sélectionné.</span>
-                      : <><span>Premium — Avatar V disponible pour votre avatar.</span><button type="button" data-avatar-premium-choisir disabled={busy} onClick={() => choisirQualite('premium')} className="text-purple-200 underline hover:text-white disabled:opacity-40">Choisir</button></>
+                      ? <span>{tUi('premium_avatar_v_selectionne')}</span>
+                      : <><span>{tUi('premium_avatar_v_disponible_pour_votre')}</span><button type="button" data-avatar-premium-choisir disabled={busy} onClick={() => choisirQualite('premium')} className="text-purple-200 underline hover:text-white disabled:opacity-40">Choisir</button></>
                   ) : (
                     <span data-avatar-premium-motif className="text-gray-400">Premium — Avatar V : {premium.motif ?? 'indisponible.'}</span>
                   )}
                 </div>
               )}
-              {viaVoixClonee && <p data-avatar-qualite-voix-clonee className="text-[10px] text-gray-400">Avec votre voix clonée, la qualité par défaut est celle de Créer.</p>}
+              {viaVoixClonee && <p data-avatar-qualite-voix-clonee className="text-[10px] text-gray-400">{tUi('avec_votre_voix_clonee_la_qualite_par')}</p>}
               {/* Format ≠ orientation de l'avatar : dit, sous le bouton (le bouton reste à l'écran). */}
               {orientationAvatar && orientationAvatar !== (ratio === '9:16' ? 'portrait' : ratio === '16:9' ? 'landscape' : 'square') && (
                 <p data-avatar-recadrage className="text-[11px] text-gray-400">
-                  Avatar créé en {orientationAvatar === 'landscape' ? 'paysage' : orientationAvatar === 'portrait' ? 'portrait' : 'carré'} : en {ratio}, l’image est recadrée pour remplir tout le cadre — sans bandes ni déformation. Pour un {ratio} au cadrage de votre choix, remplacez l’avatar par une vidéo cadrée en {ratio}.
+                  Avatar créé en {orientationAvatar === 'landscape' ? 'paysage' : orientationAvatar === 'portrait' ? 'portrait' : tUi('carre')} : en {ratio}, l’image est recadrée pour remplir tout le cadre — sans bandes ni déformation. Pour un {ratio} au cadrage de votre choix, remplacez l’avatar par une vidéo cadrée en {ratio}.
                 </p>
               )}
               {videoUrl && (
@@ -1901,7 +1903,7 @@ export default function AvatarPage() {
                   download
                   className="inline-flex items-center gap-2 text-sm text-purple-300 hover:text-purple-200"
                 >
-                  <Download className="w-4 h-4" /> Télécharger la vidéo
+                  <Download className="w-4 h-4" /> {tUi('telecharger_la_video')}
                 </a>
               )}
             </div>

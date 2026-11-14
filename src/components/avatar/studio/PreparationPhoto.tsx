@@ -20,6 +20,7 @@ import { detailEnvoi, envoyerFormulaire, type ProgressionEnvoi } from '@/lib/htt
 import { LISSAGE_PAR_DEFAUT, libelleLissage } from '@/lib/avatar/preparation-source-regles';
 import CurseurLissage from '@/components/avatar/studio/CurseurLissage';
 import { dessinerApercuLisse } from '@/lib/avatar/lissage-apercu';
+import { useTranslations } from '@/i18n/client';
 
 type Etape = 'envoi' | 'erreur' | 'edition' | 'traitement' | 'resultat';
 interface Reponse<T> { success?: boolean; error?: string; data?: T }
@@ -31,6 +32,7 @@ export default function PreparationPhoto(props: {
   onAnnuler: () => void;
   onPret: (r: { cleOriginal: string; cleTraitee: string; lissage: number; largeur: number | null; hauteur: number | null }) => void;
 }) {
+  const tUi = useTranslations('ui.componentsAvatarStudioPreparationPhoto');
   const { fichier } = props;
   const [etape, setEtape] = useState<Etape>('envoi');
   const [progression, setProgression] = useState<ProgressionEnvoi | null>(null);
@@ -104,7 +106,7 @@ export default function PreparationPhoto(props: {
       setErreur(j?.error ?? 'Le lissage a échoué. Réessayez.');
       setEtape('edition');
     } catch {
-      setErreur('Connexion impossible. Réessayez.');
+      setErreur(tUi('connexion_impossible_reessayez'));
       setEtape('edition');
     }
   };
@@ -126,8 +128,8 @@ export default function PreparationPhoto(props: {
   return (
     <div data-preparation-photo={etape} className="card-base space-y-4 p-4 sm:p-5">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-base font-semibold text-white">Améliorer ma photo</h3>
-        <button type="button" onClick={props.onAnnuler} aria-label="Annuler" className="rounded-full p-1.5 text-gray-400 hover:text-white"><X className="w-4 h-4" /></button>
+        <h3 className="text-base font-semibold text-white">{tUi('ameliorer_ma_photo')}</h3>
+        <button type="button" onClick={props.onAnnuler} aria-label={tUi('annuler')} className="rounded-full p-1.5 text-gray-400 hover:text-white"><X className="w-4 h-4" /></button>
       </div>
 
       {etape === 'envoi' && (
@@ -146,8 +148,8 @@ export default function PreparationPhoto(props: {
         <div className="space-y-3">
           <p data-preparation-photo-erreur role="alert" className="rounded-xl bg-red-500/10 p-3 text-sm text-red-200">{erreur}</p>
           <div className="grid grid-cols-2 gap-3">
-            <button type="button" onClick={props.onAnnuler} className="button-secondary py-2.5 text-sm">Annuler</button>
-            <button type="button" onClick={() => setEssai((n) => n + 1)} className="button-primary py-2.5 text-sm">Réessayer</button>
+            <button type="button" onClick={props.onAnnuler} className="button-secondary py-2.5 text-sm">{tUi('annuler')}</button>
+            <button type="button" onClick={() => setEssai((n) => n + 1)} className="button-primary py-2.5 text-sm">{tUi('reessayer')}</button>
           </div>
         </div>
       )}
@@ -157,7 +159,7 @@ export default function PreparationPhoto(props: {
           <div className="relative mx-auto max-w-xs rounded-2xl overflow-hidden bg-black">
             {urlLocale && (
               /* eslint-disable-next-line @next/next/no-img-element */
-              <img ref={imageSource} data-preparation-photo-image="originale" src={urlLocale} alt="Votre photo d’origine" onLoad={(e) => setDims({ l: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })} className="w-full object-contain" />
+              <img ref={imageSource} data-preparation-photo-image="originale" src={urlLocale} alt={tUi('votre_photo_d_origine')} onLoad={(e) => setDims({ l: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })} className="w-full object-contain" />
             )}
             {/* L'aperçu lissé, dessiné PAR-DESSUS l'original (qui reste intact dessous). */}
             <canvas ref={toile} data-preparation-photo-apercu-direct={apercuDirect && !avantEdition ? 'visible' : 'masque'} aria-label={`Aperçu du lissage à ${lissage} %`} className={`absolute inset-0 w-full h-full ${apercuDirect && !avantEdition ? '' : 'hidden'}`} />
@@ -165,7 +167,7 @@ export default function PreparationPhoto(props: {
           </div>
           <div role="radiogroup" aria-label="Comparer" className="grid grid-cols-2 gap-1 rounded-xl bg-gray-900/70 p-1">
             <button type="button" role="radio" aria-checked={avantEdition} data-preparation-photo-direct="avant" onClick={() => setAvantEdition(true)} className={`rounded-lg py-1.5 text-xs ${avantEdition ? 'bg-studiio-primary text-white' : 'text-gray-300'}`}>Avant — original</button>
-            <button type="button" role="radio" aria-checked={!avantEdition} data-preparation-photo-direct="apres" onClick={() => setAvantEdition(false)} className={`rounded-lg py-1.5 text-xs ${!avantEdition ? 'bg-studiio-primary text-white' : 'text-gray-300'}`}>Après — aperçu en direct</button>
+            <button type="button" role="radio" aria-checked={!avantEdition} data-preparation-photo-direct="apres" onClick={() => setAvantEdition(false)} className={`rounded-lg py-1.5 text-xs ${!avantEdition ? 'bg-studiio-primary text-white' : 'text-gray-300'}`}>{tUi('apres_apercu_en_direct')}</button>
           </div>
           {/* LISSAGE DU VISAGE — même filtre que la vidéo : peau lissée, traits intacts. */}
           <div data-preparation-embellir className="rounded-xl bg-gray-900/60 px-4 py-3">
@@ -177,8 +179,8 @@ export default function PreparationPhoto(props: {
             <ProgressStatus titre="Embellissement de votre photo" statut="en_cours" detail="Traitement en cours — progression exacte indisponible." note="Votre original reste intact." />
           ) : (
             <div className="grid grid-cols-2 gap-3">
-              <button type="button" onClick={props.onAnnuler} className="button-secondary py-2.5 text-sm">Annuler</button>
-              <button type="button" data-preparation-photo-previsualiser onClick={() => void appliquer(lissage)} className="button-primary py-2.5 text-sm">Prévisualiser</button>
+              <button type="button" onClick={props.onAnnuler} className="button-secondary py-2.5 text-sm">{tUi('annuler')}</button>
+              <button type="button" data-preparation-photo-previsualiser onClick={() => void appliquer(lissage)} className="button-primary py-2.5 text-sm">{tUi('previsualiser')}</button>
             </div>
           )}
         </div>
@@ -191,7 +193,7 @@ export default function PreparationPhoto(props: {
             <img
               data-preparation-photo-image={voirOriginal ? 'originale' : 'utilisee'}
               src={apercu(voirOriginal ? cleOriginal : resultat.cleTraitee)}
-              alt={voirOriginal ? 'Votre photo d’origine' : 'La photo qui sera utilisée'}
+              alt={voirOriginal ? tUi('votre_photo_d_origine') : tUi('la_photo_qui_sera_utilisee')}
               className="w-full object-contain"
             />
           </div>
@@ -201,8 +203,8 @@ export default function PreparationPhoto(props: {
           </div>
           <p className="text-xs text-gray-500" data-preparation-photo-lissage>Lissage : {libelleLissage(resultat.lissage)}. Votre photo d’origine est conservée telle quelle.</p>
           <div className="grid grid-cols-3 gap-2">
-            <button type="button" data-preparation-photo-modifier onClick={() => setEtape('edition')} className="button-secondary inline-flex items-center justify-center gap-1 py-2.5 text-xs"><ArrowLeft className="w-3.5 h-3.5" /> Modifier</button>
-            <button type="button" data-preparation-photo-reinitialiser onClick={reinitialiser} className="button-secondary inline-flex items-center justify-center gap-1 py-2.5 text-xs"><RotateCcw className="w-3.5 h-3.5" /> Réinitialiser</button>
+            <button type="button" data-preparation-photo-modifier onClick={() => setEtape('edition')} className="button-secondary inline-flex items-center justify-center gap-1 py-2.5 text-xs"><ArrowLeft className="w-3.5 h-3.5" /> {tUi('modifier')}</button>
+            <button type="button" data-preparation-photo-reinitialiser onClick={reinitialiser} className="button-secondary inline-flex items-center justify-center gap-1 py-2.5 text-xs"><RotateCcw className="w-3.5 h-3.5" /> {tUi('reinitialiser')}</button>
             <button type="button" data-preparation-photo-utiliser onClick={utiliser} className="button-primary inline-flex items-center justify-center gap-1 py-2.5 text-xs"><Check className="w-3.5 h-3.5" /> Utiliser</button>
           </div>
         </div>

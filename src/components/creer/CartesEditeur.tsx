@@ -7,6 +7,7 @@ import IconPicker from '@/components/creer/IconPicker';
 import {
   CARTE_LIMITES, MIN_GROUP, blocsCartes, groupOf, type CardGroup, type CarteTexte,
 } from '@/lib/creer/selection';
+import { useTranslations } from '@/i18n/client';
 
 export { CARTE_LIMITES };
 
@@ -89,6 +90,7 @@ export default function CartesEditeur({
   cards, onChange, couleurValeur = '#C4B5FD', onAdd, onRemove, canAdd = true, canRemove = true, max,
   onIconChange, iconesMasquees, selection, onToggleSelect, groups = [], onRegrouper, onDissocier, onMoveBloc, voixPerimee = null,
 }: CartesEditeurProps) {
+  const tUi = useTranslations('ui.componentsCreerCartesEditeur');
   /** La carte dont la grille d'icônes est ouverte — une seule à la fois. */
   const [iconeOuverte, setIconeOuverte] = useState<string | null>(null);
   /** Ordre du tableau = ordre affiché = ordre de lecture de la voix. */
@@ -151,7 +153,7 @@ export default function CartesEditeur({
                 onClick={() => setIconeOuverte((o) => (o === c.id ? null : c.id))}
                 aria-label={`Changer l’icône de la carte ${i + 1}`}
                 aria-expanded={iconeOuverte === c.id}
-                title="Changer l’icône"
+                title={tUi('changer_l_icone')}
                 data-carte-icone={c.id}
                 className={`rounded-md border p-1 transition-colors ${
                   iconeOuverte === c.id ? 'border-purple-500 bg-gray-800' : 'border-gray-800 hover:border-purple-500/60'
@@ -170,7 +172,7 @@ export default function CartesEditeur({
                 onClick={() => onRemove(c.id)}
                 disabled={!canRemove}
                 aria-label={`Supprimer la carte ${i + 1}`}
-                title={canRemove ? `Supprimer la carte ${i + 1}` : 'Il faut garder au moins une carte'}
+                title={canRemove ? `Supprimer la carte ${i + 1}` : tUi('il_faut_garder_au_moins_une_carte')}
                 data-carte-supprimer={c.id}
                 className="rounded p-1 text-gray-500 normal-case tracking-normal hover:bg-red-500/10 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-30"
               >
@@ -194,7 +196,7 @@ export default function CartesEditeur({
           {iconesMasquees?.has(c.id) && (
             <p className="flex items-start gap-1.5 text-[11px] text-amber-200/90" data-carte-icone-masquee>
               <ImageIcon size={12} className="mt-0.5 flex-shrink-0" />
-              Cette carte a une image personnalisée : dans le Calendrier, elle s’affiche à la place de l’icône.
+              {tUi('cette_carte_a_une_image_personnalisee')}
             </p>
           )}
           <div className="grid grid-cols-[1fr_auto] gap-2">
@@ -205,7 +207,7 @@ export default function CartesEditeur({
                 data-carte-champ="title"
                 value={c.title}
                 maxLength={CARTE_LIMITES.title}
-                placeholder="Titre"
+                placeholder={tUi('titre')}
                 onChange={(e) => onChange(c.id, { title: e.target.value })}
                 className={`${CHAMP} font-medium`}
               />
@@ -231,7 +233,7 @@ export default function CartesEditeur({
               value={c.description}
               maxLength={CARTE_LIMITES.description}
               rows={2}
-              placeholder="Description"
+              placeholder={tUi('description')}
               onChange={(e) => onChange(c.id, { description: e.target.value })}
               className={`${CHAMP} text-xs resize-none`}
             />
@@ -246,12 +248,12 @@ export default function CartesEditeur({
         <div role="alert" data-cartes-voix-perimee={voixPerimee.motif} className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-100">
           <span className="flex-1 min-w-[12rem]">
             {voixPerimee.motif === 'ordre'
-              ? 'L’ordre des cartes a changé. Régénérez la voix des cartes pour conserver la synchronisation.'
-              : 'Le texte des cartes a changé. Régénérez la voix des cartes pour conserver la synchronisation.'}
+              ? tUi('l_ordre_des_cartes_a_change_regenerez')
+              : tUi('le_texte_des_cartes_a_change_regenerez')}
           </span>
           {voixPerimee.onRegenerer && (
             <button type="button" data-cartes-regenerer-voix onClick={voixPerimee.onRegenerer} disabled={voixPerimee.enCours} className="button-secondary !min-h-[28px] !px-2.5 !text-[11px] disabled:opacity-50">
-              {voixPerimee.enCours ? 'Régénération…' : 'Régénérer la voix'}
+              {voixPerimee.enCours ? tUi('regeneration') : tUi('regenerer_la_voix')}
             </button>
           )}
         </div>
@@ -260,7 +262,7 @@ export default function CartesEditeur({
         <div className="flex flex-wrap items-center gap-1.5" data-cartes-outils>
           <span className="flex-1 text-[11px] text-gray-400">
             {nbSelection === 0
-              ? 'Cochez des cartes pour les regrouper'
+              ? tUi('cochez_des_cartes_pour_les_regrouper')
               : `${nbSelection} carte${nbSelection > 1 ? 's' : ''} sélectionnée${nbSelection > 1 ? 's' : ''}`}
           </span>
           {onRegrouper && (
@@ -268,7 +270,7 @@ export default function CartesEditeur({
               type="button"
               onClick={onRegrouper}
               disabled={nbSelection < MIN_GROUP}
-              title={nbSelection < MIN_GROUP ? 'Sélectionnez au moins deux cartes' : 'Regrouper les cartes sélectionnées'}
+              title={nbSelection < MIN_GROUP ? tUi('selectionnez_au_moins_deux_cartes') : tUi('regrouper_les_cartes_selectionnees')}
               data-cartes-regrouper
               className="button-ghost gap-1.5 text-xs"
             >
@@ -281,7 +283,7 @@ export default function CartesEditeur({
               type="button"
               onClick={onDissocier}
               disabled={!selectionGroupee}
-              title={selectionGroupee ? 'Séparer les cartes de leur groupe' : 'Sélectionnez une carte d’un groupe'}
+              title={selectionGroupee ? tUi('separer_les_cartes_de_leur_groupe') : tUi('selectionnez_une_carte_d_un_groupe')}
               data-cartes-dissocier
               className="button-ghost gap-1.5 text-xs"
             >
@@ -316,11 +318,11 @@ export default function CartesEditeur({
           onClick={onAdd}
           disabled={!canAdd}
           data-carte-ajouter
-          title={canAdd ? 'Ajouter une carte vide' : `Maximum de ${max ?? cards.length} cartes atteint dans ce format`}
+          title={canAdd ? tUi('ajouter_une_carte_vide') : `Maximum de ${max ?? cards.length} cartes atteint dans ce format`}
           className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-gray-700 py-2 text-xs text-gray-300 hover:border-purple-500/60 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Plus size={14} />
-          Ajouter une carte
+          {tUi('ajouter_une_carte')}
         </button>
       )}
       {onAdd && !canAdd && (

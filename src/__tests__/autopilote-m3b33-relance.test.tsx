@@ -669,6 +669,8 @@ describe('E — ni IA, ni crédit, ni rendu, ni publication', () => {
     expect([...new Set(importes)].sort()).toEqual([
       // M3-C : la section « Passages suggérés ». Le SEUL ajout depuis M3-B3,
       // et il est nommé — un import de plus refera rougir ce test.
+      // V670 : traduction — le texte affiché passe par le hook de traduction.
+      '@/i18n/client',
       './PassagesSuggeres',
       '@/lib/autopilot/analyse/passerelle',
       '@/lib/autopilot/analyse/presentation',
@@ -687,6 +689,8 @@ describe('E — ni IA, ni crédit, ni rendu, ni publication', () => {
     // le paquet navigateur.
     const importesEnfant = [...enfant.matchAll(/from\s+'([^']+)'/g)].map((m) => m[1]);
     expect([...new Set(importesEnfant)].sort()).toEqual([
+      // V670 : traduction — le texte affiché passe par le hook de traduction.
+      '@/i18n/client',
       '@/lib/autopilot/analyse/candidat-passerelle',
       // P0.1 : le bouton « Créer ma vidéo ». `chaine-passerelle` n'enchaîne
       // que trois URL et n'importe RIEN à l'exécution — les vocabulaires

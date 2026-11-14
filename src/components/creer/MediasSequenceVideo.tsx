@@ -22,6 +22,7 @@ import {
   type ItemPlanDetaille, type MediaVideo, type PlanDetaille,
 } from '@/lib/creer/medias-video';
 import MiniatureVideo from '@/components/medias/MiniatureVideo';
+import { useTranslations } from '@/i18n/client';
 
 export type EtatAvatarListe = 'pret' | 'absent' | 'chargement' | 'inconnu';
 
@@ -117,6 +118,7 @@ function Vignette({ m, vignetteAvatar }: { m: MediaVideo; vignetteAvatar?: Media
 function ReglageDuree({ m, i, item, plan, occupe, onDuree }: {
   m: MediaVideo; i: number; item: ItemPlanDetaille | null; plan: PlanDetaille; occupe?: boolean; onDuree?: (i: number, s: number) => void;
 }) {
+  const tUi = useTranslations('ui.componentsCreerMediasSequenceVideo');
   const b = bornesDuree(m, plan);
   if (b.mode === 'voix') {
     const estimee = plan.sourceParole === 'estimee';
@@ -132,7 +134,7 @@ function ReglageDuree({ m, i, item, plan, occupe, onDuree }: {
   const pas = 'flex items-center justify-center rounded-md w-6 h-6 text-gray-300 bg-gray-800 hover:bg-gray-700 hover:text-white disabled:opacity-25 disabled:cursor-not-allowed transition';
   return (
     <span data-media-duree={b.mode} className="flex items-center gap-1 text-[10px] text-gray-400">
-      <span>Durée</span>
+      <span>{tUi('duree')}</span>
       <button
         type="button" className={pas} data-duree-moins
         onClick={() => onDuree(i, d - b.pas)} disabled={occupe || d <= b.min}
@@ -143,7 +145,7 @@ function ReglageDuree({ m, i, item, plan, occupe, onDuree }: {
         type="button" className={pas} data-duree-plus
         onClick={() => onDuree(i, d + b.pas)} disabled={occupe || d >= b.max - 1e-6}
         title={b.limiteParNarration && d >= b.max - 1e-6
-          ? `Plus de temps libre dans la narration de votre avatar`
+          ? tUi('plus_de_temps_libre_dans_la_narration')
           : b.mode === 'video' ? `Allonger ${nom} (jusqu’à sa durée réelle)` : `Allonger ${nom}`}
         aria-label={`Allonger ${nom} ${i + 1}`}
       ><Plus className="w-3 h-3" /></button>
@@ -154,6 +156,7 @@ function ReglageDuree({ m, i, item, plan, occupe, onDuree }: {
 const bouton = 'flex items-center justify-center rounded-md w-7 h-7 text-gray-400 hover:text-white hover:bg-gray-700 disabled:opacity-25 disabled:cursor-not-allowed transition';
 
 export default function MediasSequenceVideo(p: MediasSequenceVideoProps) {
+  const tUi = useTranslations('ui.componentsCreerMediasSequenceVideo');
   const [menu, setMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -184,12 +187,12 @@ export default function MediasSequenceVideo(p: MediasSequenceVideoProps) {
           role={narration.depasse ? 'alert' : undefined}
         >
           {narration.depasse && <AlertTriangle className="inline w-3 h-3 mr-1 -mt-0.5" />}
-          Narration {p.plan.sourceParole === 'reelle' ? 'réelle' : 'estimée'} : {formatSecondes(p.plan.dureeParole ?? 0)} s · {narration.texte}
+          Narration {p.plan.sourceParole === 'reelle' ? tUi('reelle') : tUi('estimee')} : {formatSecondes(p.plan.dureeParole ?? 0)} s · {narration.texte}
           {narration.depasse ? ' : raccourcissez vos médias avant d’envoyer.' : ''}
         </p>
       )}
       {n === 0 && (
-        <p className="px-1 text-[11px] text-gray-500">Aucun média : ajoutez un rush, votre avatar ou un média suggéré.</p>
+        <p className="px-1 text-[11px] text-gray-500">{tUi('aucun_media_ajoutez_un_rush_votre_avat')}</p>
       )}
       <ol className="space-y-1.5">
         {p.medias.map((m, i) => {
@@ -222,7 +225,7 @@ export default function MediasSequenceVideo(p: MediasSequenceVideoProps) {
                   type="button" className={bouton}
                   onClick={() => p.onApercu(choisi ? null : m)}
                   disabled={!m.url && !(m.source === 'avatar' && p.vignetteAvatar)}
-                  title="Aperçu" aria-label={`Aperçu du média ${i + 1}`} aria-pressed={choisi}
+                  title={tUi('apercu')} aria-label={`Aperçu du média ${i + 1}`} aria-pressed={choisi}
                 ><Play className="w-3.5 h-3.5" /></button>
                 <button type="button" className={bouton} onClick={() => p.onDeplacer(i, -1)} disabled={i === 0 || p.occupe} title="Monter" aria-label={`Monter le média ${i + 1}`}>
                   <ArrowUp className="w-3.5 h-3.5" />
@@ -237,10 +240,10 @@ export default function MediasSequenceVideo(p: MediasSequenceVideoProps) {
                   type="button" data-media-recadrer
                   className={`${bouton} ${recadre ? 'bg-studiio-primary/25 text-purple-100' : ''}`}
                   onClick={() => p.onRecadrer(m)} disabled={!recadrable || p.occupe}
-                  title="Recadrer : le média remplit le format, l'export utilise ce cadrage." aria-label={`Recadrer le média ${i + 1}`}
+                  title={tUi('recadrer_le_media_remplit_le_format_l')} aria-label={`Recadrer le média ${i + 1}`}
                   data-recadre={recadre ? 'oui' : 'non'}
                 ><Crop className="w-3.5 h-3.5" /></button>
-                <button type="button" className={`${bouton} hover:text-red-400`} onClick={() => p.onSupprimer(i)} disabled={p.occupe} title="Supprimer" aria-label={`Supprimer le média ${i + 1}`}>
+                <button type="button" className={`${bouton} hover:text-red-400`} onClick={() => p.onSupprimer(i)} disabled={p.occupe} title={tUi('supprimer')} aria-label={`Supprimer le média ${i + 1}`}>
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </span>
@@ -252,7 +255,7 @@ export default function MediasSequenceVideo(p: MediasSequenceVideoProps) {
               )}
               {item?.horsNarration && (
                 <span data-media-hors-narration className="basis-full text-[10px] text-amber-300" style={{ paddingLeft: 72 }}>
-                  Ne tient pas dans la narration : raccourcissez ce média ou un autre.
+                  {tUi('ne_tient_pas_dans_la_narration_raccour')}
                 </span>
               )}
               {p.noteDuree?.id === m.id && (
@@ -271,7 +274,7 @@ export default function MediasSequenceVideo(p: MediasSequenceVideoProps) {
             p.vignetteAvatar?.type === 'video'
               ? <video src={p.vignetteAvatar.url} muted playsInline autoPlay loop controls className="w-full" style={{ maxHeight: 320 }} />
               // eslint-disable-next-line @next/next/no-img-element
-              : <img src={p.vignetteAvatar!.url} alt="Mon avatar" className="w-full object-cover" style={{ maxHeight: 320 }} />
+              : <img src={p.vignetteAvatar!.url} alt={tUi('mon_avatar')} className="w-full object-cover" style={{ maxHeight: 320 }} />
           ) : selection.type === 'image' ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={selection.url} alt={libelleMedia(selection, itemDuPlan(p.plan, selection.id)?.dureeEffective)} className="w-full object-cover" style={{ maxHeight: 320 }} />
@@ -291,16 +294,16 @@ export default function MediasSequenceVideo(p: MediasSequenceVideoProps) {
           className="flex items-center gap-1 text-[11px] font-medium text-emerald-300 hover:text-emerald-200 disabled:opacity-40 disabled:cursor-not-allowed px-1 py-0.5"
         >
           <Plus className="w-3 h-3" />
-          Ajouter
+          {tUi('ajouter')}
         </button>
         {menu && (
           <div role="menu" data-medias-menu className="mt-1 w-full max-w-[260px] rounded-lg bg-gray-900 ring-1 ring-white/10 shadow-xl p-1 space-y-0.5">
             <button type="button" role="menuitem" onClick={choisir(p.onAjouterMonRush)} className="w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-[12px] text-gray-200 hover:bg-gray-800 text-left">
-              <Film className="w-3.5 h-3.5 text-emerald-300" /> Mon rush
+              <Film className="w-3.5 h-3.5 text-emerald-300" /> {tUi('mon_rush')}
             </button>
             {p.etatAvatar === 'pret' ? (
               <button type="button" role="menuitem" data-ajouter-avatar onClick={choisir(p.onAjouterAvatar)} className="w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-[12px] text-gray-200 hover:bg-gray-800 text-left">
-                <UserRound className="w-3.5 h-3.5 text-purple-300" /> Mon avatar
+                <UserRound className="w-3.5 h-3.5 text-purple-300" /> {tUi('mon_avatar')}
               </button>
             ) : (
               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md px-2 py-1.5 text-[12px]">
@@ -308,15 +311,15 @@ export default function MediasSequenceVideo(p: MediasSequenceVideoProps) {
                   {p.etatAvatar === 'chargement' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserRound className="w-3.5 h-3.5" />} Mon avatar
                 </button>
                 {p.etatAvatar !== 'chargement' && (
-                  <a href={p.lienAvatar ?? '/dashboard/avatar'} className="text-[11px] text-purple-300 underline hover:text-purple-200">Configurer mon avatar</a>
+                  <a href={p.lienAvatar ?? '/dashboard/avatar'} className="text-[11px] text-purple-300 underline hover:text-purple-200">{tUi('configurer_mon_avatar')}</a>
                 )}
               </div>
             )}
             <button type="button" role="menuitem" data-ouvrir-stock="rush" onClick={choisir(p.onAjouterSuggere)} className="w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-[12px] text-gray-200 hover:bg-gray-800 text-left">
-              <Images className="w-3.5 h-3.5 text-amber-300" /> Média suggéré
+              <Images className="w-3.5 h-3.5 text-amber-300" /> {tUi('media_suggere')}
             </button>
             <button type="button" role="menuitem" onClick={choisir(p.onAjouterMediatheque)} className="w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-[12px] text-gray-200 hover:bg-gray-800 text-left">
-              <FolderOpen className="w-3.5 h-3.5 text-cyan-300" /> Ma médiathèque
+              <FolderOpen className="w-3.5 h-3.5 text-cyan-300" /> {tUi('ma_mediatheque')}
             </button>
           </div>
         )}

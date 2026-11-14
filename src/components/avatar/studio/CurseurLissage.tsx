@@ -6,13 +6,15 @@
  * se situer ; toute valeur intermédiaire est réellement appliquée.
  */
 import { LISSAGE_MAX, LISSAGE_MIN, REPERES_LISSAGE, bornerLissage, libelleLissage } from '@/lib/avatar/preparation-source-regles';
+import { useTranslations } from '@/i18n/client';
 
 export default function CurseurLissage(props: { valeur: number; onChange: (v: number) => void; disabled?: boolean; onReinitialiser?: () => void }) {
+  const tUi = useTranslations('ui.componentsAvatarStudioCurseurLissage');
   const v = bornerLissage(props.valeur);
   return (
     <div data-curseur-lissage className="space-y-2">
       <div className="flex items-baseline justify-between gap-2">
-        <label htmlFor="curseur-lissage" className="text-sm text-white">Lissage du visage</label>
+        <label htmlFor="curseur-lissage" className="text-sm text-white">{tUi('lissage_du_visage')}</label>
         <span data-curseur-lissage-valeur className="text-xs tabular-nums text-purple-200">Lissage : {libelleLissage(v)}</span>
       </div>
       <input
@@ -44,9 +46,9 @@ export default function CurseurLissage(props: { valeur: number; onChange: (v: nu
           </button>
         ))}
       </div>
-      <p className="text-xs text-gray-400">Peau lissée, rides et petites imperfections atténuées, teint légèrement homogénéisé. Forme du visage, yeux, nez, bouche et mâchoire ne sont jamais modifiés.</p>
+      <p className="text-xs text-gray-400">{tUi('peau_lissee_rides_et_petites_imperfect')}</p>
       {props.onReinitialiser && (
-        <button type="button" data-curseur-lissage-reinitialiser onClick={props.onReinitialiser} disabled={props.disabled} className="button-ghost !min-h-[30px] !text-xs">Réinitialiser</button>
+        <button type="button" data-curseur-lissage-reinitialiser onClick={props.onReinitialiser} disabled={props.disabled} className="button-ghost !min-h-[30px] !text-xs">{tUi('reinitialiser')}</button>
       )}
     </div>
   );

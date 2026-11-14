@@ -24,6 +24,7 @@ const PRESET_COLORS = [
 ];
 
 export default function BrandingPanel({ branding, onChange, compact = false }: BrandingPanelProps) {
+  const tUi = useTranslations('ui.componentsBrandingPanel');
   const t = useTranslations('branding');
 
   return (
@@ -146,14 +147,14 @@ export default function BrandingPanel({ branding, onChange, compact = false }: B
       {/* Degrade de fond — kit de marque (F7) */}
       <div>
         <label className="block text-xs font-semibold text-gray-400 mb-1.5">
-          Dégradé de fond
+          {tUi('degrade_de_fond')}
         </label>
         <p className="text-[11px] text-gray-500 mb-2">
-          Appliqué au fond de vos créations. Par défaut, les couleurs studiio.pro.
+          {tUi('applique_au_fond_de_vos_creations_par')}
         </p>
         <div className="grid grid-cols-2 gap-3">
           <ColorWheel
-            label="Début"
+            label={tUi('debut')}
             color={branding.gradientColor1}
             onChange={(c) => onChange({ gradientColor1: c })}
           />

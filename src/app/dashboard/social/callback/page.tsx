@@ -3,6 +3,7 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Loader2, Check, AlertTriangle } from 'lucide-react';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * Retour de connexion d'un réseau, via Zernio.
@@ -19,6 +20,7 @@ import { Loader2, Check, AlertTriangle } from 'lucide-react';
  */
 
 function Retour() {
+  const tUi = useTranslations('ui.appDashboardSocialCallback');
   const router = useRouter();
   const params = useSearchParams();
   const [etat, setEtat] = useState<'en-cours' | 'ok' | 'echec'>('en-cours');
@@ -52,7 +54,7 @@ function Retour() {
       })
       .catch(() => {
         setEtat('echec');
-        setMessage('Compte non enregistré.');
+        setMessage(tUi('compte_non_enregistre'));
       });
   }, [params, router]);
 
@@ -70,7 +72,7 @@ function Retour() {
           onClick={() => router.push('/dashboard/social')}
           className="mt-4 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:text-white transition-colors"
         >
-          Retour aux réseaux
+          {tUi('retour_aux_reseaux')}
         </button>
       )}
     </div>

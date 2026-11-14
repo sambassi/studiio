@@ -29,6 +29,7 @@ import ProgressStatus from '@/components/ux/ProgressStatus';
 import { envoyerFormulaire, detailEnvoi, type ProgressionEnvoi } from '@/lib/http/envoiAvecProgression';
 import { etapesParcoursSource, formatSource, type EtapeParcoursSource } from '@/lib/avatar/progression';
 import { libelleLissage, type InfosVideo, type ParametresTraitement } from '@/lib/avatar/preparation-source-regles';
+import { useTranslations } from '@/i18n/client';
 
 type Etape = 'choix' | 'camera' | 'preparation' | 'consentement' | 'recapitulatif' | 'envoi';
 
@@ -46,6 +47,7 @@ export default function FluxSourceAvatar(props: {
   onFermer: () => void;
   onTermine: () => void;
 }) {
+  const tUi = useTranslations('ui.componentsAvatarFluxSourceAvatar');
   const remplacer = props.mode === 'remplacer' && props.avatar;
   const [type, setType] = useState<'photo' | 'video'>(remplacer ? props.avatar!.type : 'photo');
   const [nom, setNom] = useState(remplacer ? props.avatar!.nom : '');
@@ -123,7 +125,7 @@ export default function FluxSourceAvatar(props: {
       if (!ok) { setErreur(j?.error ?? 'L’envoi n’a pas abouti.'); setEtape('recapitulatif'); setEnvoi(null); return; }
       props.onTermine();
     } catch {
-      setErreur('Connexion impossible. Réessayez.');
+      setErreur(tUi('connexion_impossible_reessayez'));
       setEtape('recapitulatif');
       setEnvoi(null);
     }
@@ -142,12 +144,12 @@ export default function FluxSourceAvatar(props: {
     <div data-flux-source={props.mode} role="dialog" aria-modal="true" className="fixed inset-0 z-50 bg-black/70 flex items-start sm:items-center justify-center overflow-y-auto p-4">
       <div className="w-full max-w-2xl card-base p-5 space-y-4 bg-[#0A0A0F]">
         <header className="flex items-center justify-between">
-          <h3 className="font-semibold">{remplacer ? `Remplacer « ${props.avatar!.nom} » — nouvelle version` : 'Créer un nouvel avatar'}</h3>
-          <button type="button" aria-label="Fermer" onClick={props.onFermer} disabled={etape === 'envoi'} className="p-1 text-gray-400 hover:text-white disabled:opacity-40"><X className="w-4 h-4" /></button>
+          <h3 className="font-semibold">{remplacer ? `Remplacer « ${props.avatar!.nom} » — nouvelle version` : tUi('creer_un_nouvel_avatar')}</h3>
+          <button type="button" aria-label={tUi('fermer')} onClick={props.onFermer} disabled={etape === 'envoi'} className="p-1 text-gray-400 hover:text-white disabled:opacity-40"><X className="w-4 h-4" /></button>
         </header>
 
         {/* Où l'on en est dans le parcours. */}
-        <ol data-flux-etapes className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]" aria-label="Étapes">
+        <ol data-flux-etapes className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]" aria-label={tUi('etapes')}>
           {parcours.map((p, i) => (
             <li key={p.cle} data-flux-etape={p.cle} data-flux-etape-etat={i < iCourante ? 'terminee' : i === iCourante ? 'courante' : 'a_venir'}
               aria-current={i === iCourante ? 'step' : undefined}
@@ -160,7 +162,7 @@ export default function FluxSourceAvatar(props: {
 
         {remplacer && (
           <p data-flux-rassurance className="text-xs text-gray-300 rounded-lg bg-gray-900/60 p-2.5">
-            Votre avatar actuel reste utilisé dans Créer et l’Autopilote pendant la préparation. Vous choisirez ensuite d’utiliser la nouvelle version ou de garder l’actuelle.
+            {tUi('votre_avatar_actuel_reste_utilise_dans')}
           </p>
         )}
 
@@ -190,7 +192,7 @@ export default function FluxSourceAvatar(props: {
             )}
             {remplacer && (
               <p data-flux-type-fixe className="text-xs text-gray-400">
-                {type === 'video' ? 'Avatar vidéo : la nouvelle version part d’une nouvelle vidéo.' : 'Avatar photo : la nouvelle version part d’une nouvelle photo.'}
+                {type === 'video' ? tUi('avatar_video_la_nouvelle_version_part') : tUi('avatar_photo_la_nouvelle_version_part')}
               </p>
             )}
             {!remplacer && videoBloquee && (
@@ -200,18 +202,18 @@ export default function FluxSourceAvatar(props: {
             {type === 'video' ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button type="button" data-flux-enregistrer onClick={() => setEtape('camera')} className="rounded-xl p-4 text-left bg-gray-900/60 hover:bg-gray-800/70">
-                  <Camera className="w-5 h-5 mb-2 text-purple-300" /><div className="text-sm font-medium">Enregistrer avec la caméra</div>
-                  <div className="text-xs text-gray-500 mt-0.5">Guidé pas à pas</div>
+                  <Camera className="w-5 h-5 mb-2 text-purple-300" /><div className="text-sm font-medium">{tUi('enregistrer_avec_la_camera')}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">{tUi('guide_pas_a_pas')}</div>
                 </button>
                 <button type="button" data-flux-importer onClick={() => entree.current?.click()} className="rounded-xl p-4 text-left bg-gray-900/60 hover:bg-gray-800/70">
-                  <Upload className="w-5 h-5 mb-2 text-purple-300" /><div className="text-sm font-medium">Importer une vidéo</div>
-                  <div className="text-xs text-gray-500 mt-0.5">MP4, WebM ou MOV, 15 s à 10 min</div>
+                  <Upload className="w-5 h-5 mb-2 text-purple-300" /><div className="text-sm font-medium">{tUi('importer_une_video')}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">{tUi('mp4_webm_ou_mov_15_s_a_10_min')}</div>
                 </button>
               </div>
             ) : (
               <button type="button" data-flux-importer onClick={() => entree.current?.click()} className="w-full rounded-xl border-2 border-dashed border-gray-700 hover:border-studiio-primary p-6 text-sm text-gray-300">
                 <Upload className="w-5 h-5 mx-auto mb-2 text-purple-300" aria-hidden />
-                Importer une photo (portrait net, de face, bien éclairé)
+                {tUi('importer_une_photo_portrait_net_de_fac')}
               </button>
             )}
             <input ref={entree} type="file" className="hidden"
@@ -248,12 +250,12 @@ export default function FluxSourceAvatar(props: {
           <div className="space-y-3">
             <label className="flex items-start gap-2 text-sm">
               <input type="checkbox" data-flux-consentement checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-1 accent-purple-500" />
-              <span>Je certifie être la personne qui apparaît dans cette {type === 'video' ? 'vidéo' : 'photo'} et j’accepte qu’elle serve à créer mon avatar.</span>
+              <span>Je certifie être la personne qui apparaît dans cette {type === 'video' ? tUi('video') : 'photo'} et j’accepte qu’elle serve à créer mon avatar.</span>
             </label>
             <div className="flex gap-2">
-              <button type="button" onClick={() => { setEtape(fichier ? 'preparation' : 'choix'); }} className="button-secondary !min-h-[36px] text-sm">Modifier</button>
+              <button type="button" onClick={() => { setEtape(fichier ? 'preparation' : 'choix'); }} className="button-secondary !min-h-[36px] text-sm">{tUi('modifier')}</button>
               <button type="button" data-flux-continuer disabled={!consent} onClick={() => setEtape('recapitulatif')} className="button-primary !min-h-[36px] text-sm disabled:opacity-40">
-                Continuer vers le récapitulatif
+                {tUi('continuer_vers_le_recapitulatif')}
               </button>
             </div>
           </div>
@@ -268,25 +270,25 @@ export default function FluxSourceAvatar(props: {
                   <video src={`/api/avatar/sources/apercu?cle=${encodeURIComponent(preparee.cleTraitee)}`} controls playsInline preload="metadata" className="w-full max-h-80 object-contain" />
                 ) : type === 'photo' && photoPreparee ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
-                  <img src={`/api/avatar/sources/apercu?cle=${encodeURIComponent(photoPreparee.cleTraitee)}`} alt="La photo qui sera envoyée" className="w-full max-h-80 object-contain" />
+                  <img src={`/api/avatar/sources/apercu?cle=${encodeURIComponent(photoPreparee.cleTraitee)}`} alt={tUi('la_photo_qui_sera_envoyee')} className="w-full max-h-80 object-contain" />
                 ) : urlPhoto ? (
                   /* eslint-disable-next-line @next/next/no-img-element */
-                  <img src={urlPhoto} alt="Aperçu de la source" onLoad={(e) => setDimsPhoto({ l: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })} className="w-full max-h-80 object-contain" />
+                  <img src={urlPhoto} alt={tUi('apercu_de_la_source')} onLoad={(e) => setDimsPhoto({ l: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })} className="w-full max-h-80 object-contain" />
                 ) : (
-                  <span className="p-6 text-xs text-gray-400">Aperçu indisponible</span>
+                  <span className="p-6 text-xs text-gray-400">{tUi('apercu_indisponible')}</span>
                 )}
               </div>
               <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-sm content-start">
-                <dt className="text-gray-500">Avatar</dt><dd data-flux-recap="avatar" className="text-white">{nom.trim() || (type === 'video' ? 'Mon avatar vidéo' : 'Mon avatar')}</dd>
-                <dt className="text-gray-500">Opération</dt><dd data-flux-recap="operation">{remplacer ? 'Nouvelle version de cet avatar' : 'Nouvel avatar (identité séparée)'}</dd>
+                <dt className="text-gray-500">Avatar</dt><dd data-flux-recap="avatar" className="text-white">{nom.trim() || (type === 'video' ? tUi('mon_avatar_video') : tUi('mon_avatar'))}</dd>
+                <dt className="text-gray-500">{tUi('operation')}</dt><dd data-flux-recap="operation">{remplacer ? 'Nouvelle version de cet avatar' : tUi('nouvel_avatar_identite_separee')}</dd>
                 <dt className="text-gray-500">Source</dt><dd data-flux-recap="source">{libelleSource}</dd>
                 <dt className="text-gray-500">Format</dt><dd data-flux-recap="format">{format ?? 'Inconnu'}</dd>
                 <dt className="text-gray-500">Lissage</dt><dd data-flux-recap="embellissement">{libelleLissage(lissage)}</dd>
-                <dt className="text-gray-500">Consentement</dt><dd data-flux-recap="consentement">{consent ? 'Certifié' : 'À certifier'}</dd>
-                <dt className="text-gray-500">Qualité</dt><dd data-flux-recap="qualite" className="text-gray-400">Choisie à chaque génération de vidéo</dd>
+                <dt className="text-gray-500">Consentement</dt><dd data-flux-recap="consentement">{consent ? tUi('certifie') : tUi('a_certifier')}</dd>
+                <dt className="text-gray-500">{tUi('qualite')}</dt><dd data-flux-recap="qualite" className="text-gray-400">{tUi('choisie_a_chaque_generation_de_video')}</dd>
               </dl>
             </div>
-            {(type === 'video' ? preparee : photoPreparee) && <p className="text-xs text-gray-500">Votre {type === 'video' ? 'vidéo' : 'photo'} d’origine est conservée telle quelle, à côté de la version envoyée.</p>}
+            {(type === 'video' ? preparee : photoPreparee) && <p className="text-xs text-gray-500">Votre {type === 'video' ? tUi('video') : 'photo'} d’origine est conservée telle quelle, à côté de la version envoyée.</p>}
 
             {etape === 'envoi' ? (
               type === 'photo' && envoi ? (
@@ -301,16 +303,16 @@ export default function FluxSourceAvatar(props: {
                 <ProgressStatus
                   titre={remplacer ? 'Création de la nouvelle version' : 'Création de votre avatar'}
                   statut="en_cours"
-                  description="Enregistrement de la source et envoi au service de génération."
+                  description={tUi('enregistrement_de_la_source_et_envoi_a')}
                   detail="Progression exacte indisponible."
                   note="L’entraînement se suivra ensuite dans « Mes avatars »."
                 />
               )
             ) : (
               <div className="flex gap-2">
-                <button type="button" onClick={() => setEtape('consentement')} className="button-secondary !min-h-[36px] text-sm">Modifier</button>
+                <button type="button" onClick={() => setEtape('consentement')} className="button-secondary !min-h-[36px] text-sm">{tUi('modifier')}</button>
                 <button type="button" data-flux-envoyer disabled={!consent} onClick={() => void envoyer()} className="button-primary !min-h-[36px] text-sm disabled:opacity-40">
-                  {remplacer ? 'Créer cette nouvelle version' : 'Créer mon avatar'}
+                  {remplacer ? tUi('creer_cette_nouvelle_version') : tUi('creer_mon_avatar')}
                 </button>
               </div>
             )}

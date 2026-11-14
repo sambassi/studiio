@@ -27,6 +27,7 @@
 import { useState } from 'react';
 import { Info, Sparkles, FilePlus2, Check, X } from 'lucide-react';
 import type { IdStyleCinema } from '@/lib/cinema/types';
+import { useTranslations } from '@/i18n/client';
 
 export interface ValeursModele {
   titre: string;
@@ -217,6 +218,7 @@ export default function ModelesFilm({ aDesSaisies, surAppliquer, surPartirDeZero
   surAppliquer: (modele: ModeleFilm) => void;
   surPartirDeZero: () => void;
 }) {
+  const tUi = useTranslations('ui.componentsCinemaModelesFilm');
   /** Carte armee, en attente de confirmation. `'zero'` pour « partir de zero ». */
   const [arme, setArme] = useState<string | null>(null);
 
@@ -236,7 +238,7 @@ export default function ModelesFilm({ aDesSaisies, surAppliquer, surPartirDeZero
     <div className="mb-4">
       <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
         <Sparkles className="w-3.5 h-3.5 text-violet-400" />
-        Partir d’un exemple
+        {tUi('partir_d_un_exemple')}
         <InfoCourte
           libelle="Ce qu’un exemple remplit"
           texte="Un exemple remplit le titre, l’histoire avec ses repliques, les personnages et leur apparence, le format et le nombre de scenes (et un style, pour l’exemple science-fiction). Tout reste modifiable, et rien n’est genere : aucun credit n’est utilise."
@@ -285,7 +287,7 @@ export default function ModelesFilm({ aDesSaisies, surAppliquer, surPartirDeZero
                 />
                 {enAttente && (
                   <span className="flex flex-wrap items-center gap-2 text-[11px] text-violet-200">
-                    Remplacer votre saisie ?
+                    {tUi('remplacer_votre_saisie')}
                     <button
                       type="button"
                       onClick={() => choisir(m)}
@@ -296,10 +298,10 @@ export default function ModelesFilm({ aDesSaisies, surAppliquer, surPartirDeZero
                     <button
                       type="button"
                       onClick={() => setArme(null)}
-                      aria-label="Annuler le remplacement"
+                      aria-label={tUi('annuler_le_remplacement')}
                       className="inline-flex items-center gap-1 rounded-md border border-slate-700 px-2 py-1 text-slate-300 hover:border-slate-500"
                     >
-                      <X className="w-3.5 h-3.5" /> Annuler
+                      <X className="w-3.5 h-3.5" /> {tUi('annuler')}
                     </button>
                   </span>
                 )}
@@ -319,7 +321,7 @@ export default function ModelesFilm({ aDesSaisies, surAppliquer, surPartirDeZero
         </button>
         {arme === 'zero' && (
           <span className="flex flex-wrap items-center gap-2 text-[11px] text-violet-200">
-            Vider les champs ?
+            {tUi('vider_les_champs')}
             <button
               type="button"
               onClick={partirDeZero}
@@ -330,10 +332,10 @@ export default function ModelesFilm({ aDesSaisies, surAppliquer, surPartirDeZero
             <button
               type="button"
               onClick={() => setArme(null)}
-              aria-label="Annuler le vidage des champs"
+              aria-label={tUi('annuler_le_vidage_des_champs')}
               className="inline-flex items-center gap-1 rounded-md border border-slate-700 px-2 py-1 text-slate-300 hover:border-slate-500"
             >
-              <X className="w-3.5 h-3.5" /> Annuler
+              <X className="w-3.5 h-3.5" /> {tUi('annuler')}
             </button>
           </span>
         )}

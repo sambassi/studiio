@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Check } from 'lucide-react';
 import { ETAT_INTERACTIF_SANS_FOND } from '@/lib/ui/etats';
 import { totalAnnuelCentimes } from '@/lib/stripe/constants';
+import { useTranslations } from '@/i18n/client';
 
 function centsToFr(cents: number): string {
   if (cents === 0) return '0 CHF';
@@ -26,6 +27,7 @@ interface PricingCardsProps { onSelectPlan?: (plan: string) => void; }
 const PLAN_ORDER = ['free', 'starter', 'pro', 'enterprise'];
 
 export function PricingCards({ onSelectPlan }: PricingCardsProps) {
+  const tUi = useTranslations('ui.componentsBillingPricingCards');
   const router = useRouter();
   const { data: session } = useSession();
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
@@ -56,7 +58,7 @@ export function PricingCards({ onSelectPlan }: PricingCardsProps) {
       const url = data.url || data.data?.sessionUrl;
       if (url) window.location.href = url;
       else alert(data.error || 'Erreur');
-    } catch { alert('Erreur de connexion'); } finally { setLoading(null); }
+    } catch { alert(tUi('erreur_de_connexion')); } finally { setLoading(null); }
   };
 
   const ordered = PLAN_ORDER.map(k => plans.find(p => p.key === k)).filter(Boolean) as Plan[];

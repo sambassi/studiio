@@ -89,6 +89,7 @@ function FAQItem({ q, a }: { q: string; a: string }) {
 // ═══════════════════════════════════════════════════════
 
 export default function LandingPage() {
+  const tUi = useTranslations('ui.app');
   const t = useTranslations('landing');
   const tc = useTranslations('common');
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
@@ -330,9 +331,9 @@ export default function LandingPage() {
               <Link href="/auth/signup?guided=true" className="border border-gray-700 hover:border-violet-500/50 hover:bg-violet-500/5 px-6 sm:px-8 py-3 sm:py-4 rounded-xl text-white font-bold text-base sm:text-lg flex flex-col items-center justify-center gap-1 transition">
                 <span className="flex items-center gap-2">
                   <Sparkles size={18} className="text-violet-400" />
-                  Faites le test gratuit
+                  {tUi('faites_le_test_gratuit')}
                 </span>
-                <span className="text-xs font-normal text-gray-400">Guidé par l'Assistant Studiio</span>
+                <span className="text-xs font-normal text-gray-400">{tUi('guide_par_l_assistant_studiio')}</span>
               </Link>
             )}
           </div>

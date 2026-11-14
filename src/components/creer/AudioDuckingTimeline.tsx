@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { Plus, Trash2, Wand2, Loader2, ChevronDown, ChevronRight, Volume2, VolumeX, Mic, RotateCcw } from 'lucide-react';
+import { useTranslations } from '@/i18n/client';
 
 export interface AudioKeyframe {
   id: string;
@@ -100,6 +101,7 @@ export default function AudioDuckingTimeline({
   hasVoice = false,
   levels,
 }: Props) {
+  const tUi = useTranslations('ui.componentsCreerAudioDuckingTimeline');
   const duration = Math.max(1, totalDuration); // never divide by zero
   // ⚠️ Les keyframes viennent d'ailleurs : brouillon restaure, post relu,
   // generateur d'auto-mix. Un seul champ manquant suffisait a faire tomber
@@ -222,18 +224,18 @@ export default function AudioDuckingTimeline({
       {/* Global volume sliders — bulk-apply to every keyframe at once */}
       <div className="rounded bg-gray-900/60 p-1.5 space-y-1">
         <div className="flex min-w-0 items-center gap-1.5 text-[9px] text-gray-300">
-          <span className="w-16 shrink-0 truncate text-gray-400">Musique</span>
+          <span className="w-16 shrink-0 truncate text-gray-400">{tUi('musique')}</span>
           <input
             type="range"
             min={0}
             max={100}
             value={globalMusicValue}
             onChange={(e) => setGlobalMusic(parseInt(e.target.value, 10))}
-            aria-label="Volume de la musique"
+            aria-label={tUi('volume_de_la_musique')}
             className="flex-1 min-w-0 w-full accent-cyan-500"
           />
           <span className="w-9 shrink-0 text-right text-cyan-300 font-mono">{globalMusicValue}%</span>
-          <MuteButton track="music" label="la musique" />
+          <MuteButton track="music" label={tUi('la_musique')} />
         </div>
         <LevelBar track="music" color="bg-cyan-500" />
         <div className="flex min-w-0 items-center gap-1.5 text-[9px] text-gray-300">
@@ -244,26 +246,26 @@ export default function AudioDuckingTimeline({
             max={100}
             value={globalRushValue}
             onChange={(e) => setGlobalRush(parseInt(e.target.value, 10))}
-            aria-label="Volume du son du rush"
+            aria-label={tUi('volume_du_son_du_rush')}
             className="flex-1 min-w-0 w-full accent-orange-500"
           />
           <span className="w-9 shrink-0 text-right text-orange-300 font-mono">{globalRushValue}%</span>
-          <MuteButton track="rush" label="le son du rush" />
+          <MuteButton track="rush" label={tUi('le_son_du_rush')} />
         </div>
         <LevelBar track="rush" color="bg-orange-500" />
         <div className="flex min-w-0 items-center gap-1.5 text-[9px] text-gray-300">
-          <span className="w-16 shrink-0 truncate text-gray-400">Voix off</span>
+          <span className="w-16 shrink-0 truncate text-gray-400">{tUi('voix_off')}</span>
           <input
             type="range"
             min={0}
             max={100}
             value={globalVoiceValue}
             onChange={(e) => setGlobalVoice(parseInt(e.target.value, 10))}
-            aria-label="Volume de la voix off"
+            aria-label={tUi('volume_de_la_voix_off')}
             className="flex-1 min-w-0 w-full accent-purple-500"
           />
           <span className="w-9 shrink-0 text-right text-purple-300 font-mono">{globalVoiceValue}%</span>
-          <MuteButton track="voice" label="la voix off" />
+          <MuteButton track="voice" label={tUi('la_voix_off')} />
         </div>
         <LevelBar track="voice" color="bg-purple-500" />
       </div>
@@ -300,10 +302,10 @@ export default function AudioDuckingTimeline({
               voiceVolume: sorted[0].voiceVolume,
             }])}
             className="flex items-center gap-1 rounded bg-gray-800 hover:bg-gray-700 px-2 py-1 text-[10px] font-medium text-gray-200 transition"
-            title="Remplace la courbe par un seul niveau constant, en gardant les volumes actuels"
+            title={tUi('remplace_la_courbe_par_un_seul_niveau')}
           >
             <RotateCcw size={11} />
-            Revenir à un mixage simple
+            {tUi('revenir_a_un_mixage_simple')}
           </button>
           <span className="text-[9px] text-gray-500">
             {sorted.length} points de réglage — un montage simple n&apos;en a besoin que d&apos;un
@@ -317,7 +319,7 @@ export default function AudioDuckingTimeline({
           onClick={onAutoDuck}
           disabled={!rushUrl || autoDuckRunning}
           className="flex items-center gap-1 rounded bg-cyan-700 hover:bg-cyan-600 disabled:opacity-40 disabled:cursor-not-allowed px-2 py-1 text-[10px] font-medium text-white transition"
-          title={rushUrl ? 'Baisse automatiquement la musique quand le rush parle' : 'Importe un rush vidéo pour utiliser l\'auto-mix'}
+          title={rushUrl ? tUi('baisse_automatiquement_la_musique_quan') : tUi('importe_un_rush_video_pour_utiliser_l')}
         >
           {autoDuckRunning
             ? <Loader2 size={11} className="animate-spin" />
@@ -325,7 +327,7 @@ export default function AudioDuckingTimeline({
           Auto-mix
         </button>
         <span className="text-[9px] text-gray-500">
-          Baisse la musique quand le rush parle
+          {tUi('baisse_la_musique_quand_le_rush_parle')}
         </span>
       </div>
 
@@ -340,10 +342,10 @@ export default function AudioDuckingTimeline({
           disabled={!hasVoice}
           role="switch"
           aria-checked={duckOnVoice}
-          aria-label="Musique s'adapte à la voix"
+          aria-label={tUi('musique_s_adapte_a_la_voix')}
           title={hasVoice
-            ? 'Pendant que la voix off parle, la musique descend puis remonte'
-            : 'Ajoute une voix off pour activer cette option'}
+            ? tUi('pendant_que_la_voix_off_parle_la_musiq')
+            : tUi('ajoute_une_voix_off_pour_activer_cette')}
           className="flex w-full items-center gap-2 rounded px-1.5 py-1.5 text-[10px] text-gray-300 hover:bg-gray-800/50 disabled:opacity-40 disabled:cursor-not-allowed transition"
         >
           <Mic size={11} className={duckOnVoice && hasVoice ? 'text-purple-300' : 'text-gray-500'} />
@@ -418,14 +420,14 @@ export default function AudioDuckingTimeline({
                 onClick={() => removeKeyframe(kf.id)}
                 disabled={sorted.length <= 1}
                 className="ml-auto rounded bg-red-900/50 hover:bg-red-900/80 p-1 text-red-300 disabled:opacity-30 disabled:cursor-not-allowed"
-                title="Supprimer ce keyframe"
+                title={tUi('supprimer_ce_keyframe')}
               >
                 <Trash2 size={10} />
               </button>
             </div>
             <div className="space-y-1">
               <label className="flex min-w-0 items-center gap-1.5 text-[9px] text-gray-300">
-                <span className="w-14 shrink-0 truncate text-gray-400">Musique</span>
+                <span className="w-14 shrink-0 truncate text-gray-400">{tUi('musique')}</span>
                 <input
                   type="range"
                   min={0}
@@ -449,7 +451,7 @@ export default function AudioDuckingTimeline({
                 <span className="w-9 shrink-0 text-right text-orange-300 font-mono">{Math.round(kf.rushVolume * 100)}%</span>
               </label>
               <label className="flex min-w-0 items-center gap-1.5 text-[9px] text-gray-300">
-                <span className="w-14 shrink-0 truncate text-gray-400">Voix off</span>
+                <span className="w-14 shrink-0 truncate text-gray-400">{tUi('voix_off')}</span>
                 <input
                   type="range"
                   min={0}
@@ -468,13 +470,13 @@ export default function AudioDuckingTimeline({
             onClick={() => addKeyframeAt(0)}
             className="w-full flex items-center justify-center gap-1 rounded border border-dashed border-gray-700 px-2 py-2 text-[10px] text-gray-400 hover:border-cyan-500 hover:text-cyan-300 transition"
           >
-            <Plus size={12} /> Ajouter un keyframe
+            <Plus size={12} /> {tUi('ajouter_un_keyframe')}
           </button>
         )}
       </div>
 
       <p className="text-[9px] text-gray-500 leading-snug">
-        Clique sur la barre pour ajouter un keyframe à un moment précis (utile pour ducker la musique pendant que la voix parle).
+        {tUi('clique_sur_la_barre_pour_ajouter_un_ke')}
       </p>
       </>
       )}

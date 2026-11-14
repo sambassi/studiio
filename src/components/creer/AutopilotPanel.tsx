@@ -67,6 +67,7 @@ import {
   POSTER_MODES, POSTER_MODE_LABELS, POSTER_MODE_HINTS, type AutopilotPosterMode,
   type AutopilotConfig, type AutopilotCadence, type AutopilotIntention,
 } from '@/lib/autopilot/rules';
+import { useTranslations } from '@/i18n/client';
 
 /** Une voix clonée, telle que la rend `GET /api/voice/clone`. */
 interface VoixClonee {
@@ -499,6 +500,7 @@ export default function AutopilotPanel({
    */
   onPatchReady?: (patch: (p: Partial<AutopilotConfig>) => void) => void;
 }) {
+  const tUi = useTranslations('ui.componentsCreerAutopilotPanel');
   const [config, setConfig] = useState<AutopilotConfig>(DEFAULT_CONFIG);
   const [ready, setReady] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -745,7 +747,7 @@ export default function AutopilotPanel({
       if (typeof data.briefReady === 'boolean') setBriefReady(data.briefReady);
       if (typeof data.jumeauReady === 'boolean') setJumeauReady(data.jumeauReady);
       setBriefEnregistre(JSON.stringify(suivant.brief));
-      setNotice('Enregistré.');
+      setNotice(tUi('enregistre'));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Enregistrement impossible.');
     } finally {
@@ -1340,7 +1342,7 @@ export default function AutopilotPanel({
     );
     return (
       <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-3 space-y-2 text-[11px] min-w-0" data-autopilot-medias-prevus data-rendu={rendu.cas}>
-        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Médias prévus</p>
+        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{tUi('medias_prevus')}</p>
         <dl className="space-y-1.5">
           {ligne('Avatar :', <>{avatarOui && <MiniatureAvatar vignette={vignetteAvatar} className="w-7 h-7" />}{avatarOui ? 'OUI' : 'NON'}</>,
             { 'data-autopilot-medias-avatar': avatarOui ? 'oui' : 'non' })}
@@ -1353,7 +1355,7 @@ export default function AutopilotPanel({
           <div className="flex flex-wrap gap-1.5" data-autopilot-medias-vignettes>
             {vignettes.map((m) => (
               /* eslint-disable-next-line @next/next/no-img-element */
-              <img key={m.url} src={m.vignetteUrl} alt={m.type === 'video' ? 'Vidéo suggérée' : 'Photo suggérée'} title={m.type === 'video' ? 'Vidéo suggérée' : 'Photo suggérée'}
+              <img key={m.url} src={m.vignetteUrl} alt={m.type === 'video' ? tUi('video_suggeree') : tUi('photo_suggeree')} title={m.type === 'video' ? tUi('video_suggeree') : tUi('photo_suggeree')}
                 className="w-7 h-10 rounded object-cover bg-gray-800" data-autopilot-medias-stock-vignette />
             ))}
           </div>
@@ -1395,7 +1397,7 @@ export default function AutopilotPanel({
           </div>
           {!config.enabled && (
             <p className="text-[10px] text-gray-500 pt-0.5">
-              En pause : ces échéances valent une fois l’Autopilote lancé.
+              {tUi('en_pause_ces_echeances_valent_une_fois')}
             </p>
           )}
         </dl>
@@ -1413,11 +1415,11 @@ export default function AutopilotPanel({
           });
           return (
             <div className="rounded-lg border border-gray-800 bg-gray-900/60 px-3 py-2 text-[11px] space-y-0.5" data-autopilot-cout-fournisseur>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Coût fournisseur estimé (admin)</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{tUi('cout_fournisseur_estime_admin')}</p>
               {lignesBudgetAutopilote(budget, devis.fournisseur.devisParVideo).map((l) => (
                 <p key={l} className="text-gray-300">{l}</p>
               ))}
-              <p className="text-[10px] text-gray-500">0 crédit Studiio, mais facturé sur le wallet HeyGen. Estimation, aucun prélèvement.</p>
+              <p className="text-[10px] text-gray-500">{tUi('0_credit_studiio_mais_facture_sur_le_w')}</p>
             </div>
           );
         })()}
@@ -1432,7 +1434,7 @@ export default function AutopilotPanel({
             type="button"
             onClick={() => setProduire({ etat: 'confirmation' })}
             disabled={!ready || sansRush}
-            title={sansRush ? 'Ajoutez une source visuelle (rush, avatar ou média suggéré) pour produire.' : undefined}
+            title={sansRush ? tUi('ajoutez_une_source_visuelle_rush_avata') : undefined}
             data-autopilot-produire-maintenant
             className="flex items-center gap-1.5 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-200 hover:border-gray-700 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
@@ -1442,7 +1444,7 @@ export default function AutopilotPanel({
         ) : null}
         {boutonProduireVisible(produire) && sansRush && (
           <p className="text-[11px] text-amber-300" data-autopilot-produire-indisponible>
-            Ajoutez une source visuelle (rush, avatar ou média suggéré) pour produire.
+            {tUi('ajoutez_une_source_visuelle_rush_avata')}
           </p>
         )}
         {produire.etat === 'confirmation' && (
@@ -1481,7 +1483,7 @@ export default function AutopilotPanel({
                 className="rounded-lg px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40 disabled:cursor-not-allowed transition"
                 style={{ backgroundColor: accent }}
               >
-                Lancer le rendu
+                {tUi('lancer_le_rendu')}
               </button>
               <button
                 type="button"
@@ -1489,7 +1491,7 @@ export default function AutopilotPanel({
                 data-autopilot-produire-annuler
                 className="rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:border-gray-700 transition-colors"
               >
-                Annuler
+                {tUi('annuler')}
               </button>
             </div>
           </div>
@@ -1551,7 +1553,7 @@ export default function AutopilotPanel({
               {produire.time ? ` à ${produire.time}` : ''} ({produire.timezone}).
               {' '}
               <a href={produire.calendrierUrl} className="underline hover:text-white" data-autopilot-produire-lien>
-                <CalendarDays className="inline w-3.5 h-3.5 mr-0.5 align-text-bottom" />Ouvrir le Calendrier
+                <CalendarDays className="inline w-3.5 h-3.5 mr-0.5 align-text-bottom" />{tUi('ouvrir_le_calendrier')}
               </a>
             </span>
           </p>
@@ -1658,7 +1660,7 @@ export default function AutopilotPanel({
         <div className="space-y-3">
           <p className="text-[11px] text-gray-400" data-autopilot-topics-compte>
             {config.topics.length === 0
-              ? 'Aucun sujet choisi : Studiio fait tourner les douze thèmes. Cochez-en pour le restreindre.'
+              ? tUi('aucun_sujet_choisi_studiio_fait_tourne')
               : `${config.topics.length} thème${config.topics.length > 1 ? 's' : ''} sélectionné${config.topics.length > 1 ? 's' : ''}.`}
           </p>
           <div className="grid grid-cols-2 gap-1.5">
@@ -1685,7 +1687,7 @@ export default function AutopilotPanel({
               simple, mais cumulable puisque l'Autopilote tourne. */}
           <div>
             <label htmlFor="autopilot-topic-perso" className="block text-xs font-medium text-gray-300 mb-1.5">
-              Ajouter un thème
+              {tUi('ajouter_un_theme')}
             </label>
             <div className="flex gap-1.5">
               <input
@@ -1694,7 +1696,7 @@ export default function AutopilotPanel({
                 value={themePerso}
                 onChange={(e) => setThemePerso(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); ajouterThemePerso(); } }}
-                placeholder="Ex. : récupération après le sport"
+                placeholder={tUi('ex_recuperation_apres_le_sport')}
                 disabled={!ready || saving}
                 data-autopilot-topic-input
                 className="flex-1 rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2 text-xs disabled:opacity-40"
@@ -1774,7 +1776,7 @@ export default function AutopilotPanel({
               la colonne `jumeauAvatar` ; rushes et stock :
               `designStyle.sources.actives`. Un seul `enregistrer`. */}
           <section className="rounded-xl border border-gray-800 bg-gray-900/30 px-3 py-2 space-y-2.5 min-w-0" data-autopilot-sources>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Sources de la vidéo</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{tUi('sources_de_la_video')}</p>
             <label className={`flex items-start gap-2 ${ready && !saving ? 'cursor-pointer' : 'cursor-not-allowed'}`}>
               <input
                 type="checkbox"
@@ -1786,8 +1788,8 @@ export default function AutopilotPanel({
               />
               <Film className="w-4 h-4 mt-0.5 shrink-0 text-gray-400" aria-hidden="true" />
               <span className="min-w-0">
-                <span className="block text-xs font-medium text-gray-300">Mes rushes</span>
-                <span className="block text-[11px] text-gray-500">Vos vidéos personnelles, en rotation d’une vidéo à l’autre.</span>
+                <span className="block text-xs font-medium text-gray-300">{tUi('mes_rushes')}</span>
+                <span className="block text-[11px] text-gray-500">{tUi('vos_videos_personnelles_en_rotation_d')}</span>
               </span>
             </label>
             <AvatarPrincipalAutopilote
@@ -1810,9 +1812,9 @@ export default function AutopilotPanel({
               />
               <Images className="w-4 h-4 mt-0.5 shrink-0 text-gray-400" aria-hidden="true" />
               <span className="min-w-0">
-                <span className="block text-xs font-medium text-gray-300">Médias suggérés</span>
+                <span className="block text-xs font-medium text-gray-300">{tUi('medias_suggeres')}</span>
                 <span className="block text-[11px] text-gray-500">
-                  Studiio recherche automatiquement des images et vidéos adaptées à votre contenu.
+                  {tUi('studiio_recherche_automatiquement_des')}
                 </span>
               </span>
             </label>
@@ -1835,7 +1837,7 @@ export default function AutopilotPanel({
                   {/* Rushes personnels et vidéos suggérées comptés À PART : une vidéo
                       stock conservée n'est jamais annoncée comme « rush ». */}
                   {rushesDispo.length === 0
-                    ? (sourcePossible ? '0 rush — facultatif avec vos autres sources' : '0 rush — aucune source pour l’instant')
+                    ? (sourcePossible ? tUi('0_rush_facultatif_avec_vos_autres_sour') : tUi('0_rush_aucune_source_pour_l_instant'))
                     : libelleBanqueRushes(nbRushesPersoBanque, nbVideosSuggereesBanque)}
                 </span>
                 {nbRushesIndisponibles > 0 && (
@@ -1857,13 +1859,13 @@ export default function AutopilotPanel({
                 }`}
                 style={rushesDispo.length === 0 ? { backgroundColor: accent } : undefined}
               >
-                <Plus className="w-3 h-3" /> Ajouter des rushes
+                <Plus className="w-3 h-3" /> {tUi('ajouter_des_rushes')}
               </button>
             </div>
             <p className="text-[11px] text-gray-500 mb-2">
               {!sources.actives.rushes
-                ? 'Source « Mes rushes » désactivée : vos rushes personnels ne seront pas montés.'
-                : 'L’Autopilote y pioche à tour de rôle pour chaque vidéo, avec vos autres sources actives.'}
+                ? tUi('source_mes_rushes_desactivee_vos_rushe')
+                : tUi('l_autopilote_y_pioche_a_tour_de_role_p')}
             </p>
             {/* ⚠️ LA LIMITE DU RUSH UNIQUE, DITE AVANT QU'ELLE SURPRENNE.
                 Avec un seul rush, la rotation n'a pas le choix : toutes les
@@ -1873,8 +1875,7 @@ export default function AutopilotPanel({
             {rushesDispo.length === 1 && (
               <p className="flex items-start gap-1.5 text-[11px] text-amber-400 mb-2" data-autopilot-rush-unique>
                 <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
-                Un seul rush : il sera repris sur toutes les vidéos. Ajoutez-en un
-                second pour qu’ils alternent.
+                {tUi('un_seul_rush_il_sera_repris_sur_toutes')}
               </p>
             )}
             {/* ⚠️ RETRAIT DES EXPIRÉS EN UN CLIC, ET EN UN SEUL `enregistrer`.
@@ -1888,7 +1889,7 @@ export default function AutopilotPanel({
                 <p className="flex items-start gap-1.5 text-[11px] text-amber-300">
                   <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
                   {rushExpires.length === 1
-                    ? '1 rush a expiré (rétention 24 h) et n’est plus utilisé — réimportez-le.'
+                    ? tUi('1_rush_a_expire_retention_24_h_et_n_es')
                     : `${rushExpires.length} rushes ont expiré (rétention 24 h) et ne sont plus utilisés — réimportez-les.`}
                 </p>
                 <button
@@ -1898,7 +1899,7 @@ export default function AutopilotPanel({
                   data-autopilot-retirer-expires
                   className="shrink-0 rounded-lg border border-amber-500/50 px-2 py-1 text-[11px] font-medium text-amber-200 hover:bg-amber-500/20 transition-colors disabled:opacity-40"
                 >
-                  Retirer {rushExpires.length > 1 ? 'les expirés' : 'l’expiré'}
+                  Retirer {rushExpires.length > 1 ? tUi('les_expires') : tUi('l_expire')}
                 </button>
               </div>
             )}
@@ -1932,12 +1933,12 @@ export default function AutopilotPanel({
                              la vérification n'a pas répondu, rien plutôt qu'un état faux. */
                           expire ? (
                             <span className="flex items-center gap-1 text-[10px] text-amber-400" data-autopilot-rush-expire={url}>
-                              <AlertTriangle className="w-2.5 h-2.5 shrink-0" /> Expiré — réimportez-le
+                              <AlertTriangle className="w-2.5 h-2.5 shrink-0" /> {tUi('expire_reimportez_le')}
                             </span>
                           ) : refuse ? (
                             /* Refus de sécurité : jamais « réimportez-le », aucune adresse. */
                             <span className="flex items-center gap-1 text-[10px] text-amber-400" data-autopilot-rush-refuse="">
-                              <AlertTriangle className="w-2.5 h-2.5 shrink-0" /> Indisponible — non utilisé
+                              <AlertTriangle className="w-2.5 h-2.5 shrink-0" /> {tUi('indisponible_non_utilise')}
                             </span>
                           ) : verifie ? (
                             <span className="text-[10px] text-emerald-500/80" data-autopilot-rush-accessible={url}>
@@ -1986,15 +1987,15 @@ export default function AutopilotPanel({
               attribution ; le cron n'interroge jamais les fournisseurs. */}
           {sources.actives.stock && (
             <div className="rounded-xl border border-gray-800 bg-gray-900/30 px-3 py-2 space-y-2 min-w-0" data-autopilot-stock-source>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Médias suggérés</p>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{tUi('medias_suggeres')}</p>
               {/* « Compléter automatiquement mes médias » (#541) — FUSIONNÉ dans la
                   source « Médias suggérés » : c'est la MÊME case enregistrée
                   (`designStyle.sources.actives.stock`, ancienne préférence
                   migrée). Pas de seconde case : ce bloc en est le détail. */}
               <div className="space-y-0.5" data-autopilot-completer-titre>
-                <p className="text-xs font-medium text-gray-300">Compléter automatiquement mes médias</p>
+                <p className="text-xs font-medium text-gray-300">{tUi('completer_automatiquement_mes_medias')}</p>
                 <p className="text-[11px] text-gray-500">
-                  Studiio peut ajouter des photos et vidéos adaptées à votre sujet lorsque cela améliore le montage.
+                  {tUi('studiio_peut_ajouter_des_photos_et_vid')}
                 </p>
               </div>
               <CompleterRushesStock
@@ -2022,7 +2023,7 @@ export default function AutopilotPanel({
               />
               {sources.stock.length > 0 && (
                 <div className="space-y-1">
-                  <p className="text-[11px] font-medium text-gray-300">Médias retenus</p>
+                  <p className="text-[11px] font-medium text-gray-300">{tUi('medias_retenus')}</p>
                   <GrilleMedias attrs={{ 'data-autopilot-stock-retenus': '' }}>
                     {sources.stock.map((m) => {
                       const origine = origineSuggeree(m.type);
@@ -2105,14 +2106,12 @@ export default function AutopilotPanel({
               violets par rush, elle passait pour l'etape obligatoire. */}
           <details className="rounded-xl border border-gray-800 bg-gray-900/30" data-autopilot-sessions>
             <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-gray-300 hover:text-white">
-              Créer une vidéo manuellement à partir d’un rush
-              <span className="ml-1.5 font-normal text-gray-500">— facultatif, indépendant de l’Autopilote</span>
+              {tUi('creer_une_video_manuellement_a_partir')}
+              <span className="ml-1.5 font-normal text-gray-500">{tUi('facultatif_independant_de_l_autopilote')}</span>
             </summary>
             <div className="px-3 pb-3 space-y-2">
               <p className="text-[11px] text-gray-500">
-                Analysez un rush, laissez Studiio proposer les meilleurs passages, puis
-                générez une vidéo de ce rush. L’Autopilote, lui, n’a pas besoin de cette
-                étape : il pioche dans la banque ci-dessus.
+                {tUi('analysez_un_rush_laissez_studiio_propo')}
               </p>
               <SessionsTournagePanel
                 montageDefaut={montageDepuisStyle(config.designStyle)}
@@ -2184,7 +2183,7 @@ export default function AutopilotPanel({
               <div className="mt-2">
                 <div className="flex items-center justify-between gap-2 mb-2">
                   <p className="text-[11px] text-gray-400">
-                    {config.posterMode === 'reference' ? 'Vos photos de référence' : 'Vos affiches'} <span className="text-gray-500">({config.posterUrls.length})</span>
+                    {config.posterMode === 'reference' ? tUi('vos_photos_de_reference') : tUi('vos_affiches')} <span className="text-gray-500">({config.posterUrls.length})</span>
                   </p>
                   <button
                     type="button"
@@ -2193,7 +2192,7 @@ export default function AutopilotPanel({
                     data-autopilot-add-poster
                     className="flex items-center gap-1 rounded-lg border border-gray-800 px-2 py-1 text-[11px] text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 transition-colors"
                   >
-                    <Plus className="w-3 h-3" /> Ajouter
+                    <Plus className="w-3 h-3" /> {tUi('ajouter')}
                   </button>
                 </div>
                 {config.posterUrls.length === 0 ? (
@@ -2202,8 +2201,7 @@ export default function AutopilotPanel({
                   // tant que la banque est vide.
                   <p className="flex items-start gap-1.5 text-[11px] text-amber-400">
                     <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
-                    Aucune affiche : Studiio continue de les chercher par thème
-                    tant que vous n’en ajoutez pas.
+                    {tUi('aucune_affiche_studiio_continue_de_les')}
                   </p>
                 ) : (
                   <>
@@ -2223,7 +2221,7 @@ export default function AutopilotPanel({
                               posterUrls: config.posterUrls.filter((u) => u !== url),
                             })}
                             disabled={saving}
-                            aria-label="Retirer cette affiche"
+                            aria-label={tUi('retirer_cette_affiche')}
                             className="text-gray-500 hover:text-red-400 transition-colors shrink-0"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -2234,7 +2232,7 @@ export default function AutopilotPanel({
                     {config.posterUrls.length === 1 && (
                       <p className="flex items-start gap-1.5 text-[11px] text-amber-400 mt-2">
                         <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
-                        Une seule affiche : elle sera reprise sur toutes les vidéos.
+                        {tUi('une_seule_affiche_elle_sera_reprise_su')}
                       </p>
                     )}
                   </>
@@ -2254,20 +2252,20 @@ export default function AutopilotPanel({
 
 {/* ── Couleurs ─────────────────────────────────────────────────── */}
           <div>
-            <p className="text-xs font-medium text-gray-300 mb-2">Couleurs des cartes</p>
+            <p className="text-xs font-medium text-gray-300 mb-2">{tUi('couleurs_des_cartes')}</p>
             <div className="grid grid-cols-2 gap-3">
               <div data-autopilot-color-start>
                 <ColorWheel
                   color={config.cardGradientStart}
                   onChange={(c) => setConfig((x) => ({ ...x, cardGradientStart: c }))}
-                  label="Dégradé — début"
+                  label={tUi('degrade_debut')}
                 />
               </div>
               <div data-autopilot-color-end>
                 <ColorWheel
                   color={config.cardGradientEnd}
                   onChange={(c) => setConfig((x) => ({ ...x, cardGradientEnd: c }))}
-                  label="Dégradé — fin"
+                  label={tUi('degrade_fin')}
                 />
               </div>
             </div>
@@ -2275,7 +2273,7 @@ export default function AutopilotPanel({
               <ColorWheel
                 color={config.titleColor}
                 onChange={(c) => setConfig((x) => ({ ...x, titleColor: c }))}
-                label="Couleur du titre"
+                label={tUi('couleur_du_titre')}
               />
             </div>
             {/* ⚠️ ENREGISTREMENT AU RELACHEMENT, PAS A CHAQUE PIXEL. Une roue
@@ -2294,13 +2292,13 @@ export default function AutopilotPanel({
               data-autopilot-colors-save
               className="mt-3 w-full rounded-lg border border-gray-800 px-3 py-1.5 text-[11px] text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-40 transition-colors"
             >
-              {saving ? 'Enregistrement…' : 'Enregistrer les couleurs'}
+              {saving ? 'Enregistrement…' : tUi('enregistrer_les_couleurs')}
             </button>
           </div>
 
 {/* ── Fond des cartes ──────────────────────────────────────────── */}
           <div>
-            <p className="text-xs font-medium text-gray-300 mb-2">Fond des cartes</p>
+            <p className="text-xs font-medium text-gray-300 mb-2">{tUi('fond_des_cartes')}</p>
             <button
               type="button"
               onClick={() => enregistrer({ cardsShowPoster: !config.cardsShowPoster })}
@@ -2326,12 +2324,12 @@ export default function AutopilotPanel({
               <span className="min-w-0">
                 <span className="flex items-center gap-1.5 text-xs font-medium">
                   <ImageIcon className="w-3.5 h-3.5" />
-                  Afficher l’affiche derrière les cartes
+                  {tUi('afficher_l_affiche_derriere_les_cartes')}
                 </span>
                 <span className="block text-[11px] text-gray-500 mt-0.5">
                   {config.cardsShowPoster
-                    ? 'Les cartes se posent sur la photo d’affiche.'
-                    : 'Les cartes se posent sur vos couleurs. L’affiche reste sur la séquence titre.'}
+                    ? tUi('les_cartes_se_posent_sur_la_photo_d_af')
+                    : tUi('les_cartes_se_posent_sur_vos_couleurs')}
                 </span>
               </span>
             </button>
@@ -2351,8 +2349,8 @@ export default function AutopilotPanel({
             onToggle={(e) => setAvanceOuvert((e.currentTarget as HTMLDetailsElement).open)}
           >
             <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-gray-300 hover:text-white">
-              Réglages avancés
-              <span className="ml-1.5 font-normal text-gray-500">— musique, voix, son du rush, mixeur</span>
+              {tUi('reglages_avances')}
+              <span className="ml-1.5 font-normal text-gray-500">{tUi('musique_voix_son_du_rush_mixeur')}</span>
             </summary>
             <div className="px-3 pb-3 space-y-4">
               <p className="text-[11px] text-gray-500" data-autopilot-style-recommande>
@@ -2364,7 +2362,7 @@ export default function AutopilotPanel({
 {/* ── Musique ──────────────────────────────────────────────────── */}
           <div>
             <div className="flex items-center justify-between gap-2 mb-2">
-              <p className="text-xs font-medium text-gray-300">Musique</p>
+              <p className="text-xs font-medium text-gray-300">{tUi('musique')}</p>
               <button
                 type="button"
                 onClick={() => setLibOpen('musique')}
@@ -2381,14 +2379,14 @@ export default function AutopilotPanel({
                   <Music className="w-3 h-3 shrink-0" />
                   <span className="truncate">{nomDeFichier(config.musicUrl)}</span>
                   {musiqueIntrouvable && (
-                    <span className="ml-2 text-red-400" data-autopilot-musique-introuvable>Fichier introuvable — rechoisissez une musique</span>
+                    <span className="ml-2 text-red-400" data-autopilot-musique-introuvable>{tUi('fichier_introuvable_rechoisissez_une_m')}</span>
                   )}
                 </span>
                 <button
                   type="button"
                   onClick={() => enregistrer({ musicUrl: null })}
                   disabled={saving}
-                  aria-label="Retirer la musique"
+                  aria-label={tUi('retirer_la_musique')}
                   data-autopilot-remove-music
                   className="text-gray-500 hover:text-red-400 transition-colors shrink-0"
                 >
@@ -2397,7 +2395,7 @@ export default function AutopilotPanel({
               </div>
             ) : (
               <p className="text-[11px] text-gray-500">
-                Aucune musique — les vidéos sortiront sans fond sonore.
+                {tUi('aucune_musique_les_videos_sortiront_sa')}
               </p>
             )}
             <MediaLibrary
@@ -2438,19 +2436,18 @@ export default function AutopilotPanel({
 
 {/* ── Voix off clonée ──────────────────────────────────────────── */}
           <div>
-            <p className="text-xs font-medium text-gray-300 mb-2">Voix off clonée</p>
+            <p className="text-xs font-medium text-gray-300 mb-2">{tUi('voix_off_clonee')}</p>
             {voixChargees && !!config.voiceId && !voixDeConfig(voixClonees, config.voiceId) && (
               // Voix supprimée puis recréée : l'identifiant enregistré n'existe
               // plus. Sans ce message, le sélecteur affichait « Voix par défaut »
               // en silence et le cron repliait sur la voix standard.
               <p data-autopilot-voix-perimee className="text-[11px] text-amber-300 mb-2">
-                La voix enregistrée pour l’Autopilote n’existe plus. Choisissez votre voix ci-dessous :
-                sinon la voix off standard sera utilisée.
+                {tUi('la_voix_enregistree_pour_l_autopilote')}
               </p>
             )}
             {voixClonees.length === 0 ? (
               <p className="text-[11px] text-gray-500">
-                Aucune voix clonée. Rendez-vous dans <span className="text-gray-300">Mon avatar</span> pour
+                Aucune voix clonée. Rendez-vous dans <span className="text-gray-300">{tUi('mon_avatar')}</span> pour
                 en enregistrer une — sans elle, la narration utilise la voix par défaut.
               </p>
             ) : (
@@ -2463,7 +2460,7 @@ export default function AutopilotPanel({
                   data-autopilot-voice-id
                   className="w-full rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2 text-xs disabled:opacity-40"
                 >
-                  <option value="">Voix par défaut</option>
+                  <option value="">{tUi('voix_par_defaut')}</option>
                   {voixClonees.map((v) => (
                     <option key={v.id} value={v.id}>
                       {v.name}{v.lang ? ` (${v.lang})` : ''}
@@ -2471,7 +2468,7 @@ export default function AutopilotPanel({
                   ))}
                 </select>
                 <p className="text-[11px] text-gray-500 mt-1">
-                  La même voix sur toutes les séquences de toutes les vidéos.
+                  {tUi('la_meme_voix_sur_toutes_les_sequences')}
                 </p>
               </>
             )}
@@ -2486,7 +2483,7 @@ export default function AutopilotPanel({
 
 {/* ── Son du rush ──────────────────────────────────────────────── */}
           <div>
-            <p className="text-xs font-medium text-gray-300 mb-2">Son du rush</p>
+            <p className="text-xs font-medium text-gray-300 mb-2">{tUi('son_du_rush')}</p>
             <button
               type="button"
               onClick={() => enregistrer({ keepRushAudio: !config.keepRushAudio })}
@@ -2510,11 +2507,11 @@ export default function AutopilotPanel({
                 />
               </span>
               <span className="min-w-0">
-                <span className="block text-xs font-medium">Garder le son du rush</span>
+                <span className="block text-xs font-medium">{tUi('garder_le_son_du_rush')}</span>
                 <span className="block text-[11px] text-gray-500 mt-0.5">
                   {config.keepRushAudio
-                    ? 'L’ambiance du rush se mélange à la musique et à la voix.'
-                    : 'La séquence vidéo est muette : seules la musique et la voix s’entendent.'}
+                    ? tUi('l_ambiance_du_rush_se_melange_a_la_mus')
+                    : tUi('la_sequence_video_est_muette_seules_la')}
                 </span>
               </span>
             </button>
@@ -2524,7 +2521,7 @@ export default function AutopilotPanel({
           <div>
             <p className="text-xs font-medium text-gray-300 mb-1">Mixeur</p>
             <p className="text-[11px] text-gray-500 mb-2">
-              Ces niveaux valent pour toutes les vidéos.
+              {tUi('ces_niveaux_valent_pour_toutes_les_vid')}
             </p>
             <div className="space-y-3">
               {/* ⚠️ L'ICONE EST RENDUE ICI, PAS PASSEE DANS LA TABLE. Un
@@ -2584,13 +2581,13 @@ export default function AutopilotPanel({
               de `AudioMixPreview`). Changer d'étape le démonte aussi. */}
           {avanceOuvert && (
             <div data-autopilot-ecoute-mixage>
-              <p className="text-xs font-medium text-gray-300 mb-1">Écoute</p>
+              <p className="text-xs font-medium text-gray-300 mb-1">{tUi('ecoute')}</p>
               {(config.musicUrl || rushEcoute) ? (
                 <>
                   <p className="text-[11px] text-gray-500">
-                    Les niveaux du mixeur, sur {config.musicUrl ? 'votre musique' : ''}
+                    Les niveaux du mixeur, sur {config.musicUrl ? tUi('votre_musique') : ''}
                     {config.musicUrl && rushEcoute ? ' et ' : ''}
-                    {rushEcoute ? 'le prochain rush de la rotation' : ''}.
+                    {rushEcoute ? tUi('le_prochain_rush_de_la_rotation') : ''}.
                   </p>
                   <AudioMixPreview
                     audioKeyframes={imagesClesMixage}
@@ -2607,13 +2604,13 @@ export default function AutopilotPanel({
                 </>
               ) : (
                 <p className="text-[11px] text-gray-500" data-autopilot-ecoute-vide>
-                  Ajoutez une musique ou gardez le son du rush pour écouter le mixage.
+                  {tUi('ajoutez_une_musique_ou_gardez_le_son_d')}
                 </p>
               )}
               {config.voiceEnabled && (
                 <p className="flex items-start gap-1.5 text-[11px] text-gray-500 mt-1.5" data-autopilot-ecoute-voix>
                   <Mic className="w-3 h-3 mt-0.5 shrink-0" />
-                  Voix off non incluse dans l’écoute : elle est générée au moment du rendu (option payante).
+                  {tUi('voix_off_non_incluse_dans_l_ecoute_ell')}
                 </p>
               )}
             </div>
@@ -2642,11 +2639,11 @@ export default function AutopilotPanel({
               production. */}
           <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-3 space-y-3" data-autopilot-bloc-production>
             <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
-              Production — quand Studiio fabrique les vidéos
+              {tUi('production_quand_studiio_fabrique_les')}
             </p>
             <div>
               <label htmlFor="autopilot-start-date" className="block text-xs font-medium text-gray-300 mb-1.5">
-                Date de début
+                {tUi('date_de_debut')}
               </label>
               <input
                 id="autopilot-start-date"
@@ -2665,7 +2662,7 @@ export default function AutopilotPanel({
               <p className="text-[11px] text-gray-500 mt-1">
                 {config.startDate
                   ? `Rien n’est produit avant le ${dateLisible(config.startDate)} ; la première publication est programmée au plus tôt ce jour-là.`
-                  : 'Vide : dès le prochain passage. Choisissez un jour pour différer le départ.'}
+                  : tUi('vide_des_le_prochain_passage_choisisse')}
               </p>
               {ready && !dateDebutReady && (
                 <p className="flex items-start gap-1.5 text-[11px] text-amber-400 mt-1" data-autopilot-start-date-absente>
@@ -2709,7 +2706,7 @@ export default function AutopilotPanel({
               (« 18:45 »), jusqu'a `scheduled_time` et au cron. */}
           <div className="rounded-xl border border-gray-800 bg-gray-900/40 p-3 space-y-3" data-autopilot-bloc-publication>
             <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
-              Publication — quand les vidéos produites sont programmées
+              {tUi('publication_quand_les_videos_produites')}
             </p>
             <label htmlFor="autopilot-publish-time" className="block text-xs font-medium text-gray-300 mb-1.5">
               Heure de publication
@@ -2746,12 +2743,12 @@ export default function AutopilotPanel({
               maintenant » — le même bloc qu'à l'étape Vérification. */}
           {rendreProchaines()}
 
-          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Fréquence</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{tUi('frequence')}</p>
 {/* ── Cadence et nombre ────────────────────────────────────────── */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label htmlFor="autopilot-cadence" className="block text-xs font-medium text-gray-300 mb-1.5">
-                À quelle fréquence ?
+                {tUi('a_quelle_frequence')}
               </label>
               <select
                 id="autopilot-cadence"
@@ -2767,7 +2764,7 @@ export default function AutopilotPanel({
             </div>
             <div>
               <label htmlFor="autopilot-count" className="block text-xs font-medium text-gray-300 mb-1.5">
-                Combien à chaque fois ?
+                {tUi('combien_a_chaque_fois')}
               </label>
               <select
                 id="autopilot-count"
@@ -2791,7 +2788,7 @@ export default function AutopilotPanel({
               autrement. */}
           <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Validation</p>
           <div>
-            <p className="text-xs font-medium text-gray-300 mb-2">Que fait Studiio des vidéos ?</p>
+            <p className="text-xs font-medium text-gray-300 mb-2">{tUi('que_fait_studiio_des_videos')}</p>
             <div className="space-y-1.5">
               {INTENTIONS.map((i: AutopilotIntention) => {
                 const intention = intentionCliquee ?? intentionDiffusion(config);
@@ -2810,14 +2807,14 @@ export default function AutopilotPanel({
                     aria-pressed={choisie}
                     data-autopilot-intention={i}
                     data-autopilot-mode={INTENTION_MODE[i]}
-                    title={sansReseau ? 'Choisissez d’abord au moins un réseau (« Préparer et me laisser valider », puis les réseaux).' : undefined}
+                    title={sansReseau ? tUi('choisissez_d_abord_au_moins_un_reseau') : undefined}
                     className={`w-full text-left rounded-lg border px-3 py-2 ${classesCarteOption(choisie)}`}
                   >
                     <span className="text-xs font-medium">{INTENTION_LABELS[i]}</span>
                     <span className="block text-[11px] text-gray-500 mt-0.5">{INTENTION_HINTS[i]}</span>
                     {sansReseau && (
                       <span className="block text-[11px] text-amber-400 mt-0.5" data-autopilot-intention-bloquee>
-                        Aucun réseau choisi : rien ne partirait. Choisissez d’abord vos réseaux.
+                        {tUi('aucun_reseau_choisi_rien_ne_partirait')}
                       </span>
                     )}
                   </button>
@@ -2829,7 +2826,7 @@ export default function AutopilotPanel({
               Masquees sous « produire seulement » : l'intention VIENT de
               l'absence de reseau, en proposer un ici la contredirait. Le
               bloc revient des qu'une autre intention est choisie. */}
-          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Réseaux</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{tUi('reseaux')}</p>
           {(intentionCliquee ?? intentionDiffusion(config)) === 'produire' ? (
             <p className="text-[11px] text-gray-500" data-autopilot-reseaux-masques>
               Aucun réseau : les vidéos arrivent en brouillon dans le Calendrier,
@@ -2838,7 +2835,7 @@ export default function AutopilotPanel({
             </p>
           ) : (
           <div>
-            <p className="text-xs font-medium text-gray-300 mb-2">Où publier ?</p>
+            <p className="text-xs font-medium text-gray-300 mb-2">{tUi('ou_publier')}</p>
             <div className="flex flex-wrap gap-1.5">
               {PLATEFORMES.map((p) => {
                 const retenue = config.platforms.includes(p.id);
@@ -2877,7 +2874,7 @@ export default function AutopilotPanel({
               d'office ferait payer une voix que personne n'a demandee. Le cout
               est ecrit dans l'etiquette, pas cache dans une aide au survol. */}
           <div>
-            <p className="text-xs font-medium text-gray-300 mb-2">Voix off IA</p>
+            <p className="text-xs font-medium text-gray-300 mb-2">{tUi('voix_off_ia')}</p>
             <button
               type="button"
               onClick={() => enregistrer({ voiceEnabled: !config.voiceEnabled })}
@@ -2904,12 +2901,12 @@ export default function AutopilotPanel({
               </span>
               <span className="min-w-0">
                 <span className="block text-xs font-medium">
-                  Voix off — <span className="text-amber-400">option payante</span>
+                  {tUi('voix_off')} <span className="text-amber-400">option payante</span>
                 </span>
                 <span className="block text-[11px] text-gray-500 mt-0.5">
                   {config.voiceEnabled
-                    ? 'Chaque montage est narré par une voix IA premium.'
-                    : 'Aucune narration, aucun coût. Les vidéos sortent avec la musique seule.'}
+                    ? tUi('chaque_montage_est_narre_par_une_voix')
+                    : tUi('aucune_narration_aucun_cout_les_videos')}
                 </span>
               </span>
             </button>
@@ -2917,7 +2914,7 @@ export default function AutopilotPanel({
 {/* ── Seuil de crédits ─────────────────────────────────────────── */}
           <div>
             <label htmlFor="autopilot-floor" className="block text-xs font-medium text-gray-300 mb-1.5">
-              Protection de mes crédits — ne jamais descendre sous
+              {tUi('protection_de_mes_credits_ne_jamais_de')}
             </label>
             <div className="flex items-center gap-2">
               <input
@@ -2931,11 +2928,10 @@ export default function AutopilotPanel({
                 disabled={!ready || saving}
                 className="w-24 rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2 text-xs disabled:opacity-40"
               />
-              <span className="text-xs text-gray-500">crédits</span>
+              <span className="text-xs text-gray-500">{tUi('credits')}</span>
             </div>
             <p className="text-[11px] text-gray-500 mt-1">
-              L’Autopilote s’arrête avant ce seuil, pour qu’il vous reste toujours
-              de quoi produire à la main.
+              {tUi('l_autopilote_s_arrete_avant_ce_seuil_p')}
             </p>
           </div>
         </div>
@@ -2965,14 +2961,13 @@ export default function AutopilotPanel({
                 </ul>
                 {pret ? (
                   <p className="text-xs font-medium text-emerald-400 pt-1" data-autopilot-verdict="pret">
-                    Votre Autopilote est prêt.
+                    {tUi('votre_autopilote_est_pret')}
                   </p>
                 ) : (
                   <p className="text-xs font-medium text-amber-300 pt-1" data-autopilot-verdict="pas-pret">
                     {config.jumeauAvatar && avatarPret === false
-                      ? 'Votre Autopilote n’est pas encore prêt — aucun avatar prêt : configurez-le dans Mon avatar, ou décochez « Mon avatar ».'
-                      : <>Votre Autopilote n’est pas encore prêt — ajoutez une source visuelle : un rush, votre avatar
-                    ou un média suggéré. Vous pouvez l’activer dès maintenant : il démarrera dès qu’une source sera prête.</>}
+                      ? tUi('votre_autopilote_n_est_pas_encore_pret')
+                      : <>{tUi('votre_autopilote_n_est_pas_encore_pret_2')}</>}
                   </p>
                 )}
               </div>
@@ -3055,7 +3050,7 @@ export default function AutopilotPanel({
           disabled={etape === 0}
           className="rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:border-gray-700 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         >
-          Précédent
+          {tUi('precedent')}
         </button>
         {etape < ETAPES.length - 1 && (
           <div className="flex items-center gap-2 min-w-0">

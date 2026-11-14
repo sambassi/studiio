@@ -4,6 +4,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import { AlertTriangle, X } from 'lucide-react';
 import { ETAT_INTERACTIF_SANS_FOND } from '@/lib/ui/etats';
+import { useTranslations } from '@/i18n/client';
 
 const ADMIN_EMAILS = ['contact.artboost@gmail.com', 'bassicustomshoes@gmail.com'];
 
@@ -23,6 +24,7 @@ interface ServiceAlert {
  * (Replicate, OpenAI, Anthropic, etc.).
  */
 export default function ServiceAlertBanner() {
+  const tUi = useTranslations('ui.componentsUiServiceAlertBanner');
   const { data: session } = useSession();
   const [alerts, setAlerts] = useState<ServiceAlert[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -88,12 +90,12 @@ export default function ServiceAlertBanner() {
               aria-expanded={expanded === alert.id}
               className={`text-xs underline opacity-80 hover:opacity-100 shrink-0 rounded ${ETAT_INTERACTIF_SANS_FOND}`}
             >
-              {expanded === alert.id ? 'Moins' : 'Détails'}
+              {expanded === alert.id ? 'Moins' : tUi('details')}
             </button>
             <button
               onClick={() => dismissAlert(alert.id)}
               className={`hover:bg-white/20 rounded p-1 shrink-0 ${ETAT_INTERACTIF_SANS_FOND}`}
-              title="Masquer cette alerte"
+              title={tUi('masquer_cette_alerte')}
             >
               <X size={14} />
             </button>
@@ -116,11 +118,11 @@ export default function ServiceAlertBanner() {
               aria-expanded={expanded === alert.id}
               className={`text-xs underline opacity-70 hover:opacity-100 shrink-0 rounded ${ETAT_INTERACTIF_SANS_FOND}`}
             >
-              {expanded === alert.id ? 'Moins' : 'Détails'}
+              {expanded === alert.id ? 'Moins' : tUi('details')}
             </button>
             <button
               onClick={() => dismissAlert(alert.id)}
-              title="Masquer cette alerte"
+              title={tUi('masquer_cette_alerte')}
               className={`hover:bg-black/10 rounded p-1 shrink-0 ${ETAT_INTERACTIF_SANS_FOND}`}
             >
               <X size={14} />

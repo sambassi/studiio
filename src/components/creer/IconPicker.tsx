@@ -4,6 +4,7 @@ import { useId, useRef, useState } from 'react';
 import { Search, Shapes } from 'lucide-react';
 import { CardIcon } from '@/components/ui/CardIcon';
 import { ICON_KEYWORDS, ICON_LIBRARY, iconMatches } from '@/lib/icons/library';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * L'info-bulle d'une icône, en français. Le nom lucide est anglais
@@ -43,6 +44,7 @@ export default function IconPicker({ onPick, selected, dense = false, autoFocus 
   /** Grille repliée derrière un bouton d'ouverture, fermée par Échap. */
   repliable?: boolean;
 }) {
+  const tUi = useTranslations('ui.componentsCreerIconPicker');
   const [query, setQuery] = useState('');
   const [ouvert, setOuvert] = useState(!repliable);
   const grilleId = useId();
@@ -69,9 +71,9 @@ export default function IconPicker({ onPick, selected, dense = false, autoFocus 
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Rechercher une icône…"
-          aria-label="Rechercher une icône"
-          title="Rechercher une icône (nom ou mot-clé en français)"
+          placeholder={tUi('rechercher_une_icone')}
+          aria-label={tUi('rechercher_une_icone_2')}
+          title={tUi('rechercher_une_icone_nom_ou_mot_cle_en')}
           data-icon-search
           // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus={autoFocus}
@@ -129,12 +131,12 @@ export default function IconPicker({ onPick, selected, dense = false, autoFocus 
         onClick={() => setOuvert((v) => !v)}
         aria-expanded={ouvert}
         aria-controls={grilleId}
-        title={ouvert ? 'Masquer les icônes (Échap)' : 'Afficher les icônes'}
+        title={ouvert ? tUi('masquer_les_icones_echap') : tUi('afficher_les_icones')}
         data-icon-picker-toggle
         className="w-full flex items-center justify-center gap-2 rounded-lg border border-gray-800 px-3 py-1.5 text-xs text-gray-300 hover:text-white hover:border-gray-700 transition-colors"
       >
         <Shapes className="w-3.5 h-3.5" />
-        {ouvert ? 'Masquer les icônes' : 'Choisir une icône'}
+        {ouvert ? tUi('masquer_les_icones') : tUi('choisir_une_icone')}
       </button>
       {ouvert && grille}
     </div>

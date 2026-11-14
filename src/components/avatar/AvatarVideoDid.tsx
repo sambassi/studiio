@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Loader2, Check, Upload, FileText } from 'lucide-react';
 import { Notification, ProgressStatus, Consigne, type EtapeProgression } from '@/components/ux';
 import { envoyerFormulaire, detailEnvoi, type ProgressionEnvoi } from '@/lib/http/envoiAvecProgression';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * L'avatar vidéo (D-ID), après le dépôt de la source : le consentement
@@ -40,6 +41,7 @@ export interface AvatarVideoDidProps {
 }
 
 export default function AvatarVideoDid({ etape, texteConsentement, nomConsentement, nomProfil, expireLe, erreurEntrainement, onChange, onChangerSource, fetchImpl }: AvatarVideoDidProps) {
+  const tUi = useTranslations('ui.componentsAvatarAvatarVideoDid');
   const f = fetchImpl ?? fetch;
   const [occupe, setOccupe] = useState<null | 'phrase' | 'video' | 'creer' | 'reutiliser'>(null);
   const [nom, setNom] = useState<string>(nomConsentement ?? nomProfil ?? '');
@@ -115,7 +117,7 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
       if (quoi === 'creer') setLancementNotifie(true);
       await onChange();
     } catch {
-      setErreur('Connexion impossible. Réessayez.');
+      setErreur(tUi('connexion_impossible_reessayez'));
     } finally {
       enCoursRef.current = false;
       setOccupe(null);
@@ -135,20 +137,20 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
   const blocNomEtChoix = (
     <>
       <label className="block text-xs text-gray-400">
-        Votre nom, exactement comme vous le prononcerez
-        <input data-avatar-did-nom type="text" value={nom} onChange={(e) => setNom(e.target.value)} maxLength={80} autoComplete="name" placeholder="Prénom Nom" className="mt-1 w-full rounded-lg bg-gray-900/60 border border-white/10 px-3 py-2 text-sm text-white" />
+        {tUi('votre_nom_exactement_comme_vous_le_pro')}
+        <input data-avatar-did-nom type="text" value={nom} onChange={(e) => setNom(e.target.value)} maxLength={80} autoComplete="name" placeholder={tUi('prenom_nom')} className="mt-1 w-full rounded-lg bg-gray-900/60 border border-white/10 px-3 py-2 text-sm text-white" />
       </label>
       {reutilisable && (
         <div data-avatar-did-reutilisable className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 space-y-2">
           <div className="flex items-center gap-2 text-sm text-emerald-200"><Check className="w-4 h-4" /> Consentement déjà validé pour {reutilisable.nom}</div>
-          <p className="text-xs text-emerald-200/80">Aucune nouvelle phrase à lire : le consentement validé de cette personne sert à ce nouvel avatar.</p>
+          <p className="text-xs text-emerald-200/80">{tUi('aucune_nouvelle_phrase_a_lire_le_conse')}</p>
           <button data-avatar-did-action="reutiliser" onClick={reutiliser} disabled={!!occupe} className="button-primary flex items-center gap-2 disabled:opacity-40">
             {occupe === 'reutiliser' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Réutiliser mon consentement
           </button>
         </div>
       )}
       <button data-avatar-did-action="phrase" onClick={() => demanderPhrase(false)} disabled={!!occupe || !nomValide} className={`${reutilisable ? 'text-xs text-gray-300 hover:text-white' : 'button-primary'} flex items-center gap-2 disabled:opacity-40`}>
-        {occupe === 'phrase' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />} {reutilisable ? 'Obtenir plutôt une nouvelle phrase' : 'Obtenir ma phrase de consentement'}
+        {occupe === 'phrase' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />} {reutilisable ? tUi('obtenir_plutot_une_nouvelle_phrase') : tUi('obtenir_ma_phrase_de_consentement')}
       </button>
     </>
   );
@@ -175,7 +177,7 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
       setFichier(null); if (inputRef.current) inputRef.current.value = ''; setErreurConsentement(null);
       await onChange();
     } catch {
-      setErreur('Connexion impossible. Réessayez.');
+      setErreur(tUi('connexion_impossible_reessayez'));
     } finally {
       setEnvoi(null);
       enCoursRef.current = false;
@@ -257,19 +259,19 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
             ]}
           />
           <div data-avatar-did-phrase className="rounded-xl bg-gray-900/60 p-4 space-y-2">
-            <div className="text-[11px] uppercase tracking-wide text-gray-500">Lisez exactement cette phrase, face caméra :</div>
+            <div className="text-[11px] uppercase tracking-wide text-gray-500">{tUi('lisez_exactement_cette_phrase_face_cam')}</div>
             <div className="text-base text-white font-medium">{texteConsentement}</div>
             {nomConsentement && (
               <div data-avatar-did-nom-prononce className="text-xs text-gray-400">Votre nom, tel qu&apos;il doit être prononcé : <span className="text-gray-200">{nomConsentement}</span></div>
             )}
             {expireLe && (
               <div data-avatar-did-expiration={expiree ? 'expiree' : 'valide'} className={`text-xs ${expiree ? 'text-amber-200' : 'text-gray-500'}`}>
-                {expiree ? 'Cette phrase a expiré (30 minutes). Obtenez une nouvelle phrase avant d’enregistrer.' : `Valable jusqu’à ${new Date(expireLe).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} (30 minutes).`}
+                {expiree ? tUi('cette_phrase_a_expire_30_minutes_obten') : `Valable jusqu’à ${new Date(expireLe).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} (30 minutes).`}
               </div>
             )}
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <input data-avatar-did-nom type="text" value={nom} onChange={(e) => setNom(e.target.value)} maxLength={80} autoComplete="name" placeholder="Prénom Nom" className="rounded-lg bg-gray-900/60 border border-white/10 px-3 py-2 text-sm text-white" aria-label="Votre nom, exactement comme vous le prononcerez" />
+            <input data-avatar-did-nom type="text" value={nom} onChange={(e) => setNom(e.target.value)} maxLength={80} autoComplete="name" placeholder={tUi('prenom_nom')} className="rounded-lg bg-gray-900/60 border border-white/10 px-3 py-2 text-sm text-white" aria-label={tUi('votre_nom_exactement_comme_vous_le_pro')} />
             <button data-avatar-did-action="renouveler" onClick={() => demanderPhrase(true)} disabled={!!occupe || !nomValide} className="text-xs text-gray-300 hover:text-white flex items-center gap-1.5 disabled:opacity-40">
               {occupe === 'phrase' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileText className="w-3.5 h-3.5" />} Obtenir une nouvelle phrase
             </button>
@@ -277,7 +279,7 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
           <input ref={inputRef} type="file" accept="video/mp4,video/quicktime" className="hidden" onChange={(e) => { setErreur(null); setFichier(e.target.files?.[0] ?? null); }} />
           <div className="flex flex-wrap items-center gap-3">
             <button onClick={() => inputRef.current?.click()} disabled={!!occupe} className="rounded-xl border-2 border-dashed border-gray-700 hover:border-purple-500 transition px-4 py-3 text-sm text-gray-300 flex items-center gap-2">
-              <Upload className="w-4 h-4" /> {fichier ? `${fichier.name} — ${Math.round(fichier.size / 1024 / 1024)} Mo` : 'Choisir la vidéo de consentement'}
+              <Upload className="w-4 h-4" /> {fichier ? `${fichier.name} — ${Math.round(fichier.size / 1024 / 1024)} Mo` : tUi('choisir_la_video_de_consentement')}
             </button>
             {/* Primaire seulement quand l'envoi est possible (fichier choisi, phrase valide) :
                 désactivé, il reste visible mais ne ressemble pas à un second CTA. */}
@@ -295,13 +297,13 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
               compact
             />
           )}
-          <p className="text-xs text-gray-500">MP4 ou MOV, 50 Mo maximum. Une courte vidéo suffit.</p>
+          <p className="text-xs text-gray-500">{tUi('mp4_ou_mov_50_mo_maximum_une_courte_vi')}</p>
         </div>
       )}
 
       {etape === 'consentement_en_verification' && (
         <div data-avatar-did-verification className="flex items-center gap-2 text-sm text-gray-300">
-          <Loader2 className="w-4 h-4 animate-spin" /> Vérification du consentement… Cette page se met à jour toute seule.
+          <Loader2 className="w-4 h-4 animate-spin" /> {tUi('verification_du_consentement_cette_pag')}
         </div>
       )}
 
@@ -333,7 +335,7 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
             statut="en_cours"
             etapes={etapesEntrainement}
             detail="Entraînement en cours — progression exacte indisponible."
-            description="Cela prend généralement plusieurs minutes."
+            description={tUi('cela_prend_generalement_plusieurs_minu')}
           />
         </div>
       )}
@@ -352,7 +354,7 @@ export default function AvatarVideoDid({ etape, texteConsentement, nomConsenteme
       )}
 
       {etape === 'pret' && (
-        <div data-avatar-did-pret className="flex items-center gap-2 text-sm text-gray-300"><Check className="w-4 h-4 text-emerald-300" /> Mon avatar vidéo est prêt.</div>
+        <div data-avatar-did-pret className="flex items-center gap-2 text-sm text-gray-300"><Check className="w-4 h-4 text-emerald-300" /> {tUi('mon_avatar_video_est_pret')}</div>
       )}
 
       {erreur && (

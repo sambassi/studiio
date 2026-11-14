@@ -11,6 +11,7 @@ import BrandingPanel from '@/components/BrandingPanel';
 import BrandingPreview from '@/components/BrandingPreview';
 import { useBranding } from '@/lib/hooks/useBranding';
 import { useCreatorPreferences } from '@/lib/hooks/useCreatorPreferences';
+import { useTranslations } from '@/i18n/client';
 
 /** Champs du kit de marque sauvegardes cote serveur (CreatorPreferences). */
 const BRANDING_KEYS = [
@@ -35,6 +36,7 @@ const TABS = [
 type TabKey = (typeof TABS)[number]['key'];
 
 function SettingsContent() {
+  const tUi = useTranslations('ui.appDashboardSettings');
   const searchParams = useSearchParams();
   const router = useRouter();
   const activeTab = (searchParams.get('tab') as TabKey) || 'contenu';
@@ -88,8 +90,8 @@ function SettingsContent() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-white mb-1">Réglages</h1>
-        <p className="text-gray-400 text-sm">Gérez votre contenu, abonnement, branding et compte.</p>
+        <h1 className="text-3xl font-bold text-white mb-1">{tUi('reglages')}</h1>
+        <p className="text-gray-400 text-sm">{tUi('gerez_votre_contenu_abonnement_brandin')}</p>
       </div>
 
       <div className="flex gap-1 border-b border-gray-800 pb-0">
@@ -116,7 +118,7 @@ function SettingsContent() {
           <div className="space-y-4">
             <div>
               <h2 className="text-xl font-bold text-white mb-1">Branding</h2>
-              <p className="text-sm text-gray-400">Logo, couleurs, watermark et CTA par défaut. Ces réglages sont mémorisés automatiquement.</p>
+              <p className="text-sm text-gray-400">{tUi('logo_couleurs_watermark_et_cta_par_def')}</p>
             </div>
             <div className="flex flex-col-reverse md:flex-row md:items-start gap-8">
               <div className="flex-1 max-w-lg">
@@ -132,7 +134,7 @@ function SettingsContent() {
           <div className="max-w-lg space-y-6">
             <div>
               <h2 className="text-xl font-bold text-white mb-1">Compte</h2>
-              <p className="text-sm text-gray-400">Informations de votre compte Studiio.</p>
+              <p className="text-sm text-gray-400">{tUi('informations_de_votre_compte_studiio')}</p>
             </div>
             <div className="rounded-xl bg-gray-800/50 border border-gray-700 p-5 space-y-4">
               <div>
@@ -149,7 +151,7 @@ function SettingsContent() {
               className="flex items-center gap-2 rounded-lg bg-red-600/10 border border-red-500/20 px-4 py-2.5 text-sm font-medium text-red-400 hover:bg-red-600/20 transition-colors"
             >
               <LogOut size={16} />
-              Se déconnecter
+              {tUi('se_deconnecter')}
             </button>
           </div>
         )}

@@ -533,6 +533,7 @@ function PostThumbnail({
 }
 
 export default function CalendarPage() {
+  const tUi = useTranslations('ui.appDashboardCalendar');
   const t = useTranslations('calendar');
   const tc = useTranslations('common');
   const locale = useLocale();
@@ -1251,7 +1252,7 @@ export default function CalendarPage() {
 
     // Final guard: refuse to schedule if no media URL exists after composition attempt
     if (!post.media_url && !post.metadata?.renderedVideoUrl) {
-      alert('Erreur : le montage vidéo n\'a pas pu être généré. Veuillez réessayer ou exporter la vidéo d\'abord.');
+      alert(tUi('erreur_le_montage_video_n_a_pas_pu_etr'));
       console.error('[Schedule] BLOCKED: no media_url or renderedVideoUrl after compose attempt');
       return;
     }
@@ -1833,7 +1834,7 @@ export default function CalendarPage() {
       const finalMediaUrl = updatedPost.metadata?.renderedVideoUrl || updatedPost.media_url;
       if (!finalMediaUrl) {
         console.error('[Publish] No media URL after composition — aborting. hasVisualSource:', hasVisualSource, 'isMontagePost:', isMontagePost, 'renderedVideoUrl:', updatedPost.metadata?.renderedVideoUrl, 'media_url:', updatedPost.media_url);
-        alert('Le montage n\'a pas pu être généré — aucune URL vidéo disponible.\n\nVérifiez que les médias (image, vidéo) sont accessibles et réessayez.\nSi le problème persiste, essayez de ré-exporter depuis l\'éditeur.');
+        alert(tUi('le_montage_n_a_pas_pu_etre_genere_aucu'));
         setSaving(false);
         return;
       }
@@ -2237,7 +2238,7 @@ export default function CalendarPage() {
       const hasCards = (meta?.cards?.length || 0) > 0 || (meta?.textCards?.length || 0) > 0;
       if (!posterUrl && !videoUrl && !musicUrl && !voiceUrl && !hasCards && !post.title) {
         console.warn('[Export] No media or content available for recompose');
-        alert("Impossible de recomposer cette vidéo : tous les médias source sont introuvables. Recréez le post depuis l'éditeur.");
+        alert(tUi('impossible_de_recomposer_cette_video_t'));
         setExportRendering(false);
         setExportRenderProgress(0);
         setExportRenderStage('');
@@ -2587,7 +2588,7 @@ export default function CalendarPage() {
                     onClick={() => { setCrossDateBulk(false); setSelectedPostIds(new Set()); setSelectedBulkDays(new Set()); }}
                     className="text-[10px] px-2 py-1 rounded bg-gray-700 text-gray-300 hover:bg-gray-600 transition"
                   >
-                    Annuler
+                    {tUi('annuler')}
                   </button>
                 </div>
                 {/* Horaire de publication */}
@@ -2617,7 +2618,7 @@ export default function CalendarPage() {
                     <Trash2 size={14} />
                   </button>
                 </div>
-                <p className="text-[9px] text-gray-500">Cliquez sur les jours du calendrier pour sélectionner/désélectionner les posts</p>
+                <p className="text-[9px] text-gray-500">{tUi('cliquez_sur_les_jours_du_calendrier_po')}</p>
               </div>
             )}
 
@@ -2649,8 +2650,8 @@ export default function CalendarPage() {
                   }`}
                 >
                   <CheckSquare size={12} className="sm:w-4 sm:h-4" />
-                  <span className="hidden sm:inline">{crossDateBulk ? 'Annuler sélection' : 'Sélection multiple'}</span>
-                  <span className="sm:hidden">{crossDateBulk ? 'Annuler' : 'Multi'}</span>
+                  <span className="hidden sm:inline">{crossDateBulk ? tUi('annuler_selection') : tUi('selection_multiple')}</span>
+                  <span className="sm:hidden">{crossDateBulk ? tUi('annuler') : 'Multi'}</span>
                 </button>
               </div>
               <button
@@ -2832,14 +2833,14 @@ export default function CalendarPage() {
 
                             <div className="flex gap-1">
                               <button onClick={() => handlePostClick(post)} className="p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition" title={t('actions.preview')}><Eye className="w-3 h-3" /></button>
-                              <button onClick={() => handleEditPost(post)} className="p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition" title="Modifier le texte et la programmation"><Edit2 className="w-3 h-3" /></button>
+                              <button onClick={() => handleEditPost(post)} className="p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition" title={tUi('modifier_le_texte_et_la_programmation')}><Edit2 className="w-3 h-3" /></button>
                               {/* ⚠️ DEUX CRAYONS, DEUX GESTES. Celui de
                                   gauche ouvre la modale texte/date ; celui-ci
                                   rouvre le MONTAGE dans l'éditeur. Sans
                                   libellés distincts, le second passerait pour
                                   un doublon muet — le dépôt en compte déjà
                                   assez. */}
-                              <button onClick={() => rouvrirDansEditeur(post)} className="p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition" title="Modifier le montage dans l’éditeur" data-post-remodifier><Wand2 className="w-3 h-3" /></button>
+                              <button onClick={() => rouvrirDansEditeur(post)} className="p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition" title={tUi('modifier_le_montage_dans_l_editeur')} data-post-remodifier><Wand2 className="w-3 h-3" /></button>
                               <button onClick={() => handleDuplicatePost(post)} className="p-1 rounded bg-gray-700 hover:bg-gray-600 text-gray-300 hover:text-white transition" title={t('actions.duplicate')}><Copy className="w-3 h-3" /></button>
                               {(post.media_url || post.metadata?.characterUrl) && (
                                 <button onClick={() => handleExportPost(post)} disabled={actif(VERROU.exporter)} className="p-1 rounded bg-gray-700 hover:bg-blue-600 text-gray-300 hover:text-white transition disabled:opacity-50" title={t('actions.export')}><Download className="w-3 h-3" /></button>
@@ -2848,7 +2849,7 @@ export default function CalendarPage() {
                                 <button onClick={() => { window.location.href = `/dashboard/creer?postId=${post.id}`; }} className="p-1 rounded bg-purple-600 hover:bg-purple-700 text-white transition" title={t('actions.addAudio')}><Volume2 className="w-3 h-3" /></button>
                               )}
                               {post.status === 'failed' && (
-                                <button onClick={() => handleRetryPost(post)} className="p-1 rounded bg-orange-600 hover:bg-orange-700 text-white transition" title="Réessayer la publication"><RefreshCw className="w-3 h-3" /></button>
+                                <button onClick={() => handleRetryPost(post)} className="p-1 rounded bg-orange-600 hover:bg-orange-700 text-white transition" title={tUi('reessayer_la_publication')}><RefreshCw className="w-3 h-3" /></button>
                               )}
                               <button onClick={() => handleFullPreview(post)} className="p-1 rounded bg-green-600 hover:bg-green-700 text-white transition ml-auto" title={t('actions.fullPreview')}><Play className="w-3 h-3" /></button>
                               <button disabled={saving} onClick={() => handleDeletePost(post)} className="p-1 rounded bg-gray-700 hover:bg-red-600 text-gray-300 hover:text-white transition" title={t('actions.delete')}><Trash2 className="w-3 h-3" /></button>
@@ -3043,7 +3044,7 @@ export default function CalendarPage() {
                   >
                     {soon && (
                       <span className="absolute -top-2 -right-1 rounded-full bg-purple-500/20 text-purple-200 text-[9px] font-semibold px-1.5 py-0.5 ring-1 ring-purple-500/40 whitespace-nowrap">
-                        Bientôt
+                        {tUi('bientot')}
                       </span>
                     )}
                     {name}
@@ -3193,7 +3194,7 @@ export default function CalendarPage() {
                 type="button"
                 onClick={() => setShowFullPreview(false)}
                 className="fixed top-4 right-4 z-[60] rounded-full bg-gray-900/80 p-2 text-white border border-white/20"
-                title="Fermer"
+                title={tUi('fermer')}
               >
                 <X size={18} />
               </button>
@@ -3223,7 +3224,7 @@ export default function CalendarPage() {
                   onClick={(e) => e.stopPropagation()}
                 >
                   <p className="text-xs text-amber-200 mb-2">
-                    Ce montage a été modifié après son rendu automatique et ne peut pas être régénéré ici.
+                    {tUi('ce_montage_a_ete_modifie_apres_son_ren')}
                   </p>
                   <button
                     type="button"
@@ -3231,10 +3232,10 @@ export default function CalendarPage() {
                     disabled={gardeEnCours}
                     data-garder-montage
                     className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-600 hover:bg-amber-500 disabled:opacity-70 disabled:cursor-wait text-sm font-semibold"
-                    title="Publier la vidéo déjà rendue, sans les modifications"
+                    title={tUi('publier_la_video_deja_rendue_sans_les')}
                   >
                     <AlertTriangle size={14} />
-                    {gardeEnCours ? 'Enregistrement…' : 'Garder la vidéo actuelle'}
+                    {gardeEnCours ? 'Enregistrement…' : tUi('garder_la_video_actuelle')}
                   </button>
                 </div>
               )}
@@ -3409,7 +3410,7 @@ export default function CalendarPage() {
             className="md:hidden fixed top-4 left-4 z-[60] flex items-center gap-1.5 px-3 py-2 rounded-full bg-black/60 backdrop-blur-sm text-white border border-white/20 shadow-lg active:scale-95 transition-transform"
           >
             <ChevronLeft size={18} />
-            <span className="text-sm font-medium">Retour</span>
+            <span className="text-sm font-medium">{tUi('retour')}</span>
           </button>
 
           {/* Regenerate-montage floating button — shown ONLY when the post
@@ -3443,11 +3444,11 @@ export default function CalendarPage() {
               disabled={regenerating || actif(VERROU.regenerer)}
               data-regenerer
               className="fixed top-4 right-4 z-[60] flex items-center gap-2 px-4 py-2 rounded-full bg-purple-600 hover:bg-purple-500 backdrop-blur-sm text-white border-2 border-white/30 shadow-2xl disabled:opacity-70 disabled:cursor-wait active:scale-95 transition-transform font-semibold"
-              title={regenerating ? `${regenStage} ${regenProgress}%` : 'Re-générer le montage avec la dernière version du composer'}
+              title={regenerating ? `${regenStage} ${regenProgress}%` : tUi('re_generer_le_montage_avec_la_derniere')}
             >
               <RefreshCw size={16} className={regenerating ? 'animate-spin' : ''} />
               <span className={`text-sm ${regenerating ? 'animate-pulse' : ''}`}>
-                {regenerating ? `${regenStage || 'Rendu...'} ${regenProgress}%` : 'Régénérer le montage'}
+                {regenerating ? `${regenStage || 'Rendu...'} ${regenProgress}%` : tUi('regenerer_le_montage')}
               </span>
             </button>
           )}
@@ -3988,7 +3989,7 @@ export default function CalendarPage() {
                           fontWeight: ctaTypo.bold !== false ? 900 : 400,
                           fontStyle: ctaTypo.italic ? 'italic' : 'normal',
                           marginTop: editorPxToDvh(4),
-                        }}>{designCtaSubText || brd?.ctaText || branding.ctaText || 'CHAT POUR PLUS D\'INFOS'}</p>}
+                        }}>{designCtaSubText || brd?.ctaText || branding.ctaText || tUi('chat_pour_plus_d_infos')}</p>}
                       </div>
                       {/* CTA multiples (`cta-copies.ts`) : chaque copie a SA place, SA
                           largeur, SON texte et SON style. Absentes : rien de plus. */}
@@ -4406,7 +4407,7 @@ export default function CalendarPage() {
                   data-post-remodifier
                   className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-sm font-medium transition"
                 >
-                  <Wand2 size={14} /> Modifier le montage
+                  <Wand2 size={14} /> {tUi('modifier_le_montage')}
                 </button>
                 {(fullPreviewPost.media_url || meta?.characterUrl) && (
                   <button

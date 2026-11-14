@@ -149,7 +149,11 @@ function traiter(fichier) {
   };
   const ignore = (raison, texte) => res.ignores.push({ raison, texte: texte ? norm(texte).slice(0, 70) : undefined });
 
-  const convertir = (noeud, debut, fin, texte, brut, forme) => {
+  const convertir = (noeud, debut, fin, texte, brut, forme, litteral) => {
+    // Une CHAÎNE (par opposition à du texte JSX) qui commence ou finit par une espace, ou
+    // par une ponctuation de liaison, est un FRAGMENT de concaténation (` (original conservé)`,
+    // ` · image figée`) : normaliser l'espace casse l'affichage. À traiter à la main.
+    if (litteral && (texte !== texte.trim() || /^[\s·—–(),;:!?.\-/+&|]/.test(texte))) { ignore('fragment de concaténation (espace ou ponctuation de liaison en bordure)', texte); return; }
     const comp = composantDe(noeud);
     if (!comp) { ignore('hors composant (constante ou fonction utilitaire)', texte); return; }
     const k = cleDe(brut);
@@ -183,9 +187,9 @@ function traiter(fichier) {
       if (francais(v)) {
         if (ts.isJsxAttribute(p)) { /* géré plus haut (ATTRS) */ }
         else if (ts.isCallExpression(p) && ts.isIdentifier(p.expression) && SETTERS.test(p.expression.text) && p.arguments[0] === n) {
-          convertir(n, n.getStart(), n.end, v, norm(v), (k) => `${HOOK}('${k}')`);
+          convertir(n, n.getStart(), n.end, v, norm(v), (k) => `${HOOK}('${k}')`, true);
         } else if (positionAffichee(n)) {
-          convertir(n, n.getStart(), n.end, v, norm(v), (k) => `${HOOK}('${k}')`);
+          convertir(n, n.getStart(), n.end, v, norm(v), (k) => `${HOOK}('${k}')`, true);
         } else if (ts.isPropertyAssignment(p) && p.initializer === n && /^(label|title|description|placeholder|hint|name|text|subtitle|message|error|cta)$/i.test(p.name.getText().replace(/['"]/g, ''))) {
           ignore('libellé dans un objet/tableau (à traiter à la main : clé + rendu)', v);
         } else if (ts.isArrayLiteralExpression(p) && v.split(' ').length >= 2) {

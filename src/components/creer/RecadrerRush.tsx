@@ -15,6 +15,7 @@ import { Crosshair, X } from 'lucide-react';
 import {
   RECADRAGE_RUSH_NEUTRE, RATIO_FORMAT, ZOOM_RUSH_MAX, ZOOM_RUSH_MIN, bornerRecadrageRush, styleRecadrageRush, type RecadrageRush,
 } from '@/lib/creer/recadrage-rush';
+import { useTranslations } from '@/i18n/client';
 
 type Format = '9:16' | '1:1' | '16:9';
 const RATIO = RATIO_FORMAT;
@@ -28,6 +29,7 @@ export default function RecadrerRush(props: {
   /** Multi-sources : une PHOTO se recadre pareil. Absent = vidéo (comportement d'avant). */
   type?: 'video' | 'image';
 }) {
+  const tUi = useTranslations('ui.componentsCreerRecadrerRush');
   const photo = props.type === 'image';
   const cadre = useRef<HTMLDivElement | null>(null);
   const [dimsSource, setDimsSource] = useState<{ l: number; h: number } | null>(null);
@@ -58,13 +60,13 @@ export default function RecadrerRush(props: {
   // fenêtre disparaissait avec elle (display: none) et un ancêtre transformé
   // aurait décalé son `position: fixed`.
   const fenetre = (
-    <div data-recadrer-rush role="dialog" aria-modal="true" aria-label={photo ? 'Recadrer la photo' : 'Recadrer la vidéo'} className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
+    <div data-recadrer-rush role="dialog" aria-modal="true" aria-label={photo ? tUi('recadrer_la_photo') : tUi('recadrer_la_video')} className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4">
       <div className="w-full max-w-lg card-base p-5 space-y-4 bg-[#0A0A0F]">
         <header className="flex items-center justify-between">
-          <h3 className="font-semibold">{photo ? 'Recadrer la photo' : 'Recadrer la vidéo'} — format {props.format}</h3>
-          <button type="button" aria-label="Fermer" onClick={props.onFermer} className="p-1 text-gray-400 hover:text-white"><X className="w-4 h-4" /></button>
+          <h3 className="font-semibold">{photo ? tUi('recadrer_la_photo') : tUi('recadrer_la_video')} — format {props.format}</h3>
+          <button type="button" aria-label={tUi('fermer')} onClick={props.onFermer} className="p-1 text-gray-400 hover:text-white"><X className="w-4 h-4" /></button>
         </header>
-        <p className="text-xs text-gray-400">{photo ? 'La photo' : 'La vidéo'} remplit tout le cadre {props.format}. Faites-la glisser pour choisir ce qui reste visible, zoomez pour resserrer. L’export utilise exactement ce cadrage.</p>
+        <p className="text-xs text-gray-400">{photo ? tUi('la_photo') : tUi('la_video')} remplit tout le cadre {props.format}. Faites-la glisser pour choisir ce qui reste visible, zoomez pour resserrer. L’export utilise exactement ce cadrage.</p>
         <div
           ref={cadre}
           data-recadrer-rush-cadre={props.format}
@@ -115,8 +117,8 @@ export default function RecadrerRush(props: {
         </label>
         <div className="flex flex-wrap gap-2">
           <button type="button" data-recadrer-rush-centrer onClick={() => changer({ offsetX: 0, offsetY: 0 })} className="button-ghost gap-1.5 !min-h-[32px] !text-xs"><Crosshair className="w-3.5 h-3.5" /> Centrer</button>
-          <button type="button" data-recadrer-rush-reinitialiser onClick={() => props.onChange({ ...RECADRAGE_RUSH_NEUTRE })} className="button-ghost !min-h-[32px] !text-xs">Réinitialiser</button>
-          <button type="button" data-recadrer-rush-terminer onClick={props.onFermer} className="button-primary !min-h-[32px] !text-xs ml-auto">Terminer</button>
+          <button type="button" data-recadrer-rush-reinitialiser onClick={() => props.onChange({ ...RECADRAGE_RUSH_NEUTRE })} className="button-ghost !min-h-[32px] !text-xs">{tUi('reinitialiser')}</button>
+          <button type="button" data-recadrer-rush-terminer onClick={props.onFermer} className="button-primary !min-h-[32px] !text-xs ml-auto">{tUi('terminer')}</button>
         </div>
       </div>
     </div>
