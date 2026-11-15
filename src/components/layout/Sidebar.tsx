@@ -38,6 +38,26 @@ const menuKeys: EntreeMenu[] = [
   { icon: Settings, key: 'settings', href: '/dashboard/settings', color: '#6B7280' },
 ];
 
+/**
+ * Libellé d'une entrée de navigation — MISE EN PAGE SEULEMENT, aucun texte n'est raccourci.
+ *
+ * La barre fait 256 px (`w-64`) quelle que soit la langue, et l'intitulé n'en reçoit qu'une
+ * part : 256 − padding de la barre − padding de l'entrée − pastille d'icône − écart. Le
+ * français tient large, mais l'allemand (« Soziale Netzwerke ») et le kiswahili (« Vyombo vya
+ * habari ») arrivaient à moins de 15 px du bord : la première traduction un peu plus longue
+ * repassait à la ligne au milieu d'un mot, sans que rien ne borne le résultat.
+ *
+ * - `min-w-0` : sans lui un élément flex refuse de descendre sous sa largeur de plus long mot
+ *   et DÉBORDE hors de la barre au lieu de se replier.
+ * - `break-words` : garantit qu'un mot composé très long (allemand) se coupe DANS la barre.
+ * - `leading-tight` + `text-balance` : si un repli est inévitable, les deux lignes sont serrées
+ *   et de longueur comparable — un retour maîtrisé, pas un débordement.
+ *
+ * Sur une seule ligne — tous les libellés français actuels — ces règles n'ont aucun effet
+ * visible : le rendu français reste celui d'avant.
+ */
+const CLASSE_LIBELLE = 'min-w-0 font-medium text-sm leading-tight text-balance break-words';
+
 export function Sidebar() {
   const pathname = usePathname();
   const { data: session } = useSession();
@@ -130,7 +150,7 @@ export function Sidebar() {
               >
                 <Icon size={18} />
               </div>
-              <span className={`font-medium text-sm ${isActive ? 'text-white' : ''}`}>{t(key)}</span>
+              <span className={`${CLASSE_LIBELLE} ${isActive ? 'text-white' : ''}`}>{t(key)}</span>
             </Link>
           );
         })}
@@ -150,7 +170,7 @@ export function Sidebar() {
             <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#F59E0B20', color: '#F59E0B' }}>
               <Shield size={18} />
             </div>
-            <span className="font-medium text-sm">{t('admin')}</span>
+            <span className={CLASSE_LIBELLE}>{t('admin')}</span>
           </Link>
         )}
       </nav>
@@ -163,7 +183,12 @@ export function Sidebar() {
             {credits !== null
               ? credits.toLocaleString()
               : libelleFacturation !== null
-                ? <span data-facturation-libelle className="text-sm font-medium text-gray-400">{t.fr(libelleFacturation)}</span>
+                /* `block leading-snug text-balance` : ce libellé hérite sinon de
+                   l'interligne du `text-2xl` du nombre de crédits (32 px). En français
+                   (« Frais partenaires uniquement ») comme en kiswahili, il tient sur deux
+                   lignes séparées par un vide de la hauteur d'une ligne entière. Les deux
+                   lignes sont désormais serrées et de longueur comparable. */
+                ? <span data-facturation-libelle className="block text-sm font-medium leading-snug text-balance text-gray-400">{t.fr(libelleFacturation)}</span>
                 : '...'}
           </div>
           {/* Pas de `block` ici : c'est un utilitaire, il gagne sur le `inline-flex`
@@ -180,7 +205,10 @@ export function Sidebar() {
   return (
     <>
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex fixed left-0 top-0 w-64 h-screen bg-gray-900 border-r border-gray-800 p-6 z-50 flex-col">
+      {/* `px-5` et non `p-6` : la barre garde sa largeur (`w-64`, dont dépend le `lg:ml-64`
+          des pages), mais rend 8 px au contenu — c'est autant de marge gagnée pour les
+          intitulés les plus longs, sans qu'aucun texte ne soit raccourci. */}
+      <aside className="hidden lg:flex fixed left-0 top-0 w-64 h-screen bg-gray-900 border-r border-gray-800 px-5 py-6 z-50 flex-col">
         <SidebarContent />
       </aside>
 
@@ -203,14 +231,14 @@ export function Sidebar() {
 
       {/* Mobile Sidebar */}
       <aside
-        className={`lg:hidden fixed left-0 top-0 w-64 h-screen bg-gray-900 border-r border-gray-800 p-6 z-50 flex flex-col transition-transform duration-300 ease-in-out ${
+        className={`lg:hidden fixed left-0 top-0 w-64 h-screen bg-gray-900 border-r border-gray-800 px-5 py-6 z-50 flex flex-col transition-transform duration-300 ease-in-out ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
         {/* Close Button */}
         <button
           onClick={() => setIsOpen(false)}
-          className={`absolute top-6 right-6 text-gray-400 hover:text-white rounded-md ${ETAT_INTERACTIF_SANS_FOND}`}
+          className={`absolute top-6 right-5 text-gray-400 hover:text-white rounded-md ${ETAT_INTERACTIF_SANS_FOND}`}
           title={t.fr('Fermer')}
         >
           <X size={24} />

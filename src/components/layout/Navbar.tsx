@@ -129,14 +129,22 @@ export function Navbar() {
 
   return (
     <nav className="fixed top-0 right-0 left-0 lg:left-64 h-16 bg-gray-900 border-b border-gray-800 z-40 lg:z-40">
-      <div className="h-full px-6 flex justify-between items-center">
-        <div className="text-gray-400 hidden lg:block">{t('dashboard')}</div>
-        <div className="flex items-center gap-4 lg:ml-0 ml-12">
+      <div className="h-full px-4 sm:px-6 flex justify-between items-center">
+        <div className="text-gray-400 hidden lg:block min-w-0 truncate">{t('dashboard')}</div>
+        {/* ⚠️ Cette rangée DÉBORDAIT de l'écran sur mobile, et seulement dans certaines
+            langues : le libellé de facturation (« Frais partenaires uniquement », « Nur
+            Partnergebühren », « Ada za washirika pekee ») s'ajoutait en pleine largeur à des
+            icônes de taille fixe, poussant le bouton de déconnexion jusqu'à x = 442 sur un
+            écran de 390 — hors d'atteinte, sans barre de défilement puisque la barre est
+            `fixed`. En anglais et en créole, plus courts, le problème ne se voyait pas.
+            `min-w-0` + `justify-end` laissent la rangée se resserrer ; l'écart passe à 10 px
+            sous `sm` ; seul le libellé de facturation accepte de céder (voir plus bas). */}
+        <div className="flex items-center gap-2.5 sm:gap-4 lg:ml-0 ml-12 min-w-0 justify-end">
           <LanguageSelector variant="navbar" />
           {credits !== null && (
             <button
               onClick={() => router.push('/dashboard/billing')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-600/20 border border-purple-500/40 text-purple-200 hover:bg-purple-600/30 text-sm font-semibold ${ETAT_INTERACTIF_SANS_FOND}`}
+              className={`flex shrink-0 items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-600/20 border border-purple-500/40 text-purple-200 hover:bg-purple-600/30 text-sm font-semibold ${ETAT_INTERACTIF_SANS_FOND}`}
               title={tUi('credits_restants')}
             >
               <Zap size={14} className="text-purple-300" />
@@ -144,10 +152,18 @@ export function Navbar() {
             </button>
           )}
           {libelleFacturation !== null && (
+            /* Seul élément de la rangée autorisé à céder de la place : `min-w-0` + `truncate`
+               le font rétrécir AVANT que les boutons ne sortent de l'écran. Sur bureau il
+               s'affiche en entier, exactement comme avant, dans les neuf langues.
+               Sur un écran de 390 px la rangée réclame environ 460 px : la coupure est alors
+               INÉVITABLE — la seule alternative serait de faire disparaître une information de
+               facturation, ce que ce projet s'interdit. Le texte complet reste donc accessible
+               de deux façons : l'infobulle de la pastille (placé devant l'explication qui s'y
+               trouvait déjà) et, en entier et sans coupure, la carte de crédits du menu. */
             <span
               data-facturation-libelle
-              className="px-3 py-1.5 rounded-full border border-gray-700 text-gray-400 text-xs font-medium"
-              title={tUi('ce_compte_ne_consomme_pas_de_credits_s')}
+              className="min-w-0 truncate px-3 py-1.5 rounded-full border border-gray-700 text-gray-400 text-xs font-medium"
+              title={`${tUi.fr(libelleFacturation)} — ${tUi('ce_compte_ne_consomme_pas_de_credits_s')}`}
             >
               {tUi.fr(libelleFacturation)}
             </span>
@@ -155,7 +171,7 @@ export function Navbar() {
           {isAdmin && (
             <button
               onClick={() => router.push('/admin')}
-              className={`text-yellow-400 hover:text-yellow-300 rounded-md ${ETAT_INTERACTIF_SANS_FOND}`}
+              className={`shrink-0 text-yellow-400 hover:text-yellow-300 rounded-md ${ETAT_INTERACTIF_SANS_FOND}`}
               title={t('admin')}
             >
               <Shield size={20} />
@@ -167,7 +183,7 @@ export function Navbar() {
               notifications qui n'existaient nulle part. Elle lit désormais
               `/api/notifications`, et la pastille ne s'allume que s'il y a
               réellement quelque chose à lire. */}
-          <div className="relative" ref={clocheRef}>
+          <div className="relative shrink-0" ref={clocheRef}>
             <button
               type="button"
               onClick={basculerCloche}
@@ -233,14 +249,14 @@ export function Navbar() {
           </div>
           <button
             onClick={() => router.push('/dashboard/settings')}
-            className={`text-gray-400 hover:text-white rounded-md ${ETAT_INTERACTIF_SANS_FOND}`}
+            className={`shrink-0 text-gray-400 hover:text-white rounded-md ${ETAT_INTERACTIF_SANS_FOND}`}
             title={t('profile')}
           >
             <User size={20} />
           </button>
           <button
             onClick={handleLogout}
-            className={`text-gray-400 hover:text-red-400 rounded-md ${ETAT_INTERACTIF_SANS_FOND}`}
+            className={`shrink-0 text-gray-400 hover:text-red-400 rounded-md ${ETAT_INTERACTIF_SANS_FOND}`}
             title={t('logout')}
           >
             <LogOut size={20} />
