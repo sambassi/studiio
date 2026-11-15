@@ -69,6 +69,8 @@ export default function TraductionsAdminPage() {
   const [filtre, setFiltre] = useState<Filtre>('non_validees');
   /** L'utilisateur a-t-il choisi le filtre lui-même ? Alors AUCUNE réponse réseau ne l'écrase. */
   const filtreChoisi = useRef(false);
+  /** Numero de la derniere demande de chargement : une reponse plus ancienne est ignoree. */
+  const demandeCourante = useRef(0);
   const [ns, setNs] = useState('');
   const [recherche, setRecherche] = useState('');
   const [page, setPage] = useState(0);
@@ -89,18 +91,27 @@ export default function TraductionsAdminPage() {
   }
 
   const charger = useCallback(async (l: string) => {
+    // RESEAU HORS ORDRE : en changeant vite de langue, la reponse d'une langue
+    // precedente peut arriver APRES celle qu'on attend et reafficher ses compteurs.
+    // Chaque demande porte donc un numero ; seule la derniere a le droit d'ecrire.
+    const jeton = demandeCourante.current + 1;
+    demandeCourante.current = jeton;
     setChargement(true); setErreur(''); setEdition(null); setRapport(null); setMessage(null);
     try {
       const r = await fetch(`/api/admin/traductions?locale=${l}`);
       const j = await r.json();
+      if (jeton !== demandeCourante.current) return;
       if (!r.ok || !j.success) throw new Error(j.error || 'Chargement impossible');
       setLignes(j.lignes); setCompteurs(j.compteurs);
       // Des propositions IA attendent un examen : on les montre d'abord. MAIS une fois que
       // l'utilisateur a cliqué un filtre, plus rien ne le remplace — ni une seconde réponse
       // réseau, ni le double rendu de React en mode strict.
       if (!filtreChoisi.current) setFiltre(j.compteurs?.propositionsIA > 0 ? 'propositions' : 'non_validees');
-    } catch (e) { setErreur(e instanceof Error ? e.message : 'Chargement impossible'); setLignes([]); setCompteurs(null); }
-    finally { setChargement(false); }
+    } catch (e) {
+      if (jeton !== demandeCourante.current) return;
+      setErreur(e instanceof Error ? e.message : 'Chargement impossible'); setLignes([]); setCompteurs(null);
+    }
+    finally { if (jeton === demandeCourante.current) setChargement(false); }
   }, []);
   useEffect(() => { void charger(locale); }, [locale, charger]);
   useEffect(() => { setPage(0); setDeplies(new Set()); }, [filtre, ns, recherche, locale]);
