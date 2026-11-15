@@ -9,6 +9,7 @@ import {
   type CycleFacturation,
   type PlanPayant,
 } from '@/lib/billing/plan-choisi';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * Plan choisi sur la landing, présélectionné après l'inscription.
@@ -18,6 +19,7 @@ import {
  * `PricingCards` (`/api/stripe/create-checkout`, `{ plan, billingCycle }`).
  */
 export function PlanPreselectionne({ plan, billing }: { plan: PlanPayant; billing: CycleFacturation }) {
+  const tUi = useTranslations('ui.appDashboardBillingPlanPreselectionne');
   const resume = resumePlan(plan);
   const [cycle, setCycle] = useState<CycleFacturation>(billing);
   const [live, setLive] = useState<{ price_cents?: number; yearly_price_cents?: number; credits?: number } | null>(null);
@@ -54,7 +56,7 @@ export function PlanPreselectionne({ plan, billing }: { plan: PlanPayant; billin
       if (url) { window.location.href = url; return; }
       setError(data.error || 'Impossible de démarrer le paiement.');
     } catch {
-      setError('Erreur de connexion');
+      setError(tUi('erreur_de_connexion'));
     }
     setLoading(false);
   };
@@ -69,7 +71,7 @@ export function PlanPreselectionne({ plan, billing }: { plan: PlanPayant; billin
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-white">{resume.nom}</h1>
-            <p className="text-xs text-gray-400">{credits.toLocaleString()} crédits / mois</p>
+            <p className="text-xs text-gray-400">{credits.toLocaleString()} {tUi('credits_mois')}</p>
           </div>
           <div className="text-right">
             <span className="text-3xl font-black text-white">{centimesEnFrancs(prix)} CHF</span>
@@ -111,13 +113,13 @@ export function PlanPreselectionne({ plan, billing }: { plan: PlanPayant; billin
           className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-violet-600 to-pink-600 hover:from-violet-500 hover:to-pink-500 text-white font-bold py-3 rounded-xl transition disabled:opacity-50"
         >
           {loading && <Loader2 size={18} className="animate-spin" />}
-          Continuer vers le paiement
+          {tUi('continuer_vers_le_paiement')}
         </button>
       </div>
 
       <p className="text-center text-sm text-gray-400">
         <Link href="/dashboard/settings?tab=abonnement" className="text-studiio-primary hover:text-purple-400 font-semibold">
-          Voir tous les plans
+          {tUi('voir_tous_les_plans')}
         </Link>
       </p>
     </div>

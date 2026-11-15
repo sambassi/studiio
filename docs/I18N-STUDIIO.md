@@ -1,0 +1,64 @@
+# Traduction de Studiio — neuf langues
+
+## Langues et statut
+
+| Code | Langue | Sigle | Statut | Signification |
+|---|---|---|---|---|
+| `fr` | Français | FR | source | Langue d'origine. |
+| `en`, `de` | English, Deutsch | EN, DE | complète | Interface traduite. |
+| `sw`, `ht` | Kiswahili, Kreyòl ayisyen | SW, CR | **bêta** | Interface entièrement traduite, **jamais relue par un locuteur natif**. Le menu l'indique (« bêta »). |
+| `ln`, `wo`, `bm`, `bas` | Lingala, Wolof, Bamanankan, Bàsàa | LN, WO, BM, BA | **partielle** | Traductions **non relues** de libellés courts (lingala ≈ 15 %, wolof ≈ 13 %, bambara ≈ 3 %, bàsàa 5 textes) ; **le reste s'affiche en français**. Aucune phrase inventée. Détail, sources et expressions à valider : `docs/I18N-LANGUES-AFRICAINES.md`. Le menu l'indique (« partiel »). |
+
+Les codes sont techniques et stables (cookie `locale`, fichiers `messages/<code>.json`). Le sigle visible diffère du code pour le bàsàa (BA/`bas`) et le créole (CR/`ht`).
+
+## Comment ça marche
+
+- `src/i18n/config.ts` : langues, noms complets, sigles, statuts, locales Intl.
+- `src/i18n/messages.ts` : **le français est la base**, le catalogue d'une langue est une surcouche ; tout manque retombe en français (jamais une clé brute).
+- `src/i18n/provider.tsx` : charge français + surcouche ; cookie `locale` ; `<html lang>` ; enregistre aussi la langue dans `user_settings.creator_preferences.locale` (sans migration) pour les e-mails.
+- `src/i18n/client.ts` : `useTranslations(ns)` → `t('clé', {variables})` ; `t.fr('Texte français')` traduit un libellé de constante par texte exact et **renvoie l'original sans entrée** (un contenu utilisateur n'est jamais altéré).
+- `src/components/LanguageSelector.tsx` : sélecteur unique (globe SVG, noms complets, langue active, menu en portail).
+- `src/lib/i18n/serveur.ts` : traduction serveur synchrone (e-mails) ; langue lue dans les préférences enregistrées.
+- Notifications (cloche) : texte stocké en français par le cron, **localisé à l'affichage** d'après le `kind` (`src/lib/notifications/affichage.ts`).
+- Assistant IA : l'interface est traduite ; la langue de réponse suit la langue choisie (`src/lib/chat/system-prompts.ts`). Pour ln/wo/bm/bas, l'assistant répond en français simple.
+
+## Corriger et valider les traductions depuis l'administration
+
+Page **Administration → Traductions** (`/admin/traductions`, réservée aux administrateurs). Elle permet de corriger et de **valider progressivement**, langue par langue, sans modifier le code ni redéployer.
+
+- **Liste** de toutes les clés de la langue choisie, filtrable par statut (Non validées · À vérifier en priorité · Validées · Manquantes), par écran et par recherche ; compteurs et barre de progression.
+- **Statuts** : *Validée* (relue par un humain) · *Non validée · attestée* (trouvée dans une source écrite) · *Non validée · à vérifier en priorité* (composée, plausible) · *Non validée* · *Manquante* (le français s'affiche).
+- **Corriger** une entrée → elle redevient *non validée* ; **Enregistrer et valider** ou **Valider** la marque relue ; **Retirer** supprime la traduction (le français s'affiche).
+- **Import CSV** (colonnes `cle` et `traduction`, séparateur `;` ou `,`) : une cellule vide est **ignorée** (réimporter un export n'efface rien) ; les variables `{x}` du français doivent être conservées, sinon la ligne est refusée (les autres sont importées) ; une case permet de marquer le fichier comme **validé** (relecteur natif). **Export CSV** de la langue, avec statut, confiance et source.
+- La mention **« Partiel » / « Bêta »** du menu de langue reste définie dans `src/i18n/config.ts` : cette page ne la modifie pas.
+- Les traductions non validées **sont affichées** aux visiteurs comme les autres ; la validation sert à suivre ce qu'un natif a relu.
+
+**Stockage** : `app_settings`, clé `i18n_overrides_<langue>` — le magasin clé/valeur déjà utilisé par les CGU et la landing, **sans migration**. Les corrections priment sur `messages/<langue>.json` ; le français reste le repli. Le visiteur les lit via `GET /api/i18n/<langue>` (publique : `{ clé: texte }` seulement, jamais l'auteur ni le statut) ; elles apparaissent au plus tard après ~20 s à 2 min (cache). Aucune écriture n'a lieu si la lecture des corrections existantes a échoué (jamais d'écrasement) ; chaque écriture est tracée dans `audit_log` (sans copier le texte).
+
+**Sécurité** : routes admin sous `requireAdmin` ; texte limité à 2 000 caractères, sans balises HTML ni caractères de contrôle ; clés restreintes à celles du catalogue français.
+
+**Dépendance** : pour ouvrir cette page en local, il faut une vraie session administrateur (la session factice de développement n'en est pas une).
+
+## Ce qui n'est PAS traduit (par choix ou limite)
+
+- **Contenus de l'utilisateur** (projets, scripts, légendes, noms, notes) : jamais traduits ni modifiés.
+- **Contenus générés / modèles** : thèmes d'infographie, textes d'exemple de l'agent, scripts produits par l'IA (leur langue est une décision produit distincte).
+- **Espace administrateur** : reste en français (équipe interne).
+- **Messages d'erreur renvoyés par l'API** (~255 chaînes) : restent en français ; l'interface les affiche tels quels.
+- **Métadonnées SEO** (titre, description du site), **page d'erreur serveur « lien incomplet »** de `/dashboard/creer`.
+- **Fragments de phrase** : une phrase coupée par une variable ou une balise est traduite par morceaux ; l'ordre des mots peut être imparfait en allemand, kiswahili ou créole.
+- Le nom « HeyGen » apparaît dans deux textes français préexistants (jamais ajouté par la traduction).
+
+## Outils (scripts/i18n)
+
+- `inventaire.cjs` : mesure le français encore en dur.
+- `convertir.cjs`, `libelles.cjs` : conversions automatiques (déjà appliquées ; rejouables sans collision de clés).
+- `lots.cjs`, `valider-traduction.cjs`, `fusionner-lots.cjs` : extraire, contrôler (variables `{x}`, emoji, fournisseurs) et fusionner des lots de traduction.
+- `exporter-relecture.cjs <langue>` : CSV pour un relecteur natif (l'export de l'administration, avec statuts, est préférable).
+- `importer-validation.cjs <langue> <fichier.csv>` : réimporte un CSV dans `messages/<langue>.json` (hors administration, pour le code).
+
+## Relecture à faire
+
+1. `node scripts/i18n/exporter-relecture.cjs sw > sw.csv` (idem `ht`) → relecture par un locuteur natif → corriger `messages/sw.json` / `ht.json`.
+2. Quand une langue est relue en entier, passer son statut de `draft` à `complete` dans `src/i18n/config.ts` : la mention « bêta » disparaît du menu.
+3. Pour ln/wo/bm/bas : voir `docs/I18N-LANGUES-AFRICAINES.md` (export CSV, réimport des corrections d'un locuteur natif).

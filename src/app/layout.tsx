@@ -1,3 +1,4 @@
+import { LiensLegaux } from '@/components/layout/LiensLegaux';
 import type { Metadata } from 'next'
 import { Inter, Anton, Syne, Bebas_Neue, Poppins, Space_Grotesk, Montserrat, Oswald, Playfair_Display, Raleway, Roboto_Condensed, Lora, Dancing_Script, Permanent_Marker } from 'next/font/google'
 import './globals.css'
@@ -56,13 +57,8 @@ export default function RootLayout({
         <meta name="google-site-verification" content="WWS9UuOsfGnzjnREf0RB1BXeH_b2B1mQIV1ehOod2to" />
       </head>
       <body className={`${inter.variable} ${anton.variable} ${syne.variable} ${bebasNeue.variable} ${poppins.variable} ${spaceGrotesk.variable} ${montserrat.variable} ${oswald.variable} ${playfairDisplay.variable} ${raleway.variable} ${robotoCondensed.variable} ${lora.variable} ${dancingScript.variable} ${permanentMarker.variable} font-sans bg-studiio-dark text-gray-100 antialiased`}>
-        <Providers>{children}</Providers>
+        <Providers>{children}<LiensLegaux /></Providers>
         <PWAInstallPrompt />
-        <footer className="text-center text-xs text-gray-500 py-4 space-x-4">
-          <a href="/terms" className="hover:text-gray-300">Terms of Service</a>
-          <span>|</span>
-          <a href="/privacy" className="hover:text-gray-300">Privacy Policy</a>
-        </footer>
       </body>
     </html>
   )

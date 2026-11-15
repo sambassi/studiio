@@ -1,0 +1,13 @@
+{
+  "languageSelector": {
+    "label": "Hɔp"
+  },
+  "common": {
+    "yes": "Èè",
+    "no": "Tô",
+    "more": "Ǹtoŋ"
+  },
+  "dashboardHome": {
+    "welcome": "Malô malam, {name}"
+  }
+}

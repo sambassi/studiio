@@ -30,6 +30,7 @@
  */
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { Info, X } from 'lucide-react';
+import { useTranslations } from '@/i18n/client';
 
 /** Marge minimale entre le panneau et le bord de la fenêtre (px). */
 const MARGE = 12;
@@ -52,6 +53,7 @@ export interface InfoBulleProps {
 }
 
 export default function InfoBulle({ label, titre, children, className = '', marqueur }: InfoBulleProps) {
+  const tUi = useTranslations('ui.componentsUiInfoBulle');
   const [ouvert, setOuvert] = useState(false);
   /** Position horizontale (px, relative à l'icône) et largeur, calculées À L'OUVERTURE. */
   const [placement, setPlacement] = useState<{ gauche: number; largeur: number }>({ gauche: 0, largeur: LARGEUR });
@@ -179,7 +181,7 @@ export default function InfoBulle({ label, titre, children, className = '', marq
         <button
           type="button"
           onClick={() => fermer(true)}
-          aria-label="Fermer"
+          aria-label={tUi('fermer')}
           className="absolute right-1.5 top-1.5 rounded-md p-1 text-gray-500 transition-colors hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-studiio-primary"
           data-infobulle-fermer
         >

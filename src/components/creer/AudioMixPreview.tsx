@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Play, Pause, Repeat } from 'lucide-react';
 import type { AudioKeyframe } from '@/lib/creer/audioDucking';
 import { analyserVoix, creerChaineMaster, dbVersGain, gainMasterDb, niveauMusiqueDb, planDuckingVoix, planifierEnveloppe, type SourceVoix } from '@/lib/creer/mixageVoix';
+import { useTranslations } from '@/i18n/client';
 
 interface Props {
   audioKeyframes: AudioKeyframe[];
@@ -82,6 +83,7 @@ export default function AudioMixPreview({
   onLevels,
   musicVolume,
 }: Props) {
+  const tUi = useTranslations('ui.componentsCreerAudioMixPreview');
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [loop, setLoop] = useState(false);
@@ -510,7 +512,7 @@ export default function AudioMixPreview({
     <div className={flush ? 'min-w-0 space-y-2' : 'mt-3 min-w-0 rounded-lg border border-purple-900/50 bg-gray-900/60 p-3 space-y-2 backdrop-blur-sm'}>
       <div className={`flex items-center justify-between ${flush ? 'hidden' : ''}`}>
         <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
-          Écouter le mixage
+          {tUi('ecouter_le_mixage')}
         </span>
         <label className="flex items-center gap-1 text-[10px] text-gray-400 cursor-pointer select-none">
           <input
@@ -530,12 +532,12 @@ export default function AudioMixPreview({
           className="flex shrink-0 items-center gap-1.5 rounded bg-purple-700 hover:bg-purple-600 disabled:opacity-40 disabled:cursor-not-allowed px-3 py-1.5 text-[11px] font-medium text-white transition"
           title={
             !canPlay
-              ? "Upload music/voix ou rush pour activer le mixage"
-              : isPlaying ? "Mettre en pause" : "Écouter le mixage complet (rush + musique + voix + ducking)"
+              ? tUi('upload_music_voix_ou_rush_pour_activer')
+              : isPlaying ? "Mettre en pause" : tUi('ecouter_le_mixage_complet_rush_musique')
           }
         >
           {isPlaying ? <Pause size={12} /> : <Play size={12} />}
-          {isPlaying ? 'Pause mixage' : 'Écouter le mixage'}
+          {isPlaying ? 'Pause mixage' : tUi('ecouter_le_mixage')}
         </button>
         <div className="flex-1 min-w-0 h-1.5 rounded bg-gray-800 overflow-hidden" style={{ minWidth: 48 }}>
           <div
@@ -555,7 +557,7 @@ export default function AudioMixPreview({
       <div className={`grid grid-cols-3 gap-2 ${onLevels ? 'hidden' : ''}`}>
         <div className="space-y-0.5">
           <div className="flex justify-between text-[9px] text-gray-400">
-            <span>Musique</span>
+            <span>{tUi('musique')}</span>
             <span className="font-mono text-cyan-300 tabular-nums">{Math.round(Math.min(100, musicLevel * 200))}%</span>
           </div>
           <div className="h-1 rounded bg-gray-800 overflow-hidden">
@@ -579,7 +581,7 @@ export default function AudioMixPreview({
         </div>
         <div className="space-y-0.5">
           <div className="flex justify-between text-[9px] text-gray-400">
-            <span>Voix off</span>
+            <span>{tUi('voix_off')}</span>
             <span className="font-mono text-purple-300 tabular-nums">{Math.round(Math.min(100, voiceLevel * 200))}%</span>
           </div>
           <div className="h-1 rounded bg-gray-800 overflow-hidden">

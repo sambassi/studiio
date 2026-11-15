@@ -21,6 +21,7 @@ import InfoBulle from '@/components/ui/InfoBulle';
 import { classesCarteOption } from '@/lib/ui/etats';
 import { usePrefersReducedMotion } from '@/lib/hooks/usePrefersReducedMotion';
 import { STYLES_VIDEO, exempleStyle, type StyleVideo, type StyleVideoId } from '@/lib/styles-video/styles';
+import { useTranslations } from '@/i18n/client';
 
 export interface GalerieStylesVideoProps {
   choisi: StyleVideoId | null;
@@ -38,6 +39,7 @@ function CarteStyle({ style, choisi, retouches, onChoisir, joue, onSurvol }: {
   joue: boolean;
   onSurvol: (actif: boolean) => void;
 }) {
+  const tUi = useTranslations('ui.componentsCreerGalerieStylesVideo');
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const ex = exempleStyle(style.id);
   useEffect(() => {
@@ -88,12 +90,12 @@ function CarteStyle({ style, choisi, retouches, onChoisir, joue, onSurvol }: {
         <span className="mt-0.5 text-[10px] leading-snug text-gray-400 line-clamp-2">{style.description}</span>
         {choisi && retouches.length > 0 && (
           <span className="mt-0.5 block text-[10px] leading-snug text-amber-300" data-style-retouche>
-            Retouché : {retouches.join(', ')}
+            {tUi('retouche')} {retouches.join(', ')}
           </span>
         )}
       </button>
       <span className="absolute top-2 right-2">
-        <InfoBulle label={`Détail du style ${style.libelle}`} titre={style.libelle} marqueur={`style-info-${style.id}`}>
+        <InfoBulle label={tUi('detail_du_style_libelle', { libelle: style.libelle })} titre={style.libelle} marqueur={`style-info-${style.id}`}>
           {style.detail.map((l) => <span key={l} className="block">{l}</span>)}
           <span className="block mt-1 text-gray-400">
             Le style pose des réglages de départ ; tout reste modifiable ci-dessous. Texte, voix, musique, couleurs et durées ne changent pas.
@@ -105,10 +107,11 @@ function CarteStyle({ style, choisi, retouches, onChoisir, joue, onSurvol }: {
 }
 
 export default function GalerieStylesVideo({ choisi, retouches, onChoisir }: GalerieStylesVideoProps) {
+  const tUi = useTranslations('ui.componentsCreerGalerieStylesVideo');
   const reduire = usePrefersReducedMotion();
   const [actif, setActif] = useState<StyleVideoId | null>(null);
   return (
-    <div role="group" aria-label="Styles vidéo" className="grid grid-cols-3 gap-2" data-galerie-styles>
+    <div role="group" aria-label={tUi('styles_video')} className="grid grid-cols-3 gap-2" data-galerie-styles>
       {STYLES_VIDEO.map((s) => (
         <CarteStyle
           key={s.id}

@@ -8,6 +8,7 @@ import {
   MONTAGE_DEFAUT, type AutopilotMontageStyle,
 } from '@/lib/autopilot/textStyle';
 import type { ShootSession, Rush } from '@/lib/autopilot/tournage/contrat';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * Sessions de tournage — l'écran minimal du socle M3-A.
@@ -96,6 +97,7 @@ interface Props {
 export default function SessionsTournagePanel({
   montageDefaut, onEnregistrerDefaut, onSessionChange, onVideoLancee,
 }: Props = {}) {
+  const tUi = useTranslations('ui.componentsCreerSessionsTournagePanel');
   const [sessions, setSessions] = useState<ShootSession[]>([]);
   const [selection, setSelection] = useState<string | null>(null);
   const [rushes, setRushes] = useState<Rush[]>([]);
@@ -180,7 +182,7 @@ export default function SessionsTournagePanel({
       setSessions((prev) => [d.session, ...prev]);
       setSelection(d.session.id);
     } catch {
-      setErreur('Création impossible.');
+      setErreur(tUi('creation_impossible'));
     }
   };
 
@@ -236,7 +238,7 @@ export default function SessionsTournagePanel({
           value={titre}
           onChange={(e) => setTitre(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); creer(); } }}
-          placeholder="Nom du tournage — ex : cours du samedi"
+          placeholder={tUi('nom_du_tournage_ex_cours_du_samedi')}
           data-tournage-titre
           className="flex-1 rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none px-2.5 py-2 text-sm"
         />
@@ -292,7 +294,7 @@ export default function SessionsTournagePanel({
                 colonne de droite. Deux blocs portant le même nom dans deux
                 colonnes, c'est exactement la confusion qu'on vient d'enlever. */}
             <p className="text-[10px] uppercase tracking-wide text-gray-500">
-              Réglages de la vidéo
+              {tUi('reglages_de_la_video')}
             </p>
             <div className="flex flex-wrap gap-2">
               <label className="flex-1 min-w-[7rem]">
@@ -305,13 +307,13 @@ export default function SessionsTournagePanel({
                 >
                   {FORMATS.map((f) => (
                     <option key={f.valeur} value={f.valeur}>
-                      {f.libelle} ({f.valeur})
+                      {tUi.fr(f.libelle)} ({f.valeur})
                     </option>
                   ))}
                 </select>
               </label>
               <label className="flex-1 min-w-[7rem]">
-                <span className="block text-[10px] text-gray-500 mb-1">Durée</span>
+                <span className="block text-[10px] text-gray-500 mb-1">{tUi('duree')}</span>
                 <select
                   value={String(montage.dureeSecondes)}
                   onChange={(e) => changerMontage({ dureeSecondes: Number(e.target.value) })}
@@ -338,14 +340,14 @@ export default function SessionsTournagePanel({
                 className="text-[10px] text-gray-500 hover:text-gray-300 underline underline-offset-2 transition-colors"
               >
                 {defautEnregistre
-                  ? 'Enregistré comme réglage par défaut'
-                  : 'Enregistrer comme réglage par défaut'}
+                  ? tUi('enregistre_comme_reglage_par_defaut')
+                  : tUi('enregistrer_comme_reglage_par_defaut')}
               </button>
             )}
 
             {/* La validation humaine, dite avant même que la vidéo existe. */}
             <p className="text-[10px] text-gray-500 leading-relaxed" data-validation-humaine>
-              Studiio prépare la vidéo. Vous la vérifiez avant publication.
+              {tUi('studiio_prepare_la_video_vous_la_verif')}
             </p>
           </div>
 
@@ -373,11 +375,10 @@ export default function SessionsTournagePanel({
             data-tournage-ajouter
             className="flex items-center gap-1.5 rounded-lg border border-gray-800 px-2.5 py-1.5 text-xs text-gray-300 hover:text-white hover:border-gray-700 transition-colors"
           >
-            <Film className="w-3.5 h-3.5" /> Ajouter des rushes
+            <Film className="w-3.5 h-3.5" /> {tUi('ajouter_des_rushes')}
           </button>
           <p className="text-[11px] text-gray-500">
-            Depuis n’importe quel volume — SSD externe, carte mémoire, clé USB.
-            Les fichiers ne sont pas copiés sur votre ordinateur.
+            {tUi('depuis_n_importe_quel_volume_ssd_exter')}
           </p>
 
           {envois.length > 0 && (
@@ -423,7 +424,7 @@ export default function SessionsTournagePanel({
               </li>
             ))}
             {rushes.length === 0 && (
-              <li className="text-xs text-gray-500">Aucun rush indexé pour l’instant.</li>
+              <li className="text-xs text-gray-500">{tUi('aucun_rush_indexe_pour_l_instant')}</li>
             )}
           </ul>
 

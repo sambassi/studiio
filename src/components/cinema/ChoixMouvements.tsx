@@ -11,27 +11,29 @@
 import { Info, Video } from 'lucide-react';
 import { MOUVEMENTS_CAMERA } from '@/lib/cinema/mouvements-camera';
 import { ratioCadre } from '@/lib/ui/lecteur-generation';
+import { useTranslations } from '@/i18n/client';
 
 export default function ChoixMouvements({ actif, surChoisir }: {
   actif: string | null;
   surChoisir: (camera: string) => void;
 }) {
+  const tUi = useTranslations('ui.componentsCinemaChoixMouvements');
   return (
     <section className="rounded-xl border border-slate-800 bg-slate-900/40 p-4" data-bloc="mouvements">
       <h3 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-        <Video className="h-3.5 w-3.5 text-violet-400" aria-hidden="true" /> Mouvements de caméra
-        <span title="Quatre plans filmés (Pexels), un par mouvement : un clic les montre dans l’aperçu. Ce ne sont pas des vidéos produites par Studiio." className="text-slate-500">
-          <Info className="h-3.5 w-3.5" aria-label="Quatre plans filmés, un par mouvement : un clic les montre dans l’aperçu" />
+        <Video className="h-3.5 w-3.5 text-violet-400" aria-hidden="true" /> {tUi('mouvements_de_camera')}
+        <span title={tUi('quatre_plans_filmes_pexels_un_par_mouv')} className="text-slate-500">
+          <Info className="h-3.5 w-3.5" aria-label={tUi('quatre_plans_filmes_un_par_mouvement_u')} />
         </span>
       </h3>
-      <div role="group" aria-label="Mouvements de caméra" className="grid grid-cols-2 gap-2">
+      <div role="group" aria-label={tUi('mouvements_de_camera')} className="grid grid-cols-2 gap-2">
         {MOUVEMENTS_CAMERA.map((m) => (
           <button
             key={m.camera}
             type="button"
             onClick={() => surChoisir(m.camera)}
             aria-pressed={actif === m.camera}
-            title={m.quoiRegarder}
+            title={tUi.fr(m.quoiRegarder)}
             className={`overflow-hidden rounded-lg border text-left transition-colors ${
               actif === m.camera ? 'border-violet-500/80 ring-1 ring-violet-500/40' : 'border-slate-800 hover:border-violet-500/40'
             }`}
@@ -40,7 +42,7 @@ export default function ChoixMouvements({ actif, surChoisir }: {
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={m.poster} alt="" aria-hidden="true" loading="lazy" className="absolute inset-0 h-full w-full object-cover" />
               <span className="absolute inset-x-0 bottom-0 h-1/2" style={{ background: 'linear-gradient(180deg, rgba(5,6,10,0) 0%, rgba(5,6,10,0.85) 100%)' }} />
-              <span className="absolute bottom-1 left-2 right-2 block truncate text-[11px] font-semibold text-white">{m.libelle}</span>
+              <span className="absolute bottom-1 left-2 right-2 block truncate text-[11px] font-semibold text-white">{tUi.fr(m.libelle)}</span>
             </span>
           </button>
         ))}

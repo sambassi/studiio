@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { AlertTriangle, Check, Loader2, UserRound, UserSquare2 } from 'lucide-react';
 import { lireEtatJumeau, type EtatJumeau } from '@/lib/creer/jumeau';
 import type { AvatarPret } from '@/lib/autopilot/medias-prevus';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * SOURCE « Mon avatar » — une des trois sources de la vidéo (étape Rushes).
@@ -162,6 +163,7 @@ export function useVideoAvatarReelle(actif: boolean, avatarId: string | null): s
 
 /** Petite vignette ; repli sur l'icône si la source est illisible. */
 export function MiniatureAvatar({ vignette, className = 'w-10 h-10' }: { vignette: VignetteAvatar | null; className?: string }) {
+  const tUi = useTranslations('ui.componentsCreerAvatarPrincipalAutopilote');
   const [echec, setEchec] = useState(false);
   useEffect(() => { setEchec(false); }, [vignette?.url]);
   if (!vignette || echec) {
@@ -185,7 +187,7 @@ export function MiniatureAvatar({ vignette, className = 'w-10 h-10' }: { vignett
     /* eslint-disable-next-line @next/next/no-img-element */
     <img
       src={vignette.url}
-      alt="Mon avatar"
+      alt={tUi('mon_avatar')}
       onError={() => setEchec(true)}
       className={`${className} shrink-0 rounded-lg object-cover bg-gray-800`}
       data-avatar-vignette="photo"
@@ -206,6 +208,7 @@ export default function AvatarPrincipalAutopilote(props: {
   onPret?: (pret: AvatarPret) => void;
   onVignette?: (v: VignetteAvatar | null) => void;
 }) {
+  const tUi = useTranslations('ui.componentsCreerAvatarPrincipalAutopilote');
   const { avatarId, jumeauReady, onPret, onVignette } = props;
   const [etat, setEtat] = useState<EtatJumeau | null | 'chargement'>('chargement');
   const [vignette, setVignette] = useState<VignetteAvatar | null>(null);
@@ -262,37 +265,37 @@ export default function AvatarPrincipalAutopilote(props: {
         />
         <UserRound className="w-4 h-4 mt-0.5 shrink-0 text-gray-400" aria-hidden="true" />
         <span className="min-w-0">
-          <span className="block text-xs font-medium text-gray-300">Mon avatar</span>
-          <span className="block text-[11px] text-gray-500">Votre avatar parlant, seul ou combiné à vos rushes et aux médias suggérés.</span>
+          <span className="block text-xs font-medium text-gray-300">{tUi('mon_avatar')}</span>
+          <span className="block text-[11px] text-gray-500">{tUi('votre_avatar_parlant_seul_ou_combine_a')}</span>
         </span>
         {pret === true && <MiniatureAvatar vignette={vignette} className="w-9 h-9 ml-auto" />}
       </label>
 
       {etat === 'chargement' && (
         <p className="flex items-center gap-1.5 text-[11px] text-gray-500" data-autopilot-avatar-etat="chargement">
-          <Loader2 className="w-3 h-3 animate-spin" /> Vérification de votre avatar…
+          <Loader2 className="w-3 h-3 animate-spin" /> {tUi('verification_de_votre_avatar')}
         </p>
       )}
       {pret === true && (
         <p className="flex items-start gap-1.5 text-[11px] text-emerald-400" data-autopilot-avatar-etat="pret">
           <Check className="w-3 h-3 mt-0.5 shrink-0" />
           {coche
-            ? 'Votre avatar parlant (sur votre voix clonée) prend place dans la séquence Vidéo, avec vos autres sources. Facturé en plus du rendu, à chaque montage.'
-            : 'Votre avatar est prêt.'}
+            ? tUi('votre_avatar_parlant_sur_votre_voix_cl')
+            : tUi('votre_avatar_est_pret')}
         </p>
       )}
       {pret !== true && etat !== 'chargement' && (
         <div className="space-y-1" data-autopilot-avatar-etat="non-pret">
           <p className="flex items-start gap-1.5 text-[11px] text-amber-300">
             <AlertTriangle className="w-3 h-3 mt-0.5 shrink-0" />
-            <span><span className="font-medium">Aucun avatar prêt.</span>{raison ? ` ${raison}` : ''}</span>
+            <span><span className="font-medium">{tUi('aucun_avatar_pret')}</span>{raison ? ` ${raison}` : ''}</span>
           </p>
           <Link
             href="/dashboard/avatar"
             data-autopilot-avatar-configurer
             className="inline-block text-[11px] text-purple-300 hover:text-purple-200 underline underline-offset-2"
           >
-            Configurer mon avatar
+            {tUi('configurer_mon_avatar')}
           </Link>
         </div>
       )}

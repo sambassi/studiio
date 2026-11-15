@@ -9,6 +9,7 @@
  * Invisible tant qu'il n'y a qu'un seul avatar utilisable.
  */
 import { useEffect, useState } from 'react';
+import { useTranslations } from '@/i18n/client';
 
 export interface AvatarChoisissable { id: string; nom: string; parDefaut: boolean; version: number | null }
 export interface QualiteProposee { qualite: 'standard' | 'qualite' | 'premium'; libelle: string; ouverte: boolean }
@@ -35,6 +36,7 @@ export default function SelecteurAvatar(props: {
   onQualiteChange?: (q: QualiteProposee['qualite']) => void;
   className?: string;
 }) {
+  const tUi = useTranslations('ui.componentsAvatarSelecteurAvatar');
   const [donnees, setDonnees] = useState<{ avatars: AvatarChoisissable[]; qualites: QualiteProposee[] } | null>(null);
   useEffect(() => {
     let vivant = true;
@@ -51,14 +53,14 @@ export default function SelecteurAvatar(props: {
     <div data-selecteur-avatar className={`space-y-2 ${props.className ?? ''}`}>
       {avatars.length >= 2 && (
         <label className="block text-xs text-gray-400">
-          Avatar utilisé
+          {tUi('avatar_utilise')}
           <select
             data-selecteur-avatar-choix
             value={valeur}
             onChange={(e) => props.onChange(e.target.value || null)}
             className="mt-1 w-full rounded-lg bg-gray-900 border border-gray-700 px-3 py-2 text-sm text-white"
           >
-            <option value="">Avatar par défaut</option>
+            <option value="">{tUi('avatar_par_defaut')}</option>
             {avatars.map((a) => (
               <option key={a.id} value={a.id}>{a.nom}{a.version ? ` · v${a.version}` : ''}{a.parDefaut ? ' (par défaut)' : ''}</option>
             ))}
@@ -66,7 +68,7 @@ export default function SelecteurAvatar(props: {
         </label>
       )}
       {plusieursQualites && (
-        <div className="flex gap-2" role="radiogroup" aria-label="Qualité du rendu">
+        <div className="flex gap-2" role="radiogroup" aria-label={tUi('qualite_du_rendu')}>
           {qualites.map((q) => (
             <button
               key={q.qualite}

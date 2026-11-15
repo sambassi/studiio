@@ -12,6 +12,7 @@ import {
   MIN_RECORDING_SECONDS,
   MAX_RECORDING_SECONDS,
 } from '@/lib/voice/recording';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * « Ma voix » — enregistrer, ecouter, cloner.
@@ -42,6 +43,7 @@ export default function VoiceCloneRecorder({
   /** Appele apres un clonage reussi — pour rafraichir les selecteurs de voix. */
   onCloned?: (voice: ClonedVoice) => void;
 }) {
+  const tUi = useTranslations('ui.componentsVoiceVoiceCloneRecorder');
   const [recording, setRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [blob, setBlob] = useState<Blob | null>(null);
@@ -194,7 +196,7 @@ export default function VoiceCloneRecorder({
       await loadVoices();
       if (data.voice) onCloned?.(data.voice as ClonedVoice);
     } catch {
-      setError('Clonage impossible — vérifiez votre connexion.');
+      setError(tUi('clonage_impossible_verifiez_votre_conn'));
     } finally {
       setSending(false);
     }
@@ -217,11 +219,10 @@ export default function VoiceCloneRecorder({
     <div className="space-y-4">
       <div className="flex items-center gap-2">
         <Mic className="w-4 h-4 text-purple-400" />
-        <h3 className="font-semibold">Enregistrer ma voix</h3>
+        <h3 className="font-semibold">{tUi('enregistrer_ma_voix')}</h3>
       </div>
       <p className="text-sm text-gray-400">
-        Enregistrez-vous pendant une minute environ, dans un endroit calme. Votre voix devient
-        ensuite une voix de synthèse utilisable dans tous vos montages.
+        {tUi('enregistrez_vous_pendant_une_minute_en')}
       </p>
 
       {/* ── Voix déjà clonées ──────────────────────────────────────── */}
@@ -236,7 +237,7 @@ export default function VoiceCloneRecorder({
               <button
                 type="button"
                 onClick={() => removeVoice(v.id)}
-                title="Supprimer cette voix"
+                title={tUi('supprimer_cette_voix')}
                 className="text-gray-500 hover:text-red-400 transition-colors"
               >
                 <Trash2 className="w-4 h-4" />
@@ -256,7 +257,7 @@ export default function VoiceCloneRecorder({
               className="flex items-center gap-2 rounded-xl bg-red-600/20 text-red-300 ring-1 ring-red-500/40 px-4 py-2.5 text-sm hover:bg-red-600/30 transition"
             >
               <Square className="w-4 h-4" />
-              Arrêter
+              {tUi('arreter')}
             </button>
           ) : (
             <button
@@ -266,7 +267,7 @@ export default function VoiceCloneRecorder({
               className="flex items-center gap-2 rounded-xl bg-purple-600/25 text-purple-200 ring-1 ring-purple-500/50 px-4 py-2.5 text-sm hover:bg-purple-600/35 disabled:opacity-40 transition"
             >
               <Mic className="w-4 h-4" />
-              {blob ? 'Recommencer' : 'Enregistrer'}
+              {blob ? 'Recommencer' : tUi('enregistrer')}
             </button>
           )}
 
@@ -303,14 +304,14 @@ export default function VoiceCloneRecorder({
         <div className="space-y-3">
           <div>
             <label htmlFor="voice-name" className="block text-sm font-medium mb-2">
-              Nom de la voix
+              {tUi('nom_de_la_voix')}
             </label>
             <input
               id="voice-name"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value.slice(0, 60))}
-              placeholder="Ma voix"
+              placeholder={tUi('ma_voix')}
               className="w-full rounded-xl bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none p-2.5 text-sm"
             />
           </div>
@@ -325,8 +326,7 @@ export default function VoiceCloneRecorder({
             <span>
               {/* Même texte que le consentement ENREGISTRÉ (`VOICE_CONSENT_TEXT`, lib/voice/store.ts) :
                   l'écran ne nomme pas le fournisseur, la preuve en base non plus. */}
-              Je certifie que la voix enregistrée est la mienne et j’autorise Studiio et ses prestataires
-              techniques à en créer un clone.
+              {tUi('je_certifie_que_la_voix_enregistree_es')}
             </span>
           </label>
 
@@ -337,13 +337,13 @@ export default function VoiceCloneRecorder({
             className="w-full button-primary disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-            {sending ? 'Clonage en cours…' : 'Cloner ma voix'}
+            {sending ? 'Clonage en cours…' : tUi('cloner_ma_voix')}
           </button>
 
           {seconds < MIN_RECORDING_SECONDS && (
             <p className="text-xs text-amber-400 flex items-start gap-1.5">
               <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-              Enregistrement court : le clone sera moins fidèle.
+              {tUi('enregistrement_court_le_clone_sera_moi')}
             </p>
           )}
         </div>

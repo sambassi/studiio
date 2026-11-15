@@ -1,3 +1,6 @@
+'use client';
+import { useTranslations } from '@/i18n/client';
+
 interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   label?: string;
   error?: string;
@@ -5,11 +8,12 @@ interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
 }
 
 export function Select({ label, error, options, className = '', ...props }: SelectProps) {
+  const tUi = useTranslations('ui.componentsUiSelect');
   return (
     <div className="space-y-2">
       {label && <label className="block text-sm font-medium text-gray-300">{label}</label>}
       <select className={`input-base w-full ${className}`} {...props}>
-        <option value="">Sélectionner...</option>
+        <option value="">{tUi('selectionner')}</option>
         {options.map((opt) => (
           <option key={opt.value} value={opt.value}>
             {opt.label}

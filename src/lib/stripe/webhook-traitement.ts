@@ -42,6 +42,7 @@ import { supabaseAdmin as db } from '@/lib/db/supabase';
 import { stripe } from '@/lib/stripe/client';
 import { crediterIdempotent as crediterBase, ErreurCredit } from '@/lib/credits/crediter';
 import { sendPaymentReceiptDirect, notifyAdminSale } from '@/lib/email/notifications';
+import { localeUtilisateur } from '@/lib/i18n/serveur';
 import { sendEmailSilent } from '@/lib/email/resend';
 import {
   planDepuisPrix, packDepuisPrix, creditsPourFacture, PLANS_PAYANTS, MARQUEUR_APP,
@@ -285,6 +286,8 @@ async function checkoutTermine(cs: any): Promise<void> {
     const devise = String(cs.currency || 'chf').toUpperCase();
     const montantPaye = (cs.amount_total || 0) / 100;
     const credits = md.creditAmount ? parseInt(md.creditAmount, 10) || 0 : 0;
+    // V670 : reçu dans la langue enregistrée de l'acheteur (repli français ; jamais bloquant).
+    const locale = await localeUtilisateur(md.userId);
     void sendPaymentReceiptDirect(cs.customer_details.email, {
       orderId: cs.id,
       amount: montantPaye,
@@ -293,6 +296,7 @@ async function checkoutTermine(cs: any): Promise<void> {
       planName: md.plan || 'Plan',
       currency: devise,
       customerName: cs.customer_details?.name || 'Utilisateur',
+      locale,
     }).catch(() => {});
     void notifyAdminSale({
       customerName: cs.customer_details?.name || 'Client',

@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { HexColorPicker, HexColorInput } from 'react-colorful';
+import { useTranslations } from '@/i18n/client';
 
 interface ColorWheelProps {
   color: string;
@@ -20,6 +21,7 @@ export default function ColorWheel({
   opacity = 1,
   onOpacityChange,
 }: ColorWheelProps) {
+  const tUi = useTranslations('ui.componentsUiColorWheel');
   return (
     <div className="space-y-1.5">
       {label && (
@@ -46,7 +48,7 @@ export default function ColorWheel({
       </div>
       {showOpacity && onOpacityChange && (
         <div className="flex items-center gap-2">
-          <span className="text-[9px] text-gray-500 w-10">Opacité</span>
+          <span className="text-[9px] text-gray-500 w-10">{tUi('opacite')}</span>
           <input
             type="range"
             min="0"

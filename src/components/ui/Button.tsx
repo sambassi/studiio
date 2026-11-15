@@ -32,6 +32,7 @@ import {
   classesAction,
   type EtatAction,
 } from '@/lib/ui/etats';
+import { useTranslations } from '@/i18n/client';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'accent' | 'ghost';
@@ -59,6 +60,7 @@ export function Button({
   children,
   ...props
 }: ButtonProps) {
+  const tUi = useTranslations('ui.componentsUiButton');
   // Le succès est passager : affiché `dureeSucces` ms puis retour au repos,
   // même si le parent oublie de changer `etat`. Le parent est prévenu par
   // `onEtatFin` pour aligner son propre état.
@@ -136,7 +138,7 @@ export function Button({
       {...props}
     >
       {marqueur}
-      {etatAffiche !== 'repos' && <span className="sr-only">{LIBELLE_ETAT[etatAffiche]}</span>}
+      {etatAffiche !== 'repos' && <span className="sr-only">{tUi.fr(LIBELLE_ETAT[etatAffiche])}</span>}
       {children}
     </button>
   );

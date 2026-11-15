@@ -21,6 +21,7 @@ import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ImageOff, Maximize2, Minimize2 } from 'lucide-react';
 import LecteurVideo from '@/components/cinema/LecteurVideo';
+import { useTranslations } from '@/i18n/client';
 
 export interface MediaScene {
   url: string; genre: 'image' | 'video'; largeur: number; hauteur: number;
@@ -78,6 +79,7 @@ export default function ApercuScene({
   /** Dans l'etat vide : l'action adaptee a la methode choisie (importer, preparer l'IA, choisir). */
   actionVide?: React.ReactNode;
 }) {
+  const tUi = useTranslations('ui.componentsCinemaApercuScene');
   const i = Math.min(Math.max(0, planIndex), Math.max(0, scene.plans.length - 1));
   const plan = scene.plans[i];
   const media = plan?.media ?? null;
@@ -121,7 +123,7 @@ export default function ApercuScene({
           <span className="tabular-nums text-violet-300">{String(scene.index + 1).padStart(2, '0')}</span> · {scene.titre}
         </h2>
         {scene.plans.length > 1 && (
-          <div role="group" aria-label="Visuels de la scene" className="flex shrink-0 items-center gap-1">
+          <div role="group" aria-label={tUi('visuels_de_la_scene')} className="flex shrink-0 items-center gap-1">
             {scene.plans.map((p, k) => (
               <button
                 key={p.id} type="button" onClick={() => surPlan(k)}
@@ -139,7 +141,7 @@ export default function ApercuScene({
         {media && src ? lecteur(false) : (
           <div className="flex h-full w-full flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-slate-700 bg-slate-950/60 px-3 text-center" data-etat="sans-media">
             <ImageOff className="h-5 w-5 text-slate-500" aria-hidden="true" />
-            <p className="text-sm font-medium text-slate-300">Cette scène n’a pas encore d’image.</p>
+            <p className="text-sm font-medium text-slate-300">{tUi('cette_scene_n_a_pas_encore_d_image')}</p>
             <p className="line-clamp-2 text-[11px] text-slate-500">{plan?.dialogue?.texte ?? plan?.description}</p>
             {actionVide}
           </div>

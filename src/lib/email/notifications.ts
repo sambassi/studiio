@@ -4,6 +4,7 @@
  * Errors are logged but never thrown to ensure application stability
  */
 
+import { localeUtilisateur, traducteur } from '@/lib/i18n/serveur';
 import { sendEmailSilent } from './resend';
 import {
   paymentConfirmation,
@@ -110,6 +111,8 @@ export async function sendPaymentReceipt(
     planName: string;
     currency?: string;
     customerName?: string;
+    /** Langue du destinataire (code `locale`) ; absente = français. */
+    locale?: string;
   }
 ): Promise<void> {
   try {
@@ -117,7 +120,7 @@ export async function sendPaymentReceipt(
 
     await sendEmailSilent({
       to: userEmail,
-      subject: 'Confirmation de Paiement - Studiio',
+      subject: traducteur(paymentData.locale, 'email.sujets')('paiement'),
       html,
     });
 
@@ -148,11 +151,12 @@ export async function sendWelcomeEmail(
       return;
     }
 
-    const html = welcomeEmail({ name, freeCredits });
+    const locale = await localeUtilisateur(userId);
+    const html = welcomeEmail({ name, freeCredits, locale });
 
     await sendEmailSilent({
       to: userEmail,
-      subject: 'Bienvenue sur Studiio',
+      subject: traducteur(locale, 'email.sujets')('bienvenue'),
       html,
     });
 
@@ -192,15 +196,17 @@ export async function notifyBan(
 
     const userName = data?.name || 'Utilisateur';
 
+    const locale = await localeUtilisateur(userId);
     const html = accountBanned({
       name: userName,
       reason,
       appealEmail,
+      locale,
     });
 
     await sendEmailSilent({
       to: userEmail,
-      subject: 'Compte Suspendu - Studiio',
+      subject: traducteur(locale, 'email.sujets')('suspendu'),
       html,
     });
 
@@ -246,16 +252,18 @@ export async function notifyCreditsAdded(
     const userName = data?.name || 'Utilisateur';
     const newBalance = (data?.credits || 0) + amount;
 
+    const locale = await localeUtilisateur(userId);
     const html = creditsAdded({
       name: userName,
       amount,
       newBalance,
       reason,
+      locale,
     });
 
     await sendEmailSilent({
       to: userEmail,
-      subject: 'Crédits Ajoutés - Studiio',
+      subject: traducteur(locale, 'email.sujets')('credits'),
       html,
     });
 
@@ -277,14 +285,15 @@ export async function notifyCreditsAdded(
 export async function sendWelcomeEmailDirect(
   email: string,
   name: string,
-  freeCredits: number = 100
+  freeCredits: number = 100,
+  locale?: string
 ): Promise<void> {
   try {
-    const html = welcomeEmail({ name, freeCredits });
+    const html = welcomeEmail({ name, freeCredits, locale });
 
     await sendEmailSilent({
       to: email,
-      subject: 'Bienvenue sur Studiio',
+      subject: traducteur(locale, 'email.sujets')('bienvenue'),
       html,
     });
 
@@ -312,6 +321,8 @@ export async function sendPaymentReceiptDirect(
     planName: string;
     currency?: string;
     customerName?: string;
+    /** Langue du destinataire (code `locale`) ; absente = français. */
+    locale?: string;
   }
 ): Promise<void> {
   try {
@@ -319,7 +330,7 @@ export async function sendPaymentReceiptDirect(
 
     await sendEmailSilent({
       to: email,
-      subject: 'Confirmation de Paiement - Studiio',
+      subject: traducteur(paymentData.locale, 'email.sujets')('paiement'),
       html,
     });
 

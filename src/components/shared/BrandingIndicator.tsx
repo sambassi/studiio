@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { Palette, ChevronRight } from 'lucide-react';
 import { type BrandingSettings } from '@/lib/hooks/useBranding';
+import { useTranslations } from '@/i18n/client';
 
 interface BrandingIndicatorProps {
   branding: BrandingSettings;
@@ -14,6 +15,7 @@ function getPresetLabel(branding: BrandingSettings): string {
 }
 
 export function BrandingIndicator({ branding }: BrandingIndicatorProps) {
+  const tUi = useTranslations('ui.componentsSharedBrandingIndicator');
   const label = getPresetLabel(branding);
 
   return (
@@ -33,7 +35,7 @@ export function BrandingIndicator({ branding }: BrandingIndicatorProps) {
         </span>
       </div>
       <div className="flex items-center gap-1 text-[10px] text-gray-500 group-hover:text-purple-400 transition-colors">
-        Modifier <ChevronRight size={12} />
+        {tUi('modifier')} <ChevronRight size={12} />
       </div>
     </Link>
   );

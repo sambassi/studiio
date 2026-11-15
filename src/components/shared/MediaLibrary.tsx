@@ -7,6 +7,7 @@ import { useUploadQueue, trierFichiersRecus, type ElementEnvoi, type FichierRefu
 import { urlPubliqueAbsolue } from '@/lib/creer/posterUpload';
 import { OptionBouton } from '@/components/ui/OptionBouton';
 import { ETAT_INTERACTIF_SANS_FOND } from '@/lib/ui/etats';
+import { useTranslations } from '@/i18n/client';
 
 type MediaType = 'image' | 'video' | 'audio' | 'all';
 type TypeFichier = 'image' | 'video' | 'audio';
@@ -108,6 +109,7 @@ function AudioDuration({ url }: { url: string }) {
 }
 
 function ExpiryBadge({ file }: { file: MediaFile }) {
+  const tUi = useTranslations('ui.componentsSharedMediaLibrary');
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 60_000);
@@ -120,10 +122,10 @@ function ExpiryBadge({ file }: { file: MediaFile }) {
     return (
       <span
         className="inline-flex items-center gap-0.5 rounded-full bg-green-500/15 border border-green-500/30 px-1.5 py-0.5 text-[9px] font-medium text-green-400"
-        title="Protégé : utilisé par un contenu (brouillon, programmé ou publié)"
+        title={tUi('protege_utilise_par_un_contenu_brouill')}
         data-mediatheque-protege
       >
-        <ShieldCheck size={9} /> Protégé
+        <ShieldCheck size={9} /> {tUi('protege')}
       </span>
     );
   }
@@ -136,12 +138,13 @@ function ExpiryBadge({ file }: { file: MediaFile }) {
 
   return (
     <span className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[9px] font-medium ${color} ${bgColor}`}>
-      <Clock size={9} /> {remaining > 0 ? formatRemaining(remaining) : 'Expiré'}
+      <Clock size={9} /> {remaining > 0 ? formatRemaining(remaining) : tUi('expire')}
     </span>
   );
 }
 
 export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMany }: MediaLibraryProps) {
+  const tUi = useTranslations('ui.componentsSharedMediaLibrary');
   const [files, setFiles] = useState<MediaFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
@@ -210,7 +213,7 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
       // Les refusés restent sélectionnés : l'utilisateur voit lesquels.
       setSelected(new Set(toDelete.filter((f) => !partis.has(`${f.bucket}/${f.path}`)).map((f) => f.url)));
     } catch {
-      setErreurSuppression('Suppression impossible : réseau indisponible.');
+      setErreurSuppression(tUi('suppression_impossible_reseau_indispon'));
     } finally {
       setDeleting(false);
     }
@@ -232,7 +235,7 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
       }
       setFiles((prev) => prev.filter((f) => f.url !== file.url));
     } catch {
-      setErreurSuppression('Suppression impossible : réseau indisponible.');
+      setErreurSuppression(tUi('suppression_impossible_reseau_indispon'));
     }
   };
 
@@ -373,15 +376,15 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
-          <h2 className="text-lg font-bold text-white">Médiathèque</h2>
-          <button onClick={fermer} aria-label="Fermer" className={`rounded-lg p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white ${ETAT_INTERACTIF_SANS_FOND}`}>
+          <h2 className="text-lg font-bold text-white">{tUi('mediatheque')}</h2>
+          <button onClick={fermer} aria-label={tUi('fermer')} className={`rounded-lg p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white ${ETAT_INTERACTIF_SANS_FOND}`}>
             <X size={18} />
           </button>
         </div>
 
         {survolDepot && (
           <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-purple-600/20 text-sm font-semibold text-white">
-            Déposez vos fichiers ici
+            {tUi('deposez_vos_fichiers_ici')}
           </div>
         )}
 
@@ -389,7 +392,7 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
         <div className="mx-5 mt-3 flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2">
           <Clock size={14} className="text-amber-400 mt-0.5 flex-shrink-0" />
           <p className="text-[11px] text-amber-300/90 leading-relaxed">
-            Vidéos conservées <strong>24h</strong> · Audio et images conservés <strong>7 jours</strong> · Fichiers liés à un post programmé : conservés jusqu'à publication
+            {tUi('videos_conservees')} <strong>24h</strong> {tUi('audio_et_images_conserves')} <strong>7 jours</strong> {tUi('fichiers_lies_a_un_post_programme_cons')}
           </p>
         </div>
 
@@ -401,7 +404,7 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Rechercher un fichier..."
+              placeholder={tUi('rechercher_un_fichier')}
               className="w-full rounded-lg bg-gray-800 border border-gray-700 pl-9 pr-3 py-2 text-sm text-white placeholder-gray-500 focus:border-purple-500 focus:outline-none"
             />
           </div>
@@ -410,7 +413,7 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
               {/* Filtre = option persistante : coche + aria-pressed + violet. */}
               {TYPE_FILTERS.map((t) => (
                 <OptionBouton key={t.key} selected={filter === t.key} onSelect={() => setFilter(t.key)}>
-                  {t.label}
+                  {tUi.fr(t.label)}
                 </OptionBouton>
               ))}
             </div>
@@ -423,7 +426,7 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
               }}
               className={`rounded-lg px-2 py-1.5 text-[10px] font-medium bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700 whitespace-nowrap ${ETAT_INTERACTIF_SANS_FOND}`}
             >
-              {selected.size === filtered.length ? 'Désélectionner' : 'Tout sélectionner'}
+              {selected.size === filtered.length ? tUi('deselectionner') : tUi('tout_selectionner')}
             </button>
           )}
           <label className={`relative flex items-center gap-1.5 overflow-hidden rounded-lg bg-purple-600 hover:bg-purple-500 px-3 py-2 text-xs font-semibold text-white cursor-pointer transition ${uploading ? 'pointer-events-none' : ''}`}>
@@ -478,7 +481,7 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
                         className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium bg-gray-800 text-gray-200 hover:text-white hover:bg-gray-700 ${ETAT_INTERACTIF_SANS_FOND}`}
                         data-mediatheque-reessayer={e.id}
                       >
-                        <RefreshCw size={10} /> Réessayer
+                        <RefreshCw size={10} /> {tUi('reessayer')}
                       </button>
                     </>
                   ) : (
@@ -497,7 +500,7 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
             {echecs > 0 && !uploading && (
               <div className="mt-2 flex items-center justify-between gap-2">
                 <span className="text-[11px] text-amber-400">
-                  {echecs} fichier{echecs > 1 ? 's' : ''} non envoyé{echecs > 1 ? 's' : ''} — les autres sont bien ajoutés.
+                  {echecs} fichier{echecs > 1 ? 's' : ''} {tUi('non_envoye')}{echecs > 1 ? 's' : ''} {tUi('les_autres_sont_bien_ajoutes')}
                 </span>
                 {envoi.progression.echecs > 0 && (
                   <button
@@ -506,7 +509,7 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
                     className={`flex items-center gap-1 rounded-lg bg-gray-800 hover:bg-gray-700 px-2 py-1 text-[10px] font-medium text-white whitespace-nowrap ${ETAT_INTERACTIF_SANS_FOND}`}
                     data-mediatheque-reessayer-echecs
                   >
-                    <RefreshCw size={10} /> Réessayer les échecs
+                    <RefreshCw size={10} /> {tUi('reessayer_les_echecs')}
                   </button>
                 )}
               </div>
@@ -528,7 +531,7 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
               type="button"
               onClick={() => setErreurSuppression(null)}
               className="shrink-0 text-red-300/80 hover:text-red-200"
-              aria-label="Fermer"
+              aria-label={tUi('fermer')}
             >
               <X size={12} />
             </button>
@@ -543,8 +546,8 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
             </div>
           ) : filtered.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-gray-500 text-sm">Aucun fichier trouvé</p>
-              <p className="text-gray-600 text-xs mt-1">Uploadez un fichier pour commencer</p>
+              <p className="text-gray-500 text-sm">{tUi('aucun_fichier_trouve')}</p>
+              <p className="text-gray-600 text-xs mt-1">{tUi('uploadez_un_fichier_pour_commencer')}</p>
             </div>
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
@@ -586,7 +589,7 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
                       void deleteOne(file);
                     }}
                     className="absolute top-1 left-1 z-10 rounded-lg bg-red-600/80 p-1.5 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700"
-                    title="Supprimer"
+                    title={tUi('supprimer')}
                   >
                     <Trash2 size={12} />
                   </button>
@@ -625,7 +628,7 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
         {/* Bulk action bar */}
         {selected.size > 0 && (
           <div className="flex items-center justify-between px-5 py-3 border-t border-gray-800 bg-gray-900/95">
-            <span className="text-xs text-gray-300">{selected.size} fichier(s) sélectionné(s)</span>
+            <span className="text-xs text-gray-300">{tUi('size_fichier_s_selectionne_s', { size: selected.size })}</span>
             <button
               onClick={deleteSelected}
               disabled={deleting}
@@ -633,7 +636,7 @@ export function MediaLibrary({ isOpen, onClose, mediaType, onSelect, onSelectMan
               className={`flex items-center gap-1.5 rounded-lg bg-red-600 hover:bg-red-700 px-3 py-2 text-xs font-semibold text-white ${ETAT_INTERACTIF_SANS_FOND}`}
             >
               {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-              Supprimer
+              {tUi('supprimer')}
             </button>
           </div>
         )}

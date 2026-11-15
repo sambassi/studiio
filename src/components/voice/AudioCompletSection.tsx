@@ -9,6 +9,7 @@ import {
 import { useTarifs } from '@/lib/tarifs/client';
 import BlocPrix from '@/components/ui/BlocPrix';
 import LecteurVoixCompact from '@/components/voice/LecteurVoixCompact';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * « Audio complet » — section de « Ma voix », séparée de la pré-écoute
@@ -21,6 +22,7 @@ import LecteurVoixCompact from '@/components/voice/LecteurVoixCompact';
  * et le lien « Télécharger l'audio » n'apparaissent qu'APRÈS un succès.
  */
 export default function AudioCompletSection({ disponible }: { disponible: boolean }) {
+  const tUi = useTranslations('ui.componentsVoiceAudioCompletSection');
   const [texteComplet, setTexteComplet] = useState('');
   const [generationEnCours, setGenerationEnCours] = useState(false);
   const generationRef = useRef(false);
@@ -69,7 +71,7 @@ export default function AudioCompletSection({ disponible }: { disponible: boolea
           <section data-audio-complet className="space-y-3 border-t border-white/10 pt-6">
       <h3 className="font-semibold flex items-center gap-2"><AudioLines className="w-4 h-4" /> Audio complet</h3>
       <p className="text-xs text-gray-400">
-        Génère tout votre texte avec votre voix, à écouter et télécharger. {explicationTarifAudioComplet(creditsParTranche)}
+        {tUi('genere_tout_votre_texte_avec_votre_voi')} {explicationTarifAudioComplet(creditsParTranche)}
       </p>
       <textarea
         data-audio-complet-texte
@@ -77,10 +79,10 @@ export default function AudioCompletSection({ disponible }: { disponible: boolea
         onChange={(e) => setTexteComplet(e.target.value.slice(0, MAX_CARACTERES_AUDIO_COMPLET))}
         maxLength={MAX_CARACTERES_AUDIO_COMPLET}
         rows={5}
-        placeholder="Collez ici le texte complet à faire dire par votre voix."
+        placeholder={tUi('collez_ici_le_texte_complet_a_faire_di')}
         className="w-full rounded-lg bg-black/40 border border-white/10 p-2 text-sm text-white"
       />
-      <div data-audio-complet-compteur className="text-xs text-gray-400">{texteComplet.trim().length}/{MAX_CARACTERES_AUDIO_COMPLET} caractères</div>
+      <div data-audio-complet-compteur className="text-xs text-gray-400">{texteComplet.trim().length}/{MAX_CARACTERES_AUDIO_COMPLET} {tUi('caracteres')}</div>
       {disponible ? (
         <div className="space-y-2">
         {/* Le prix au-dessus du bouton (même présentation que « Générer la vidéo »). */}
@@ -96,7 +98,7 @@ export default function AudioCompletSection({ disponible }: { disponible: boolea
         </button>
         </div>
       ) : (
-        <div data-audio-complet-indisponible className="text-sm text-gray-400">La génération de l’audio complet n’est pas encore disponible.</div>
+        <div data-audio-complet-indisponible className="text-sm text-gray-400">{tUi('la_generation_de_l_audio_complet_n_est')}</div>
       )}
       {erreurComplet && <div data-audio-complet-erreur className="text-sm text-red-200">{erreurComplet}</div>}
       {audioComplet && (
@@ -109,10 +111,10 @@ export default function AudioCompletSection({ disponible }: { disponible: boolea
           </div>
           <div className="flex items-center gap-3 text-sm">
             <a data-audio-complet-telecharger href={audioComplet.url} download className="flex items-center gap-1.5 text-gray-200 hover:text-white">
-              <Download className="w-4 h-4" /> Télécharger l’audio
+              <Download className="w-4 h-4" /> {tUi('telecharger_l_audio')}
             </a>
             <span className="text-xs text-gray-400">
-              {audioComplet.dejaGenere ? 'Déjà généré : aucun crédit débité.' : `${audioComplet.creditsDebites} crédit${audioComplet.creditsDebites > 1 ? 's' : ''} débité${audioComplet.creditsDebites > 1 ? 's' : ''}.`}
+              {audioComplet.dejaGenere ? tUi('deja_genere_aucun_credit_debite') : `${audioComplet.creditsDebites} crédit${audioComplet.creditsDebites > 1 ? 's' : ''} débité${audioComplet.creditsDebites > 1 ? 's' : ''}.`}
             </span>
           </div>
         </div>

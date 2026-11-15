@@ -7,6 +7,7 @@ import { signOut, useSession } from 'next-auth/react';
 import { Bell, User, LogOut, Shield, Zap, AlertTriangle } from 'lucide-react';
 import { useTranslations } from '@/i18n/client';
 import { LanguageSelector } from '@/components/LanguageSelector';
+import { localiserNotification } from '@/lib/notifications/affichage';
 import { ETAT_INTERACTIF_SANS_FOND } from '@/lib/ui/etats';
 
 const ADMIN_EMAILS = ['contact.artboost@gmail.com', 'bassicustomshoes@gmail.com'];
@@ -36,10 +37,12 @@ function anciennete(iso: string, now: number): string {
 }
 
 export function Navbar() {
+  const tUi = useTranslations('ui.componentsLayoutNavbar');
   const router = useRouter();
   const { data: session } = useSession();
   const isAdmin = ADMIN_EMAILS.includes(session?.user?.email?.toLowerCase() || '');
   const t = useTranslations('navbar');
+  const tNotif = useTranslations('notifications');
   const [credits, setCredits] = useState<number | null>(null);
   /** Renseigne quand le compte ne consomme pas de credits Studiio. */
   const [libelleFacturation, setLibelleFacturation] = useState<string | null>(null);
@@ -126,33 +129,49 @@ export function Navbar() {
 
   return (
     <nav className="fixed top-0 right-0 left-0 lg:left-64 h-16 bg-gray-900 border-b border-gray-800 z-40 lg:z-40">
-      <div className="h-full px-6 flex justify-between items-center">
-        <div className="text-gray-400 hidden lg:block">{t('dashboard')}</div>
-        <div className="flex items-center gap-4 lg:ml-0 ml-12">
+      <div className="h-full px-4 sm:px-6 flex justify-between items-center">
+        <div className="text-gray-400 hidden lg:block min-w-0 truncate">{t('dashboard')}</div>
+        {/* ⚠️ Cette rangée DÉBORDAIT de l'écran sur mobile, et seulement dans certaines
+            langues : le libellé de facturation (« Frais partenaires uniquement », « Nur
+            Partnergebühren », « Ada za washirika pekee ») s'ajoutait en pleine largeur à des
+            icônes de taille fixe, poussant le bouton de déconnexion jusqu'à x = 442 sur un
+            écran de 390 — hors d'atteinte, sans barre de défilement puisque la barre est
+            `fixed`. En anglais et en créole, plus courts, le problème ne se voyait pas.
+            `min-w-0` + `justify-end` laissent la rangée se resserrer ; l'écart passe à 10 px
+            sous `sm` ; seul le libellé de facturation accepte de céder (voir plus bas). */}
+        <div className="flex items-center gap-2.5 sm:gap-4 lg:ml-0 ml-12 min-w-0 justify-end">
           <LanguageSelector variant="navbar" />
           {credits !== null && (
             <button
               onClick={() => router.push('/dashboard/billing')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-600/20 border border-purple-500/40 text-purple-200 hover:bg-purple-600/30 text-sm font-semibold ${ETAT_INTERACTIF_SANS_FOND}`}
-              title="Crédits restants"
+              className={`flex shrink-0 items-center gap-1.5 px-3 py-1.5 rounded-full bg-purple-600/20 border border-purple-500/40 text-purple-200 hover:bg-purple-600/30 text-sm font-semibold ${ETAT_INTERACTIF_SANS_FOND}`}
+              title={tUi('credits_restants')}
             >
               <Zap size={14} className="text-purple-300" />
               {credits}
             </button>
           )}
           {libelleFacturation !== null && (
+            /* Seul élément de la rangée autorisé à céder de la place : `min-w-0` + `truncate`
+               le font rétrécir AVANT que les boutons ne sortent de l'écran. Sur bureau il
+               s'affiche en entier, exactement comme avant, dans les neuf langues.
+               Sur un écran de 390 px la rangée réclame environ 460 px : la coupure est alors
+               INÉVITABLE — la seule alternative serait de faire disparaître une information de
+               facturation, ce que ce projet s'interdit. Le texte complet reste donc accessible
+               de deux façons : l'infobulle de la pastille (placé devant l'explication qui s'y
+               trouvait déjà) et, en entier et sans coupure, la carte de crédits du menu. */
             <span
               data-facturation-libelle
-              className="px-3 py-1.5 rounded-full border border-gray-700 text-gray-400 text-xs font-medium"
-              title="Ce compte ne consomme pas de crédits Studiio"
+              className="min-w-0 truncate px-3 py-1.5 rounded-full border border-gray-700 text-gray-400 text-xs font-medium"
+              title={`${tUi.fr(libelleFacturation)} — ${tUi('ce_compte_ne_consomme_pas_de_credits_s')}`}
             >
-              {libelleFacturation}
+              {tUi.fr(libelleFacturation)}
             </span>
           )}
           {isAdmin && (
             <button
               onClick={() => router.push('/admin')}
-              className={`text-yellow-400 hover:text-yellow-300 rounded-md ${ETAT_INTERACTIF_SANS_FOND}`}
+              className={`shrink-0 text-yellow-400 hover:text-yellow-300 rounded-md ${ETAT_INTERACTIF_SANS_FOND}`}
               title={t('admin')}
             >
               <Shield size={20} />
@@ -164,7 +183,7 @@ export function Navbar() {
               notifications qui n'existaient nulle part. Elle lit désormais
               `/api/notifications`, et la pastille ne s'allume que s'il y a
               réellement quelque chose à lire. */}
-          <div className="relative" ref={clocheRef}>
+          <div className="relative shrink-0" ref={clocheRef}>
             <button
               type="button"
               onClick={basculerCloche}
@@ -193,7 +212,7 @@ export function Navbar() {
                 </p>
                 {notifications.length === 0 ? (
                   <p className="px-3 py-6 text-center text-xs text-gray-500">
-                    Rien à signaler.
+                    {tUi('rien_a_signaler')}
                   </p>
                 ) : (
                   <ul>
@@ -211,9 +230,9 @@ export function Navbar() {
                           <span className="flex items-start gap-2">
                             <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-400" />
                             <span className="min-w-0">
-                              <span className="block text-xs font-medium text-gray-100">{n.title}</span>
+                              <span className="block text-xs font-medium text-gray-100">{localiserNotification(n, tNotif).title}</span>
                               {n.body && (
-                                <span className="block text-[11px] text-gray-400 mt-0.5">{n.body}</span>
+                                <span className="block text-[11px] text-gray-400 mt-0.5">{localiserNotification(n, tNotif).body}</span>
                               )}
                               <span className="block text-[10px] text-gray-600 mt-1">
                                 {anciennete(n.createdAt, Date.now())}
@@ -230,14 +249,14 @@ export function Navbar() {
           </div>
           <button
             onClick={() => router.push('/dashboard/settings')}
-            className={`text-gray-400 hover:text-white rounded-md ${ETAT_INTERACTIF_SANS_FOND}`}
+            className={`shrink-0 text-gray-400 hover:text-white rounded-md ${ETAT_INTERACTIF_SANS_FOND}`}
             title={t('profile')}
           >
             <User size={20} />
           </button>
           <button
             onClick={handleLogout}
-            className={`text-gray-400 hover:text-red-400 rounded-md ${ETAT_INTERACTIF_SANS_FOND}`}
+            className={`shrink-0 text-gray-400 hover:text-red-400 rounded-md ${ETAT_INTERACTIF_SANS_FOND}`}
             title={t('logout')}
           >
             <LogOut size={20} />

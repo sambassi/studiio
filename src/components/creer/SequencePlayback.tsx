@@ -8,6 +8,7 @@ import {
   sequenceClock, totalSeconds, transitionLayerStyles, ENTERING_PROGRESS_RATIO,
   type PlaybackExtract, type SequenceStep, type TransitionFrame,
 } from '@/lib/creer/transitionPreview';
+import { useTranslations } from '@/i18n/client';
 
 /** Libellés des séquences, côté écran. */
 const SEQUENCE_LABELS: Record<string, string> = {
@@ -108,6 +109,7 @@ export default function SequencePlayback({
   /** L'extrait est arrivé à son terme, ou a été quitté : le plateau est de retour. */
   onFin?: () => void;
 }) {
+  const tUi = useTranslations('ui.componentsCreerSequencePlayback');
   const playable = steps.filter((s) => s.seconds > 0);
   const total = totalSeconds(playable);
   const [playing, setPlaying] = useState(false);
@@ -312,13 +314,13 @@ export default function SequencePlayback({
           aria-pressed={playing}
           aria-label={
             playing
-              ? 'Mettre en pause la lecture des séquences'
-              : extrait ? 'Lire l’extrait' : 'Lire les séquences dans l’ordre du montage'
+              ? tUi('mettre_en_pause_la_lecture_des_sequenc')
+              : extrait ? 'Lire l’extrait' : tUi('lire_les_sequences_dans_l_ordre_du_mon')
           }
           title={
             playing
-              ? 'Pause — revenir à la vue de composition'
-              : extrait ? 'Lire l’extrait de l’effet choisi' : 'Lire les séquences, avec leurs transitions'
+              ? tUi('pause_revenir_a_la_vue_de_composition')
+              : extrait ? 'Lire l’extrait de l’effet choisi' : tUi('lire_les_sequences_avec_leurs_transiti')
           }
           data-play-sequences
           className={`flex items-center justify-center w-7 h-7 rounded-full backdrop-blur transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 ${
@@ -334,8 +336,8 @@ export default function SequencePlayback({
           <button
             type="button"
             onClick={rejouer}
-            aria-label={extrait ? 'Rejouer l’extrait' : 'Rejouer depuis le début'}
-            title={extrait ? 'Rejouer l’extrait depuis son début' : 'Rejouer le montage depuis le début'}
+            aria-label={extrait ? 'Rejouer l’extrait' : tUi('rejouer_depuis_le_debut')}
+            title={extrait ? tUi('rejouer_l_extrait_depuis_son_debut') : tUi('rejouer_le_montage_depuis_le_debut')}
             data-replay-sequences
             className="flex items-center justify-center w-7 h-7 rounded-full bg-gray-900/70 text-gray-200 backdrop-blur transition hover:text-white hover:bg-gray-800/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
           >
@@ -347,8 +349,8 @@ export default function SequencePlayback({
           <button
             type="button"
             onClick={quitter}
-            aria-label="Quitter l’extrait — revenir au plateau"
-            title="Quitter l’extrait : Lire rejouera le montage entier"
+            aria-label={tUi('quitter_l_extrait_revenir_au_plateau')}
+            title={tUi('quitter_l_extrait_lire_rejouera_le_mon')}
             data-quit-extract
             className="flex items-center justify-center w-7 h-7 rounded-full bg-gray-900/70 text-gray-200 backdrop-blur transition hover:text-white hover:bg-gray-800/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-400"
           >

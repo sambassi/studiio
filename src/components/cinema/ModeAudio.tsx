@@ -10,6 +10,7 @@
  * silence : tant qu'aucune carte n'est choisie, il garde son ancien comportement et le dit.
  */
 import { MessageSquare, Mic } from 'lucide-react';
+import { useTranslations } from '@/i18n/client';
 
 export type ModeAudio = 'personnages' | 'narrateur';
 
@@ -27,10 +28,11 @@ export default function ModeAudioCartes({ valeur, surChoisir, historique = false
   /** Le mode a ete propose d'apres le texte (aucune carte cliquee encore). */
   deduit?: boolean;
 }) {
+  const tUi = useTranslations('ui.componentsCinemaModeAudio');
   return (
-    <section className="mt-4" aria-label="Comment ton film est raconté" data-mode-audio-cartes>
+    <section className="mt-4" aria-label={tUi('comment_ton_film_est_raconte')} data-mode-audio-cartes>
       <h3 className="mb-1.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-400">
-        <Mic className="h-3.5 w-3.5 text-violet-400" aria-hidden="true" /> Comment ton film est raconté
+        <Mic className="h-3.5 w-3.5 text-violet-400" aria-hidden="true" /> {tUi('comment_ton_film_est_raconte')}
       </h3>
       <div role="radiogroup" aria-label="Mode audio" className="grid gap-2 sm:grid-cols-2">
         {(['personnages', 'narrateur'] as const).map((m) => {
@@ -47,19 +49,19 @@ export default function ModeAudioCartes({ valeur, surChoisir, historique = false
               className={`rounded-lg border p-3 text-left transition-colors ${actif ? 'border-violet-500/80 bg-violet-500/10 ring-1 ring-violet-500/40' : 'border-slate-700 bg-slate-900/40 hover:border-violet-500/50'}`}
             >
               <span className="flex items-center gap-2 text-sm font-semibold text-slate-100">
-                <Icone className={`h-4 w-4 shrink-0 ${actif ? 'text-violet-300' : 'text-slate-400'}`} aria-hidden="true" /> {LIBELLES_MODE[m].titre}
+                <Icone className={`h-4 w-4 shrink-0 ${actif ? 'text-violet-300' : 'text-slate-400'}`} aria-hidden="true" /> {tUi.fr(LIBELLES_MODE[m].titre)}
               </span>
-              <span className="mt-1 block text-[11px] leading-snug text-slate-400">{LIBELLES_MODE[m].phrase}</span>
+              <span className="mt-1 block text-[11px] leading-snug text-slate-400">{tUi.fr(LIBELLES_MODE[m].phrase)}</span>
             </button>
           );
         })}
       </div>
       {historique && valeur === null && (
         <p className="mt-1.5 text-[11px] text-slate-400" data-mode-historique>
-          Ce film garde son ancien réglage audio (récit + répliques) tant que tu ne choisis pas l’un de ces deux modes. Ton histoire, tes personnages et tes dialogues ne changent pas.
+          {tUi('ce_film_garde_son_ancien_reglage_audio')}
         </p>
       )}
-      {deduit && valeur && <p className="mt-1.5 text-[11px] text-slate-500">Proposé d’après ton texte : tu peux changer.</p>}
+      {deduit && valeur && <p className="mt-1.5 text-[11px] text-slate-500">{tUi('propose_d_apres_ton_texte_tu_peux_chan')}</p>}
     </section>
   );
 }

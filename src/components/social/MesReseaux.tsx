@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   Instagram, Music2, Facebook, Youtube, Loader2, Check, AlertTriangle, Link2, RefreshCw,
 } from 'lucide-react';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * « Mes réseaux » — les comptes que l'UTILISATEUR connecte lui-même, via Zernio.
@@ -32,6 +33,7 @@ interface CompteConnecte {
 }
 
 export default function MesReseaux() {
+  const tUi = useTranslations('ui.componentsSocialMesReseaux');
   const [chargement, setChargement] = useState(true);
   const [autorise, setAutorise] = useState(false);
   const [raison, setRaison] = useState<string | null>(null);
@@ -93,9 +95,9 @@ export default function MesReseaux() {
   return (
     <div className="space-y-3" data-mes-reseaux>
       <div>
-        <h3 className="text-sm font-semibold text-white">Mes réseaux (publication)</h3>
+        <h3 className="text-sm font-semibold text-white">{tUi('mes_reseaux_publication')}</h3>
         <p className="text-[11px] text-gray-500 mt-0.5">
-          Connectez vos propres comptes pour publier vos montages dessus.
+          {tUi('connectez_vos_propres_comptes_pour_pub')}
         </p>
       </div>
 
@@ -103,10 +105,10 @@ export default function MesReseaux() {
         <p className="flex items-start gap-1.5 text-xs text-amber-400" data-mes-reseaux-refus>
           <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
           {raison === 'coupe-circuit'
-            ? 'La publication sur les réseaux est momentanément désactivée.'
+            ? tUi('la_publication_sur_les_reseaux_est_mom')
             : raison === 'zernio-absent'
-              ? 'La publication sur les réseaux n’est pas configurée sur ce serveur.'
-              : 'Activez l’option Publication pour publier sur vos réseaux.'}
+              ? tUi('la_publication_sur_les_reseaux_n_est_p')
+              : tUi('activez_l_option_publication_pour_publ')}
         </p>
       )}
 
@@ -143,7 +145,7 @@ export default function MesReseaux() {
                 ) : compte && !deconnecte ? (
                   <span className="flex items-center gap-1 text-[11px] text-emerald-400 mt-0.5">
                     <Check className="w-3 h-3" />
-                    {compte.username ? `@${compte.username}` : 'Connecté'}
+                    {compte.username ? `@${compte.username}` : tUi('connecte')}
                   </span>
                 ) : deconnecte ? (
                   // ⚠️ « Reconnecter » ET NON « Connecter » : le compte existe,

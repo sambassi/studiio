@@ -81,6 +81,24 @@ const RULES_DE = `
 - Knappe Antworten: 3-6 Sätze max, außer bei detailliertem Tutorial
 - Warmer aber professioneller Ton`;
 
+/**
+ * Consigne de langue ajoutée au prompt FRANÇAIS pour les langues autres que fr/en/de.
+ *  - sw, ht (complètes en bêta) : réponse dans la langue, français si la qualité n'est pas sûre.
+ *  - ln, wo, bm, bas (partielles) : on ne promet pas une langue qu'on ne maîtrise pas ; on
+ *    répond en français SIMPLE, sauf si l'utilisateur écrit lui-même dans sa langue.
+ */
+const NOMS_LANGUES: Record<string, string> = {
+  sw: 'kiswahili', ht: 'kreyòl ayisyen', ln: 'lingála', wo: 'wolof', bm: 'bambara (bamanankan)', bas: 'bàsàa',
+};
+export function consigneLangue(locale: string): string {
+  const nom = NOMS_LANGUES[locale];
+  if (!nom) return '';
+  if (locale === 'sw' || locale === 'ht') {
+    return `\n\nLANGUE : l'utilisateur a choisi le ${nom}. Réponds en ${nom} simple et clair. Si tu n'es pas sûr de la qualité de ta réponse dans cette langue, réponds en français plutôt que d'inventer. Garde les noms de fonctions de l'application (CRÉER, Autopilote, Cinéma IA) tels quels.`;
+  }
+  return `\n\nLANGUE : l'utilisateur a choisi le ${nom}. Réponds en français simple et court. Si l'utilisateur écrit lui-même en ${nom}, tu peux lui répondre dans sa langue seulement si tu la maîtrises vraiment ; dans le doute, français.`;
+}
+
 export function getSystemPrompt(locale: string): string {
   if (locale === 'en') {
     return `You are the official assistant of Studiio (studiio.pro), a SaaS platform for creating animated videos and infographics for social media (Instagram, TikTok, Facebook, YouTube).
@@ -105,5 +123,5 @@ ${RULES_DE}`;
 Ta mission : guider l'utilisateur de manière claire, patiente, détaillée.
 
 ${STUDIIO_KNOWLEDGE}
-${RULES_FR}`;
+${RULES_FR}`+ consigneLangue(locale);
 }

@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { Loader2, RotateCcw, Sparkles, Check } from 'lucide-react';
 import { useTarifs, libelleCredits } from '@/lib/tarifs/client';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * Photo d'affiche GENEREE PAR L'IA — le troisieme chemin, a cote de « Ma
@@ -74,6 +75,7 @@ class DelaiDepasse extends Error {
 }
 
 export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16', referenceUrl = null, disabled }: AfficheIAProps) {
+  const tUi = useTranslations('ui.componentsCreerAfficheIA');
   const [prompt, setPrompt] = useState('');
   // Le prix de `generate-bg` : la grille centrale, celle que débite le serveur.
   const { prix } = useTarifs();
@@ -104,7 +106,7 @@ export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16'
     try {
       const consigne = (prompt.trim() || suggestion).trim();
       if (!consigne) {
-        setEtat({ statut: 'erreur', message: 'Décrivez l’image souhaitée.' });
+        setEtat({ statut: 'erreur', message: tUi('decrivez_l_image_souhaitee') });
         return;
       }
       setEtat({ statut: 'generation' });
@@ -180,13 +182,13 @@ export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16'
   return (
     <div className="space-y-2" data-affiche-ia data-affiche-ia-format={format}>
       <label className="block text-xs text-gray-400">
-        Décrivez l’affiche (ambiance, lieu, lumière…)
+        {tUi('decrivez_l_affiche_ambiance_lieu_lumie')}
         <textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           rows={2}
           disabled={disabled || enCours}
-          placeholder={suggestion ? `ex : ${suggestion}` : 'ex : salle de sport sombre, néons violets, énergie'}
+          placeholder={suggestion ? `ex : ${suggestion}` : tUi('ex_salle_de_sport_sombre_neons_violets')}
           data-affiche-ia-prompt
           className="mt-1 w-full rounded-lg bg-gray-900 border border-gray-800 focus:border-purple-500 outline-none px-2.5 py-2 text-sm text-gray-100 resize-none"
         />
@@ -195,7 +197,7 @@ export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16'
           faire en silence. */}
       {!prompt.trim() && suggestion.trim() && (
         <p className="text-[11px] text-gray-500" data-affiche-ia-theme-utilise>
-          Champ vide : le thème « {suggestion.trim()} » sera utilisé comme description.
+          {tUi('champ_vide_le_theme')} {suggestion.trim()} {tUi('sera_utilise_comme_description')}
         </p>
       )}
 
@@ -209,18 +211,18 @@ export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16'
           disabled={disabled || enCours}
           className="h-3.5 w-3.5 accent-purple-500"
         />
-        Partir de ma photo (préserve mon visage / mes vêtements)
+        {tUi('partir_de_ma_photo_preserve_mon_visage')}
       </label>
       {modeReference && !referenceUrl && (
         <p className="text-[11px] text-amber-300" data-affiche-ia-reference-manquante>
-          Choisissez d’abord une photo ou une affiche : elle servira de référence.
+          {tUi('choisissez_d_abord_une_photo_ou_une_af')}
         </p>
       )}
       {partirDeMaPhoto && (
         <div className="flex items-center gap-2 text-[11px] text-gray-400" data-affiche-ia-reference-ok>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={referenceUrl ?? ''} alt="Référence" className="h-8 w-8 rounded object-cover border border-gray-700" />
-          Référence : votre photo actuelle.
+          <img src={referenceUrl ?? ''} alt={tUi('reference')} className="h-8 w-8 rounded object-cover border border-gray-700" />
+          {tUi('reference_votre_photo_actuelle')}
         </div>
       )}
 
@@ -235,10 +237,10 @@ export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16'
           {etat.statut === 'generation'
             ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
             : url ? <RotateCcw className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
-          {etat.statut === 'generation' ? 'Génération…' : url ? 'Régénérer' : 'Générer'}
+          {etat.statut === 'generation' ? tUi('generation') : url ? tUi('regenerer') : tUi('generer')}
         </button>
         <span className="text-[11px] text-gray-500">
-          {libelleCredits(prix['ai.generate_background'])} par image
+          {libelleCredits(prix['ai.generate_background'])} {tUi('par_image')}
           {creditsRemaining !== undefined && (
             <span data-affiche-ia-credits-restants> · {creditsRemaining} restants</span>
           )}
@@ -247,7 +249,7 @@ export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16'
 
       {etat.statut === 'generation' && (
         <p className="text-xs text-gray-400" role="status" data-affiche-ia-etat="generation">
-          L’image se prépare — une vingtaine de secondes.
+          {tUi('l_image_se_prepare_une_vingtaine_de_se')}
         </p>
       )}
 
@@ -264,11 +266,11 @@ export default function AfficheIA({ suggestion = '', onUtiliser, format = '9:16'
             data-affiche-ia-apercu
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={url} alt="Affiche générée" className="w-full h-full object-contain" />
+            <img src={url} alt={tUi('affiche_generee')} className="w-full h-full object-contain" />
           </div>
           {promptUtilise && (
             <details className="max-w-[320px] text-[11px] text-gray-500" data-affiche-ia-prompt-utilise>
-              <summary className="cursor-pointer select-none hover:text-gray-300">Voir le prompt utilisé</summary>
+              <summary className="cursor-pointer select-none hover:text-gray-300">{tUi('voir_le_prompt_utilise')}</summary>
               <p className="mt-1 whitespace-pre-wrap break-words rounded-lg border border-gray-800 bg-gray-900/60 px-2.5 py-2 text-gray-400">
                 {promptUtilise}
               </p>

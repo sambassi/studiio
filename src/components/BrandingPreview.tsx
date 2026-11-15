@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { type BrandingSettings } from '@/lib/hooks/useBranding';
+import { useTranslations } from '@/i18n/client';
 
 interface Props {
   branding: BrandingSettings;
@@ -14,6 +15,7 @@ interface Props {
  * the saved branding will look like on future videos.
  */
 export default function BrandingPreview({ branding }: Props) {
+  const tUi = useTranslations('ui.componentsBrandingPreview');
   const accent = branding.accentColor || '#D91CD2';
   const borderStyle = branding.borderEnabled
     ? { boxShadow: `inset 0 0 0 6px ${branding.borderColor || accent}` }
@@ -21,7 +23,7 @@ export default function BrandingPreview({ branding }: Props) {
 
   return (
     <div className="space-y-2">
-      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Aperçu</p>
+      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{tUi('apercu')}</p>
       <div
         className="relative rounded-2xl overflow-hidden"
         style={{
@@ -38,8 +40,8 @@ export default function BrandingPreview({ branding }: Props) {
 
         {/* Title block */}
         <div className="absolute inset-x-4 top-16 text-center">
-          <p className="text-white text-[15px] font-black tracking-wide leading-tight">VOTRE TITRE</p>
-          <p className="text-gray-300/90 text-[10px] mt-1 leading-snug">Votre sous-titre</p>
+          <p className="text-white text-[15px] font-black tracking-wide leading-tight">{tUi('votre_titre')}</p>
+          <p className="text-gray-300/90 text-[10px] mt-1 leading-snug">{tUi('votre_sous_titre')}</p>
         </div>
 
         {/* Middle glassmorphism card with accent color stripe */}
@@ -47,14 +49,14 @@ export default function BrandingPreview({ branding }: Props) {
           className="absolute inset-x-4 top-1/2 -translate-y-1/2 rounded-xl px-3 py-2 border-l-4 backdrop-blur-sm"
           style={{ backgroundColor: 'rgba(0,0,0,0.35)', borderLeftColor: accent }}
         >
-          <p className="text-[9px] text-white font-semibold">Exemple de carte</p>
-          <p className="text-[8px] text-gray-300 mt-0.5">Avec couleur d'accent</p>
+          <p className="text-[9px] text-white font-semibold">{tUi('exemple_de_carte')}</p>
+          <p className="text-[8px] text-gray-300 mt-0.5">{tUi('avec_couleur_d_accent')}</p>
         </div>
 
         {/* CTA block bottom */}
         <div className="absolute inset-x-0 bottom-10 text-center px-3">
           <p className="text-white text-[12px] font-black tracking-wide uppercase leading-tight">
-            {branding.ctaText || 'CHAT POUR PLUS D\'INFOS'}
+            {branding.ctaText || tUi('chat_pour_plus_d_infos')}
           </p>
           <p className="text-[9px] font-semibold uppercase tracking-wider mt-0.5" style={{ color: accent }}>
             {branding.ctaSubText || 'LIEN EN BIO'}
@@ -74,7 +76,7 @@ export default function BrandingPreview({ branding }: Props) {
         <div className="absolute inset-x-0 bottom-0 h-[3px]" style={{ background: `linear-gradient(90deg, ${accent}, #FF2DAA, #00D4FF)` }} />
       </div>
       <p className="text-[10px] text-gray-500 leading-relaxed">
-        Aperçu en temps réel. Les modifications s'appliqueront à tous les nouveaux montages.
+        {tUi('apercu_en_temps_reel_les_modifications')}
       </p>
     </div>
   );

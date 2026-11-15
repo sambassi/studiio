@@ -11,6 +11,7 @@ import { chargerFicheV2, chargerFichesContenu } from '@/lib/creer/fiche-contenu-
 import type { FicheContenuRush } from '@/lib/creer/fiche-contenu';
 import type { FicheContenuRushV2 } from '@/lib/creer/fiche-contenu-v2';
 import { useLocale } from '@/i18n/client';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * M1 — QUALITÉ DES RUSHES, sous la liste des médias de la séquence Vidéo.
@@ -111,6 +112,7 @@ export interface QualiteRushsProps {
 }
 
 export default function QualiteRushs({ medias, estDurable, onEcarter, enPause = false, analyser = analyseurParDefaut, delaiMs = DELAI_ANALYSE_PANNEAU_MS, contexte = null, lireFiches = lecteurFichesParDefaut, onFiches }: QualiteRushsProps) {
+  const tUi = useTranslations('ui.componentsCreerQualiteRushs');
   // Rushes vidéo de l'utilisateur ou suggérés — jamais l'avatar, jamais une photo.
   const rushs = useMemo(
     () => medias.filter((m): m is MediaVideo & { url: string } => m.type === 'video' && m.source !== 'avatar' && !!m.url && estDurable(m.url)),
@@ -220,7 +222,7 @@ export default function QualiteRushs({ medias, estDurable, onEcarter, enPause = 
       {enCours && (
         <p className="flex items-center gap-1.5 text-[11px] text-gray-500" data-qualite-rushs-analyse>
           <Loader2 className="h-3 w-3 animate-spin" />
-          Vérification de la qualité de vos rushes…
+          {tUi('verification_de_la_qualite_de_vos_rush')}
         </p>
       )}
       {enPause && aAnalyser.some((m) => !(m.url in resultats)) && (
@@ -271,6 +273,7 @@ type LignePertinenceProps = { p: PertinenceRush; theme: string; langue: LanguePe
 
 /** M2-c — Un avis de pertinence : « Hors sujet pour … » ou « À vérifier », 1 à 2 raisons, les deux gestes existants. */
 function LignePertinence({ p, theme, langue, position, onEcarter, onAccepter }: LignePertinenceProps) {
+  const tUi = useTranslations('ui.componentsCreerQualiteRushs');
   const hors = p.niveau === 'hors_sujet';
   const Icone = hors ? XCircle : AlertTriangle;
   const t = TEXTES_PANNEAU[langue];
@@ -295,7 +298,7 @@ function LignePertinence({ p, theme, langue, position, onEcarter, onAccepter }: 
           <li key={`${m.code}-${i}`} className="text-[11px] text-gray-400" data-pertinence-motif={m.code}>{texteMotif(m, langue)}</li>
         ))}
       </ul>
-      <p className="mt-1 text-[11px] text-gray-500">{t.mention}</p>
+      <p className="mt-1 text-[11px] text-gray-500">{tUi.fr(t.mention)}</p>
       <div className="mt-1.5 flex gap-2">
         <button
           type="button"
@@ -303,7 +306,7 @@ function LignePertinence({ p, theme, langue, position, onEcarter, onAccepter }: 
           className="rounded-lg border border-gray-700 px-2.5 py-1 text-[11px] text-gray-200 transition hover:border-gray-500 hover:text-white"
           data-pertinence-ecarter
         >
-          {t.ecarter}
+          {tUi.fr(t.ecarter)}
         </button>
         <button
           type="button"
@@ -311,7 +314,7 @@ function LignePertinence({ p, theme, langue, position, onEcarter, onAccepter }: 
           className="rounded-lg px-2.5 py-1 text-[11px] text-gray-400 transition hover:text-white"
           data-pertinence-accepter
         >
-          {t.accepter}
+          {tUi.fr(t.accepter)}
         </button>
       </div>
     </div>
@@ -321,6 +324,7 @@ function LignePertinence({ p, theme, langue, position, onEcarter, onAccepter }: 
 type LigneProps = { q: Pick<QualiteRush, 'url' | 'cle' | 'verdict' | 'motifs' | 'protections' | 'choisiParVous'>; position: number; onEcarter: () => void; onAccepter: () => void };
 
 function LigneQualite({ q, position, onEcarter, onAccepter }: LigneProps) {
+  const tUi = useTranslations('ui.componentsCreerQualiteRushs');
   const grave = q.verdict === 'inutilisable';
   const Icone = grave ? XCircle : AlertTriangle;
   return (
@@ -331,7 +335,7 @@ function LigneQualite({ q, position, onEcarter, onAccepter }: LigneProps) {
     >
       <div className="flex items-center gap-2">
         <Icone className={`h-3.5 w-3.5 flex-shrink-0 ${grave ? 'text-red-400' : 'text-amber-400'}`} />
-        <span className="text-[11px] text-gray-400">Média {position > 0 ? position : ''}</span>
+        <span className="text-[11px] text-gray-400">{tUi('media')} {position > 0 ? position : ''}</span>
         <span
           className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${grave ? 'bg-red-500/15 text-red-300' : 'bg-amber-500/15 text-amber-300'}`}
           data-qualite-badge
@@ -339,7 +343,7 @@ function LigneQualite({ q, position, onEcarter, onAccepter }: LigneProps) {
           {libelleQualite(q)}
         </span>
         {q.choisiParVous && (
-          <span className="text-[11px] text-gray-500" data-qualite-choisi>choisi par vous</span>
+          <span className="text-[11px] text-gray-500" data-qualite-choisi>{tUi('choisi_par_vous')}</span>
         )}
       </div>
       <ul className="mt-1 space-y-0.5">
@@ -360,7 +364,7 @@ function LigneQualite({ q, position, onEcarter, onAccepter }: LigneProps) {
           className="rounded-lg border border-gray-700 px-2.5 py-1 text-[11px] text-gray-200 transition hover:border-gray-500 hover:text-white"
           data-qualite-ecarter
         >
-          Écarter ce rush
+          {tUi('ecarter_ce_rush')}
         </button>
         <button
           type="button"
@@ -368,7 +372,7 @@ function LigneQualite({ q, position, onEcarter, onAccepter }: LigneProps) {
           className="rounded-lg px-2.5 py-1 text-[11px] text-gray-400 transition hover:text-white"
           data-qualite-accepter
         >
-          Utiliser quand même
+          {tUi('utiliser_quand_meme')}
         </button>
       </div>
     </div>

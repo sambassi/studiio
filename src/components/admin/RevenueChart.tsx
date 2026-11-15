@@ -1,6 +1,7 @@
 'use client';
 
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { useTranslations } from '@/i18n/client';
 
 const data = [
   { month: 'Jan', revenue: 2400 },
@@ -14,17 +15,18 @@ const data = [
 const maxRevenue = Math.max(...data.map(d => d.revenue));
 
 export function RevenueChart() {
+  const tUi = useTranslations('ui.componentsAdminRevenueChart');
   return (
     <Card>
       <CardHeader className="border-b border-gray-800">
-        <CardTitle>Revenus par mois</CardTitle>
+        <CardTitle>{tUi('revenus_par_mois')}</CardTitle>
       </CardHeader>
       <CardContent className="pt-6">
         <div className="space-y-4">
           {data.map((item) => (
             <div key={item.month} className="space-y-1">
               <div className="flex justify-between text-sm">
-                <span className="text-gray-400">{item.month}</span>
+                <span className="text-gray-400">{tUi.fr(item.month)}</span>
                 <span className="text-white font-semibold">{item.revenue}€</span>
               </div>
               <div className="w-full bg-gray-800 h-2 rounded-full overflow-hidden">

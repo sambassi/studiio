@@ -21,6 +21,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Check, Info, Loader2, Pause, Play, Plus, RefreshCw } from 'lucide-react';
 import { useUrlJumeauPleinCadre } from '@/lib/creer/jumeau-plein-cadre-client';
+import { useTranslations } from '@/i18n/client';
 
 export type FormatApercuMedia = '9:16' | '16:9' | '1:1';
 
@@ -75,6 +76,7 @@ export interface ApercuMediaProps {
 export default function ApercuMedia({
   media, format, etat = 'pret', onAjouter, onRemplacer, onRetour, libelleAjouter = 'Ajouter au projet', largeurMax,
 }: ApercuMediaProps) {
+  const tUi = useTranslations('ui.componentsCreerApercuMedia');
   const videoRef = useRef<HTMLVideoElement | null>(null);
   // Jumeau à bandes : la version plein cadre que montera l'export (même cache).
   const urlAffichee = useUrlJumeauPleinCadre(media.type === 'video' ? media.url : null, format) ?? media.url;
@@ -108,9 +110,9 @@ export default function ApercuMedia({
   const ajoute = etat === 'ajoute';
 
   return (
-    <section data-apercu-media={media.type} aria-label="Aperçu du média" className="space-y-2">
+    <section data-apercu-media={media.type} aria-label={tUi('apercu_du_media')} className="space-y-2">
       <header className="flex items-center gap-2">
-        <h3 className="flex-1 text-[11px] uppercase tracking-wider text-gray-400">Aperçu du média</h3>
+        <h3 className="flex-1 text-[11px] uppercase tracking-wider text-gray-400">{tUi('apercu_du_media')}</h3>
         {onRetour && (
           <button
             type="button"
@@ -119,7 +121,7 @@ export default function ApercuMedia({
             className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-gray-400 hover:text-white hover:bg-gray-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-400 transition-colors"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            Retour à l’aperçu du projet
+            {tUi('retour_a_l_apercu_du_projet')}
           </button>
         )}
       </header>
@@ -154,7 +156,7 @@ export default function ApercuMedia({
                 type="button"
                 onClick={basculer}
                 data-apercu-media-lecture
-                aria-label={lecture ? 'Mettre en pause' : 'Lire la vidéo'}
+                aria-label={lecture ? 'Mettre en pause' : tUi('lire_la_video')}
                 title={lecture ? 'Pause' : 'Lecture'}
                 className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/90 text-black hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-400"
               >
@@ -192,11 +194,11 @@ export default function ApercuMedia({
               onClick={onAjouter}
               disabled={ajoute || etat === 'en-cours'}
               data-apercu-media-ajouter
-              aria-label={ajoute ? 'Déjà ajouté au projet' : libelleAjouter}
+              aria-label={ajoute ? tUi('deja_ajoute_au_projet') : libelleAjouter}
               className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-purple-600 px-3 py-2 text-xs font-medium text-white hover:bg-purple-500 disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-300 transition-colors"
             >
               {etat === 'en-cours' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : ajoute ? <Check className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-              {ajoute ? 'Ajouté' : libelleAjouter}
+              {ajoute ? tUi('ajoute') : libelleAjouter}
             </button>
           )}
           {onRemplacer && (
@@ -204,8 +206,8 @@ export default function ApercuMedia({
               type="button"
               onClick={onRemplacer}
               data-apercu-media-remplacer
-              title="Choisir un autre média"
-              aria-label="Remplacer : choisir un autre média"
+              title={tUi('choisir_un_autre_media')}
+              aria-label={tUi('remplacer_choisir_un_autre_media')}
               className="flex items-center justify-center gap-1.5 rounded-lg border border-gray-800 px-3 py-2 text-xs text-gray-300 hover:text-white hover:border-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-purple-400 transition-colors"
             >
               <RefreshCw className="w-3.5 h-3.5" />
@@ -219,10 +221,10 @@ export default function ApercuMedia({
         <details data-media-infos className="group rounded-lg text-[11px] text-gray-500">
           <summary className="flex cursor-pointer list-none items-center gap-1 hover:text-gray-300">
             <Info className="w-3 h-3" />
-            Informations du média
+            {tUi('informations_du_media')}
           </summary>
           <p data-credit-media className="mt-1 pl-4">
-            {media.type === 'video' ? 'Vidéo' : 'Photo'} de{' '}
+            {media.type === 'video' ? tUi('video') : 'Photo'} de{' '}
             {media.credit.auteurUrl ? (
               <a href={media.credit.auteurUrl} target="_blank" rel="noopener noreferrer" className="underline hover:text-white">
                 {media.credit.auteur || 'auteur inconnu'}

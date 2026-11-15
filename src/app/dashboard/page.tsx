@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { useTranslations } from '@/i18n/client';
 
 export default function DashboardPage() {
+  const tUi = useTranslations('ui.appDashboard');
   const { data: session } = useSession();
   const userName = session?.user?.name?.split(' ')[0] || 'utilisateur';
   const t = useTranslations('dashboardHome');
@@ -118,7 +119,7 @@ export default function DashboardPage() {
       <div className="flex items-center gap-2 rounded-lg bg-gray-800/50 border border-gray-700/50 px-4 py-2.5 mt-2">
         <span className="text-gray-500 text-xs">ℹ️</span>
         <p className="text-[11px] text-gray-500">
-          Rétention médias : vidéos 24h · audio/images 7j · préservés si post programmé
+          {tUi('retention_medias_videos_24h_audio_imag')}
         </p>
       </div>
     </div>

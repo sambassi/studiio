@@ -14,22 +14,24 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { lignesDevis, libelleContinuer, type DevisFournisseur } from '@/lib/fournisseurs/devis-fournisseur';
 import type { ChoixConfirmation, ContexteConfirmation } from '@/lib/fournisseurs/confirmation-client';
+import { useTranslations } from '@/i18n/client';
 
 export function ConfirmationCoutFournisseur({ devis, contexte, onChoix }: {
   devis: DevisFournisseur;
   contexte: ContexteConfirmation;
   onChoix: (choix: ChoixConfirmation) => void;
 }) {
+  const tUi = useTranslations('ui.componentsFournisseursConfirmationCoutFournisseur');
   // Un seul choix : un double clic sur « Continuer » ne relance jamais deux fois.
   const [choisi, setChoisi] = useState(false);
   const choisir = (c: ChoixConfirmation) => { if (choisi) return; setChoisi(true); onChoix(c); };
   const existant = devis.operation === 'creation_avatar' ? contexte.avatarExistant ?? null : null;
   return (
-    <Modal isOpen onClose={() => choisir('annuler')} title="Coût fournisseur estimé">
+    <Modal isOpen onClose={() => choisir('annuler')} title={tUi('cout_fournisseur_estime')}>
       <div data-confirmation-cout={devis.operation} className="space-y-4 text-sm">
         {existant && (
           <p data-avatar-existant className="rounded-md border border-gray-700 px-3 py-2 text-gray-200">
-            Un avatar existant est déjà disponible{existant.nom ? ` : ${existant.nom}` : ''} (version {existant.version}).
+            {tUi('un_avatar_existant_est_deja_disponible')}{existant.nom ? ` : ${existant.nom}` : ''} (version {existant.version}).
           </p>
         )}
         <dl className="grid gap-x-4 gap-y-1.5" style={{ gridTemplateColumns: 'auto 1fr' }}>
@@ -46,12 +48,12 @@ export function ConfirmationCoutFournisseur({ devis, contexte, onChoix }: {
             <span>{devis.avertissement}</span>
           </p>
         )}
-        <p className="text-gray-400">Cette opération est facturée directement sur le wallet HeyGen, même quand aucun crédit Studiio n’est débité.</p>
+        <p className="text-gray-400">{tUi('cette_operation_est_facturee_directeme')}</p>
         <div className="flex flex-wrap justify-end gap-2 pt-2">
           {existant ? (
             <Button variant="secondary" disabled={choisi} onClick={() => choisir('existant')} data-choix="existant">Utiliser l’existant</Button>
           ) : (
-            <Button variant="secondary" disabled={choisi} onClick={() => choisir('annuler')} data-choix="annuler">Annuler</Button>
+            <Button variant="secondary" disabled={choisi} onClick={() => choisir('annuler')} data-choix="annuler">{tUi('annuler')}</Button>
           )}
           <Button variant="primary" disabled={choisi} onClick={() => choisir('continuer')} data-choix="continuer">
             {libelleContinuer(devis, !!existant)}

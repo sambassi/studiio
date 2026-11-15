@@ -25,6 +25,7 @@ import { Sparkles, X, AlignLeft, MessageSquareQuote, Lightbulb, Loader2, Check, 
 import { phrases, citation } from '@/lib/cinema/scenario';
 import { ACTIONS_REDACTION, type DiagnosticProposition, type IdActionRedaction } from '@/lib/cinema/redaction';
 import type { IdStyleCinema } from '@/lib/cinema/types';
+import { useTranslations } from '@/i18n/client';
 
 /** Ce que l'aide envoie au moteur partage : le film tel qu'il est a l'ecran. */
 export interface ContexteAide {
@@ -70,6 +71,7 @@ export default function AideRedaction({ histoire, surChanger, personnages = [], 
   /** Absent : seules les actions locales sont proposees (aucun appel possible). */
   contexte?: ContexteAide;
 }) {
+  const tUi = useTranslations('ui.componentsCinemaAideRedaction');
   const [ouvert, setOuvert] = useState(false);
   /** Action IA en cours — une seule a la fois, pour ne pas lancer deux demandes. */
   const [enCours, setEnCours] = useState<IdActionRedaction | null>(null);
@@ -130,7 +132,7 @@ export default function AideRedaction({ histoire, surChanger, personnages = [], 
         setErreur(typeof d?.erreur === 'string' ? d.erreur : 'L’aide IA n’a pas pu repondre. Votre texte n’a pas ete modifie.');
       }
     } catch {
-      setErreur('L’aide IA est injoignable. Votre texte n’a pas ete modifie.');
+      setErreur(tUi('l_aide_ia_est_injoignable_votre_texte'));
     } finally {
       setEnCours(null);
     }
@@ -146,8 +148,8 @@ export default function AideRedaction({ histoire, surChanger, personnages = [], 
         ref={bouton}
         type="button"
         onClick={() => setOuvert((v) => !v)}
-        aria-label="Aide a la redaction"
-        title="Aide a la redaction"
+        aria-label={tUi('aide_a_la_redaction')}
+        title={tUi('aide_a_la_redaction')}
         aria-expanded={ouvert}
         aria-controls={panneauId}
         className={`inline-flex h-7 w-7 items-center justify-center rounded-md border transition-colors ${
@@ -163,7 +165,7 @@ export default function AideRedaction({ histoire, surChanger, personnages = [], 
         <div
           id={panneauId}
           role="dialog"
-          aria-label="Aide a la redaction"
+          aria-label={tUi('aide_a_la_redaction')}
           // `maxWidth` en ligne : jamais plus large que l'ecran du telephone. Pas de classe
           // Tailwind arbitraire (purgee en production, piege connu de CLAUDE.md).
           className="absolute right-0 top-9 z-20 w-72 rounded-xl border border-slate-700 bg-slate-950/95 p-3 shadow-xl backdrop-blur-sm"
@@ -171,12 +173,12 @@ export default function AideRedaction({ histoire, surChanger, personnages = [], 
         >
           <div className="mb-2 flex items-center justify-between">
             <span className="flex items-center gap-1.5 text-xs font-semibold text-violet-200">
-              <Sparkles className="w-3.5 h-3.5" /> Aide a la redaction
+              <Sparkles className="w-3.5 h-3.5" /> {tUi('aide_a_la_redaction')}
             </span>
             <button
               type="button"
               onClick={() => { setOuvert(false); bouton.current?.focus(); }}
-              aria-label="Fermer l’aide"
+              aria-label={tUi('fermer_l_aide')}
               className="text-slate-500 hover:text-slate-200"
             >
               <X className="w-4 h-4" />
@@ -184,20 +186,20 @@ export default function AideRedaction({ histoire, surChanger, personnages = [], 
           </div>
 
           <p className="mb-2 text-[11px] text-slate-400">
-            {vide ? 'Votre histoire est vide.' : `${plans} plan${plans > 1 ? 's' : ''} · ${repliques} replique${repliques > 1 ? 's' : ''}`}
+            {vide ? tUi('votre_histoire_est_vide') : `${plans} plan${plans > 1 ? 's' : ''} · ${repliques} replique${repliques > 1 ? 's' : ''}`}
           </p>
 
           <button type="button" disabled={vide} className={action} onClick={() => surChanger(unePhraseParLigne(histoire))}>
-            <AlignLeft className="w-4 h-4 text-violet-300 shrink-0" /> Une phrase par ligne
+            <AlignLeft className="w-4 h-4 text-violet-300 shrink-0" /> {tUi('une_phrase_par_ligne')}
           </button>
           <button type="button" className={action} onClick={() => surChanger(ajouterReplique(histoire, personnages[0] ?? ''))}>
-            <MessageSquareQuote className="w-4 h-4 text-violet-300 shrink-0" /> Ajouter une replique
+            <MessageSquareQuote className="w-4 h-4 text-violet-300 shrink-0" /> {tUi('ajouter_une_replique')}
           </button>
 
           {contexte && (
             <div className="mt-2 border-t border-slate-800 pt-2">
               <div className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold text-slate-300">
-                <Wand2 className="w-3.5 h-3.5 text-violet-300" /> Rédaction assistée
+                <Wand2 className="w-3.5 h-3.5 text-violet-300" /> {tUi('redaction_assistee')}
               </div>
 
               {proposition ? (
@@ -209,7 +211,7 @@ export default function AideRedaction({ histoire, surChanger, personnages = [], 
                   <textarea
                     value={proposition.texte}
                     onChange={(e) => setProposition({ ...proposition, texte: e.target.value })}
-                    aria-label="Proposition de l’aide à la rédaction"
+                    aria-label={tUi('proposition_de_l_aide_a_la_redaction')}
                     rows={6}
                     className="w-full rounded-lg border border-slate-700 bg-slate-950 p-2 text-[11px] leading-relaxed"
                   />
@@ -219,13 +221,13 @@ export default function AideRedaction({ histoire, surChanger, personnages = [], 
                   {proposition.diagnostic.inconnus.length > 0 && (
                     <p className="mt-1 flex items-start gap-1 text-[11px] text-amber-300">
                       <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
-                      Noms hors casting : {proposition.diagnostic.inconnus.join(', ')} — ils n’apparaitront dans aucun plan.
+                      Noms hors casting : {proposition.diagnostic.inconnus.join(', ')} {tUi('ils_n_apparaitront_dans_aucun_plan')}
                     </p>
                   )}
                   {proposition.diagnostic.repliquesCassees > 0 && (
                     <p className="mt-1 flex items-start gap-1 text-[11px] text-amber-300">
                       <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
-                      {proposition.diagnostic.repliquesCassees} replique(s) avec un point dans les guillemets : elles seraient lues comme de la narration.
+                      {proposition.diagnostic.repliquesCassees} {tUi('replique_s_avec_un_point_dans_les_guil')}
                     </p>
                   )}
                   <div className="mt-2 flex flex-wrap gap-2">
@@ -244,7 +246,7 @@ export default function AideRedaction({ histoire, surChanger, personnages = [], 
                       <X className="h-3.5 w-3.5" aria-hidden="true" /> Rejeter
                     </button>
                   </div>
-                  <p className="mt-1 text-[10px] text-slate-500">Votre texte reste intact tant que vous n’appliquez pas.</p>
+                  <p className="mt-1 text-[10px] text-slate-500">{tUi('votre_texte_reste_intact_tant_que_vous')}</p>
                 </div>
               ) : (
                 <>
@@ -260,7 +262,7 @@ export default function AideRedaction({ histoire, surChanger, personnages = [], 
                       {enCours === a.id
                         ? <Loader2 className="w-4 h-4 shrink-0 animate-spin text-violet-300" />
                         : <Sparkles className="w-4 h-4 shrink-0 text-violet-300" />}
-                      {a.libelle}
+                      {tUi.fr(a.libelle)}
                     </button>
                   ))}
                   {erreur && (
@@ -269,7 +271,7 @@ export default function AideRedaction({ histoire, surChanger, personnages = [], 
                     </p>
                   )}
                   <p className="mt-1 text-[10px] text-slate-500">
-                    Votre texte est envoyé à l’IA de Studiio. Aucun crédit n’est débité, et rien n’est remplacé sans votre accord.
+                    {tUi('votre_texte_est_envoye_a_l_ia_de_studi')}
                   </p>
                 </>
               )}
@@ -281,11 +283,11 @@ export default function AideRedaction({ histoire, surChanger, personnages = [], 
               <Lightbulb className="w-3.5 h-3.5 text-amber-300" /> Conseils
             </div>
             <ul className="space-y-1 text-[11px] leading-snug text-slate-400">
-              {CONSEILS.map((c) => <li key={c}>{c}</li>)}
+              {CONSEILS.map((c) => <li key={c}>{tUi.fr(c)}</li>)}
             </ul>
           </div>
 
-          <p className="mt-2 text-[10px] text-slate-500">Mise en forme calculee sur votre appareil — aucun credit.</p>
+          <p className="mt-2 text-[10px] text-slate-500">{tUi('mise_en_forme_calculee_sur_votre_appar')}</p>
         </div>
       )}
     </div>

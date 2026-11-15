@@ -14,6 +14,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Download, X, Smartphone } from 'lucide-react';
+import { useTranslations } from '@/i18n/client';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -49,6 +50,7 @@ function memoriserFermeture(maintenant = Date.now()) {
 }
 
 export default function PWAInstallPrompt() {
+  const tUi = useTranslations('ui.componentsPWAInstallPrompt');
   const [showPrompt, setShowPrompt] = useState(false);
   const [showIOSPrompt, setShowIOSPrompt] = useState(false);
   const deferredPromptRef = useRef<BeforeInstallPromptEvent | null>(null);
@@ -148,7 +150,7 @@ export default function PWAInstallPrompt() {
   return (
     <div
       role="region"
-      aria-label={showPrompt ? 'Installer Studiio' : 'Ajouter Studiio à l’écran d’accueil'}
+      aria-label={showPrompt ? 'Installer Studiio' : tUi('ajouter_studiio_a_l_ecran_d_accueil')}
       data-pwa-invitation={showPrompt ? 'installer' : 'ios'}
       className="fixed z-40 flex items-center gap-2 rounded-xl border border-white/10 bg-gray-900/95 py-0.5 pl-3 pr-0.5 shadow-lg shadow-black/40 backdrop-blur-md"
       style={{ bottom: 20, right: 88, maxWidth: 'calc(100vw - 104px)' }}
@@ -158,8 +160,8 @@ export default function PWAInstallPrompt() {
       ) : (
         <Smartphone className="w-4 h-4 text-purple-400 flex-shrink-0" aria-hidden="true" />
       )}
-      <p className="min-w-0 truncate text-xs text-gray-200" title={showPrompt ? undefined : 'Touchez Partager, puis « Sur l’écran d’accueil »'}>
-        {showPrompt ? 'Installer Studiio' : 'Partager › Sur l’écran d’accueil'}
+      <p className="min-w-0 truncate text-xs text-gray-200" title={showPrompt ? undefined : tUi('touchez_partager_puis_sur_l_ecran_d_ac')}>
+        {showPrompt ? 'Installer Studiio' : tUi('partager_sur_l_ecran_d_accueil')}
       </p>
       {showPrompt && (
         <button
@@ -175,7 +177,7 @@ export default function PWAInstallPrompt() {
         // Cible tactile ≥ 44 px (WCAG 2.5.5) ; l'icône reste petite.
         className="flex flex-shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:text-white"
         style={{ minWidth: 44, minHeight: 44 }}
-        aria-label="Fermer l’invitation à installer"
+        aria-label={tUi('fermer_l_invitation_a_installer')}
         data-pwa-fermer
       >
         <X className="w-3.5 h-3.5" aria-hidden="true" />

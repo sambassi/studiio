@@ -74,6 +74,7 @@ const PLATFORMS = [
 const CLES_LOCALES_HISTORIQUES = ['studiio_social_accounts', 'studiio_publishing_settings'];
 
 export default function SocialPage() {
+  const tUi = useTranslations('ui.appDashboardSocial');
   const t = useTranslations('social');
 
   const [connecting, setConnecting] = useState<string | null>(null);
@@ -558,7 +559,7 @@ export default function SocialPage() {
                 {/* Avertissement propre a la plateforme (ex. validation TikTok) */}
                 {!comingSoon && 'notice' in platform && platform.notice && e.voie !== 'zernio' && (
                   <div className="mb-3 p-3 bg-amber-900/20 border border-amber-500/30 rounded-lg">
-                    <p className="text-xs text-amber-300">{platform.notice}</p>
+                    <p className="text-xs text-amber-300">{tUi.fr(platform.notice)}</p>
                   </div>
                 )}
 

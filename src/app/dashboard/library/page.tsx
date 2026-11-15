@@ -51,6 +51,7 @@ interface DeleteConfirmState {
 }
 
 export default function LibraryPage() {
+  const tUi = useTranslations('ui.appDashboardLibrary');
   const t = useTranslations('library');
   const tc = useTranslations('common');
   const formatDateLocale = useFormattedDate();
@@ -215,10 +216,10 @@ export default function LibraryPage() {
         window.location.assign(editPostHref(body.postId));
         return;
       }
-      setToast({ message: 'Impossible de créer le post modifiable. Réessayez.', type: 'error' });
+      setToast({ message: tUi('impossible_de_creer_le_post_modifiable'), type: 'error' });
     } catch (error) {
       console.error('Error creating editable post:', error);
-      setToast({ message: 'Impossible de créer le post modifiable. Réessayez.', type: 'error' });
+      setToast({ message: tUi('impossible_de_creer_le_post_modifiable'), type: 'error' });
     }
     creationEnCoursRef.current = false;
     setActionInProgress(null);
@@ -446,7 +447,7 @@ export default function LibraryPage() {
                           disabled={actionInProgress !== null}
                           data-library-create-editable
                           className="flex flex-col items-center gap-1 rounded-lg py-2 text-gray-400 hover:bg-gray-800 hover:text-white transition disabled:opacity-50"
-                          title="Créer un post modifiable depuis cette vidéo"
+                          title={tUi('creer_un_post_modifiable_depuis_cette')}
                         >
                           <Edit size={16} />
                           <span className="text-[10px]">{t('actions.edit')}</span>
@@ -611,15 +612,10 @@ export default function LibraryPage() {
               Rendre « {editableConfirm.title} » modifiable
             </h3>
             <p className="text-gray-400 mb-6 text-sm leading-relaxed">
-              Cette vidéo n’est reliée à aucun post. Studiio va créer un brouillon
-              modifiable à partir d’elle, puis l’ouvrir. Aucun rendu, aucun
-              crédit : la vidéo d’origine reste telle quelle.
+              {tUi('cette_video_n_est_reliee_a_aucun_post')}
             </p>
             <p className="text-gray-500 mb-6 -mt-4 text-xs leading-relaxed" data-library-editable-limite>
-              Le brouillon reprend le titre, les textes, l’affiche, les rushs et la
-              musique enregistrés avec la vidéo. Les cartes et la mise en page ne
-              sont pas récupérables. Il apparaîtra aussi dans le Calendrier, en
-              brouillon, sans publication.
+              {tUi('le_brouillon_reprend_le_titre_les_text')}
             </p>
             <div className="flex flex-col-reverse sm:flex-row gap-3">
               <Button
@@ -639,7 +635,7 @@ export default function LibraryPage() {
                 {actionInProgress === `editable-${editableConfirm.videoId}` && (
                   <Loader2 size={16} className="mr-2 animate-spin" />
                 )}
-                Créer un post modifiable depuis cette vidéo
+                {tUi('creer_un_post_modifiable_depuis_cette')}
               </Button>
             </div>
           </div>

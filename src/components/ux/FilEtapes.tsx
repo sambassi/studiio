@@ -1,6 +1,7 @@
 'use client';
 
 import { Check, AlertTriangle } from 'lucide-react';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * LE fil d'étapes de Studiio — « où j'en suis, ce qui est fait, ce qui reste »
@@ -33,12 +34,13 @@ const LIBELLE_ETAT: Record<EtatEtape, string> = {
 };
 
 export default function FilEtapes({ etapes, atteignables = [], onAller, accent = '#7C3AED', sansNoms = false, className = '' }: FilEtapesProps) {
+  const tUi = useTranslations('ui.componentsUxFilEtapes');
   const indexActive = etapes.findIndex((e) => e.etat === 'active' || e.etat === 'correction');
   const active = indexActive >= 0 ? etapes[indexActive] : undefined;
   const prochaine = indexActive >= 0 ? etapes.slice(indexActive + 1).find((e) => e.etat === 'a_venir') : etapes.find((e) => e.etat === 'a_venir');
 
   return (
-    <nav aria-label="Étapes" data-fil-etapes className={className}>
+    <nav aria-label={tUi('etapes')} data-fil-etapes className={className}>
       <ol className="flex items-center gap-2">
         {etapes.map((e, i) => {
           const cliquable = !!onAller && atteignables.includes(e.cle) && e.etat !== 'active';
@@ -70,7 +72,7 @@ export default function FilEtapes({ etapes, atteignables = [], onAller, accent =
                     {e.libelle}
                   </span>
                 )}
-                <span className="sr-only">{e.libelle}, {LIBELLE_ETAT[e.etat]}</span>
+                <span className="sr-only">{e.libelle}, {tUi.fr(LIBELLE_ETAT[e.etat])}</span>
               </div>
               {i < etapes.length - 1 && (
                 <div className="h-px flex-1 min-w-2" style={{ backgroundColor: e.etat === 'terminee' ? accent : '#1F2937' }} aria-hidden />
@@ -82,8 +84,8 @@ export default function FilEtapes({ etapes, atteignables = [], onAller, accent =
       {/* Mobile (ou `sansNoms`) : la même information sur une ligne. */}
       {active && (
         <p className={`${sansNoms ? '' : 'sm:hidden'} mt-2 text-[11px] text-gray-400`} data-fil-etapes-compact>
-          Étape {indexActive + 1} sur {etapes.length} · <span className={active.etat === 'correction' ? 'text-amber-300' : 'text-white'}>{active.libelle}</span>
-          {active.etat === 'correction' && <span> — à corriger</span>}
+          {tUi('etape')} {indexActive + 1} sur {etapes.length} · <span className={active.etat === 'correction' ? 'text-amber-300' : 'text-white'}>{active.libelle}</span>
+          {active.etat === 'correction' && <span> {tUi('a_corriger')}</span>}
           {prochaine && <span> — Prochaine : {prochaine.libelle}</span>}
         </p>
       )}

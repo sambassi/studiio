@@ -89,6 +89,7 @@ function FAQItem({ q, a }: { q: string; a: string }) {
 // ═══════════════════════════════════════════════════════
 
 export default function LandingPage() {
+  const tUi = useTranslations('ui.app');
   const t = useTranslations('landing');
   const tc = useTranslations('common');
   const [billingPeriod, setBillingPeriod] = useState<'monthly' | 'yearly'>('monthly');
@@ -276,6 +277,10 @@ export default function LandingPage() {
                     {t('nav.login')}
                   </Link>
                 </div>
+                {/* V670 : sur téléphone le sélecteur du bandeau est masqué (place) — il vit dans ce menu. */}
+                <div className="pt-3 border-t border-gray-800/50" data-testid="mobile-lang-selector">
+                  <LanguageSelector variant="sidebar" />
+                </div>
               </div>
             </div>
           )}
@@ -330,9 +335,9 @@ export default function LandingPage() {
               <Link href="/auth/signup?guided=true" className="border border-gray-700 hover:border-violet-500/50 hover:bg-violet-500/5 px-6 sm:px-8 py-3 sm:py-4 rounded-xl text-white font-bold text-base sm:text-lg flex flex-col items-center justify-center gap-1 transition">
                 <span className="flex items-center gap-2">
                   <Sparkles size={18} className="text-violet-400" />
-                  Faites le test gratuit
+                  {tUi('faites_le_test_gratuit')}
                 </span>
-                <span className="text-xs font-normal text-gray-400">Guidé par l'Assistant Studiio</span>
+                <span className="text-xs font-normal text-gray-400">{tUi('guide_par_l_assistant_studiio')}</span>
               </Link>
             )}
           </div>
@@ -652,7 +657,7 @@ export default function LandingPage() {
                     {features.map((f: string, j: number) => (
                       <li key={j} className="flex items-start gap-3 text-sm text-gray-300">
                         <Check size={16} className="text-violet-400 shrink-0 mt-0.5" />
-                        {f}
+                        {tUi.fr(f)}
                       </li>
                     ))}
                   </ul>

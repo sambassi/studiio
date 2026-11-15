@@ -14,6 +14,7 @@ import {
   barPlayed,
   type PlaybackRate,
 } from '@/lib/audio/waveform';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * Lecteur audio a ondes, aux couleurs de Studiio.
@@ -38,6 +39,7 @@ export default function AudioPlayer({
   onDelete?: () => void;
   className?: string;
 }) {
+  const tUi = useTranslations('ui.componentsUiAudioPlayer');
   const audioRef = useRef<HTMLAudioElement>(null);
   const waveRef = useRef<HTMLDivElement>(null);
   const seekingRef = useRef(false);
@@ -251,7 +253,7 @@ export default function AudioPlayer({
         <button
           type="button"
           onClick={onDelete}
-          aria-label="Supprimer l’enregistrement"
+          aria-label={tUi('supprimer_l_enregistrement')}
           className="shrink-0 text-gray-500 hover:text-red-400 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-400 rounded"
         >
           <Trash2 className="w-4 h-4" />

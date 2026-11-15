@@ -145,7 +145,9 @@ describe('Trois intentions — brouillon par defaut', () => {
   it('le recapitulatif dit l intention choisie', () => {
     expect(wizard).toContain('data-envoi-recap="programmer"');
     expect(wizard).toContain('data-envoi-recap="brouillon"');
-    expect(wizard).toContain('publication\n                          automatique par le cron');
+    // V670 : le texte est désormais une clé normalisée sur une ligne (les retours à la ligne
+    // du JSX n'ont pas de sens pour l'utilisateur) : on compare espaces écrasés.
+    expect(wizard.replace(/\s+/g, ' ')).toContain('publication automatique par le cron');
   });
 
   it('le telechargement affiche son cout, et ne cree aucun post', () => {

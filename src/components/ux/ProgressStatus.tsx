@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { Check, XCircle, Loader2, Hand } from 'lucide-react';
+import { useTranslations } from '@/i18n/client';
 
 /**
  * LA progression de Studiio — une seule forme pour toute opération longue
@@ -101,6 +102,7 @@ export default function ProgressStatus({
   titre, statut, description, pourcentage, etapeCourante, totalEtapes, etapes, detail, debutLe, resteEstime,
   echec, suite, compact = false, note, className = '', children,
 }: ProgressStatusProps) {
+  const tUi = useTranslations('ui.componentsUxProgressStatus');
   const ecoulee = useDureeEcoulee(debutLe);
   const determinee = statut === 'succes' ? true : typeof pourcentage === 'number';
   const valeur = statut === 'succes' ? 100 : determinee ? borne(pourcentage as number) : null;
@@ -138,7 +140,7 @@ export default function ProgressStatus({
           <p className="text-sm font-medium text-white truncate" data-progress-titre>{statut === 'succes' && valeur === 100 ? `✓ ${titre}` : titre}</p>
           {(courante !== undefined && total !== undefined) && (
             <p className="text-[11px] text-gray-400" data-progress-etape>
-              Étape {courante} sur {total}{etapes && courante ? ` — ${etapes[courante - 1]?.libelle ?? ''}` : ''}
+              {tUi('etape')} {courante} sur {total}{etapes && courante ? ` — ${etapes[courante - 1]?.libelle ?? ''}` : ''}
             </p>
           )}
         </div>
@@ -182,8 +184,8 @@ export default function ProgressStatus({
           </ol>
           {workflow !== null && (
             <p className="text-[11px] text-gray-400" data-progress-workflow={workflow}>
-              Progression du workflow : <span className="text-gray-200 tabular-nums">{workflow} %</span>
-              {valeur === null && enCours && <span> — opération en cours : progression inconnue</span>}
+              {tUi('progression_du_workflow')} <span className="text-gray-200 tabular-nums">{workflow} %</span>
+              {valeur === null && enCours && <span> {tUi('operation_en_cours_progression_inconnu')}</span>}
             </p>
           )}
         </div>
@@ -193,16 +195,16 @@ export default function ProgressStatus({
       {(detail || ecoulee || resteEstime) && (
         <p className="text-[11px] text-gray-400 flex flex-wrap gap-x-3 gap-y-0.5" data-progress-temps>
           {detail && <span data-progress-detail>{detail}</span>}
-          {ecoulee && enCours && <span data-progress-ecoulee>Durée écoulée : <span className="tabular-nums text-gray-200">{ecoulee}</span></span>}
-          {resteEstime && enCours && <span data-progress-reste>Temps estimé restant : {resteEstime}</span>}
+          {ecoulee && enCours && <span data-progress-ecoulee>{tUi('duree_ecoulee')} <span className="tabular-nums text-gray-200">{ecoulee}</span></span>}
+          {resteEstime && enCours && <span data-progress-reste>{tUi('temps_estime_restant_resteestime', { resteEstime })}</span>}
         </p>
       )}
 
       {/* Échec : où, pourquoi, quoi faire — la barre reste où elle était */}
       {statut === 'erreur' && echec && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-[13px] text-red-100 space-y-2" role="alert" data-progress-echec>
-          <p className="font-medium">Échec{echec.etape ? ` à l’étape « ${echec.etape} »` : ''}</p>
-          {etapes && <p className="text-[11px] opacity-90">Progression avant interruption : {etapes.filter((e) => e.etat === 'terminee').length}/{etapes.length} étapes</p>}
+          <p className="font-medium">{tUi('echec')}{echec.etape ? ` à l’étape « ${echec.etape} »` : ''}</p>
+          {etapes && <p className="text-[11px] opacity-90">Progression avant interruption : {etapes.filter((e) => e.etat === 'terminee').length}/{etapes.length} {tUi('etapes')}</p>}
           <p className="text-[12px] opacity-90">Motif : {echec.motif}</p>
           {echec.actions && echec.actions.length > 0 && (
             <div className="flex flex-wrap gap-2 pt-1">

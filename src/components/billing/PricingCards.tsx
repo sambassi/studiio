@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Check } from 'lucide-react';
 import { ETAT_INTERACTIF_SANS_FOND } from '@/lib/ui/etats';
 import { totalAnnuelCentimes } from '@/lib/stripe/constants';
+import { useTranslations } from '@/i18n/client';
 
 function centsToFr(cents: number): string {
   if (cents === 0) return '0 CHF';
@@ -26,6 +27,7 @@ interface PricingCardsProps { onSelectPlan?: (plan: string) => void; }
 const PLAN_ORDER = ['free', 'starter', 'pro', 'enterprise'];
 
 export function PricingCards({ onSelectPlan }: PricingCardsProps) {
+  const tUi = useTranslations('ui.componentsBillingPricingCards');
   const router = useRouter();
   const { data: session } = useSession();
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
@@ -56,7 +58,7 @@ export function PricingCards({ onSelectPlan }: PricingCardsProps) {
       const url = data.url || data.data?.sessionUrl;
       if (url) window.location.href = url;
       else alert(data.error || 'Erreur');
-    } catch { alert('Erreur de connexion'); } finally { setLoading(null); }
+    } catch { alert(tUi('erreur_de_connexion')); } finally { setLoading(null); }
   };
 
   const ordered = PLAN_ORDER.map(k => plans.find(p => p.key === k)).filter(Boolean) as Plan[];
@@ -106,7 +108,7 @@ export function PricingCards({ onSelectPlan }: PricingCardsProps) {
                   <span className="text-gray-400 text-sm">{period}</span>
                 </div>
                 {billingCycle === 'yearly' && plan.key !== 'free' && plan.yearly_price_cents > 0 && (
-                  <p className="text-xs text-gray-500 mt-1">{centsToFr(totalAnnuelCentimes(plan.yearly_price_cents || 0))} facturé annuellement</p>
+                  <p className="text-xs text-gray-500 mt-1">{centsToFr(totalAnnuelCentimes(plan.yearly_price_cents || 0))} {tUi('facture_annuellement')}</p>
                 )}
               </CardHeader>
               <CardContent className="pt-6">
@@ -114,7 +116,7 @@ export function PricingCards({ onSelectPlan }: PricingCardsProps) {
                   {features.map((feature: string, idx: number) => (
                     <li key={idx} className="flex items-start gap-2 text-gray-300 text-sm">
                       <Check size={16} className="text-studiio-accent flex-shrink-0 mt-0.5" />
-                      <span>{feature}</span>
+                      <span>{tUi.fr(feature)}</span>
                     </li>
                   ))}
                 </ul>

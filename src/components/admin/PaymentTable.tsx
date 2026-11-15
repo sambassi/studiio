@@ -2,6 +2,7 @@
 
 import { Table } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
+import { useTranslations } from '@/i18n/client';
 
 const mockPayments = [
   { id: '1', date: '2024-03-28', user: 'Jean Dupont', amount: '79,99€', type: 'Abonnement', status: 'completed', stripeId: 'pi_123456' },
@@ -12,6 +13,7 @@ const mockPayments = [
 ];
 
 export function PaymentTable() {
+  const tUi = useTranslations('ui.componentsAdminPaymentTable');
   const columns = [
     {
       key: 'date' as const,
@@ -35,7 +37,7 @@ export function PaymentTable() {
       label: 'Statut',
       render: (value: any) => (
         <Badge variant={value === 'completed' ? 'success' : 'error'}>
-          {value === 'completed' ? 'Complété' : 'Échoué'}
+          {value === 'completed' ? tUi('complete') : tUi('echoue')}
         </Badge>
       ),
     },

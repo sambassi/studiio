@@ -32,6 +32,8 @@ export interface CreatorPreferences {
   musicVolume?: number;
   voiceVolume?: number;
   exportDest?: string;
+  // Langue de l'interface (code `locale`) : lue côté serveur pour les e-mails et reçus.
+  locale?: string;
 }
 
 export async function GET(_req: NextRequest) {
