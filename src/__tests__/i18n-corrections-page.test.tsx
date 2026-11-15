@@ -1,5 +1,6 @@
 // Page d'administration « Traductions » : liste, filtres, correction, validation, import, export.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { StrictMode } from 'react';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import TraductionsAdminPage from '@/app/admin/traductions/page';
 
@@ -38,7 +39,11 @@ describe('page admin Traductions', () => {
     expect(screen.getByTestId('tr-ligne-common.save')).toBeTruthy();
     expect(screen.queryByTestId('tr-ligne-auth.login')).toBeNull();                // validée : filtrée
     expect(screen.queryByTestId('tr-ligne-sidebar.dashboard')).toBeNull();         // manquante : filtrée
-    expect(screen.getByTestId('tr-statut-common.close').textContent).toMatch(/à vérifier en priorité/);
+    // Badge COURT (une ligne) ; le détail de la source vit en ligne de description, pas dans le badge.
+    expect(screen.getByTestId('tr-statut-common.close').textContent).toBe('À vérifier');
+    expect(screen.getByTestId('tr-statut-common.close').getAttribute('title')).toMatch(/à vérifier en priorité/);
+    expect(screen.getByTestId('tr-ligne-common.close').textContent).toMatch(/Source à vérifier · savoir/);
+    expect(screen.getByTestId('tr-ligne-common.save').textContent).toMatch(/Source attestée · corpus:mw-core/);
   });
 
   it('les filtres Validées / Manquantes / Toutes et la recherche', async () => {
@@ -106,7 +111,7 @@ describe('page admin Traductions', () => {
     fireEvent.click(screen.getByTestId('tr-modifier-common.close'));
     fireEvent.click(screen.getByTestId('tr-enregistrer'));
     expect((await screen.findByRole('status')).textContent).toMatch(/Variables à conserver/);
-    expect(screen.getByTestId('tr-statut-common.close').textContent).toMatch(/à vérifier/);
+    expect(screen.getByTestId('tr-statut-common.close').textContent).toBe('À vérifier');
   });
 
   it('import : envoie le CSV et l\'option « validées », affiche le rapport', async () => {
@@ -128,6 +133,102 @@ describe('page admin Traductions', () => {
     render(<TraductionsAdminPage />);
     await screen.findByTestId('tr-table');
     expect(screen.getByTestId('tr-export').getAttribute('href')).toBe('/api/admin/traductions?locale=ln&format=csv');
+  });
+
+  it('une réponse réseau qui arrive APRÈS un clic n’écrase pas le filtre choisi', async () => {
+    let debloquer: () => void = () => {};
+    const attente = new Promise<void>((r) => { debloquer = r; });
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      await attente;
+      return new Response(JSON.stringify({ success: true, locale: 'ln', statutAffiche: 'partial', compteurs: { ...compteurs, propositionsIA: 3 }, lignes: LIGNES }), { status: 200 });
+    }));
+    render(<TraductionsAdminPage />);
+    // Pendant le chargement, l'utilisateur choisit « Validées ».
+    fireEvent.click(screen.getByTestId('tr-filtre-validees'));
+    expect(screen.getByTestId('tr-filtre-validees').getAttribute('aria-pressed')).toBe('true');
+    debloquer();
+    await screen.findByTestId('tr-table');
+    // La réponse portait des propositions IA : sans garde, elle aurait basculé le filtre.
+    expect(screen.getByTestId('tr-filtre-validees').getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByTestId('tr-filtre-propositions').getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByTestId('tr-ligne-auth.login')).toBeTruthy();
+  });
+
+  it('le double rendu de React en mode strict ne remet pas le filtre à zéro', async () => {
+    // En mode strict, l'effet de chargement part DEUX fois. On retarde la seconde réponse pour
+    // qu'elle arrive après le clic de l'utilisateur : c'est exactement le défaut observé au banc.
+    let debloquer: () => void = () => {};
+    const attente = new Promise<void>((r) => { debloquer = r; });
+    let n = 0;
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      n += 1;
+      if (n >= 2) await attente;
+      return new Response(JSON.stringify({ success: true, locale: 'ln', statutAffiche: 'partial', compteurs: { ...compteurs, propositionsIA: 3 }, lignes: LIGNES }), { status: 200 });
+    }));
+    render(<StrictMode><TraductionsAdminPage /></StrictMode>);
+    await screen.findByTestId('tr-table');
+    expect(n, 'le mode strict déclenche bien deux chargements').toBe(2);
+    fireEvent.click(screen.getByTestId('tr-filtre-manquantes'));
+    debloquer();
+    await waitFor(() => expect(screen.getByTestId('tr-ligne-sidebar.dashboard')).toBeTruthy());
+    expect(screen.getByTestId('tr-filtre-manquantes').getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByTestId('tr-filtre-propositions').getAttribute('aria-pressed')).toBe('false');
+  });
+
+  it('choisir une langue à corriger NE change PAS la langue de l’administrateur', async () => {
+    render(<TraductionsAdminPage />);
+    await screen.findByTestId('tr-table');
+    expect(screen.getByTestId('tr-langue-admin').textContent).toMatch(/Votre interface reste en Français/);
+    fireEvent.click(screen.getByTestId('tr-langue-wo'));
+    await waitFor(() => expect(appels.some((a) => a.url === '/api/admin/traductions?locale=wo')).toBe(true));
+    // Aucun cookie `locale` posé, aucun appel aux préférences : le seul mécanisme i18n reste celui de Studiio.
+    expect(document.cookie).not.toMatch(/\blocale=/);
+    expect(appels.some((a) => a.url.includes('/api/user/preferences'))).toBe(false);
+    expect(screen.getByTestId('tr-langue-admin').textContent).toMatch(/Votre interface reste en Français/);
+  });
+
+  it('une traduction manquante affiche « Français affiché » et propose « Traduire »', async () => {
+    render(<TraductionsAdminPage />);
+    await screen.findByTestId('tr-table');
+    fireEvent.click(screen.getByTestId('tr-filtre-manquantes'));
+    const ligne = screen.getByTestId('tr-ligne-sidebar.dashboard');
+    expect(ligne.textContent).toMatch(/Français affiché/);
+    expect(screen.getByTestId('tr-modifier-sidebar.dashboard').textContent).toBe('Traduire');
+  });
+
+  it('modifier une traduction VALIDÉE demande confirmation', async () => {
+    const confirmer = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    render(<TraductionsAdminPage />);
+    await screen.findByTestId('tr-table');
+    fireEvent.click(screen.getByTestId('tr-filtre-validees'));
+    fireEvent.click(screen.getByTestId('tr-modifier-auth.login'));
+    expect(confirmer).toHaveBeenCalled();
+    expect(screen.queryByTestId('tr-edition')).toBeNull();       // refus : rien ne s'ouvre
+    confirmer.mockReturnValue(true);
+    fireEvent.click(screen.getByTestId('tr-modifier-auth.login'));
+    expect(screen.getByTestId('tr-edition')).toBeTruthy();
+    confirmer.mockRestore();
+  });
+
+  it('une proposition IA s’ouvre par « Examiner », puis s’approuve ou se corrige', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      appels.push({ url: String(url), init });
+      if (init?.method === 'PATCH') return new Response(JSON.stringify(patchReponse(JSON.parse(String(init.body)))), { status: 200 });
+      return new Response(JSON.stringify({
+        success: true, locale: 'ln', statutAffiche: 'partial',
+        compteurs: { ...compteurs, propositionsIA: 1 },
+        lignes: [ligne('common.loading', 'Chargement...', '', 'proposee_ia', { proposition: 'Ezali kozela...' })],
+      }), { status: 200 });
+    }));
+    render(<TraductionsAdminPage />);
+    await screen.findByTestId('tr-table');
+    expect(screen.getByTestId('tr-statut-common.loading').textContent).toBe('Proposition IA');
+    expect(screen.queryByTestId('tr-approuver-common.loading')).toBeNull();   // rien ne s'approuve sans examen
+    fireEvent.click(screen.getByTestId('tr-examiner-common.loading'));
+    expect((screen.getByTestId('tr-edition') as HTMLTextAreaElement).value).toBe('Ezali kozela...');
+    fireEvent.click(screen.getByTestId('tr-approuver-common.loading'));
+    await waitFor(() => expect(appels.some((a) => a.init?.method === 'PATCH')).toBe(true));
+    expect(JSON.parse(String(appels.find((a) => a.init?.method === 'PATCH')!.init!.body))).toEqual({ locale: 'ln', cle: 'common.loading', texte: 'Ezali kozela...', valider: true });
   });
 
   it('une erreur de chargement est annoncée', async () => {
