@@ -55,7 +55,7 @@ export function RecentVideos() {
               </div>
               <div className="flex items-center gap-3">
                 <Badge variant={video.status === 'completed' ? 'success' : video.status === 'rendering' ? 'warning' : 'default'}>
-                  {video.status === 'completed' ? tUi('terminee') : video.status === 'rendering' ? 'Rendu' : 'Brouillon'}
+                  {video.status === 'completed' ? tUi('terminee') : video.status === 'rendering' ? tUi('rendu') : tUi('brouillon')}
                 </Badge>
               </div>
             </div>

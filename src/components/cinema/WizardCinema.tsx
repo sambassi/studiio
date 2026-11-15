@@ -86,7 +86,7 @@ export default function WizardCinema({
       <header className="shrink-0 border-b border-slate-800 px-4 py-3 sm:px-6">{entete}</header>
 
       {/* Barre des etapes : chiffre + nom sur grand ecran, chiffre seul sur mobile. */}
-      <nav aria-label="Etapes de Cinema IA" className="shrink-0 overflow-x-auto border-b border-slate-800 bg-slate-950/60 px-3 py-2.5 sm:px-6">
+      <nav aria-label={tUi('etapes_de_cinema_ia')} className="shrink-0 overflow-x-auto border-b border-slate-800 bg-slate-950/60 px-3 py-2.5 sm:px-6">
         <ol className="flex items-center gap-1.5">
           {etapes.map((e, i) => {
             const Icone = e.icone;
@@ -101,7 +101,7 @@ export default function WizardCinema({
                   disabled={!e.accessible}
                   aria-current={courante ? 'step' : undefined}
                   title={titre}
-                  aria-label={`Etape ${i + 1} sur ${etapes.length} : ${titre}`}
+                  aria-label={tUi('etape_n_sur_total_titre', { n: i + 1, total: etapes.length, titre })}
                   className={`inline-flex shrink-0 items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs transition-colors ${
                     courante
                       ? 'border-violet-500/70 bg-violet-500/15 text-violet-100'
@@ -124,7 +124,7 @@ export default function WizardCinema({
       <div className="flex min-h-0 flex-1 flex-col-reverse lg:flex-row">
         <section
           ref={zone}
-          aria-label={`Etape ${active + 1} : ${etape?.titre ?? ''}`}
+          aria-label={tUi('etape_n_titre', { n: active + 1, titre: etape?.titre ?? '' })}
           className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6"
         >
           <div className="mx-auto w-full" style={{ maxWidth: 705 }}>{children}</div>
@@ -144,7 +144,7 @@ export default function WizardCinema({
           <p className="min-w-0 text-[11px] leading-snug text-slate-300" data-indice-pied title={indice}>{indice}</p>
         ) : (
           <p className="min-w-0 truncate text-[11px] text-slate-400">
-            Etape {active + 1} sur {etapes.length} · <span className="font-semibold text-slate-200">{etape?.titre}</span>
+            {tUi('etape_n_sur_total', { n: active + 1, total: etapes.length })} · <span className="font-semibold text-slate-200">{etape?.titre}</span>
           </p>
         )}
         <div className="flex shrink-0 items-center gap-2">
@@ -177,11 +177,12 @@ export default function WizardCinema({
 export function TitreEtape({ numero, total, icone: Icone, titre, phrase }: {
   numero: number; total: number; icone: LucideIcon; titre: string; phrase: string;
 }) {
+  const tUi = useTranslations('ui.componentsCinemaWizardCinema');
   return (
     <div className="mb-4">
       <p className="mb-1 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-violet-300/80">
         <Icone className="h-3.5 w-3.5" aria-hidden="true" />
-        Etape {String(numero).padStart(2, '0')} / {String(total).padStart(2, '0')}
+        {tUi('etape_n_total', { n: String(numero).padStart(2, '0'), total: String(total).padStart(2, '0') })}
       </p>
       <h2 className="text-xl font-bold tracking-tight text-slate-50 sm:text-2xl">{titre}</h2>
       <p className="mt-1 text-sm leading-relaxed text-slate-400">{phrase}</p>

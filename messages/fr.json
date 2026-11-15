@@ -2034,7 +2034,16 @@
       "remplace_a_l_ecran_seulement_les_media": "Remplace, a l'ecran seulement, les medias manquants par des clips d'exemple locaux pour montrer le rendu d'un vrai montage. Rien n'est enregistre, rien n'est genere, aucun cout : ce ne sont pas des videos de votre film.",
       "selectionner_la_scene_n_titre": "Selectionner la scene {n} : {titre}",
       "modifier_le_plan_n": "Modifier le plan {n}",
-      "description_du_plan_n": "Description du plan {n}"
+      "description_du_plan_n": "Description du plan {n}",
+      "histoire": "Histoire",
+      "personnages": "Personnages",
+      "scenes": "Scenes",
+      "apercu": "Apercu",
+      "export": "Export",
+      "scenes_composez_d_abord_le_scenario": "Scenes — composez d’abord le scenario",
+      "apercu_composez_d_abord_le_scenario": "Apercu — composez d’abord le scenario",
+      "export_composez_d_abord_le_scenario": "Export — composez d’abord le scenario",
+      "prototype": "prototype"
     },
     "appDashboardCreerAssistantWizard": {
       "revenir_au_choix_des_modes": "Revenir au choix des modes",
@@ -2814,7 +2823,12 @@
       "aucun_depassement_payant_au_dela_la_ge": "% · aucun depassement payant : au-dela, la generation est refusee."
     },
     "componentsCinemaWizardCinema": {
-      "retour": "Retour"
+      "retour": "Retour",
+      "etapes_de_cinema_ia": "Etapes de Cinema IA",
+      "etape_n_sur_total_titre": "Etape {n} sur {total} : {titre}",
+      "etape_n_titre": "Etape {n} : {titre}",
+      "etape_n_sur_total": "Etape {n} sur {total}",
+      "etape_n_total": "Etape {n} / {total}"
     },
     "componentsCreerAfficheIA": {
       "decrivez_l_affiche_ambiance_lieu_lumie": "Décrivez l’affiche (ambiance, lieu, lumière…)",
@@ -3437,7 +3451,9 @@
     "componentsDashboardRecentVideos": {
       "videos_recentes": "Vidéos récentes",
       "terminee": "Terminée",
-      "voir_toutes_les_videos": "Voir toutes les vidéos →"
+      "voir_toutes_les_videos": "Voir toutes les vidéos →",
+      "rendu": "Rendu",
+      "brouillon": "Brouillon"
     },
     "componentsFournisseursConfirmationCoutFournisseur": {
       "cout_fournisseur_estime": "Coût fournisseur estimé",
@@ -3971,7 +3987,8 @@
       "hpy260k1d": "Envoi terminé — contrôle de la vidéo par Studiio…",
       "h1ymjl4gn": "Augmenter les followers",
       "hgi6r77n": "Promouvoir les produits",
-      "h11f8l28m": "Partager des tutorials"
+      "h11f8l28m": "Partager des tutorials",
+      "h1esc7sts": "Frais partenaires uniquement"
     },
     "componentsBillingCreditsDisplay": {
       "credits_disponibles": "Crédits disponibles",

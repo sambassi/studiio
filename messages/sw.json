@@ -2034,7 +2034,16 @@
       "remplace_a_l_ecran_seulement_les_media": "Hubadilisha, kwenye skrini tu, media zinazokosekana kwa klipu za mfano za ndani ili kuonyesha matokeo ya uhariri halisi. Hakuna kinachohifadhiwa, hakuna kinachozalishwa, hakuna gharama: hizi si video za filamu yako.",
       "selectionner_la_scene_n_titre": "Chagua onyesho {n}: {titre}",
       "modifier_le_plan_n": "Hariri shoti {n}",
-      "description_du_plan_n": "Maelezo ya shoti {n}"
+      "description_du_plan_n": "Maelezo ya shoti {n}",
+      "histoire": "Hadithi",
+      "personnages": "Wahusika",
+      "scenes": "Matukio",
+      "apercu": "Hakiki",
+      "export": "Hamisha",
+      "scenes_composez_d_abord_le_scenario": "Matukio — tunga hati kwanza",
+      "apercu_composez_d_abord_le_scenario": "Hakiki — tunga hati kwanza",
+      "export_composez_d_abord_le_scenario": "Hamisha — tunga hati kwanza",
+      "prototype": "mfano wa awali"
     },
     "appDashboardCreerAssistantWizard": {
       "revenir_au_choix_des_modes": "Rudi kwenye uchaguzi wa hali",
@@ -2814,7 +2823,12 @@
       "aucun_depassement_payant_au_dela_la_ge": "% · hakuna kuvuka kwa kulipia: zaidi ya hapo, uzalishaji unakataliwa."
     },
     "componentsCinemaWizardCinema": {
-      "retour": "Rudi"
+      "retour": "Rudi",
+      "etapes_de_cinema_ia": "Hatua za Cinema IA",
+      "etape_n_sur_total_titre": "Hatua {n} kati ya {total}: {titre}",
+      "etape_n_titre": "Hatua {n}: {titre}",
+      "etape_n_sur_total": "Hatua {n} kati ya {total}",
+      "etape_n_total": "Hatua {n} / {total}"
     },
     "componentsCreerAfficheIA": {
       "decrivez_l_affiche_ambiance_lieu_lumie": "Eleza bango (hali, mahali, mwanga…)",
@@ -3437,7 +3451,9 @@
     "componentsDashboardRecentVideos": {
       "videos_recentes": "Video za hivi karibuni",
       "terminee": "Imekamilika",
-      "voir_toutes_les_videos": "Tazama video zote →"
+      "voir_toutes_les_videos": "Tazama video zote →",
+      "rendu": "Kurenda",
+      "brouillon": "Rasimu"
     },
     "componentsFournisseursConfirmationCoutFournisseur": {
       "cout_fournisseur_estime": "Gharama ya mtoa huduma inayokadiriwa",
@@ -3971,7 +3987,8 @@
       "hpy260k1d": "Kutuma kumekamilika — Studiio inakagua video…",
       "h1ymjl4gn": "Kuongeza wafuasi",
       "hgi6r77n": "Kutangaza bidhaa",
-      "h11f8l28m": "Kushiriki mafunzo"
+      "h11f8l28m": "Kushiriki mafunzo",
+      "h1esc7sts": "Ada za washirika pekee"
     },
     "componentsBillingCreditsDisplay": {
       "credits_disponibles": "Krediti zilizopo",

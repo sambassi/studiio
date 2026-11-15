@@ -163,7 +163,7 @@ export function Sidebar() {
             {credits !== null
               ? credits.toLocaleString()
               : libelleFacturation !== null
-                ? <span data-facturation-libelle className="text-sm font-medium text-gray-400">{libelleFacturation}</span>
+                ? <span data-facturation-libelle className="text-sm font-medium text-gray-400">{t.fr(libelleFacturation)}</span>
                 : '...'}
           </div>
           {/* Pas de `block` ici : c'est un utilitaire, il gagne sur le `inline-flex`

@@ -729,11 +729,11 @@ export default function CinemaPage() {
   const mediasGeneres = film ? film.scenes.flatMap((s) => s.plans).filter((p) => p.media).length : 0;
 
   const etapesWizard: EtapeWizard[] = [
-    { titre: 'Histoire', icone: Clapperboard, accessible: true },
-    { titre: 'Personnages', icone: Users, accessible: true },
-    { titre: 'Scenes', icone: Link2, accessible: !!film, empeche: 'Scenes — composez d’abord le scenario' },
-    { titre: 'Apercu', icone: Eye, accessible: !!film, empeche: 'Apercu — composez d’abord le scenario' },
-    { titre: 'Export', icone: Download, accessible: !!film, empeche: 'Export — composez d’abord le scenario' },
+    { titre: tUi('histoire'), icone: Clapperboard, accessible: true },
+    { titre: tUi('personnages'), icone: Users, accessible: true },
+    { titre: tUi('scenes'), icone: Link2, accessible: !!film, empeche: tUi('scenes_composez_d_abord_le_scenario') },
+    { titre: tUi('apercu'), icone: Eye, accessible: !!film, empeche: tUi('apercu_composez_d_abord_le_scenario') },
+    { titre: tUi('export'), icone: Download, accessible: !!film, empeche: tUi('export_composez_d_abord_le_scenario') },
   ];
 
   const allerAEtape = (i: number) => {
@@ -754,7 +754,7 @@ export default function CinemaPage() {
       <div className="flex min-w-0 items-center gap-2">
         <Clapperboard className="h-5 w-5 shrink-0 text-violet-400" aria-hidden="true" />
         <h1 className="truncate text-base font-bold text-slate-50">Cinema IA</h1>
-        <span className="rounded-full border border-violet-500/30 bg-violet-500/15 px-2 py-0.5 text-[10px] text-violet-300">prototype</span>
+        <span className="rounded-full border border-violet-500/30 bg-violet-500/15 px-2 py-0.5 text-[10px] text-violet-300">{tUi('prototype')}</span>
         <Detail texte={tUi('le_decoupage_est_local_et_deterministe_2')} />
       </div>
       <div className="ml-auto flex flex-wrap items-center gap-3">

@@ -2034,7 +2034,16 @@
       "remplace_a_l_ecran_seulement_les_media": "Replaces, on screen only, missing media with local sample clips to show what a real edit looks like. Nothing is saved, nothing is generated, no cost: these are not videos of your film.",
       "selectionner_la_scene_n_titre": "Select scene {n}: {titre}",
       "modifier_le_plan_n": "Edit shot {n}",
-      "description_du_plan_n": "Description of shot {n}"
+      "description_du_plan_n": "Description of shot {n}",
+      "histoire": "Story",
+      "personnages": "Characters",
+      "scenes": "Scenes",
+      "apercu": "Preview",
+      "export": "Export",
+      "scenes_composez_d_abord_le_scenario": "Scenes — compose the scenario first",
+      "apercu_composez_d_abord_le_scenario": "Preview — compose the scenario first",
+      "export_composez_d_abord_le_scenario": "Export — compose the scenario first",
+      "prototype": "prototype"
     },
     "appDashboardCreerAssistantWizard": {
       "revenir_au_choix_des_modes": "Back to mode selection",
@@ -2814,7 +2823,12 @@
       "aucun_depassement_payant_au_dela_la_ge": "% · no paid overage: beyond that, generation is refused."
     },
     "componentsCinemaWizardCinema": {
-      "retour": "Back"
+      "retour": "Back",
+      "etapes_de_cinema_ia": "AI Cinema steps",
+      "etape_n_sur_total_titre": "Step {n} of {total}: {titre}",
+      "etape_n_titre": "Step {n}: {titre}",
+      "etape_n_sur_total": "Step {n} of {total}",
+      "etape_n_total": "Step {n} / {total}"
     },
     "componentsCreerAfficheIA": {
       "decrivez_l_affiche_ambiance_lieu_lumie": "Describe the poster (mood, place, lighting…)",
@@ -3437,7 +3451,9 @@
     "componentsDashboardRecentVideos": {
       "videos_recentes": "Recent videos",
       "terminee": "Completed",
-      "voir_toutes_les_videos": "View all videos →"
+      "voir_toutes_les_videos": "View all videos →",
+      "rendu": "Rendering",
+      "brouillon": "Draft"
     },
     "componentsFournisseursConfirmationCoutFournisseur": {
       "cout_fournisseur_estime": "Estimated provider cost",
@@ -3971,7 +3987,8 @@
       "hpy260k1d": "Upload complete — Studiio is checking the video…",
       "h1ymjl4gn": "Grow followers",
       "hgi6r77n": "Promote products",
-      "h11f8l28m": "Share tutorials"
+      "h11f8l28m": "Share tutorials",
+      "h1esc7sts": "Partner fees only"
     },
     "componentsBillingCreditsDisplay": {
       "credits_disponibles": "Available credits",

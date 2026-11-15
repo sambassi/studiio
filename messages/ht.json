@@ -2034,7 +2034,16 @@
       "remplace_a_l_ecran_seulement_les_media": "Ranplase, sou ekran an sèlman, medya ki manke yo ak klip egzanp lokal pou montre rezilta yon vrè montaj. Anyen pa anrejistre, anyen pa jenere, pa gen okenn kou : se pa videyo fim ou an.",
       "selectionner_la_scene_n_titre": "Chwazi sèn {n} : {titre}",
       "modifier_le_plan_n": "Modifye plan {n}",
-      "description_du_plan_n": "Deskripsyon plan {n}"
+      "description_du_plan_n": "Deskripsyon plan {n}",
+      "histoire": "Istwa",
+      "personnages": "Pèsonaj",
+      "scenes": "Sèn",
+      "apercu": "Apèsi",
+      "export": "Ekspòtasyon",
+      "scenes_composez_d_abord_le_scenario": "Sèn — konpoze senaryo a dabò",
+      "apercu_composez_d_abord_le_scenario": "Apèsi — konpoze senaryo a dabò",
+      "export_composez_d_abord_le_scenario": "Ekspòtasyon — konpoze senaryo a dabò",
+      "prototype": "pwototip"
     },
     "appDashboardCreerAssistantWizard": {
       "revenir_au_choix_des_modes": "Retounen nan chwa mòd yo",
@@ -2814,7 +2823,12 @@
       "aucun_depassement_payant_au_dela_la_ge": "% · okenn depasman peyan : pi lwen, jenerasyon an refize."
     },
     "componentsCinemaWizardCinema": {
-      "retour": "Retounen"
+      "retour": "Retounen",
+      "etapes_de_cinema_ia": "Etap Cinema IA",
+      "etape_n_sur_total_titre": "Etap {n} sou {total} : {titre}",
+      "etape_n_titre": "Etap {n} : {titre}",
+      "etape_n_sur_total": "Etap {n} sou {total}",
+      "etape_n_total": "Etap {n} / {total}"
     },
     "componentsCreerAfficheIA": {
       "decrivez_l_affiche_ambiance_lieu_lumie": "Dekri afich la (anbyans, kote, limyè…)",
@@ -3437,7 +3451,9 @@
     "componentsDashboardRecentVideos": {
       "videos_recentes": "Videyo resan",
       "terminee": "Fini",
-      "voir_toutes_les_videos": "Wè tout videyo yo →"
+      "voir_toutes_les_videos": "Wè tout videyo yo →",
+      "rendu": "Rann",
+      "brouillon": "Bouyon"
     },
     "componentsFournisseursConfirmationCoutFournisseur": {
       "cout_fournisseur_estime": "Kou founisè estime",
@@ -3971,7 +3987,8 @@
       "hpy260k1d": "Voye fini — Studiio ap verifye videyo a…",
       "h1ymjl4gn": "Ogmante abonne yo",
       "hgi6r77n": "Fè pwomosyon pwodwi yo",
-      "h11f8l28m": "Pataje tutorial"
+      "h11f8l28m": "Pataje tutorial",
+      "h1esc7sts": "Frè patnè sèlman"
     },
     "componentsBillingCreditsDisplay": {
       "credits_disponibles": "Kredi disponib",

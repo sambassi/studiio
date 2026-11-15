@@ -149,7 +149,7 @@ export function Navbar() {
               className="px-3 py-1.5 rounded-full border border-gray-700 text-gray-400 text-xs font-medium"
               title={tUi('ce_compte_ne_consomme_pas_de_credits_s')}
             >
-              {libelleFacturation}
+              {tUi.fr(libelleFacturation)}
             </span>
           )}
           {isAdmin && (

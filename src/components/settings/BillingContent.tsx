@@ -78,7 +78,7 @@ export function BillingContent() {
                   {credits !== null
                     ? credits
                     : libelleFacturation !== null
-                      ? <span data-facturation-libelle className="text-xl font-semibold text-gray-300">{libelleFacturation}</span>
+                      ? <span data-facturation-libelle className="text-xl font-semibold text-gray-300">{tUi.fr(libelleFacturation)}</span>
                       : '—'}
                 </div>
                 <div className="text-xs text-gray-400">{tUi('credits_restants')}</div>

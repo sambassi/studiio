@@ -2034,7 +2034,16 @@
       "remplace_a_l_ecran_seulement_les_media": "Ersetzt nur auf dem Bildschirm fehlende Medien durch lokale Beispielclips, um das Ergebnis eines echten Schnitts zu zeigen. Nichts wird gespeichert, nichts wird generiert, keine Kosten: Es sind keine Videos Ihres Films.",
       "selectionner_la_scene_n_titre": "Szene {n} auswählen: {titre}",
       "modifier_le_plan_n": "Einstellung {n} bearbeiten",
-      "description_du_plan_n": "Beschreibung der Einstellung {n}"
+      "description_du_plan_n": "Beschreibung der Einstellung {n}",
+      "histoire": "Geschichte",
+      "personnages": "Figuren",
+      "scenes": "Szenen",
+      "apercu": "Vorschau",
+      "export": "Export",
+      "scenes_composez_d_abord_le_scenario": "Szenen — erstellen Sie zuerst das Drehbuch",
+      "apercu_composez_d_abord_le_scenario": "Vorschau — erstellen Sie zuerst das Drehbuch",
+      "export_composez_d_abord_le_scenario": "Export — erstellen Sie zuerst das Drehbuch",
+      "prototype": "Prototyp"
     },
     "appDashboardCreerAssistantWizard": {
       "revenir_au_choix_des_modes": "Zurück zur Modusauswahl",
@@ -2814,7 +2823,12 @@
       "aucun_depassement_payant_au_dela_la_ge": "% · keine kostenpflichtige Überschreitung: Darüber hinaus wird die Generierung abgelehnt."
     },
     "componentsCinemaWizardCinema": {
-      "retour": "Zurück"
+      "retour": "Zurück",
+      "etapes_de_cinema_ia": "Schritte von Cinema IA",
+      "etape_n_sur_total_titre": "Schritt {n} von {total}: {titre}",
+      "etape_n_titre": "Schritt {n}: {titre}",
+      "etape_n_sur_total": "Schritt {n} von {total}",
+      "etape_n_total": "Schritt {n} / {total}"
     },
     "componentsCreerAfficheIA": {
       "decrivez_l_affiche_ambiance_lieu_lumie": "Beschreiben Sie das Poster (Stimmung, Ort, Licht …)",
@@ -3437,7 +3451,9 @@
     "componentsDashboardRecentVideos": {
       "videos_recentes": "Aktuelle Videos",
       "terminee": "Abgeschlossen",
-      "voir_toutes_les_videos": "Alle Videos ansehen →"
+      "voir_toutes_les_videos": "Alle Videos ansehen →",
+      "rendu": "Rendering",
+      "brouillon": "Entwurf"
     },
     "componentsFournisseursConfirmationCoutFournisseur": {
       "cout_fournisseur_estime": "Geschätzte Anbieterkosten",
@@ -3971,7 +3987,8 @@
       "hpy260k1d": "Upload abgeschlossen – Studiio prüft das Video …",
       "h1ymjl4gn": "Follower gewinnen",
       "hgi6r77n": "Produkte bewerben",
-      "h11f8l28m": "Tutorials teilen"
+      "h11f8l28m": "Tutorials teilen",
+      "h1esc7sts": "Nur Partnergebühren"
     },
     "componentsBillingCreditsDisplay": {
       "credits_disponibles": "Verfügbare Credits",
