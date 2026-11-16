@@ -472,6 +472,71 @@ describe('production asynchrone', () => {
   });
 });
 
+/**
+ * INCIDENT REEL (2026-10-28) : un appelant (script de test, pas l'ecran normal) a transmis
+ * `plafondUsd: 0.45` en pensant fixer « ce que je suis pret a depenser pour CETTE generation ».
+ * Mais `plafondUsd` plafonne TOUT LE FILM, pas une seule operation (voir l'en-tete de la
+ * route). Avec un film deja a 0,903 $, le film depassait AUSSITOT ce plafond mal compris
+ * (0,903 $ > 0,45 $) — refus illisible qui ressemblait a un bug de calcul des plafonds, alors
+ * que c'est l'usage du parametre qui etait errone. `genererMediaPlan`/`verifierPlafond`
+ * eux-memes sont corrects (voir `cinema-plafond-cumule-vs-generation.test.ts`, qui prouve que
+ * SANS ce parametre mal employe, 0,903 $ + 0,45 $ < 2 $ de plafond serveur est AUTORISE).
+ */
+describe('INCIDENT REEL — `plafondUsd` du corps mal employe comme « cout de cette generation »', () => {
+  it('le garde-fou est bien present dans le code (regression statique)', () => {
+    const fs = require('fs') as typeof import('fs');
+    const code = fs.readFileSync('src/app/api/cinema/films/[id]/generation/route.ts', 'utf-8');
+    expect(code).toContain('dejaDepense');
+    expect(code).toContain('Ce parametre plafonne TOUT LE FILM');
+  });
+
+  it('REPRODUCTION — `plafondUsd: 0.45` sur un film DEJA a 0,903 $ : refus IMMEDIAT et EXPLICITE, AVANT toute reservation', async () => {
+    const id = await creerFilm();
+    await modifierFilm(ctx.films, id, A, (f) => ({ ...f, coutGenerationUsd: 0.903 }));
+    const planId = (await ctx.films.lire(id, A))!.film.scenes[0].plans[0].id;
+
+    const r = await generationRoute.POST(
+      req('/x', { method: 'POST', json: { planId, operation: 'image', plafondUsd: 0.45 } }), P(id),
+    );
+    const d = await r.json();
+
+    expect(r.status).toBe(400);
+    expect(d.ok).toBe(false);
+    expect(d.erreur).toContain('0.4500'); // la valeur recue
+    expect(d.erreur).toContain('0.9030'); // ce que le film a DEJA depense
+    expect(d.erreur.toUpperCase()).toContain('TOUT LE FILM'); // le vrai sens du parametre, explicite
+
+    // Rien n'a ete reserve ni engage : le refus precede toute ecriture financiere.
+    const film = (await ctx.films.lire(id, A))!.film;
+    expect(film.generations ?? []).toEqual([]);
+    expect(film.coutGenerationUsd).toBe(0.903); // inchange
+  });
+
+  it('a l’inverse : SANS `plafondUsd` dans le corps, le MEME film (0,903 $) AUTORISE une generation — le plafond serveur (2 $) s’applique normalement', async () => {
+    const id = await creerFilm();
+    await modifierFilm(ctx.films, id, A, (f) => ({ ...f, coutGenerationUsd: 0.903 }));
+    const planId = (await ctx.films.lire(id, A))!.film.scenes[0].plans[0].id;
+
+    const r = await generationRoute.POST(req('/x', { method: 'POST', json: { planId, operation: 'image' } }), P(id));
+    expect(r.status).toBe(202); // accepte : aucun parametre mal employe, plafond serveur normal (2 $)
+    await attendreGenerations();
+    const film = (await ctx.films.lire(id, A))!.film;
+    expect(film.generations?.[0]?.statut).toBe('reussie');
+  });
+
+  it('une valeur de `plafondUsd` EGALE a ce qui est deja depense reste acceptee (ex. 0,903 $) — seule une valeur INFERIEURE est un contre-sens', async () => {
+    const id = await creerFilm();
+    await modifierFilm(ctx.films, id, A, (f) => ({ ...f, coutGenerationUsd: 0.903 }));
+    const planId = (await ctx.films.lire(id, A))!.film.scenes[0].plans[0].id;
+    const r = await generationRoute.POST(
+      req('/x', { method: 'POST', json: { planId, operation: 'image', plafondUsd: 0.903 } }), P(id),
+    );
+    // 0,903 $ (gratuit, fournisseur simule : cout propose 0) : encore sous ce plafond egal au
+    // deja-depense. N'est PAS refuse par le nouveau controle (qui ne bloque que < deja-depense).
+    expect(r.status).toBe(202);
+  });
+});
+
 describe('generation IA simulee — plafond serveur, stockage prive', () => {
   it('genere une image avec le fournisseur simule, la depose hors de public/', async () => {
     const id = await creerFilm();
