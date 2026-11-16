@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Readable } from 'stream';
 import { auth } from '@/lib/auth/config';
 import { lireRendu, cloreRendu } from '@/lib/rendus/service';
-import { clientMinio, signeurPublic } from '@/lib/storage/minio-client';
+import {
+  clientMinio, signeurPublic, clientEnvoiDecoupe, signeurPartiesPublic,
+} from '@/lib/storage/minio-client';
+import { ACTIONS_DECOUPE, traiterActionDecoupe, type ActionDecoupe } from '@/lib/rendus/depot-multipart';
 import {
   TAILLE_MAXIMALE, typeTeleversementAutorise,
   cibleTeleversement, urlSortieSure, PRESIGNE_TTL_S,
@@ -158,9 +161,17 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
  * (`cleDepot`), que seul `/confirm` recopie sur la cle du rendu, et seulement
  * tant que la tentative est `reserved`. Sinon : le relais same-origin.
  *
- * Aucun champ de la requete n'est lu : bucket et cle viennent de la ligne.
+ * Aucun champ de la requete ne designe bucket ni cle : ils viennent de la ligne.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * ENVOI DECOUPE (corps JSON `{ action: 'multipart-…' }`)
+ * ─────────────────────────────────────────────────────────────────────────
+ *
+ * Un montage volumineux part en morceaux de 8 Mio, chacun re-essayable,
+ * vers le MEME depot (`lib/rendus/depot-multipart.ts`). Sans corps, la route
+ * repond exactement comme avant : la cible d'un envoi en un bloc.
  */
-export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const session = await auth();
     if (!session?.user?.id) {
@@ -177,6 +188,32 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     if (!rendu) {
       return NextResponse.json({ ok: false, error: 'Rendu introuvable' }, { status: 404 });
     }
+    // Corps facultatif : absent ou illisible = la question historique.
+    let corps: Record<string, unknown> = {};
+    try {
+      const texte = await req.text();
+      if (texte) corps = JSON.parse(texte) ?? {};
+    } catch { corps = {}; }
+    const action = typeof corps.action === 'string' ? corps.action : '';
+    if ((ACTIONS_DECOUPE as readonly string[]).includes(action)) {
+      try {
+        const issue = await traiterActionDecoupe(rendu, action as ActionDecoupe, corps, {
+          client: clientEnvoiDecoupe(),
+          signeur: signeurPartiesPublic(),
+        });
+        return NextResponse.json(issue.body, { status: issue.status });
+      } catch (e: unknown) {
+        // Jamais l'URL ni l'identifiant d'envoi dans le journal : l'action et
+        // le message du SDK suffisent au diagnostic.
+        const message = e instanceof Error ? e.message.slice(0, 200) : 'stockage';
+        console.error(`[Rendus] ${action} a echoue :`, message);
+        return NextResponse.json(
+          { ok: false, motif: 'stockage_injoignable', error: 'Stockage injoignable' },
+          { status: 503 },
+        );
+      }
+    }
+
     if (rendu.etat !== 'reserved') {
       return NextResponse.json(
         { ok: false, error: 'Tentative close', motif: 'non_reserve', etat: rendu.etat },

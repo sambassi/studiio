@@ -71,6 +71,7 @@ vi.mock('@/lib/video-composer', async () => {
 });
 
 import AssistantWizard from '../app/dashboard/creer/AssistantWizard';
+import { reinitialiserEnvoiEnAttente } from '@/lib/rendus/client';
 import { draftKey, DRAFT_VERSION } from '../lib/creer/draft';
 
 const CLE = draftKey('a@b.c');
@@ -264,6 +265,9 @@ const envoyerDeuxFois = async () => {
 };
 
 beforeEach(() => {
+  // Un montage garde pour « Réessayer l'envoi » vit au niveau du module :
+  // sans cette remise a zero, il passerait d'un test au suivant.
+  reinitialiserEnvoiEnAttente();
   window.localStorage.clear();
   sessionState = { data: { user: { email: 'a@b.c' } }, status: 'authenticated' };
   composeVideoSpy.mockClear();

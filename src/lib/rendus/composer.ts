@@ -63,6 +63,12 @@ export async function composerEtFacturer(
   operation: OperationRendu,
   format: 'reel' | 'tv',
   options: ComposerOptions,
+  /**
+   * Facultatif : l'etape en cours (« Envoi du montage… 42 % ») et la
+   * signature du contenu, qui permet de reprendre l'ENVOI SEUL apres un
+   * echec, sans recomposer (`rendreEtFacturer`, `cleReprise`).
+   */
+  suivi?: { etape?: (texte: string) => void; cleReprise?: string },
 ): Promise<MontageLivre> {
   let vignette: Blob | null = null;
   // Un media necessaire introuvable a un message PROPRE, plus utile que le
@@ -75,11 +81,14 @@ export async function composerEtFacturer(
   const livraison = await rendreEtFacturer({
     operation,
     format,
+    etape: suivi?.etape,
+    cleReprise: suivi?.cleReprise,
     composer: async () => {
       try {
         const rendu = await composeVideo(options);
-        vignette = rendu.thumbnail;
-        return rendu.video;
+        // La vignette voyage AVEC le montage : une reprise d'envoi, qui ne
+        // recompose pas, la retrouve ainsi.
+        return { video: rendu.video, annexe: rendu.thumbnail };
       } catch (e) {
         if (estMediaIndisponible(e)) mediaManquant = e;
         throw e;
@@ -89,8 +98,11 @@ export async function composerEtFacturer(
 
   if (!livraison.ok || !livraison.blob) {
     if (mediaManquant) throw mediaManquant;
-    throw new Error(messagePour(livraison.motif));
+    throw Object.assign(new Error(messagePour(livraison.motif)), {
+      reprenable: livraison.reprenable === true,
+    });
   }
+  if (livraison.annexe instanceof Blob) vignette = livraison.annexe;
 
   return {
     blob: livraison.blob,

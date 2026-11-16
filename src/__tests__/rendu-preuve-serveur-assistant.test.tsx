@@ -79,6 +79,7 @@ vi.mock('@/lib/video-composer', async () => {
 });
 
 import AssistantWizard from '../app/dashboard/creer/AssistantWizard';
+import { reinitialiserEnvoiEnAttente } from '@/lib/rendus/client';
 import { draftKey, DRAFT_VERSION } from '../lib/creer/draft';
 
 const CLE = draftKey('a@b.c');
@@ -196,6 +197,9 @@ const cliquer = async (motif: RegExp) => {
 const envoyer = () => cliquer(/Composer et envoyer/i);
 
 beforeEach(() => {
+  // Un montage garde pour « Réessayer l'envoi » vit au niveau du module :
+  // sans cette remise a zero, il passerait d'un test au suivant.
+  reinitialiserEnvoiEnAttente();
   window.localStorage.clear();
   sessionState = { data: { user: { email: 'a@b.c' } }, status: 'authenticated' };
   composeVideoSpy.mockClear();
@@ -330,10 +334,28 @@ describe('5. Televersement refuse → aucune confirmation, aucune livraison', ()
     expect(document.body.textContent).not.toContain('Envoyé au calendrier');
   });
 
-  it('la tentative est refermee, elle ne reste pas ouverte', async () => {
+  // Depuis la reprise d'envoi : la tentative RESTE ouverte (sans debit
+  // possible sans confirmation), le montage est garde en memoire, et l'ecran
+  // propose « Réessayer l'envoi » — qui ne recompose pas.
+  it('la tentative reste ouverte pour une reprise ; « Réessayer l envoi » est propose', async () => {
     await allerAEnvoi();
     await envoyer();
-    expect(trace).toContain('annulation');
+    expect(trace).not.toContain('annulation');
+    expect(trace).not.toContain('confirmation');
+    expect(document.querySelector('[data-reprise-envoi]')).not.toBeNull();
+  });
+
+  it('« Réessayer l envoi » renvoie le MEME montage sans rappeler le compositeur', async () => {
+    await allerAEnvoi();
+    await envoyer();
+    const compositions = composeVideoSpy.mock.calls.length;
+    const reservations = trace.filter((t) => t === 'reservation').length;
+    const bouton = document.querySelector('[data-reprise-envoi]') as HTMLButtonElement;
+    await act(async () => { fireEvent.click(bouton); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    expect(composeVideoSpy.mock.calls.length).toBe(compositions);
+    expect(trace.filter((t) => t === 'reservation').length).toBe(reservations);
+    expect(trace.filter((t) => t === 'televersement').length).toBeGreaterThanOrEqual(2);
   });
 });
 
@@ -386,7 +408,7 @@ describe('8. L Assistant n a plus aucun chemin de composition non prouve', () =>
   });
 
   it('les trois destinations passent par le socle', () => {
-    expect(wizard).toContain("composerEtFacturer('calendrier', renderFormat, optionsRendu)");
+    expect(wizard).toContain("composerEtFacturer('calendrier', renderFormat, optionsRendu");
     expect(wizard).toContain('rendreEtFacturer({');
   });
 });

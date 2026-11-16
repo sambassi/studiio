@@ -38,7 +38,7 @@ describe('Un seul chemin pour les deux destinations', () => {
 
   it('les trois destinations composent sur le MÊME objet d options', () => {
     expect(rendu).toContain('await composeVideo(optionsRendu)');
-    expect(rendu).toContain("composerEtFacturer('calendrier', renderFormat, optionsRendu)");
+    expect(rendu).toContain("composerEtFacturer('calendrier', renderFormat, optionsRendu, {");
   });
 
   it('le bouton du Calendrier passe par ce chemin', () => {
@@ -52,7 +52,7 @@ describe('Un seul chemin pour les deux destinations', () => {
     // regarder, donc rien a confirmer. Les trois destinations envoient
     // desormais le montage a la cle attribuee, et nulle part ailleurs.
     expect(rendu).toContain("} else if (destination === 'calendrier') {");
-    expect(rendu).toContain("composed = await composerEtFacturer('calendrier', renderFormat, optionsRendu);");
+    expect(rendu).toContain("composed = await composerEtFacturer('calendrier', renderFormat, optionsRendu, {");
     expect(rendu).toContain('const rendu = await composeVideo(optionsRendu);');
     // Le chemin non prouve a disparu de l'ecran.
     expect(rendu).not.toMatch(/composeAndUpload\s*\(/);
@@ -115,7 +115,7 @@ describe('Les crédits', () => {
     // d'un try/catch qui abandonne la tentative et rend `ok: false`. Une
     // tentative abandonnee n'a jamais ete confirmee, donc jamais debitee.
     const client = readFileSync(join(process.cwd(), 'src/lib/rendus/client.ts'), 'utf-8');
-    const compose = client.indexOf('blob = await composer();');
+    const compose = client.indexOf('await composer();');
     const abandon = client.indexOf("return { ok: false, motif: 'composition'");
     const confirme = client.indexOf('/confirm`');
     expect(compose).toBeGreaterThan(-1);
